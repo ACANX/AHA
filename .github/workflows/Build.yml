@@ -55,3 +55,53 @@ jobs:
           JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
           javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
             -d /tmp/skill-templates $(find .agents/skills -name '*.java')
+
+  # ── 构建成功后在 main 上自动打 tag ─────────────────────────────────────────
+  #
+  # 触发时机：**push 到 `main`**（即 `dev` → `main` 的 PR 被合并之后），且上面的 build 已成功。
+  #
+  # tag 名：`V<项目版本号>`（如 `V0.1.0`）。版本号**唯一来源是父 POM 的 `<version>`**，
+  #         工作流里不写版本字面量——版本改了 tag 跟着走，不会形成两处口径。
+  #
+  # 为什么 `needs: build` 就够了：带 `needs` 的作业在依赖失败时会被跳过，不必再判 `result`。
+  #         唯一的边角是那条**可选**的 macOS 腿（`continue-on-error`）：若它没通过且影响到了
+  #         build 作业的结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
+  #
+  # 【重要】用 `GITHUB_TOKEN` 推的 tag **不会触发下游工作流**（GitHub 防递归的既定行为），
+  #         所以 `Release.yml` 不会因这里的 tag 自动开跑。要让发布自动跟上，有两条路：
+  #         改用 PAT 推 tag（存为仓库机密），或 tag 出来后手工触发发布。
+  #
+  # 【权限】推 tag 需要 `contents: write`。若仓库把 Actions 默认权限设成了只读，
+  #         这一步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
+  tag:
+    name: tag（V<版本号>）
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 读取项目版本（唯一来源：父 POM）
+        id: version
+        run: |
+          VERSION=$(python3 -c 'import xml.etree.ElementTree as ET; ns="{http://maven.apache.org/POM/4.0.0}"; print(ET.parse("pom.xml").getroot().find(ns+"version").text.strip())')
+          test -n "${VERSION}"
+          echo "项目版本：${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: 打 tag 并推送（已存在则跳过）
+        env:
+          TAG: V${{ steps.version.outputs.version }}
+        run: |
+          # 幂等：同一版本被重复合入 main 是正常事（例如只改了文档），不该因此报错
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} 已存在，跳过"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "AHA ${TAG}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${TAG}"
+          echo "已创建并推送 tag：${TAG}（指向 ${GITHUB_SHA}）"

@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags:
+      # 打 tag 的约定是 `V<版本号>`（大写 V，如 `V0.1.0`，见 Build.yml 的 tag 作业）。
+      # ref 过滤是大小写敏感的，两种都列上，手工用 `v0.1.0` 或 `V0.1.0` 都能触发。
+      - 'V*'
       - 'v*'
 
 permissions:

@@ -13,6 +13,10 @@
 首个可用版本：Core + CLI 可运行。
 
 ### 新增
+- **自动打 tag**：`Build.yml` 新增 `tag` 作业——`dev` → `main` 的 PR 合并、且构建成功后，
+  按根 `pom.xml` 的 `<version>` 创建 `V<版本号>` 附注 tag 并推送（同名已存在则跳过）；
+  版本号只从 POM 读，工作流与文档不复制。注意：`GITHUB_TOKEN` 推的 tag 不会触发下游工作流，
+  故 `Release.yml` 需手工触发或改用 PAT（见 [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) §4.2）
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
@@ -385,4 +389,4 @@
 - **依赖自动升级**：`.github/dependabot.yml` 每日检测 Maven 与 GitHub Actions 依赖，
   PR 先合入 `dependa` 分支再人工合并；minor 与 patch 分组，major 单独成单
 
-[0.1.0]: https://github.com/ACANX/AHA/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0

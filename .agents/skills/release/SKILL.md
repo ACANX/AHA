@@ -30,7 +30,8 @@ metadata:
    mvn clean verify        # Maven 3.9.x 兼容基线
    ```
 
-5. 合入 `main`，打 tag `vX.Y.Z`
+5. 合入 `main` —— tag 由 CI 自动打（`Build.yml` 的 tag 作业按根 POM 版本创建 `VX.Y.Z`；
+   若被可选腿影响未打，按 ReleaseProcess.md §4.1 手工补打）
 6. 触发 `Release.yml` 流水线
 
 ## 发布前检查
