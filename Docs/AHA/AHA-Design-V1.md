@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.57.0
+**文档版本**：v3.58.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -43,14 +43,20 @@
 | JDK | **25 (LTS)** | 编译与运行目标，禁止降级 |
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
-| OpenJFX | **25** | 桌面端 UI 框架（0.1 不启用） |
-| JPMS | **强制启用** | 所有模块必须有 `module-info.java` |
+| OpenJFX | **25** | 桌面端 UI 框架（0.2 启用） |
+| JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
+
+> **JPMS 的定位（`C-01` 决策，2026-10-08）**：JPMS 是**默认路径而非硬性门槛**。
+> 优先尝试 OpenJFX + 模块化；若两者冲突（如 TestFX、WebView 的反射与 `--add-opens` 需要），
+> **OpenJFX 优先，JPMS 让路**（可退到 classpath 构建，须在 `BuildSpec.md` 记明原因）。
+> 扩展路线图是否推迟，不再触发「JPMS 存废」的重新评估——该决策已提前给出。
 
 **禁止事项**：
 
 - 禁止在编译目标上使用低于 25 的 `release` 值
 - 禁止在 POM 中使用 Maven 4 新增语法（自动模块发现、parent 版本推断、`modelVersion 4.1.0` 等）
-- 禁止在非模块化配置下构建主代码
+- 非必要不使用 classpath 构建主代码：模块化是默认路径，仅在 JPMS 与 OpenJFX 等需求冲突
+  且无法调和时例外，且必须在 `BuildSpec.md` 记明原因与影响面
 
 ## 第 2 条：命名体系
 
@@ -140,7 +146,7 @@ common ← extension-api ← core ← desktop
 | 领域 | 选定方案 | 不可替换性 |
 |---|---|---|
 | CLI 框架 | picocli + JLine | 除非有重大安全或性能问题 |
-| GUI | OpenJFX 25，WebView + FXML | 除非有重大安全或性能问题 |
+| GUI | OpenJFX 25，**JavaFX 原生控件 + 进程内直调**（WebView + 本地 HTTP 为备选） | 除非有重大安全或性能问题 |
 | JSON/YAML | Jackson 3.x（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
 | 日志 | SLF4J + Log4j2 | 可替换 Log4j2 后端 |
 | HTTP 客户端 | JDK HttpClient 或 OkHttp | 二选一，由 Core 层适配器隔离 |
@@ -448,6 +454,7 @@ aha/
 | v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
 | v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
 | v3.57.0 | 2026-10-08 | 版本号切到 0.1.1：目标版本、当前版本与两处 POM 示例同步；补记「只改根 POM 会静默产出旧版本」的实测结论（见 ReleaseProcess.md 第 2 节与 DevLog-20261008-00）；目录树与附录 A 的 DevLog 索引补齐至 6 篇 | @ACANX |
+| v3.58.0 | 2026-10-08 | 五项决策落地：JPMS 改为「优先启用（非强制）」并新增定位说明（`C-01`）；fat JAR 禁用理由改述；路线图 0.2 行与第 5 条 GUI 选型改为「原生控件 + 进程内直调」（`D-07`） | @ACANX |
 
 ---
 ```
@@ -498,7 +505,7 @@ aha/
 **当前版本**：0.1.1
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
-**模块化**：JPMS 强制启用
+**模块化**：JPMS 优先启用（非强制；与 OpenJFX 冲突时为它让路）
 
 ---
 
@@ -2996,7 +3003,9 @@ dist/
 
 `dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
-**为何不用 fat JAR**：shade 会合并出无 `module-info` 的单一 JAR，破坏 JPMS 强制启用原则。
+**为何不用 fat JAR**：shade 合并后的单一 JAR 无法按模块追踪依赖与许可，也无法与
+`dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
+的决策而改变**）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
 **为何不用 jpackage（0.1）**：0.1 仅需 CLI + `bin/` 脚本，jpackage 主要用于 0.2 的桌面端。
 
@@ -3486,7 +3495,7 @@ Closes #123
 | 版本 | 内容 | 关键里程碑 |
 |---|---|---|
 | **0.1** | Core + CLI 可运行 | AgentService + picocli + SQLite + LLM 适配器 + 远程/协议前向兼容契约 |
-| **0.2** | 桌面端 | OpenJFX WebView + FXML + jpackage |
+| **0.2** | 桌面端 | OpenJFX **原生控件 + 进程内直调**（备选：WebView + 本地 HTTP）+ jpackage |
 | **0.3** | 扩展基础 | aha-extension-api + ExtensionRuntime + Registration |
 | 0.4 | 事件总线 | EventBus + 生命周期事件 + CLI extension 命令 |
 | 0.5 | 隔离与权限 | ModuleLayer 隔离 + 扩展权限 + 热重载探索 |

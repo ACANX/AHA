@@ -99,8 +99,8 @@ dist/
 | JDK | **25 (LTS)** |
 | Maven 运行时 | **4.x**（Maven Wrapper 固定） |
 | Maven 兼容基线 | **3.9.x** |
-| OpenJFX | **25**（桌面端，0.1 不启用） |
-| JPMS | **强制启用** |
+| OpenJFX | **25**（桌面端，0.2 启用） |
+| JPMS | **优先启用（非强制）** |
 | JSON/YAML | Jackson **3.x**（groupId `tools.jackson`） |
 
 > 依赖的确切版本集中在父 `pom.xml` 的 `<properties>`，由 Dependabot 每日升级；

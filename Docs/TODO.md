@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.17.0
+**文档版本**：v0.18.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -270,12 +270,24 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 
 | 编号 | 事项                                 | 类型   | 证据 | 优先级 | 状态     | 落地文档                                         |
 | ---- | ------------------------------------ | ------ | ---- | ------ | -------- | ------------------------------------------------ |
-| C-01 | JPMS 收益与成本的时间错配            | 待决策 | ✅    | P2     | ⏸ 待决策 | `Constitution.md` 第 4 条、`ModuleConvention.md` |
+| C-01 | JPMS 收益与成本的时间错配 | 待决策 | ✅ | P2 | ✅ 已决策 | `Constitution.md` 第 4 条、`ModuleConvention.md` |
 | C-02 | `ServiceLoader` 双声明的长期维护成本 | 待决策 | ✅    | P3     | ⏸ 待决策 | `ModuleConvention.md`                            |
 | C-03 | 依赖治理补强（Enforcer / ArchUnit）  | 调研   | ✅    | P2     | ☐ 未完成 | `BuildSpec.md`                                   |
 | C-04 | `jlink` 禁令的解除条件未登记         | 待决策 | ✅    | P3     | ☐ 未完成 | `BuildSpec.md` §7                                |
 
-### C-01 ⏸ 待决策
+### C-01 ✅ 已决策（2026-10-08）：JPMS 非强制，OpenJFX 优先
+
+**决策**：**JPMS 不再要求强制使用**。优先尝试采用 OpenJFX；必要时 **JPMS 为 OpenJFX 让路**
+（可退到 classpath 构建，须在 `BuildSpec.md` 记明原因与影响面）。
+
+**连带修正（本轮已落地）**：`Constitution.md` 第 1 条、`BuildSpec.md` §7、`AHA-Design-V1.md`
+第 1 条与头部、`README.md`、`AGENTS.md`、`ArchitectureOverview.md` 的「JPMS 强制启用」
+全部改为「**优先启用（非强制）**」；fat JAR 的禁用理由改述为「无法按模块追踪依赖与许可、
+无法与 `dist/{bin,lib}` 布局一致」，**不再挂在 JPMS 上**；`TestingSpec.md` 的 TestFX 行补注
+「与 JPMS 冲突时可在 classpath 下运行」。
+
+**残留动作**：OpenJFX 真正引入后，若发现模块化阻碍（TestFX、WebView 反射、`--add-opens`），
+按「OpenJFX 优先」原则退到 classpath，并在 `BuildSpec.md` 记明原因。
 
 **结论（复核 ✅ 已核实，2026-10-07）**：`ModuleConvention.md` v1.1.0 §1 现为三行简短规则
 （必须有 `module-info`、必须显式导出、`opens` 必须限定），**仍未写明 JPMS 的存在理由与复核点**。
@@ -337,11 +349,11 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ☐ 未完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
 | D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ☐ 未完成 | `TestingSpec.md` §1                |
-| D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ⏸ 待决策 | `TestingSpec.md` §3.2              |
-| D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ☐ 未完成 | `DesktopDesign.md` §2/§3           |
-| D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 进行中 | `DesktopDesign.md`、`GUIDesign.md` §8 |
+| D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ✅ 已决策 | `TestingSpec.md` §3.2              |
+| D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
+| D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 选型已定 | `DesktopDesign.md`、`GUIDesign.md` §8 |
 | D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ☐ 未完成 | `Build.yml`、`DesktopDesign.md` §3 |
-| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ☐ 未完成 | `aha-desktop/pom.xml`、`DesktopDesign.md` |
+| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已决策 | `aha-desktop/pom.xml`、`DesktopDesign.md` |
 
 ### D-01 ☐ 未完成（0.2 前置）
 
@@ -375,7 +387,10 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：0.2 前在 CI 中先跑通一个 TestFX 最小样例，再纳入 `Build.yml`；
 同步补充环境要求小节（`--add-opens`、`xvfb-run` / Monocle、`--patch-module`）。
 
-### D-05 ⏸ 待决策
+### D-05 ✅ 已决策（2026-10-08）：纳入门禁 + 单独阈值，分两步走
+
+**决策**：桌面端**纳入覆盖率门禁**，但用**单独阈值**——0.2 开发期 **0.30**（适度调低便于开发），
+0.2 收尾评审后再向其他模块的 **0.70** 对齐。细则已写入 `TestingSpec.md` §3.4。
 
 **复核（✅ 已核实）**：父 POM JaCoCo 仍泛排除 `com/acanx/module/aha/desktop/**`；
 `TestingSpec.md` §3 仍**未给 Desktop 阈值**，§3.2 仍登记「桌面端 0.2 实现」。
@@ -383,7 +398,10 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：在 `TestingSpec.md` §3 中为 Desktop 模块**显式设定阈值或明确永久排除**，
 并说明 `BUNDLE` 级聚合门禁下桌面端低覆盖对整体的影响。
 
-### D-06 ☐ 未完成
+### D-06 ◐ 已决策（2026-10-08），文档待回填
+
+**决策**：**支持承诺只有 Windows + Linux 双平台**；macOS **要求 CI 能打出包**（`jpackage`），
+但**不要求跑测试**——开发资源有限，不在 macOS 上投入测试维护。
 
 **复核（✅ 已核实）**：`DesktopDesign.md` v1.1.0 §2 已改为指向 `GUIDesign.md` 并标注
 「WebView / FXML 组合从未真正决策，待评审」——**这是 D-07 范畴的进展，不是 D-06**。
@@ -393,7 +411,10 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
 
-### D-07 ◐ 进行中
+### D-07 ◐ 选型已定（2026-10-08），线程模型小节待补
+
+**决策**：**优先尝试进程内直调**（`GUIDesign.md` §8.1，JavaFX 原生控件）；
+**无法满足要求时再考虑本地 HTTP + WebView**（§8.2），后者降为兜底而非默认。
 
 **复核（✅ 已核实）**：新增的 `GUIDesign.md` §8.1 已给出**单一桥接点**的表述：
 
@@ -415,7 +436,14 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵
 （桌面端安装包需另设产物）。
 
-### D-09 ☐ 未完成（新增条目）
+**补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；
+必需检查仍是 Windows + Linux。
+
+### D-09 ✅ 已决策（2026-10-08）：桌面端需要内置工具
+
+**决策**：桌面端**需要内置工具**（引入 `aha-tool`）。依赖矩阵已在
+`Constitution.md` 第 4 条与 `ModuleConvention.md` §2 补上 `core ← tool ← desktop` 边与对应规则。
+剩余实现动作：`aha-desktop/pom.xml` 声明 `aha-tool`（0.2 实施时）。
 
 **现象**：`aha-desktop/pom.xml` 仅依赖 `aha-core`，**未声明 `aha-tool`**。
 内置工具（file / http / shell）全在 `aha-tool` 且经 `ServiceLoader` 发现，
@@ -556,6 +584,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.15.0 | 2026-10-07 | `G-04` 改写：新增 `.github/workflows/CodeQL.yml`（高级设置/工作流方式，显式覆盖 `pull_request → main`，手工构建走统一 Maven 入口），说明为何默认设置覆盖不到 `main`、与必需检查契约无关，并给出「不要扫描就删规则 + 删工作流」的备选 | @ACANX |
 | v0.16.0 | 2026-10-07 | `G-04` 补上线实测：工作流 init/compile 三次全过、失败仅在 `analyze`；因两份分支树零差异判定为配置冲突，指向「默认设置与高级设置互斥」并给出二选一处置；顺手把 codeql-action 升到 v4，并注明 build-mode 那条提示为良性 | @ACANX |
 | v0.17.0 | 2026-10-08 | `G-01` 结项（两条文档提交已随 PR #9/#10 进入 `origin/dev`）；新增 `G-06` 处置 0.1.0 的裸 tag 与 `V*` 约定的不一致 | @ACANX |
+| v0.18.0 | 2026-10-08 | 五项决策拍板并落地：`C-01`（JPMS 非强制，OpenJFX 优先）、`D-05`（桌面端纳入门禁 + 单独阈值 0.30→0.70）、`D-06`（Win+Linux 为承诺，macOS 只打包不测）、`D-07`（进程内直调优先）、`D-09`（需要内置工具，依赖矩阵已改） | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -622,7 +651,17 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 以下条目**需要人来决策**，技术上无唯一正解。建议按优先级依次拍板：
 
-**只有 4 项与 0.1 相关**，其余属 0.2+、桌面端或 native-image 路线，可在发布后从容讨论。
+**只有 4 项与 0.1 相关**，其余属 0.2+、桌面端或 native-image 路线。
+
+> **2026-10-08 已拍板 5 项**（详见各条目正文）：
+>
+> | 编号 | 决策 |
+> |---|---|
+> | `C-01` | JPMS **非强制**；优先 OpenJFX，必要时 JPMS 让路 |
+> | `D-05` | 桌面端**纳入门禁 + 单独阈值**，0.2 初期 0.30 → 收尾向 0.70 对齐 |
+> | `D-06` | 支持承诺 **Windows + Linux**；macOS **只打包、不测试** |
+> | `D-07` | **进程内直调优先**，本地 HTTP + WebView 降为兜底 |
+> | `D-09` | 桌面端**需要内置工具**（依赖矩阵已补 `tool ← desktop`） |
 这 4 项的建议如下——**仅为建议，仍需拍板**：
 
 | 编号 | 决策问题 | 建议 | 理由 |
@@ -635,15 +674,15 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 顺序 | 编号 | 决策问题                                                     | 影响范围                     | 状态     |
 | ---- | ---- | ------------------------------------------------------------ | ---------------------------- | -------- |
 | 1    | E-01 | native 产物中扩展系统的降级策略？`ModuleLayer` 与 native-image 冲突如何处置？ | 决定 native-image 是否值得做 | ⏸ 待决策 |
-| 2    | C-01 | JPMS 的投入产出错配是否接受？扩展路线图推迟时如何处理？      | 架构根基                     | ⏸ 待决策 |
+| 2    | C-01 | JPMS 的投入产出错配是否接受？扩展路线图推迟时如何处理？      | 架构根基                     | ✅ 已决策（2026-10-08） |
 | 3    | E-11 | 发行矩阵如何定义？三种形态是否并存？                         | 打包与文档全局               | ⏸ 待决策 |
 | 4    | E-10 | native 产物的验收标准与 CI 归属？                            | 质量基线                     | ⏸ 待决策 |
 | 5    | C-02 | `ServiceLoader` 双声明：维持／删除／加校验？                 | 维护成本（与 E-04 相关）     | ⏸ 待决策 |
-| 6    | D-06 | 桌面端目标平台是否含 macOS？                                 | CI 与打包                    | ⏸ 待决策 |
-| 7    | D-05 | 桌面端覆盖率：纳入门禁／单独阈值／永久排除？                 | 质量基线                     | ⏸ 待决策 |
-| 8    | D-07 | 桌面端技术选型：进程内直调（8.1）vs 本地 HTTP + WebView（8.2）？ | 0.2 全部实现                 | ⏸ 待决策 |
+| 6    | D-06 | 桌面端目标平台是否含 macOS？                                 | CI 与打包                    | ✅ 已决策（2026-10-08） |
+| 7    | D-05 | 桌面端覆盖率：纳入门禁／单独阈值／永久排除？                 | 质量基线                     | ✅ 已决策（2026-10-08） |
+| 8    | D-07 | 桌面端技术选型：进程内直调（8.1）vs 本地 HTTP + WebView（8.2）？ | 0.2 全部实现                 | ✅ 已决策（2026-10-08） |
 | 9    | E-12 | `TODO.md` 文件名是否改名？                                   | 文档规范一致性               | ⏸ 待决策 |
-| 10   | D-09 | 桌面端是否需要内置工具（引入 `aha-tool`）？                  | 依赖矩阵与 `Constitution.md` | ⏸ 待决策 |
+| 10   | D-09 | 桌面端是否需要内置工具（引入 `aha-tool`）？                  | 依赖矩阵与 `Constitution.md` | ✅ 已决策（2026-10-08） |
 | 11   | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/`？ | 文档存放规范 | ⏸ 待决策 |
 | 12   | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并？ | 检查覆盖面与目录约定 | ⏸ 待决策 |
 | 13   | H-01 | 启动标志默认风格：像素风（现状）还是线框风？ | 首屏观感 | ⏸ 待决策 |
@@ -685,9 +724,9 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | ----------------------- | ------------------------------------------------------- | ---------------------------- | -------- |
 | B-01 / B-02             | `AgentEngine.java`、`AgentServiceDesign.md`             | 明确契约 + 补测试            | ☐ 未完成 |
 | D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ☐ 未完成 |
-| D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ☐ 未完成 |
-| D-07                    | `DesktopDesign.md`（或 `GUIDesign.md` §8 升格）         | 线程模型小节                 | ◐ 进行中 |
-| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ☐ 未完成（待决策） |
+| D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ◐ 已决策，待回填 |
+| D-07                    | `DesktopDesign.md`（或 `GUIDesign.md` §8 升格）         | 线程模型小节                 | ◐ 选型已定，待补小节 |
+| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ✅ 已落地（矩阵已改） |
 | E-02 ~ E-09             | `BuildSpec.md`（新增 native 章节）                      | 待验证后登记                 | ☐ 未完成 |
 | E-11                    | `BuildSpec.md` §7                                       | 发行矩阵                     | ☐ 未完成（待决策） |
 | 6.1 序 1、3、4、5       | `MemoryStorageDesign.md`、`aha-core`、`aha-cli`         | 记忆写入与命令落地           | ☐ 未完成 |
