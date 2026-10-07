@@ -34,6 +34,10 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **补回 `dev` 的血缘**：PR #8 以 squash 合入，使 `dev` 拿到内容却没拿到分支历史——
+  与 `F-12` 同一形态并在同日复发。已在 `dependa` 上用 `-s ours` 接回（树不变、零内容改动），
+  并按 `ReleaseProcess.md` §4.1 立下「被误用 squash 后必须立刻接回血缘」；
+  更根本的预防（关闭 squash/rebase 合并）登记为 `TODO.md` `G-05`
 - **分支规则集整改规格**：`main` / `dev` 的规则集里存在三条对「单人 + 机器」无法满足的要求
   （要求他人批准、要求 CodeQL 结果却未配置扫描、要求覆盖率数据却无上传），会把 PR 永久锁死；
   整改规格与验收标准已写入 `TODO.md` `G-02` / `G-04`，规范写入 `BuildSpec.md` §8.1

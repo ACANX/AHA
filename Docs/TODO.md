@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.12.0
+**文档版本**：v0.13.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -547,6 +547,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
 | v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
 | v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
+| v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -927,6 +928,14 @@ Git 无法自动合并（实测 9 个冲突，含 `add/add`）。
 **排障中的教训**：第一次用**本地** `dev`（`4f12cef`，已过期）做合并试探，得到
 「Already up to date」，差点把结论带偏——远端行为必须用 `origin/<branch>` 引用。
 
+**复发（2026-10-07，同日）**：PR #8 最终是以 **squash** 合入 `dev` 的
+（`aeadec4「Dependa (#8)」` 只有单父 `5d938f3`），于是**同一形态立刻重现**：`dev` 拿到内容、
+没拿到血缘。实测 `dev` 的树 == `dependa@1518056` 的树（逐字节相同）⇒ 内容相等，
+遂在 `dependa` 上 `git merge -s ours origin/dev`（合并提交 `d1de175`，树 `555e596…` 前后一致）
+接回血缘，模拟合并 `dev ← dependa` 得 0 冲突。**这条教训不是理论——它在同一天被真实验证了一遍。**
+为此在 `ReleaseProcess.md` §4.1 增加「被误用 squash 后必须立刻接回血缘」，
+并把更根本的预防（关闭 squash/rebase 合并）登记为 `G-05`。
+
 **立的规矩**：[ReleaseProcess.md](DevSpec/ReleaseProcess.md) §4「分支流向与合并方式（强制）」
 ——`dependa` 这类长期集成分支**只能真合并**；禁止 `git merge --squash` 加手工提交这类
 「重新落地」；用了 squash/rebase 就必须删源分支；`-s ours` 只允许在能证明
@@ -994,10 +1003,11 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送 `dependa`（含 PR #8 冲突修复的合并提交 `06c6121`） | PR #8 会一直卡在 `dirty` 合不进去；改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA == 本地 `dependa`；PR #8 的 `mergeable_state` 由 `dirty` 变为 `clean` | ☐ 未完成 |
+| G-01 | 推送 `dependa`（含本次「补血缘」的合并提交 `d1de175` 与规则集文档提交 `98b20c0`） | 上游看不到这批改动；下个 PR 的血缘修补不生效 | `git ls-remote origin refs/heads/dependa` 与本地一致；新开 `dependa → dev` 的 PR 直接是 `clean` | ☐ 未完成 |
 | G-02 | **分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表 | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [DevLog-20261007-24.md](DevLog/DevLog-20261007-24.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
+| G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成（前半已完成）
 
@@ -1064,6 +1074,25 @@ PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合�
 改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+
+### G-05 ☐ 未完成
+
+**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
+只保留 `Create a merge commit`。
+
+**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。
+
+**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），
+它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——
+上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。
+2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），
+只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。
+
+**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**
+（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。
+此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。
+
+**闭环后**：本条改 ✅。
 
 ### G-04 ☐ 未完成
 
