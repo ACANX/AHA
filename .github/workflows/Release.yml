@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Build and verify
+        run: ./mvnw clean verify
+        shell: bash
+      - name: Package distribution
+        run: |
+          test -f dist/bin/Aha.sh
+          test -d dist/lib
+          cd dist && zip -qr "../aha-${GITHUB_REF_NAME}-dist.zip" . && cd ..
+          ls -lh "aha-${GITHUB_REF_NAME}-dist.zip"
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aha-${{ github.ref_name }}-dist.zip
