@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.52.0
+**文档版本**：v3.56.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -334,7 +334,9 @@ aha/
         ├── ExtensionArchitecture.svg
         └── ExtensionLifecycle.svg
     └── DevLog/
-        └── DevLog-20261007-20.md
+        ├── DevLog-20261007-20.md
+        └── DevLog-20261007-21.md
+│   │   │   │   ├── DevLog-20261007-22.md
 ```
 
 ## 2. 命名规范
@@ -438,6 +440,10 @@ aha/
 | v3.50.0 | 2026-10-07 | §5.1.1 补两条边界约定：`AHA_HOME` 取值顺序（系统属性优先于环境变量）、项目级向上查找止步于用户主目录 | @ACANX |
 | v3.51.0 | 2026-10-07 | §3.1 实测值按 Windows 平台缺陷修复后的 `clean verify` 刷新（604 用例 / 合计行覆盖 80.3%，4040/5033） | @ACANX |
 | v3.52.0 | 2026-10-07 | 目录树与附录 A 文档索引补 `Docs/DevLog/`（排障复盘按时间线命名） | @ACANX |
+| v3.53.0 | 2026-10-07 | 目录树与附录 A 补第二篇 DevLog（覆盖率门禁自证） | @ACANX |
+| v3.54.0 | 2026-10-07 | §3.1 实测值刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
+| v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
+| v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
 
 ---
 ```
@@ -782,8 +788,13 @@ aha/
 │       ├── extension-authoring/
 │       └── release/
 ├── .github/
+│   ├── actions/
+│   │   └── maven-run/          ← Maven 调用统一入口：清失败标记 + 重试
+│   │       └── action.yml
 │   └── workflows/
-│       ├── Build.yml
+│       ├── Build.yml           ← 快检查（每次 push / PR）
+│       ├── Gate.yml            ← 门禁 + 每周定期扫描
+│       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml
 ├── Docs/
 │   ├── AHA/
@@ -3108,7 +3119,7 @@ aha-core/src/test/resources/
 | `aha-tool` | 79.6%（148/186） | ✅ |
 | `aha-core` | 74.6%（1449/1943） | ✅ |
 
-合计行覆盖 **80.3%**（4040/5033 行），共 **604** 个测试用例
+合计行覆盖 **80.3%**（4045/5038 行），共 **605** 个测试用例
 （`aha-common` 57 / `aha-extension-api` 6 / `aha-core` 193 / `aha-tool` 25 / `aha-cli` 323）。
 
 > **口径与复现**：数据取自 `./mvnw clean verify`（Maven 4 wrapper；JaCoCo 0.8.15；
@@ -3680,6 +3691,7 @@ Closes #123
 | 文件 | 说明 |
 |---|---|
 | `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
+| `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
 
 ### .agents/skills/
 

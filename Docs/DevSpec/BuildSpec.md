@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.10.0
+**文档版本**：v1.12.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -24,6 +24,8 @@
 | v1.8.0 | 2026-10-07 | 新增 8.1「检查分层与门禁时机」：快检查（`Build.yml`）与门禁（`Gate.yml`，含 verify / 覆盖率 / 文档 / 重复率）分离；补重复率检查的口径、阈值与实测值；修正「CI 始终跑完整 verify（Build.yml）」的失效说法 | @ACANX |
 | v1.9.0 | 2026-10-07 | §3 更正 wrapper 配置片段（补 `wrapperVersion` / `distributionType`，并说明以文件为准）；§4 明确两条流水线分别由 `Gate.yml` 与 `Compat.yml` 承担、兼容基线固定补丁版本且不使用 runner 预装 `mvn`、新增每周定期扫描；§8.1 分层表补「兼容性」层并把 `Compat` 一并列为必需检查 | @ACANX |
 | v1.10.0 | 2026-10-07 | §8.1 新增「作业名是分支保护的契约」：必需腿不得增删矩阵键（附真实事故：`optional` 键使作业名多出 `, false`，必需检查永久停在 Expected）；`Gate` / `Compat` 的 `name:` 同样属契约 | @ACANX |
+| v1.11.0 | 2026-10-07 | §8.1 新增「门禁必须自证（强制）」：静默的检查要把实测值与标准写进日志，覆盖率由 `bin/ReportCoverage.py` 输出且阈值读自 pom；门禁内容补「并打印覆盖率实测值」 | @ACANX |
+| v1.12.0 | 2026-10-07 | §8.1 新增「CI 必须容忍仓库侧瞬时失败（强制）」：所有 Maven 调用走 `.github/actions/maven-run`（清失败标记 + 重试），并给出两条 Maven「找不到」消息的判别与处理表；§8 的改动范围补 `.github/actions/` | @ACANX |
 
 ---
 
@@ -192,7 +194,7 @@ POM 语法必须兼容 Maven 3.9.x：
 
 **必须跑完整 `./mvnw clean verify` 的情形**：
 
-- 改动触及构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`
+- 改动触及构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`、`.github/actions/`
 - 改动可能影响覆盖率口径：JaCoCo 排除项、模块结构、包名
 - 需要刷新文档中的实测覆盖率 / 用例数
 - 发布前验收（见 [ReleaseProcess.md](ReleaseProcess.md)）
@@ -208,7 +210,7 @@ POM 语法必须兼容 Maven 3.9.x：
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
 | **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿 |
-| **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查 |
+| **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |
 
 **合入 `main` 的前置条件**：仓库分支保护规则必须把 `Gate` 与 `Compat` 都设为**必需检查**
@@ -234,6 +236,15 @@ POM 语法必须兼容 Maven 3.9.x：
 报告缺失时 `CheckDuplication.py` **直接失败**，不做静默跳过——否则 CI 上「没跑」
 会被误读成「通过」。
 
+**门禁必须自证（强制）**：JaCoCo 的 `check` 通过时不打印百分比，日志上与「没配门禁」
+无法区分（真实发生过：`./mvnw clean verify` 日志里只有 `Analyzed bundle`，被合理质疑
+"何来的门禁"）。因此凡是不出声的检查，都必须把实测值与判定标准写进日志：
+
+- 覆盖率由 `bin/ReportCoverage.py` 输出（阈值从 `pom.xml` 读取，**不在脚本里复制**）；
+- 判定仍由 `jacoco:check` 独家执行，脚本只报数——单一判定来源；
+- 验证一条门禁是否真的会拦，唯一可靠办法是**让它失败一次**（临时抬高阈值 → 看到
+  `Rule violated` → 还原），只读配置只能证明「应该会拦」。
+
 **作业名是分支保护的契约（强制）**：GitHub 的必需检查按**作业名**匹配，而矩阵作业的名字
 会把矩阵的**全部键值**拼进去（`<作业名> (值1, 值2, …)`）。因此：
 
@@ -246,6 +257,28 @@ POM 语法必须兼容 Maven 3.9.x：
 - **`Gate.yml` / `Compat.yml` 的 `name:` 同样是契约**：job 级 `name:` 就是上报的检查名，
   改动它等于改必需检查的名字。
 - 确需改名时，同一变更内必须同步更新分支保护，并在 `TODO.md` 的 `G-02` 中刷新验收清单。
+
+**CI 必须容忍仓库侧瞬时失败（强制）**：门禁要拦的是**代码与配置的问题**，不是网络抖动。
+GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.apache.org/maven2)`，
+而该 artifact 在 Central 上实测 HTTP 200——即**当次就没要下来**。`Gate` 是必需检查，
+一次与代码无关的瞬时故障就会把 PR 卡红。
+
+因此：
+
+- **凡会解析依赖的 Maven 调用一律走 `.github/actions/maven-run`**（复合 action，单一来源）：
+  先清本地仓库的 `*.lastUpdated` 失败标记；失败时**先判断性质**，只有命中「依赖解析不到 /
+  传输中断 / 远端 5xx / 本地负缓存」这类与代码无关的特征才重试（最多 3 次），
+  **其余立刻失败**——不给真失败白白乘以三倍时间；
+- 新增此类调用时**不要**直接写 `run: ./mvnw ...`，否则会绕过重试与清理；
+  例外是只做本地查询与 wrapper 自举的调用（如 `./mvnw -v`），它不解析项目依赖；
+- 分清两条 Maven 消息，它们的处理方式不同：
+
+  | 消息 | 含义 | 处理 |
+  | ---- | ---- | ---- |
+  | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
+  | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
+
+- 完整复盘见 [DevLog-20261007-23.md](../DevLog/DevLog-20261007-23.md)。
 
 ## 9. 规范变更程序
 

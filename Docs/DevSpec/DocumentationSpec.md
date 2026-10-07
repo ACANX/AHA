@@ -1,6 +1,6 @@
 # 文档规范
 
-**文档版本**：v1.12.0
+**文档版本**：v1.13.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -26,6 +26,7 @@
 | v1.9.0 | 2026-10-07 | 第 1 节补变更日志排序约定（升序） | @ACANX |
 | v1.11.0 | 2026-10-07 | 分类表新增「权威设计文档（`AHA-Design-V1.md`）→ `Docs/AHA/`」 | @ACANX |
 | v1.12.0 | 2026-10-07 | §1 新增开发日志命名例外（`DevLog-YYYYmmdd-HH.md`）；§2 分类表补「开发日志 → `Docs/DevLog/`」；§4 新增开发日志的必备小节与文件头约定，并修正三项检查「由 `Build.yml` 执行」的失效说法（已移入 `Gate.yml`） | @ACANX |
+| v1.13.0 | 2026-10-07 | §1 修正开发日志的命名规则：同一小时内的第二件独立事项不再用 `-2` 后缀，改为顺延 `HH`（如 21 时的第二件记为 `DevLog-20261007-22.md`），保证目录内只有一种文件名形态 | @ACANX |
 
 ---
 
@@ -38,7 +39,7 @@
 - 首字母缩写**整体大写**，不与后面的词拼接成小驼峰：`TUIDesign.md`、`GUIDesign.md`、`CLIDesign.md`；反例 `TuiDesign.md`、`GuiDesign.md`、`CliDesign.md`
 - 业界通用名保留原样：`README.md`、`AGENTS.md`、`SKILL.md`、`LICENSE`、`CHANGELOG.md`、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md`、`SECURITY.md`
 - `.agents/skills/` 下的技能目录与 `SKILL.md` frontmatter 的 `name` 采用 **kebab-case**（小写字母 + 连字符），二者一致；技能目录内的 Markdown 资源（`references/` 下）同样使用 kebab-case，不受本文档 PascalCase 规则约束
-- **开发日志**（`Docs/DevLog/`）按 **`DevLog-YYYYmmdd-HH.md`** 命名：`YYYYmmdd` 为事件日期，`HH` 为 24 小时制的**小时**（本地时间，取事件处理时点）。这是为「按时间线排序、一眼看出何时发生」而设的**显式例外**；同一小时内若确有第二件独立事项，用 `-2` 后缀（`DevLog-20261007-20-2.md`）
+- **开发日志**（`Docs/DevLog/`）按 **`DevLog-YYYYmmdd-HH.md`** 命名：`YYYYmmdd` 为事件日期，`HH` 为 24 小时制的**小时**（本地时间，取事件处理时点）。这是为「按时间线排序、一眼看出何时发生」而设的**显式例外**。同一小时内若确有第二件独立事项，**把 `HH` 顺延一位**（21 时的第二件记为 `DevLog-20261007-22.md`），**不得加 `-2` 之类的后缀**——同一目录里只保留一种文件名形态，纯字符串排序即时间线顺序；当日编号单调递增，不回头复用。
 - 反例（禁止）：`agent-service-design.md`、`agent_service_design.md`、`AgentServiceDesign.MD`、`module-architecture.svg`、`TestingRule.md`、`Docs/DevSpec/BuildGuide.md`（构建规范应置于 DevSpec 并以 `Spec.md` 结尾）
 
 ## 2. 文档分类与存放

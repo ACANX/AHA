@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.21.0
+**文档版本**：v1.24.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -35,6 +35,9 @@
 | v1.19.0 | 2026-10-07 | 记录决策：`Gate.yml` 增加每周定期扫描；新增 `Compat.yml`（Maven 3.9.x 兼容验证，固定补丁版本）；门禁显式断言 wrapper 固定的 Maven 版本；发布前置改为 gate + compat | @ACANX |
 | v1.20.0 | 2026-10-07 | §8 落地去向表的「`TODO.md` 复核结论未回灌」改为 ◐ 进行中并刷新实况（B-03 已收口；新增 B-04~B-07、F-01~F-06 均已落地） | @ACANX |
 | v1.21.0 | 2026-10-07 | 新增 §8.2.9（分支保护未配置）与 §8.2.10（定期扫描未验证）两条发布前阻塞项，均交叉引用 `TODO.md` 第 11 节的 `G-xx`；§8.1.1 改为指向 `G-01` | @ACANX |
+| v1.22.0 | 2026-10-07 | §8.1.1 按实况更新：此前那批提交已推送（PR #6 已合入 dev），现仅剩 PR #8 冲突修复的合并提交 06c6121 待推送；交叉引用 TODO.md 的 G-01 / F-12 | @ACANX |
+| v1.23.0 | 2026-10-07 | §8.7 补「当日实查快照、不随后续变动逐行回改」的标注，并指明现值出处（§6 / §8.1 / TODO.md） | @ACANX |
+| v1.24.0 | 2026-10-07 | §8 编号与顺序修正（`A-09` / `A-10`）：§8.2 表补齐并归位 `8.2.6`、原重复的 `8.2.7`（日志文件不生成，与 §8.5 重复记录）改为 `8.2.11`；`### 8.4` 由 §8.7 之后挪回 `8.3` 之后；重复的 `## 8.` 标题（「相关文档」）改为文末 `## 9.` 并移到位 | @ACANX |
 
 ---
 
@@ -328,16 +331,6 @@ git switch -c dependa && git push -u origin dependa
 | 链接的 OSC 8 超链接 | 不生成，只用「文本 + 弱化地址」（重定向到文件会变乱码） |
 | 表格单元格内换行 | 不支持，单元格内容按单行处理 |
 
-## 8. 相关文档
-
-- [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
-- [TODO.md](TODO.md)：待办与调整项
-- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
-- [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
-- [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
-
----
-
 ## 8. 0.1.0 发布前问题清单
 
 核查日期 2026-10-07。结论：**0.1 的功能无缺口**（设计文档中 0.1 阶段仅余「真实 API Key 验收」一项未勾），
@@ -347,7 +340,7 @@ git switch -c dependa && git push -u origin dependa
 
 | # | 问题 | 状态 |
 |---|---|---|
-| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建；本地提交**待推送**——操作步骤与验收标准见 [TODO.md](TODO.md) `G-01` |
+| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建，此前那批提交**已推送**（PR #6 已合入 `dev`）；现仅剩 PR #8 冲突修复的合并提交 `06c6121` **待推送**——见 [TODO.md](TODO.md) `G-01`、`F-12` |
 | 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
 | 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
 | 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `dist/`」 |
@@ -361,10 +354,12 @@ git switch -c dependa && git push -u origin dependa
 | 8.2.3 | CLI 文案残留「插件」 | ✅ 已修（代码 23 处 + 文档 2 处，全部改为「扩展」） |
 | 8.2.4 | `CliDesign.md` 未按命名约定改名 | ✅ 已修（→ `CLIDesign.md`，7 处引用同步） |
 | 8.2.5 | 真实供应商 API Key 端到端验收 | ⬜ 待做（需外部环境） |
+| 8.2.6 | Windows 真机走查（整体观感、旧 CMD 降级、滚动复制、`/memory` 分支） | 🟡 部分：日志落盘 / `Aha.bat` / `dist` 冒烟已验证；观感与降级待走查 |
 | 8.2.7 | `SystemPromptLoaderTest` 不具环境无关性（用户级身份文件一存在就 7 个用例全红） | ✅ 已修（2026-10-07）：测试类在 `@BeforeEach` 隔离 `AHA_HOME` / `user.home`；**该缺陷正是 PR #6 在 Windows 上失败的主因**，详见 8.2.8 |
 | 8.2.8 | **Windows 腿的真实失败（PR #6 之前在 wrapper 处就断了，从未暴露）**：`build (windows-latest, wrapper)` 退出码 1，实为 15 个用例失败 | ✅ 已修（2026-10-07）：见下 |
 | 8.2.9 | **`main` 分支保护未配置**：`Gate` 与 `Compat` 尚未设为必需检查，门禁形同虚设 | ☐ 待做（步骤与验收标准见 [TODO.md](TODO.md) `G-02`） |
 | 8.2.10 | **定期扫描未经验证**：`Gate.yml` 的每周 `schedule` 只在默认分支生效，合入前无法确认其真的会跑 | ☐ 待做（见 [TODO.md](TODO.md) `G-03`） |
+| 8.2.11 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
 
 在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
 共 15 个失败 / 错误，归为四类：
@@ -381,8 +376,6 @@ GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖
 这次排查为此多绕了很久。
 
 **验收**：Windows（Git Bash + `./mvnw clean verify`）与 Linux（`./mvnw clean verify`）均 BUILD SUCCESS。
-| 8.2.6 | Windows 真机走查（整体观感、旧 CMD 降级、滚动复制、`/memory` 分支） | 🟡 部分：日志落盘 / `Aha.bat` / `dist` 冒烟已验证；观感与降级待走查 |
-| 8.2.7 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
 
 ### 8.3 建议项
 
@@ -396,6 +389,12 @@ GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖
 | 8.3.6 | `.editorconfig` 缺失 | ⬜ 可选 |
 | 8.3.7 | 设计文档目录树索引漂移（`Docs/Design/` 实 15 份、树只列 12 份） | ✅ 已修（补齐 3 份 + `LoggingDesign.md`；四棵树已全量比对一致） |
 | 8.3.8 | 缺日志子系统设计文档 | ✅ 已修（新增 `Docs/Design/LoggingDesign.md` v1.0.0） |
+
+### 8.4 已确认不是问题
+
+`aha-plugin-api` / `aha-tools` 目录已删净；`.idea/` 已被忽略；`CheckDocs` / `CheckSkills` / `CheckScripts` 全过；
+`TODO.md` 已是干净的 656 行；CLI 冒烟（`version` / `provider list` / `tool list` / `init --no-input`）正常；
+`dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
 
 ### 8.5 已修复：日志文件长期不生成（2026-10-07）
 
@@ -471,6 +470,10 @@ static void install(LoggerContext context, String xml) throws IOException {
 
 不凭记忆、逐条实测的结果：
 
+> **本表是 2026-10-07 的当日实查快照，不随后续变动逐行回改。** 仓库状态此后已变化
+> （提交与分支已建、用例数已刷新、文档/技能/脚本三项检查已从 `Build.yml` 移入
+> `Gate.yml`），**现值以本文件 §6、§8.1 与 [TODO.md](TODO.md) 为准**。
+
 | 项 | 实测 | 结论 |
 |---|---|---|
 | `git rev-parse HEAD` | `fatal: ambiguous argument 'HEAD'` | ✗ 零提交 |
@@ -492,9 +495,15 @@ static void install(LoggerContext context, String xml) throws IOException {
 
 **本次因此改动的文档**：`LoggingDesign.md`（新建）、`ConfigurationGuide` / `ReferenceGuide`（`Logging.Level` 默认值 `INFO` → `DEBUG`，与 `AhaDefault.yaml` 一致）、`TroubleshootingGuide`、`Constitution`（第 10 条第 8 项）、`AHA-Design-V1`（目录树 + 清单表 + 日志小节指针）、`CHANGELOG`（滚动口径更正）。
 
-### 8.4 已确认不是问题
 
-`aha-plugin-api` / `aha-tools` 目录已删净；`.idea/` 已被忽略；`CheckDocs` / `CheckSkills` / `CheckScripts` 全过；
-`TODO.md` 已是干净的 656 行；CLI 冒烟（`version` / `provider list` / `tool list` / `init --no-input`）正常；
-`dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
+---
 
+## 9. 相关文档
+
+- [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
+- [TODO.md](TODO.md)：待办与调整项
+- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
+- [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
+- [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
+
+---

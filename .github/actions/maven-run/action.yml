@@ -1,0 +1,81 @@
+name: Maven 运行（清失败标记 + 定向重试）
+description: |
+  跑一条 Maven 命令：先清本地仓库的失败标记；**只有失败看起来是「仓库侧/网络侧瞬时故障」时**
+  才重试，其余情况立刻失败（保持快反馈）。
+
+  为什么需要它：CI 上出现过
+
+      Could not find artifact org.slf4j:slf4j-api:jar:1.7.36 in central (https://repo.maven.apache.org/maven2)
+
+  而这个 artifact 在 Central 上确实存在（实测 HTTP 200）。这条消息的形态说明
+  **当次就没要下来**——属于仓库侧瞬时故障，不是版本写错、也不是项目少配仓库
+  （本项目没有 repositories / pluginRepositories / 镜像配置，也没有启用 Actions 缓存）。
+  事后取证也印证了这一点：同一个提交，`build (ubuntu-latest, system)` 在 push 运行里成功、
+  在 PR 运行里失败，且 0.2 分钟就在依赖解析处断掉。
+
+  Gate 是分支保护的必需检查，一次与代码无关的抖动就会把 PR 卡红，所以要有重试；
+  但**不能无差别重试**——编译错误、测试失败重跑三遍只会把反馈时间拉长三倍。
+
+  另一种相邻故障是本地仓库残留失败标记（`*.lastUpdated`）：Maven 会在「更新间隔」
+  内不再尝试，报出的是另一条消息（`... this failure was cached in the local repository ...`）。
+  两种都靠本 action 覆盖：先清理标记，再按失败性质决定是否重试。
+
+inputs:
+  command:
+    description: 要执行的 Maven 命令（含 `./mvnw` 或 `mvn` 前缀）
+    required: true
+  attempts:
+    description: 瞬时类失败的最大尝试次数
+    required: false
+    default: '3'
+
+runs:
+  using: composite
+  steps:
+    - name: 清理失败标记并按失败性质重试
+      shell: bash
+      env:
+        # 用环境变量传参，而不是把命令字符串拼进脚本体：
+        # 命令里若有引号、空格或重定向，拼接会被 shell 拆坏（也容易被注入）。
+        MVN_COMMAND: ${{ inputs.command }}
+        MVN_ATTEMPTS: ${{ inputs.attempts }}
+      run: |
+        set -uo pipefail
+
+        # 1) 清掉失败标记：被标记过的 artifact，Maven 在更新间隔内不会重新尝试。
+        find "${HOME}/.m2/repository" -name '*.lastUpdated' -delete 2>/dev/null || true
+
+        # 2) 判定「这个失败值不值得重试」。
+        #    只认与代码无关的那几类：依赖解析不到、传输中断、远端 5xx、本地负缓存。
+        TRANSIENT_PATTERN='Could not find artifact|could not be resolved|Could not transfer artifact|Could not resolve dependencies|was cached in the local repository|Connection reset|Read timed out|status: 5[0-9][0-9]|Bad Gateway|Service Unavailable'
+
+        for i in $(seq 1 "${MVN_ATTEMPTS}"); do
+          LOG="$(mktemp)"
+          echo "::group::Maven 第 ${i}/${MVN_ATTEMPTS} 次：${MVN_COMMAND}"
+          # 用 bash -c 执行整条命令串：不加引号的 `${MVN_COMMAND}` 会被词分割，
+          # 命令里一旦有引号就被拆坏。传参走环境变量，不拼进脚本本体。
+          bash -c "${MVN_COMMAND}" 2>&1 | tee "${LOG}"
+          RC="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+
+          if [ "${RC}" -eq 0 ]; then
+            echo "Maven 成功（第 ${i} 次）"
+            rm -f "${LOG}"
+            exit 0
+          fi
+
+          if ! grep -qE "${TRANSIENT_PATTERN}" "${LOG}"; then
+            echo "Maven 失败，且不属于仓库侧/网络侧瞬时故障——立刻失败，不重试（保持快反馈）"
+            rm -f "${LOG}"
+            exit "${RC}"
+          fi
+
+          if [ "${i}" -lt "${MVN_ATTEMPTS}" ]; then
+            echo "第 ${i} 次失败，看起来是仓库侧/网络侧瞬时故障，20 秒后重试"
+            sleep 20
+          fi
+          rm -f "${LOG}"
+        done
+
+        echo "Maven 连续 ${MVN_ATTEMPTS} 次都因瞬时故障失败——请先看仓库/网络状况，再看依赖坐标"
+        exit 1

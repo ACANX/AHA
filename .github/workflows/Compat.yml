@@ -38,7 +38,7 @@ jobs:
           curl -fsSL -o maven-compat.zip "${URL}"
           unzip -q maven-compat.zip -d "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/apache-maven-${MAVEN_COMPAT_VERSION}/bin" >> "${GITHUB_PATH}"
-      - name: 确认版本并跑完整 verify
+      - name: 确认 Maven 版本为 3.9.x
         # 先断言版本：否则 runner 上恰好存在别的 mvn 时，会「验了另一条线却当作通过」
         run: |
           mvn -v
@@ -47,5 +47,8 @@ jobs:
             3.9.*) ;;
             *) echo "期望 3.9.x，实际 ${ACTUAL}"; exit 1 ;;
           esac
-          mvn -B clean verify
         shell: bash
+      - name: 兼容基线完整 verify（Maven 3.9.x）
+        uses: ./.github/actions/maven-run
+        with:
+          command: mvn -B clean verify

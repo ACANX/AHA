@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.7.0
+**文档版本**：v0.11.4
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -78,7 +78,8 @@
 | A-06 | 扩展阶段编号「阶段八」与「阶段一」冲突      | 文档缺陷 | ✅    | P1     | ✅ 已完成 | `ExtensionSystemDesign.md`、`TestingSpec.md`、`ExtensionManager.java` |
 | A-07 | `BuildSpec.md` §6 的覆盖率排除项引用失准    | 文档缺陷 | ⚠️    | P2     | ◐ 进行中  | `BuildSpec.md` §6                             |
 | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
-| A-09 | `PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引 | 文档缺陷 | ✅ | P2 | ☐ 未完成 | `PLAN.md` §8.2 |
+| A-09 | `PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引 | 文档缺陷 | ✅ | P2 | ✅ 已完成 | `PLAN.md` §8.2 |
+| A-10 | `PLAN.md` 有两个 `## 8.` 标题（「相关文档」与「0.1.0 发布前问题清单」），后者才是正文；`### 8.4` 亦排在 `8.7` 之后 | 文档 | ✅ | P2 | ✅ 已完成 | `Docs/PLAN.md` |
 
 ### A-01 ✅ 已完成
 
@@ -159,6 +160,11 @@ dist\bin\Aha.bat chat        # Windows
 
 **现象（✅ 已核实）**：`PLAN.md` §8.2 的条目表里有两个 `8.2.7`——一个是
 「`SystemPromptLoaderTest` 不具环境无关性」，另一个是「日志文件长期不生成（见 §8.5）」。
+
+**处理（2026-10-07，✅）**：`PLAN.md` §8 整体重排——`8.2` 表补齐并归位 `8.2.6`，与 §8.5 重复记录的
+「日志文件长期不生成」改为 `8.2.11`；`### 8.4` 挪回 `8.3` 之后；重复的 `## 8.`（「相关文档」）
+改为文末 `## 9.`。**外部引用零改动**：`SystemPromptLoaderTest` 仍为 `8.2.7`、分支保护仍为 `8.2.9`、
+日志命名规则仍为 `8.6`，故 `TODO.md`、`LoggingDesign.md` 等处的指向全部保持有效。
 
 **影响**：`PLAN.md` 正文按编号互引（如 §8.5 处提到「见 8.2.7」），编号重复会让引用指向
 错误条目，也让「这一条到底做没做」变得含糊。
@@ -377,7 +383,8 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 
 **复核（✅ 已核实）**：`DesktopDesign.md` v1.1.0 §2 已改为指向 `GUIDesign.md` 并标注
 「WebView / FXML 组合从未真正决策，待评审」——**这是 D-07 范畴的进展，不是 D-06**。
-§2 仍**未列目标平台清单**；`.github/workflows/Build.yml` 矩阵仍无 macOS runner。
+§2 仍**未列目标平台清单**（2026-10-07 再次实查确认）；`Build.yml` 矩阵**已加 macOS 腿**
+（`F-06`，定位是「演示与可选」，见 `BuildSpec.md` §4.1——原先「仍无 macOS runner」的记述已失效）。
 
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
@@ -530,6 +537,15 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
 | v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
 | v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
+| v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
+| v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
+| v0.10.0 | 2026-10-07 | 新增 `A-10`（`PLAN.md` 有两个 `## 8.` 标题）。新增 `F-12`（✅ 已修：PR #6 以单父提交重新落地，使 PR #8 永久 `dirty`；已用 `-s ours` 补血缘并逐项验证）与对应的教训、规范落点；`G-01` 按实况更新（前半已完成，现待推送合并提交 `06c6121`，补 `mergeable_state` 验收标准） | @ACANX |
+| v0.10.1 | 2026-10-07 | `F-12` 引用同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`） | @ACANX |
+| v0.11.0 | 2026-10-07 | 新增 `F-13`（✅ 已修：CI 插件依赖「当次要不到」的定性过程与修法，含两条 Maven 消息的判别）与 `F-14`（⏸ 待决策：`.github/**/*.yml` 无本地检查） | @ACANX |
+| v0.11.1 | 2026-10-07 | `D-06` 修正失效断言：`Build.yml` 矩阵已含 macOS 腿（`F-06`，定位为演示与可选），而 `DesktopDesign.md` §2 缺平台清单一节经再次实查仍成立 | @ACANX |
+| v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
+| v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
+| v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -592,6 +608,16 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 ## 7. 待决策项汇总
 
 以下条目**需要人来决策**，技术上无唯一正解。建议按优先级依次拍板：
+
+**只有 4 项与 0.1 相关**，其余属 0.2+、桌面端或 native-image 路线，可在发布后从容讨论。
+这 4 项的建议如下——**仅为建议，仍需拍板**：
+
+| 编号 | 决策问题 | 建议 | 理由 |
+| ---- | ---- | ---- | ---- |
+| H-01 | 启动标志默认风格 | **维持像素风**（现状 `auto` = 像素风优先） | 它挂在能力探测之后，旧 CMD / 16 色会自动降级为线框风，降级路径已就位；像素风也正是本项目的辨识度所在 |
+| E-12 | `TODO.md` 是否改名 | **维持 `TODO.md`** | 这是社区通用名；改名会让贡献者、脚本与 DevLog 的引用一起失配，收益只是「规范化」。更省事的做法是在 `DocumentationSpec.md` §1 为它记一条命名例外 |
+| A-08 | `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | **维持现状** | `Docs/AHA/` 的定位是「权威设计文档」；`PLAN.md`/`TODO.md` 是活的状态台账，放根目录更显眼；`Dbsx.txt` 是用户原始输入，宜先定去留（§8.3.4）再谈归档 |
+| F-07 | `.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并 | **纳入检查 + 合并进 `bin/`** | 脚本规约要么全查、要么别立；两个目录职责重叠会长期制造「改了这个忘那个」；合并后 `CheckScripts.py` 只需覆盖一个目录 |
 
 | 顺序 | 编号 | 决策问题                                                     | 影响范围                     | 状态     |
 | ---- | ---- | ------------------------------------------------------------ | ---------------------------- | -------- |
@@ -713,6 +739,13 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-06 | macOS 无支持边界声明，容易被误读为「已支持」 | 风险 | ✅ | P3 | ✅ 已完成（已拍板） | `BuildSpec.md` §4.1、`Build.yml` |
 | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
 | F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) |
+| F-09 | 覆盖率门禁**静默**：`jacoco:check` 通过时不打印任何百分比，日志上与「没配门禁」无法区分，被质疑「何来的门禁」 | 缺陷 | ✅ | P2 | ✅ 已修 | `Gate.yml`、`bin/ReportCoverage.py`、`TestingSpec.md` §3.1、[DevLog-20261007-21.md](DevLog/DevLog-20261007-21.md) |
+| F-10 | 工具层的**已知拒绝**（`UNKNOWN_TOOL` / `TOOL_DISABLED` / `PERMISSION_DENIED`）被记成 `ERROR` 并附完整堆栈，违反 `LoggingDesign` §4「预期业务结果记 INFO」；Console 阈值是 ERROR，于是模型偶尔叫错工具名就会在终端刷出堆栈 | 规范偏差 | ✅ | P1 | ✅ 已修 | `AgentEngine.executeTool`、`LoggingDesign.md` §4、`ToolSystemDesign.md` |
+| F-11 | 测试自身产生的输出把构建日志打满（CI 上 80 余行 `[stdout] ... at com.acanx...` 堆栈 + 50 行授权提示），真正的失败被淹没 | 缺陷 | ✅ | P2 | ✅ 已修 | `aha-core/src/test/resources/log4j2-test.xml`、`ConsoleToolApproverTest`、`TestingSpec.md` §5.1 |
+| F-12 | PR #6 被以**单父提交**重新落地（内容重放、不是真合并），使 `dependa` 与 `dev` 成为内容重叠的两条平行线，PR #8 永久 `mergeable_state=dirty` | 工程效能 | ✅ | P1 | ✅ 已修 | `dependa` 合并提交 `06c6121`、`ReleaseProcess.md` §4、`DevLog/DevLog-20261007-22.md` |
+| F-13 | CI 在 JaCoCo 插件依赖解析上失败（`Could not find artifact ... in central`），而三个 artifact 在 Central 实测 200——当次就没要下来；`Gate` 是必需检查，网络抖动即把 PR 卡红 | 工程效能 | ✅ | P1 | ✅ 已修 | `.github/actions/maven-run/action.yml`、四个工作流、`BuildSpec.md` §8.1、`DevLog-20261007-23.md` |
+| F-14 | `.github/**/*.yml` 没有任何本地检查：`bin/CheckScripts.py` 只覆盖 `.bat`/`.cmd`/`.sh`/`.py`，工作流语法写错只能等 GitHub 判，反馈环路长 | 工程效能 | ⏸ | P2 | ⏸ 待决策 | `bin/CheckScripts.py` |
+| F-15 | 文档标题/表行**编号重复**只能靠人工看：本轮 `PLAN.md` `A-09`/`A-10` 与两份 `Design/` 文档的重号都是事后肉眼发现 | 工程效能 | ⏸ | P3 | ⏸ 待决策 | `bin/CheckDocs.py` |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -815,6 +848,122 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 ---
 
+### F-09 ✅ 已修（2026-10-07）
+
+**现象**：`Gate.yml` 声称含覆盖率门禁，但 `./mvnw clean verify` 日志里只有
+`Loading execution data file` 与 `Analyzed bundle '…' with N classes`，**没有任何百分比**，
+因此被合理质疑「看不到数据，何来的门禁」。
+
+**核实（两步，缺一不可）**：
+
+1. **配置**：规则挂在 `check` goal（不是 `report`——挂错 goal 会得到「只出报告不拦人」的假门禁）、
+   绑定 `verify`、`BUNDLE`/`LINE`/`COVEREDRATIO` = 0.70，且声明在 `<build><plugins>`
+   而非仅 `pluginManagement`；
+2. **行为**：临时把阈值改成 `0.99` 跑 `./mvnw -pl aha-common verify`，得到
+   `Rule violated for bundle aha-common: lines covered ratio is 0.90, but expected minimum is 0.99`
+   → `BUILD FAILURE`。随后恢复 `pom.xml` 并逐字节核对。
+
+**结论**：门禁在且会拦，问题在**不可自证**。
+
+**处理**：新增 `bin/ReportCoverage.py`（读 CSV 输出各模块与合计；阈值读自 `pom.xml`，
+不在脚本里复制），`Gate.yml` 在 `verify` 之后执行它——**能跑到该步即门禁已通过**，
+数字同时留在日志里。判定仍归 `jacoco:check` 独家所有，脚本只报数。
+
+**教训**：静默的门禁与不存在的门禁不可区分；凡不出声的检查都要把实测值与标准写进日志。
+已写入 `BuildSpec.md` §8.1「门禁必须自证（强制）」。
+
+---
+
+### F-10 / F-11 ✅ 已修（2026-10-07）
+
+**现象**：CI 日志里 `AgentEngineStreamTest.streamHandlesToolFailureGracefully` 打出
+`工具执行异常 session=s1 tool=missing-tool` 与 80 余行堆栈，看起来像失败，实际该用例通过。
+追问「为何依然会报错」时定位到两个独立问题。
+
+**F-10（规范偏差）**：`AgentEngine.executeTool` 的 `catch` 分支对所有 `RuntimeException`
+一律记 `ERROR` 并附堆栈。但 `ToolRegistry` 抛出的三个错误码——`UNKNOWN_TOOL`、
+`TOOL_DISABLED`、`PERMISSION_DENIED`——都属于**预期内的业务结果**，
+`LoggingDesign.md` §4 早已规定这类情况记 `INFO`（理由：Console 阈值是 ERROR，
+记 ERROR 会打断对话）。而且回灌给模型的文本也带上了堆栈，白占 token。
+
+**修法**：按类型分流——`ToolExecutionException`（工具层的已知拒绝）走 `INFO` 且不带堆栈；
+其余未预期异常维持 `ERROR` + 堆栈。结果文本同样分流：已知拒绝只给原因。
+
+**F-11（测试输出污染）**：测试产生两类输出，都会灌进构建日志——
+① **日志**：测试故意触发错误路径，生产代码按规范记 ERROR + 堆栈；
+② **直接写 stdout 的交互提示**：`ConsoleToolApprover` 的授权询问（50 行）。
+分别处理：`aha-core` 新增 `src/test/resources/log4j2-test.xml`（console 关闭、写
+`target/test-logs/AHA-test.log`）；`ConsoleToolApproverTest` 捕获 `System.out/err`
+并顺势断言提示内容（原先只是把提示喷到日志，什么也没验证）。这是**出口**的调整，不是级别调整。
+于是构建日志被刷成堆栈墙。新增 `aha-core/src/test/resources/log4j2-test.xml`：
+console 关闭、日志写 `target/test-logs/AHA-test.log`。这是**出口**的调整，不是级别调整。
+
+**验证（实测）**：构建日志 `[stdout]` 行 **0** / 堆栈行 **0** / 授权提示 **0**（修复前约 130 行）；
+日志文件里「未知工具」16 次且为 `INFO`，另有 8 条 `ERROR`（新测试故意触发的未预期异常，
+堆栈保留）。新增对照测试 `streamKeepsStackTraceForUnexpectedToolBug` 钉住另一侧。
+
+---
+
+### F-12 ✅ 已修（2026-10-07）
+
+**现象**：PR #8（`dependa` → `dev`）始终 `mergeable=false`、`mergeable_state=dirty`，
+28 个提交、40 文件却合不进去；本地看两边都没动过。
+
+**根因**：`origin/dev` 的 `5d938f3` 消息写着 "Merge pull request #6 from ACANX/dependa"，
+但**只有一个父提交**——它是把 `dependa @ cea8cce` 的内容**重新落了一遍**，
+不是真合并。于是 `dev` 与 `dependa` 成了两条平行线、改同一批文件的不同版本：
+`dev` 的树与 `dependa` 的祖先提交 `cea8cce` 的树**逐字节相同**，而 `dev` 不是祖先，
+Git 无法自动合并（实测 9 个冲突，含 `add/add`）。
+
+**修法**：既然 `dev` 的内容是 `dependa` 的真子集，修复的不是内容而是**血缘**——
+在 `dependa` 上 `git merge -s ours origin/dev`，把 `dev` 记为父提交、树保持不变
+（合并提交 `06c6121`，树 `92e697b…` 前后逐字节一致）。
+
+**验证（实测）**：`git diff HEAD~1 HEAD` 为空；`git merge-base --is-ancestor origin/dev HEAD`
+退出码 0；在 `origin/dev` 上模拟合并 `dependa` 得到 `Automatic merge went well`、0 冲突
+（修复前 9 个）；PR 净 diff 收敛为 17 文件 +553/−23。
+
+**排障中的教训**：第一次用**本地** `dev`（`4f12cef`，已过期）做合并试探，得到
+「Already up to date」，差点把结论带偏——远端行为必须用 `origin/<branch>` 引用。
+
+**立的规矩**：[ReleaseProcess.md](DevSpec/ReleaseProcess.md) §4「分支流向与合并方式（强制）」
+——`dependa` 这类长期集成分支**只能真合并**；禁止 `git merge --squash` 加手工提交这类
+「重新落地」；用了 squash/rebase 就必须删源分支；`-s ours` 只允许在能证明
+「对方内容已被包含」时使用。
+
+---
+
+### F-13 ✅ 已修（2026-10-07）
+
+**现象**：CI 在 `jacoco:0.8.15:prepare-agent` 上失败——`Could not find artifact
+org.slf4j:slf4j-api:jar:1.7.36 / org.ow2.asm:asm-commons:jar:9.10.1 / org.ow2.asm:asm-tree:jar:9.10.1
+in central (https://repo.maven.apache.org/maven2)`。本地 `clean verify` 却正常。
+
+**定性（两处实验）**：①三个 artifact 在 Central `curl` 实测 **200**（且 9.10.1 是 asm-commons
+最新版），排除「版本写错」；项目无 `<repositories>` / `.mvn/settings.xml` / 镜像，工作流也未启用
+`cache:`，排除「解析源被改」；②在本地分别造出「负缓存」与「真拿不到」两种状态，
+前者报 `... this failure was cached in the local repository ...`，后者报 `Could not find artifact ...
+in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没要下来，属仓库侧 / 网络侧瞬时故障。
+
+**事后取证**：同一提交 `9900e55` 的两轮运行里，`build (ubuntu-latest, system)` 在 push 运行
+成功、在 PR 运行失败，且失败那条腿只跑了 0.2 分钟（成功的 0.7–1.1 分钟）——**瞬时故障确证**。
+（该 PR 目标是 `dev`，`Gate`/`Compat` 只在 → `main`/`release/**` 时触发，故本次只跑了 Build。）
+
+**修法**：新增复合 action `.github/actions/maven-run/action.yml`（单一来源），
+四处工作流的依赖解析类调用改走它：先清 `*.lastUpdated`（覆盖负缓存）；失败时**先判断性质**，
+只有命中「依赖解析不到 / 传输中断 / 远端 5xx / 负缓存」等与代码无关的特征才重试
+（最多 3 次、间隔 20 秒），**其余立刻失败**——不做无差别重试，避免把真失败的时间乘以三。
+实现上用 `env:` 传参 + `bash -c "${MVN_COMMAND}"`——最初把 `${{ inputs.command }}`
+直接拼进脚本，命令含引号会被词分割拆坏。
+
+**验证（实测）**：重试脚本 5 种情形（成功→1 次 / 瞬时故障×2 后成功→3 次 / 一直瞬时故障→3 次后失败 /
+**真失败（编译错）→只跑 1 次** / `attempts=1`→不重试）全部符合预期；端到端用真实命令走该脚本得 `BUILD SUCCESS` 并把本地 4 个失败标记清为 0；
+`.github/**/*.yml` 解析与 composite 结构校验通过。
+
+**规范落点**：[BuildSpec.md](DevSpec/BuildSpec.md) §8.1「CI 必须容忍仓库侧瞬时失败（强制）」。
+
+---
+
 ### F-07 ⏸ 待决策
 
 **现象（✅ 已核实）**：`Script/PowerShell/CountJavaLoc.ps1` 是一段统计 Java 代码行数的
@@ -844,19 +993,25 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送本地提交到远端 `dependa` | PR #6 无法重跑 CI，改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；PR #6 出现新一轮 CI 运行 | ☐ 未完成 |
+| G-01 | 推送 `dependa`（含 PR #8 冲突修复的合并提交 `06c6121`） | PR #8 会一直卡在 `dirty` 合不进去；改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA == 本地 `dependa`；PR #8 的 `mergeable_state` 由 `dirty` 变为 `clean` | ☐ 未完成 |
 | G-02 | `main` 分支保护：把 `Gate` 与 `Compat` 设为**必需检查** | 门禁不拦人，等价于没配 | 两项均已勾选，**且**用一个预期失败的 PR 验证确实无法合并 | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 
-### G-01 ☐ 未完成
+### G-01 ☐ 未完成（前半已完成）
 
-**内容**：把本地 `dependa` 上尚未推送的提交推送到远端（`git push origin dependa`）。
+**内容**：把本地 `dependa` 上尚未推送的提交推送到远端。
 
-**为什么必须人工**：本环境没有远端推送凭据，`git push` 无法鉴权。
+**进展（2026-10-07）**：此前那批提交**已推送**（`origin/dependa` 与本地一致，
+PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合并提交 `06c6121`
+（`-s ours origin/dev`，不改变任何文件内容，见 `F-12`）——推上去 PR #8 才会从
+`dirty` 转为可合并。
 
-**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；
-`PR #6` 触发新一轮 CI——`Gate`（Maven 4 门禁）与 `Compat`（Maven 3.9.x）应通过，
-`macOS` 腿按设计允许失败。
+**为什么必须人工**：本环境没有远端推送凭据，实测 `GIT_TERMINAL_PROMPT=0 git push`
+返回 `fatal: could not read Username for 'https://github.com'`（exit 128）。
+
+**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致
+（即出现 `06c6121`）；PR #8 的 `mergeable_state` 变为 `clean`，`Gate` 与 `Compat`
+在新一轮 CI 中通过（`macOS` 腿按设计允许失败）。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.1.1 收口。
 

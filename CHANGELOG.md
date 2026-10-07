@@ -34,6 +34,23 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **CI 对仓库侧瞬时故障有容忍度**：新增复合 action `.github/actions/maven-run`，
+  依赖解析类 Maven 调用统一经它——先清本地仓库的失败标记，失败时只在「与代码无关」的
+  特征（解析不到 / 传输中断 / 远端 5xx）下重试，其余立刻失败，不给真失败乘以三倍时间
+- **分支合并规范**：`ReleaseProcess.md` §4 明确长期集成分支（`dependa`）只能真合并，
+  禁止「把内容重新落地一遍」；`dependa` 已用 `-s ours` 补回与 `dev` 缺失的合并关系，
+  使 PR #8 从永久 `dirty` 恢复为可合并（不含任何内容改动）
+- **工具失败的日志语义**：工具层的已知拒绝（未知工具 / 未启用 / 未获授权）改记 `INFO`
+  且不带堆栈——它们与「用户拒绝授权」同类，属预期业务结果；Console 阈值是 ERROR，
+  原先记 ERROR 会让模型偶尔叫错工具名就在终端刷出堆栈。未预期异常仍记 `ERROR` + 堆栈
+- **测试输出出口**：新增 `aha-core/src/test/resources/log4j2-test.xml` 把测试日志写入
+  `target/test-logs/` 并关闭 console；`ConsoleToolApproverTest` 捕获 stdout/stderr
+  并顺势断言授权提示内容。构建日志里的测试输出从约 130 行降为 0
+- **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
+  把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
+  无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
+- **开发日志**：新增 `Docs/DevLog/DevLog-20261007-21.md`，记录门禁静默这一问题的核实方法
+  （配置检查 + 抬阈值使其失败一次）与结论
 - **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
   （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；
   首篇记录 CI 必需检查因矩阵作业名变更而永久挂起

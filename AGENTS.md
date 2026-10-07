@@ -50,6 +50,7 @@ dist\bin\Aha.bat chat        # Windows
 |---|---|
 | 日常改动（快） | `./mvnw -B clean test -Djacoco.skip=true` |
 | 按变更选择检查 | `python3 bin/CheckChanged.py` |
+| 看覆盖率实测值 | `python3 bin/ReportCoverage.py`（门禁判定仍由 `jacoco:check` 执行） |
 | 重复率（改到 PMD 配置 / 阈值时） | `./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py` |
 | 合入 `main` 前（完整门禁，CI 亦会跑） | `./mvnw -B clean verify` + 四个 `Check*.py` + `GenPixelLogo.py --verify` |
 | Maven 3.9.x 兼容（POM 改动时） | `mvn -B clean verify`（CI 由 `Compat.yml` 承担） |

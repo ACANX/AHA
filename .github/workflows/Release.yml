@@ -30,8 +30,9 @@ jobs:
       - name: Build and verify
         # 有意重跑一次：发行包必须由「自身跑过门禁的构建」产出，
         # 不复用 gate 另一个 runner 上的产物（跨 job 传产物只会让链路更难查）。
-        run: ./mvnw clean verify
-        shell: bash
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw clean verify
       - name: Package distribution
         run: |
           test -f dist/bin/Aha.sh
