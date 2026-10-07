@@ -15,6 +15,66 @@
 ### 新增
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
+- **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
+  `Llm.ModelFile` 的未展开占位符被直接当作路径（`Illegal char <:>`）；项目级身份查找没有边界，
+  会一路走到用户主目录把 `~/AHA.md` 当成项目级身份（临时目录位于主目录之下，故仅在 Windows 触发）
+- **协作留痕**：需要人工或平台权限才能完成的事项（推送提交、分支保护设为必需检查、
+  定期扫描生效验证）登记进 `TODO.md` 第 11 节并写明**验收标准**，`PLAN.md` 交叉引用；
+  约定此类事项不得只写在对话里
+- **修复 CI 必需检查失配**：给必需腿补的 `optional` 矩阵键会改变作业名
+  （`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，
+  PR 永久停在 `Expected — Waiting for status to be reported`；改为按 `matrix.os` 判定
+  可选腿，不额外增删矩阵键
+- **CI 卡点组合**：`Gate.yml` 增加每周**定期扫描**（`schedule`），并新增
+  `Compat.yml` 做 Maven 3.9.x 兼容性验证（固定补丁版本，不用 runner 预装 `mvn`）；
+  门禁第一步显式断言 `./mvnw` 实际使用的 Maven 版本与 Wrapper 配置一致，
+  发布前置为 `gate + compat`
+- **检查分层**：慢检查（覆盖率门禁、完整 `clean verify`、文档检查、重复率）集中到
+  新的 `Gate.yml`，只在合入 `main` / `release/**` 前、手动触发与发布前运行；
+  每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
+- **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
+  阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **CodeQL 工作流上线实测与升级**：`init`（`build-mode: manual`）与 `compile` 三步运行全过，
+  失败集中在 `analyze`（上传结果）；已把 `github/codeql-action` 升到 `v4`（v3 将于 2026-12 弃用），
+  并注明 `build-mode` 那条提示为良性。`main` 规则集要求 CodeQL，而默认设置与高级设置互斥——
+  处置与验收标准见 `TODO.md` `G-04`
+- **代码扫描（CodeQL）**：新增 `.github/workflows/CodeQL.yml`——`main` 的规则集要求 CodeQL 结果，
+  而仓库此前没有任何 code scanning 配置，PR #7 因此永久停在「Waiting for Code Scanning results」。
+  工作流显式覆盖 `pull_request → main`（默认设置只扫默认分支，覆盖不到），不参与必需检查
+- **文档提交改落在 `dev`**：规则集整改规格与 `F-12` 复发记录两条文档提交现位于 `dev`
+  （`abd5d85` / `ca80c5c`），`dependa` 已复位到 `origin/dependa`；复位后的实测代价
+  （首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法）已记入 `TODO.md` `G-01`
+- **补回 `dev` 的血缘**：PR #8 以 squash 合入，使 `dev` 拿到内容却没拿到分支历史——
+  与 `F-12` 同一形态并在同日复发。已在 `dependa` 上用 `-s ours` 接回（树不变、零内容改动），
+  并按 `ReleaseProcess.md` §4.1 立下「被误用 squash 后必须立刻接回血缘」；
+  更根本的预防（关闭 squash/rebase 合并）登记为 `TODO.md` `G-05`
+- **分支规则集整改规格**：`main` / `dev` 的规则集里存在三条对「单人 + 机器」无法满足的要求
+  （要求他人批准、要求 CodeQL 结果却未配置扫描、要求覆盖率数据却无上传），会把 PR 永久锁死；
+  整改规格与验收标准已写入 `TODO.md` `G-02` / `G-04`，规范写入 `BuildSpec.md` §8.1
+- **CI 对仓库侧瞬时故障有容忍度**：新增复合 action `.github/actions/maven-run`，
+  依赖解析类 Maven 调用统一经它——先清本地仓库的失败标记，失败时只在「与代码无关」的
+  特征（解析不到 / 传输中断 / 远端 5xx）下重试，其余立刻失败，不给真失败乘以三倍时间
+- **分支合并规范**：`ReleaseProcess.md` §4 明确长期集成分支（`dependa`）只能真合并，
+  禁止「把内容重新落地一遍」；`dependa` 已用 `-s ours` 补回与 `dev` 缺失的合并关系，
+  使 PR #8 从永久 `dirty` 恢复为可合并（不含任何内容改动）
+- **工具失败的日志语义**：工具层的已知拒绝（未知工具 / 未启用 / 未获授权）改记 `INFO`
+  且不带堆栈——它们与「用户拒绝授权」同类，属预期业务结果；Console 阈值是 ERROR，
+  原先记 ERROR 会让模型偶尔叫错工具名就在终端刷出堆栈。未预期异常仍记 `ERROR` + 堆栈
+- **测试输出出口**：新增 `aha-core/src/test/resources/log4j2-test.xml` 把测试日志写入
+  `target/test-logs/` 并关闭 console；`ConsoleToolApproverTest` 捕获 stdout/stderr
+  并顺势断言授权提示内容。构建日志里的测试输出从约 130 行降为 0
+- **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
+  把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
+  无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
+- **开发日志**：新增 `Docs/DevLog/DevLog-20261007-21.md`，记录门禁静默这一问题的核实方法
+  （配置检查 + 抬阈值使其失败一次）与结论
+- **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
+  （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；
+  首篇记录 CI 必需检查因矩阵作业名变更而永久挂起
+- **CI 平台矩阵**：新增 `macos-latest` 可选腿，以 `continue-on-error` 标注，
+  仅作演示与提前暴露跨平台退化，不参与必需检查、也不代表已支持 macOS（见 `BuildSpec.md` §4.1）
+- **测试与 CI**：测试类隔离 `AHA_HOME` / `user.home` 并不再假定「环境里没有身份文件」；
+  断言改用平台自身路径；构建矩阵改为 `fail-fast: false`，避免一条腿失败即取消其余腿而掩盖平台差异
 - **文档**：选型清单改为只写主版本线（README / 设计文档 / Constitution），`BuildSpec.md` §7 新增
   「版本单一来源」规则，消除文档与父 POM 之间的依赖版本漂移
 

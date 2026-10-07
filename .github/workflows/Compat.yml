@@ -1,0 +1,54 @@
+name: Compat
+
+# Maven 3.9.x 兼容性验证（独立工作流）。
+#
+# 为什么单独成一条：本项目的**目标运行时**是 Wrapper 固定的 Maven 4（见 Gate.yml
+# 的第一步校验），而 **POM 必须同时兼容 3.9.x**（见 BuildSpec.md 第 4 节）。
+# 两者的失败原因不同——前者是 Maven 4 的运行时行为，后者是 POM 语法是否越界——
+# 分开跑能让一次失败直接指向原因，不必在混合矩阵里猜是哪一版出的问题。
+#
+# 版本显式固定：不使用 runner 预装的 `mvn`。镜像会变，预装版本也会跟着变，
+# 那样「兼容性结论」就不可复现。这里从 Maven Central 取基线补丁版本。
+#
+# 触发时机与 Gate 对齐（合入前卡点 + 手动 + 发布前），不跟每次 push 一起跑。
+on:
+  pull_request:
+    branches: [main, 'release/**']
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  compat:
+    name: 兼容性（Maven 3.9.x 完整 verify）
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # 兼容基线补丁版本；升级时只改这一处（文档只写「3.9.x」主版本线）
+      MAVEN_COMPAT_VERSION: '3.9.11'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: 安装 Maven 3.9.x（基线补丁版本）
+        run: |
+          URL="https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_COMPAT_VERSION}/apache-maven-${MAVEN_COMPAT_VERSION}-bin.zip"
+          curl -fsSL -o maven-compat.zip "${URL}"
+          unzip -q maven-compat.zip -d "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/apache-maven-${MAVEN_COMPAT_VERSION}/bin" >> "${GITHUB_PATH}"
+      - name: 确认 Maven 版本为 3.9.x
+        # 先断言版本：否则 runner 上恰好存在别的 mvn 时，会「验了另一条线却当作通过」
+        run: |
+          mvn -v
+          ACTUAL=$(mvn -v | sed -n 's/^Apache Maven \([^ ]*\).*/\1/p' | head -1)
+          case "${ACTUAL}" in
+            3.9.*) ;;
+            *) echo "期望 3.9.x，实际 ${ACTUAL}"; exit 1 ;;
+          esac
+        shell: bash
+      - name: 兼容基线完整 verify（Maven 3.9.x）
+        uses: ./.github/actions/maven-run
+        with:
+          command: mvn -B clean verify

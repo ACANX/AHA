@@ -1,0 +1,81 @@
+name: Gate
+
+# 门禁 + 定期扫描：慢检查集中在这里，不跟每次 push 一起跑。
+#
+# 触发时机（三种，都不在「每次改动」路径上）：
+#
+#   1. pull_request → main / release/**：合入前的卡点
+#   2. schedule（每周一次）：定期扫描，捕捉与开发动作无关的漂移——
+#      Dependabot 升级依赖、runner 镜像变化、外部规范演进等
+#   3. workflow_dispatch / workflow_call：手动触发；发布前由 Release.yml 复用
+#
+# 为什么不再跟每次 push 一起跑：完整 `clean verify`（含覆盖率门禁与打包）在本项目
+# 约需数分钟，再叠加文档、技能、脚本与重复率检查，会让每次改动的反馈环路变得很长，
+# 频繁阻塞。这类检查的价值在「合入前拦住」与「定期扫一遍」，不在「每次改动都跑一遍」；
+# 快速反馈交给 Build.yml（编译 + 单元测试）。
+#
+# 构建用的 Maven 版本由 Wrapper 固定（.mvn/wrapper/maven-wrapper.properties），
+# 并在第一步**显式校验**：避免出现「以为跑了 Maven 4，实际用了 runner 预装的别版」。
+#
+# 两个配套前提：
+#
+#   1. main 分支的保护规则要把 `Gate` 设为**必需检查**（GitHub 仓库设置里配，
+#      文件里写不了），否则它只是「跑给你看」，起不到卡点作用；
+#   2. Release.yml 以本工作流为前置（workflow_call），发布前自然经过同一道门禁。
+on:
+  pull_request:
+    branches: [main, 'release/**']
+  schedule:
+    # 每周一 03:00 UTC（北京时间 11:00）定期扫描
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  gate:
+    name: 门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）
+    runs-on: ubuntu-latest
+    # 只读：被 Release.yml 调用时会继承调用方的 permissions，这里收紧到实际所需
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: 校验构建用的是 Wrapper 固定的 Maven 版本
+        # 期望版本从 wrapper 配置反推，不在工作流里写版本字面量：
+        # wrapper 被 Dependabot 升级后这里自动跟随，不会形成两处口径。
+        run: |
+          EXPECTED=$(sed -n 's|.*apache-maven-\(.*\)-bin.zip.*|\1|p' .mvn/wrapper/maven-wrapper.properties | head -1)
+          ACTUAL=$(./mvnw -v | sed -n 's/^Apache Maven \([^ ]*\).*/\1/p' | head -1)
+          echo "wrapper 固定：${EXPECTED}"
+          echo "实际使用：  ${ACTUAL}"
+          test -n "${EXPECTED}"
+          test "${EXPECTED}" = "${ACTUAL}"
+      # 凡会解析依赖的 Maven 调用都经 .github/actions/maven-run：先清本地仓库失败标记，
+      # 失败则重试。理由见该 action 的说明——仓库侧瞬时故障会把必需检查卡红，与代码无关。
+      # （上面那步 `./mvnw -v` 是本地查询与 wrapper 自举，不解析项目依赖，故不经它。）
+      - name: 完整构建与覆盖率门禁（LINE COVEREDRATIO ≥ 0.70）
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw clean verify
+      - name: 覆盖率实测值（门禁已由上一步判定，这里把数字打进日志）
+        # JaCoCo 的 check 通过时不打印任何百分比，日志上看不出门禁是否生效。
+        # 跑到这一步即说明 verify 已通过；数字入日志后，「门禁在不在」可自证。
+        run: python3 bin/ReportCoverage.py
+      - name: 文档围栏与链接
+        run: python3 bin/CheckDocs.py
+      - name: 技能符合 Agent Skills 规范
+        run: python3 bin/CheckSkills.py
+      - name: 脚本编码与行尾
+        run: python3 bin/CheckScripts.py
+      - name: 像素标志与生成器一致
+        run: python3 bin/GenPixelLogo.py --verify
+      - name: 重复代码率：生成 CPD 报告
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw -B pmd:cpd
+      - name: 重复代码率：判定阈值
+        run: python3 bin/CheckDuplication.py

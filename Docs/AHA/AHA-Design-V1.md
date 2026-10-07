@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.49.0
+**文档版本**：v3.56.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -325,7 +325,7 @@ aha/
     │   ├── ToolUsageGuide.md
     │   ├── ExtensionAuthoringGuide.md
     │   └── TroubleshootingGuide.md
-    └── Diagrams/
+    ├── Diagrams/
         ├── ModuleArchitecture.svg
         ├── AgentFlow.svg
         ├── LlmAdapterFlow.svg
@@ -333,6 +333,12 @@ aha/
         ├── ConfigLoadingFlow.svg
         ├── ExtensionArchitecture.svg
         └── ExtensionLifecycle.svg
+    └── DevLog/
+        ├── DevLog-20261007-20.md
+        ├── DevLog-20261007-21.md
+        ├── DevLog-20261007-22.md
+        ├── DevLog-20261007-23.md
+        └── DevLog-20261007-24.md
 ```
 
 ## 2. 命名规范
@@ -433,6 +439,13 @@ aha/
 | v3.47.0 | 2026-10-07 | 本文件移至 `Docs/AHA/AHA-Design-V1.md`：正文相对链接改为 `../`，两处目录树与附录 A 索引登记新位置 | @ACANX |
 | v3.48.0 | 2026-10-07 | 第 10 条补「权威设计文档（本文件）→ `Docs/AHA/`」 | @ACANX |
 | v3.49.0 | 2026-10-07 | 第 5 条选型清单改为主版本线并说明版本单一来源；POM 片段不再复制具体版本号 | @ACANX |
+| v3.50.0 | 2026-10-07 | §5.1.1 补两条边界约定：`AHA_HOME` 取值顺序（系统属性优先于环境变量）、项目级向上查找止步于用户主目录 | @ACANX |
+| v3.51.0 | 2026-10-07 | §3.1 实测值按 Windows 平台缺陷修复后的 `clean verify` 刷新（604 用例 / 合计行覆盖 80.3%，4040/5033） | @ACANX |
+| v3.52.0 | 2026-10-07 | 目录树与附录 A 文档索引补 `Docs/DevLog/`（排障复盘按时间线命名） | @ACANX |
+| v3.53.0 | 2026-10-07 | 目录树与附录 A 补第二篇 DevLog（覆盖率门禁自证） | @ACANX |
+| v3.54.0 | 2026-10-07 | §3.1 实测值刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
+| v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
+| v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
 
 ---
 ```
@@ -777,8 +790,13 @@ aha/
 │       ├── extension-authoring/
 │       └── release/
 ├── .github/
+│   ├── actions/
+│   │   └── maven-run/          ← Maven 调用统一入口：清失败标记 + 重试
+│   │       └── action.yml
 │   └── workflows/
-│       ├── Build.yml
+│       ├── Build.yml           ← 快检查（每次 push / PR）
+│       ├── Gate.yml            ← 门禁 + 每周定期扫描
+│       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml
 ├── Docs/
 │   ├── AHA/
@@ -1754,8 +1772,8 @@ Agent 的“角色身份”由 **system 消息**承载，来源可配置且可�
 
 | 层 | 取哪些文件 | 顺序 |
 |---|---|---|
-| 1 | **用户级目录**（`$AHA_HOME`，未设置时 `~/.aha`） | 该目录下**全部**候选，按 `Agent.PromptFiles` 顺序 |
-| 2 | **项目级**：从工作目录逐级向上，**第一个有命中的目录** | 该目录下**全部**候选，按 `Agent.PromptFiles` 顺序 |
+| 1 | **用户级目录**（`AHA_HOME`，未设置时 `~/.aha`） | 该目录下**全部**候选，按 `Agent.PromptFiles` 顺序 |
+| 2 | **项目级**：从工作目录逐级向上，**第一个有命中的目录**；**止步于用户主目录** | 该目录下**全部**候选，按 `Agent.PromptFiles` 顺序 |
 | 3 | `Aha.Agent.SystemPrompt`（配置内联） | **兜底**：只有 1、2 都没命中时才用 |
 | 4 | `SystemPromptLoader.BUILTIN_IDENTITY` | 最后一道：配置整个加载失败时 |
 | 5 | 运行环境块（操作系统 / shell / 工作目录） | 由 `AgentEngine.prepare` 每轮追加，**永远在最后** |
@@ -1768,6 +1786,18 @@ Agent 的“角色身份”由 **system 消息**承载，来源可配置且可�
   `AGENTS.md` 就整段失效。
 
 `Agent.PromptFiles` 默认 `[AHA.md, AGENTS.md, CLAUDE.md]`。
+
+两条与「层次」相关的边界约定：
+
+- **`AHA_HOME` 的取值顺序是 `-DAHA_HOME` → 环境变量 `AHA_HOME` → `~/.aha`**（系统属性在前）。
+  显式传入的 JVM 属性属于「本次调用」，比环境里长期存在的变量更具体；这也让测试与集成场景
+  能确定性地覆盖用户目录，而不是读写开发机真实的主目录。
+  （`${AHA_HOME:-~/.aha}` 这类占位符的展开同序。）
+- **向上的项目级查找止步于用户主目录**（`user.home`，同时参考 `USERPROFILE` / `HOME`）。
+  到这一级就停，不再把更上层当作「项目级」——否则 `~/AHA.md` 会被当成项目级身份，
+  它既绕过用户级目录（`~/.aha`），又会让「用户级 / 项目级」的来源标注失真。
+  该边界在 Windows 上尤其关键：`%LOCALAPPDATA%\Temp` 位于主目录之下，
+  没有边界时临时目录里的任何运行都会沿路读到主目录里的身份文件。
 
 #### 5.1.2 完整示例
 
@@ -3091,7 +3121,7 @@ aha-core/src/test/resources/
 | `aha-tool` | 79.6%（148/186） | ✅ |
 | `aha-core` | 74.6%（1449/1943） | ✅ |
 
-合计行覆盖 **80.4%**（4031/5016 行），共 **604** 个测试用例
+合计行覆盖 **80.3%**（4045/5038 行），共 **605** 个测试用例
 （`aha-common` 57 / `aha-extension-api` 6 / `aha-core` 193 / `aha-tool` 25 / `aha-cli` 323）。
 
 > **口径与复现**：数据取自 `./mvnw clean verify`（Maven 4 wrapper；JaCoCo 0.8.15；
@@ -3655,6 +3685,15 @@ Closes #123
 | `ConfigLoadingFlow.svg` | 配置加载流程图 |
 | `ExtensionArchitecture.svg` | 扩展架构图 |
 | `ExtensionLifecycle.svg` | 扩展生命周期图 |
+
+### Docs/DevLog/
+
+排障复盘与事故记录，按时间线命名（`DevLog-YYYYmmdd-HH.md`，见 `DocumentationSpec.md` §1）。
+
+| 文件 | 说明 |
+|---|---|
+| `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
+| `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
 
 ### .agents/skills/
 

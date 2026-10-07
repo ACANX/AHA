@@ -1,6 +1,6 @@
 # AgentService 设计
 
-**文档版本**：v1.1.0
+**文档版本**：v1.2.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -15,6 +15,7 @@
 |---|---|---|---|
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-06 | 明确流式与非流式必须都进入工具调用循环（修复流式路径缺失循环的缺陷） | @ACANX |
+| v1.2.0 | 2026-10-07 | 修正编号重复：`## 3. 实现（0.1.0）` 与 `## 3. 推理循环` 重号，改为 `## 4.`（含子节 `4.1` / `4.2`） | @ACANX |
 
 ---
 
@@ -51,7 +52,7 @@ public interface AgentService {
 8. 触发 SessionFlush 事件
 9. 返回 AgentResponse
 
-## 3. 实现（0.1.0）
+## 4. 实现（0.1.0）
 
 `AgentEngine` 已实现非流式与流式两套推理：
 
@@ -76,7 +77,7 @@ void stream(String sessionId, SessionConfig config, String model,
 > 早期版本的流式路径只调一次 LLM 就返回，模型永远看不到工具结果，
 > 表现为“只打印 `[tool result]`、不给回答”——属实现缺口，与设计不符。
 
-### 3.1 事件映射
+### 4.1 事件映射
 
 | LLM `StreamEvent` | Agent 事件 |
 |---|---|
@@ -87,7 +88,7 @@ void stream(String sessionId, SessionConfig config, String model,
 | `REASONING_DELTA` | 不对外透出（仅 debug 日志） |
 | `ERROR` | 日志记录，不中断流程 |
 
-### 3.2 服务门面
+### 4.2 服务门面
 
 `LocalAgentService` 实现 `AgentService`，并提供可注入构造器（1.0 起公开）：
 

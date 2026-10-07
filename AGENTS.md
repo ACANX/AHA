@@ -41,6 +41,41 @@ dist\bin\Aha.bat chat        # Windows
 
 覆盖率报告：`<module>/target/site/jacoco/index.html`。
 
+### 检查分层
+
+慢检查（覆盖率门禁、完整 `verify`、文档检查、重复率）**不再**跟每次改动一起跑——
+它们集中在 CI 的 `Gate.yml`，只在合入 `main` 前与发布前执行。日常改动只需快检查：
+
+| 场景 | 命令 |
+|---|---|
+| 日常改动（快） | `./mvnw -B clean test -Djacoco.skip=true` |
+| 按变更选择检查 | `python3 bin/CheckChanged.py` |
+| 看覆盖率实测值 | `python3 bin/ReportCoverage.py`（门禁判定仍由 `jacoco:check` 执行） |
+| 重复率（改到 PMD 配置 / 阈值时） | `./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py` |
+| 合入 `main` 前（完整门禁，CI 亦会跑） | `./mvnw -B clean verify` + 四个 `Check*.py` + `GenPixelLogo.py --verify` |
+| Maven 3.9.x 兼容（POM 改动时） | `mvn -B clean verify`（CI 由 `Compat.yml` 承担） |
+
+CI 侧的分工：`Build.yml` 每次 push/PR 只做编译与单元测试；`Gate.yml` 承载
+verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、每周定期、发布前**运行；
+`Compat.yml` 承载 Maven 3.9.x 兼容验证。`Gate` 与 `Compat` 都应在 main 的
+分支保护里设为必需检查。
+
+判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8.1 节。
+
+### 待人工执行的动作必须留痕
+
+凡是**自动化做不到、必须由人完成**才能收口的事项——推送提交、仓库 / 分支保护设置、
+平台侧配置、需要外部环境的验收——一律登记到
+[TODO.md](Docs/TODO.md) 第 11 节（`G-xx`），写明**验收标准**（怎么算做完），
+并在 [PLAN.md](Docs/PLAN.md) 的阻塞项中交叉引用。
+
+**不得只在对话里交代。** 对话会滚走：漏掉之后既没有闭环，也无从判断「到底做过没有」，
+事后连责任边界都说不清。同理，需要拍板的取舍项记在第 7 节并排优先级。
+
+排障 / 事故类事项另有留痕去处：写一篇 [Docs/DevLog/](Docs/DevLog/) 下的
+`DevLog-YYYYmmdd-HH.md`，必备「背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 /
+涉及文件清单」五个小节，并在 `TODO.md` 的相关条目里交叉引用（见 `DocumentationSpec.md` §4）。
+
 ## 模块结构
 
 | 模块 | 说明 | 依赖 |
@@ -116,6 +151,7 @@ dist\bin\Aha.bat chat        # Windows
 ## 待办与计划
 
 - [TODO.md](Docs/TODO.md) - 待办与调整项（暂存区）
+- [DevLog/](Docs/DevLog/) - 排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
 - [PLAN.md](Docs/PLAN.md) - 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据
 
 ## 技能索引

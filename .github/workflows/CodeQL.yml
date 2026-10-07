@@ -1,0 +1,89 @@
+name: CodeQL
+
+# 存在的理由：`main` 的规则集里有一条 `code_scanning` 规则——它要求 **CodeQL** 的扫描结果
+# （阈值 `security_alerts_threshold=high_or_higher`、`alerts_threshold=errors`）。
+# 而仓库此前**没有任何 code scanning 配置**，于是 PR #7（`dev` → `main`）永远停在：
+#
+#     Waiting for Code Scanning results. Code Scanning may not be configured for the target branch.
+#
+# 这类「等不到结果」比红色更麻烦：红色会告诉你哪里错，等待不会。规则要什么，就得有人生产什么。
+#
+# 【为什么用工作流，而不是 GitHub 的「默认设置】（Default setup）】
+# 默认设置由平台托管，其扫描范围是**默认分支**及指向它的 PR；本仓库默认分支是 `dev`，
+# 而 PR #7 的目标是 `main`。工作流方式能把 `pull_request: branches: [main, dev]` 写死在这里，
+# 覆盖目标分支，且不会因为某个设置项被改动而悄悄失效。
+# （说明：这一点未能在本环境核实——docs.github.com 与 raw 源均被限流；但工作流方案不依赖它。）
+#
+# 【与其它工作流的关系】
+# 它**不参与**必需检查：规则集用的是 `code_scanning` 规则（按扫描结果判定），
+# 不是 `required_status_checks`。所以新增本工作流不会改动作业名契约（见 BuildSpec 第 8.1 节）。
+#
+# 【运行记录（2026-10-07 首次上线）】
+#   #1 pull_request dev-ddd → dev   成功  ← 工作流本身没问题：初始化与编译两步均通过
+#   #2 push            dev          失败  ← 失败只在「分析并上传结果」一步
+#   #3 pull_request   dev → main     失败  ← 同上，即 PR #7 需要的那次
+# #2/#3 与 #1 的代码完全相同（两份分支树零差异），所以不是代码问题，是仓库侧配置冲突——
+# 详见 analyze 步骤上的注释（默认设置与高级设置互斥）。
+#
+# 【与门禁的分工】CodeQL 只做安全分析；编译、测试、覆盖率、文档等由 Build / Gate / Compat 负责。
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # 每周一 04:00 UTC（错开 Gate 的 03:00，避免互相排队）
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+# 只读代码 + 必须写安全事件（上传 SARIF），其余一律不要
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    name: CodeQL（java-kotlin）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: 初始化 CodeQL
+        # v4：v3 计划于 2026 年 12 月弃用，且 v3 目标 Node.js 20（会被强制跑在 Node 24 上并报弃用警告）
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          # 手工构建：由下面的步骤自己跑 Maven。这样用的是本仓库固定的工具链
+          # （Wrapper 的 Maven 4.0.0-rc-7 + JDK 25），与门禁完全一致。
+          #
+          # 运行时会看到一条**良性**提示：
+          #   Cannot build an overlay-base database because build-mode is set to "manual"
+          #   instead of "none". Falling back to creating a normal full database instead.
+          # 这不是错误：它意味着改为建立**完整**数据库，分析结果更完整。不要为消掉它改成 none。
+          #
+          # ⚠️ 若 CodeQL 报「build-mode 取值不合法」，删掉这一行即可：
+          #    不指定时它对已编译语言会尝试自动构建，而自动构建往往认不出 Maven 4 RC 的 Wrapper。
+          build-mode: manual
+
+      - name: 编译（CodeQL 需要真实编译产物）
+        # 经统一的 Maven 入口：会先清本地仓库失败标记，并对仓库侧瞬时故障定向重试
+        # （见 BuildSpec 第 8.1 节「CI 必须容忍仓库侧瞬时失败」）
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw -B -DskipTests -Djacoco.skip=true compile
+
+      - name: 分析并上传结果
+        # 这一步失败时，先去日志里读错误原文——最常见的原因是**默认设置与高级设置互斥**：
+        #   开启 GitHub 的 Code scanning 默认设置（Default setup）后，来自本工作流的结果会被拒收：
+        #   CodeQL analyses from advanced configurations cannot be processed when the
+        #   default setup is enabled.
+        # 两者只能留一个。本仓库留**本工作流**，因为默认设置只覆盖默认分支（本仓库为 dev）
+        # 及指向它的 PR，覆盖不到 main——而本工作流显式声明了 pull_request → main。
+        # 处置：Settings → Code security → Code scanning → 关掉 Default setup，然后重跑一次。
+        uses: github/codeql-action/analyze@v4

@@ -52,7 +52,7 @@
         <javafx.version>25</javafx.version>
         <jackson.version>3.2.3</jackson.version>
         <picocli.version>4.7.7</picocli.version>
-        <jline.version>3.30.17</jline.version>
+        <jline.version>4.4.6</jline.version>
         <sqlite.version>3.53.4.0</sqlite.version>
         <slf4j.version>2.0.20</slf4j.version>
         <log4j.version>2.26.1</log4j.version>
@@ -63,6 +63,8 @@
         <jacoco.version>0.8.15</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
+        <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
+        <pmd.plugin.version>3.28.0</pmd.plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -179,7 +181,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.6</version>
+                    <version>3.6.0</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -190,6 +192,16 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-assembly-plugin</artifactId>
                     <version>${assembly.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-pmd-plugin</artifactId>
+                    <version>${pmd.plugin.version}</version>
+                    <configuration>
+                        <!-- 只统计主源码；最小 token 数决定「多长才算重复」 -->
+                        <minimumTokens>100</minimumTokens>
+                        <includeTests>false</includeTests>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  测试专用日志配置：console 关闭，日志写文件。
+
+  为什么需要它：测试会**故意**触发错误路径（未知工具、工具内部抛异常、拒绝授权等），
+  而生产代码在这些路径上正确地记 ERROR 并带堆栈。于是构建日志被刷成堆栈墙——
+  本项目 CI 上曾出现 80 余行 `[stdout] ... at com.acanx...`，真正的失败反而被淹掉。
+
+  这里把 console 关掉、改为写文件：构建日志保持干净，需要排查时看
+  target/test-logs/AHA-test.log（`target/` 已被 .gitignore 忽略）。
+
+  注意：这是**日志出口**的调整，不是日志级别的调整——生产代码该记 ERROR 的仍然记，
+  级别与堆栈规则见 Docs/Design/LoggingDesign.md。
+-->
+<Configuration status="WARN">
+    <Appenders>
+        <File name="TestFile" fileName="target/test-logs/AHA-test.log" append="false">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%t] %logger.%method:%line - %msg%n"/>
+        </File>
+    </Appenders>
+    <Loggers>
+        <Root level="DEBUG">
+            <AppenderRef ref="TestFile"/>
+        </Root>
+    </Loggers>
+</Configuration>

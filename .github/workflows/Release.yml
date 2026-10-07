@@ -9,17 +9,30 @@ permissions:
   contents: write
 
 jobs:
+  # 发布前先过同一道门禁（verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）。
+  # 它同时是「合入 main」的卡点，发布因此不需要另一套检查。
+  gate:
+    uses: ./.github/workflows/Gate.yml
+
+  # 兼容性验证（Maven 3.9.x）同样是发布前置：发行包必须在兼容基线上也能构建。
+  compat:
+    uses: ./.github/workflows/Compat.yml
+
   release:
+    needs: [gate, compat]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
       - name: Build and verify
-        run: ./mvnw clean verify
-        shell: bash
+        # 有意重跑一次：发行包必须由「自身跑过门禁的构建」产出，
+        # 不复用 gate 另一个 runner 上的产物（跨 job 传产物只会让链路更难查）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw clean verify
       - name: Package distribution
         run: |
           test -f dist/bin/Aha.sh
@@ -27,6 +40,6 @@ jobs:
           cd dist && zip -qr "../aha-${GITHUB_REF_NAME}-dist.zip" . && cd ..
           ls -lh "aha-${GITHUB_REF_NAME}-dist.zip"
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: aha-${{ github.ref_name }}-dist.zip

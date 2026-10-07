@@ -1,6 +1,6 @@
 # 工具系统设计
 
-**文档版本**：v1.1.0
+**文档版本**：v1.2.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -15,6 +15,7 @@
 |---|---|---|---|
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-07 | 补「Windows 上的命令执行方式」（临时批处理文件、CRLF、原生编码） | @ACANX |
+| v1.2.0 | 2026-10-07 | 补工具失败的日志语义：三个已知拒绝错误码属预期业务结果，记 INFO 不带堆栈；仅未预期异常记 ERROR 并连堆栈（详见 LoggingDesign §4） | @ACANX |
 
 ---
 
@@ -83,6 +84,11 @@ public interface PermissionPolicy {
 ```
 
 未获授权时抛出 `ToolExecutionException`，错误码 `PERMISSION_DENIED`。
+
+这三个错误码（`UNKNOWN_TOOL` / `TOOL_DISABLED` / `PERMISSION_DENIED`）都属于
+**预期内的业务结果**而非故障：`AgentEngine` 捕获 `ToolExecutionException` 后记 `INFO`
+且**不带堆栈**，只把原因回灌给模型；只有未预期的异常才记 `ERROR` 并连堆栈。
+级别与堆栈的完整规则见 [LoggingDesign.md](LoggingDesign.md) 第 4 节。
 
 ### 5.1 配置与交互
 

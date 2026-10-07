@@ -6,6 +6,7 @@ import com.acanx.module.aha.common.runtime.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -174,7 +175,7 @@ public final class SystemPromptLoader {
         parts.addAll(readAllNonBlank(resolveUserHome(), names));
 
         Path cursor = working.toAbsolutePath().normalize();
-        while (cursor != null) {
+        while (cursor != null && withinProjectScope(cursor)) {
             java.util.List<ResolvedPrompt> hits = readAllNonBlank(cursor, names);
             if (!hits.isEmpty()) {
                 parts.addAll(hits);
@@ -237,7 +238,7 @@ public final class SystemPromptLoader {
         java.util.List<Path> found = new java.util.ArrayList<>();
         collectCompat(resolveUserHome(), names, found);
         Path cursor = (workingDir == null ? Path.of("") : workingDir).toAbsolutePath().normalize();
-        while (cursor != null) {
+        while (cursor != null && withinProjectScope(cursor)) {
             java.util.List<Path> hits = new java.util.ArrayList<>();
             collectCompat(cursor, names, hits);
             if (!hits.isEmpty()) {
@@ -444,7 +445,7 @@ public final class SystemPromptLoader {
      */
     public static Path findProjectRoot(Path start) {
         Path current = (start == null ? Path.of("") : start).toAbsolutePath().normalize();
-        while (current != null) {
+        while (current != null && withinProjectScope(current)) {
             for (String marker : PROJECT_MARKERS) {
                 if (Files.exists(current.resolve(marker))) {
                     return current;
@@ -456,14 +457,61 @@ public final class SystemPromptLoader {
     }
 
     /**
-     * 用户级配置目录：{@code $AHA_HOME}，未设置时为 {@code ~/.aha}。
+     * 当前目录是否仍在「项目级」查找范围内。
+     *
+     * <p>向上的项目级查找必须止步于<b>用户主目录</b>：{@code ~/AHA.md} 既绕过了
+     * 用户级目录（{@code ~/.aha}），又会让「用户级 / 项目级」的来源标注失真
+     * （同一个文件在启动信息里被当成项目级、在 {@code /memory} 里却是别的含义）。</p>
+     *
+     * <p>这条边界在 Windows 上尤其关键：临时目录位于 {@code %LOCALAPPDATA%}（属于主目录），
+     * 因此任何在临时目录里跑的测试都会沿路读到开发机主目录里的身份文件，
+     * 甚至把「项目级」文件写到那里去。</p>
+     *
+     * @param dir 候选目录
+     * @return 仍在项目级范围内返回 {@code true}
+     */
+    private static boolean withinProjectScope(Path dir) {
+        return !userHomeDirectories().contains(dir);
+    }
+
+    /**
+     * 用户主目录的候选集合（已规范化）。
+     *
+     * <p>同时取 JVM 属性与环境变量：嵌入场景或测试会把 {@code user.home} 指到别处，
+     * 而操作系统真正的主目录仍在环境里（{@code USERPROFILE} / {@code HOME}），
+     * 后者往往正好是当前目录的祖先，漏掉就会继续向上走出项目范围。</p>
+     */
+    private static java.util.Set<Path> userHomeDirectories() {
+        java.util.Set<Path> homes = new java.util.LinkedHashSet<>();
+        for (String value : new String[]{
+                System.getProperty("user.home"),
+                System.getenv("USERPROFILE"),
+                System.getenv("HOME")}) {
+            if (value != null && !value.isBlank()) {
+                try {
+                    homes.add(Path.of(value).toAbsolutePath().normalize());
+                } catch (InvalidPathException e) {
+                    // 环境变量不是合法路径时忽略
+                }
+            }
+        }
+        return homes;
+    }
+
+    /**
+     * 用户级配置目录：{@code AHA_HOME}，未设置时为 {@code ~/.aha}。
+     *
+     * <p>取值顺序：系统属性 {@code -DAHA_HOME} → 环境变量 {@code AHA_HOME} → {@code ~/.aha}。
+     * 系统属性排在环境变量之前，是为了让测试与集成场景能确定性地覆盖用户目录：
+     * 否则开发机上已设置 {@code AHA_HOME} 时，测试会去读写<b>真实</b>用户目录
+     * （曾因此在 Windows 上读到自己写的 {@code ~/.aha/AHA.md} 而误判为加载逻辑出错）。</p>
      *
      * @return 用户级目录；无法确定时为 {@code null}
      */
     public static Path resolveUserHome() {
-        String home = System.getenv("AHA_HOME");
+        String home = System.getProperty("AHA_HOME");
         if (home == null || home.isBlank()) {
-            home = System.getProperty("AHA_HOME");
+            home = System.getenv("AHA_HOME");
         }
         if (home != null && !home.isBlank()) {
             return Path.of(home);

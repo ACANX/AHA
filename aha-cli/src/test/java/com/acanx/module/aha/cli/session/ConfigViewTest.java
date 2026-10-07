@@ -11,6 +11,7 @@ import com.acanx.module.aha.core.config.SecurityConfig;
 import com.acanx.module.aha.core.config.ToolsConfig;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,7 +45,8 @@ class ConfigViewTest {
     void pathValuesAreExpanded() {
         // ${ENV:-默认} 先展开，再展开 ~；用户才能看到「实际读到哪个文件」
         String path = ConfigView.resolve(config(), "Memory.Path");
-        assertThat(path).doesNotContain("${AHA_HOME").doesNotContain("~").endsWith("/Data/Aha.db");
+        String tail = Path.of("Data", "Aha.db").toString();
+        assertThat(path).doesNotContain("${AHA_HOME").doesNotContain("~").endsWith(tail);
     }
 
     @Test

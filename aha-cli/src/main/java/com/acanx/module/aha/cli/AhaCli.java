@@ -7,6 +7,7 @@ import com.acanx.module.aha.core.security.SecretStore;
 import com.acanx.module.aha.core.security.SecretStores;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Help;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,38 @@ import java.nio.file.Path;
 public final class AhaCli implements Runnable {
 
     /**
+     * 构造 CLI（{@code main} 与测试共用），套用统一 ANSI 策略。
+     *
+     * @return 已配置的 {@link CommandLine}
+     */
+    public static CommandLine commandLine() {
+        return commandLine(new AhaCli());
+    }
+
+    /**
+     * 为任意命令构造 {@link CommandLine}，套用统一 ANSI 策略。
+     *
+     * @param command 命令对象（主命令或子命令）
+     * @return 已配置的 {@link CommandLine}
+     */
+    public static CommandLine commandLine(Object command) {
+        return new CommandLine(command).setColorScheme(Help.defaultColorScheme(ansi()));
+    }
+
+    /**
+     * 当前终端的 ANSI 能力。
+     *
+     * <p>picocli 默认的 {@code Ansi.AUTO} 把 Windows 一律当作支持 ANSI，
+     * 于是 {@code aha --help > help.txt} 也会把转义序列写进文件；
+     * 这里统一以 {@link System#console()} 判定，非交互场景一律关闭。</p>
+     *
+     * @return {@link Help.Ansi#ON} 或 {@link Help.Ansi#OFF}
+     */
+    public static Help.Ansi ansi() {
+        return System.console() != null ? Help.Ansi.ON : Help.Ansi.OFF;
+    }
+
+    /**
      * 程序入口。
      *
      * @param args 命令行参数
@@ -51,7 +84,7 @@ public final class AhaCli implements Runnable {
         installSecretResolver(loaded);
         // 复用已加载的配置，避免 CliContext 再读一次（否则日志出现重复条目）
         CliContext.preload(loaded);
-        int exitCode = new CommandLine(new AhaCli()).execute(args);
+        int exitCode = commandLine().execute(args);
         System.exit(exitCode);
     }
 
@@ -102,6 +135,6 @@ public final class AhaCli implements Runnable {
             new ChatCommand().run();
             return;
         }
-        CommandLine.usage(this, System.out);
+        commandLine(this).usage(System.out);
     }
 }

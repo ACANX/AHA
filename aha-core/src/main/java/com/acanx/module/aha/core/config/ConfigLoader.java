@@ -191,7 +191,17 @@ public final class ConfigLoader {
     public static Path resolveModelPath(AhaConfig config) {
         String configured = config == null || config.llm() == null ? null : config.llm().modelFile();
         if (configured != null && !configured.isBlank()) {
-            return expandHome(configured);
+            // 先展开 ${ENV} 占位符再当路径用：内置默认值是 ${AHA_HOME:-~/.aha}/Model.yml，
+            // 直接交给 Path.of 会在 Windows 上因 ':' 抛 InvalidPathException，
+            // 在 Linux 上则静默变成一个名为 "${AHA_HOME:-~/.aha}" 的相对路径。
+            String expanded = resolveEnv(configured);
+            if (expanded.indexOf("${") < 0) {
+                try {
+                    return expandHome(expanded);
+                } catch (InvalidPathException e) {
+                    // 值含平台非法字符：不当作路径，回退到默认位置
+                }
+            }
         }
         String home = System.getenv("AHA_HOME");
         if (home == null || home.isBlank()) {
@@ -253,6 +263,10 @@ public final class ConfigLoader {
     /**
      * 解析 {@code ${ENV}} 与 {@code ${ENV:-default}} 占位符。
      *
+     * <p>取值顺序：系统属性 {@code -DNAME} → 环境变量 {@code NAME} → 密钥库 → 默认值。
+     * 系统属性在前，使测试与集成场景能确定性地覆盖 {@code AHA_HOME} 等变量
+     * （与 {@code SystemPromptLoader.resolveUserHome()} 保持同一顺序）。</p>
+     *
      * <p>未设置且未提供默认值时保留原占位符（便于诊断与提示所需环境变量），
      * 而非静默替换为空串。</p>
      *
@@ -265,9 +279,9 @@ public final class ConfigLoader {
         while (matcher.find()) {
             String name = matcher.group(1);
             String fallback = matcher.group(2);
-            String value = System.getenv(name);
+            String value = System.getProperty(name);
             if (value == null) {
-                value = System.getProperty(name);
+                value = System.getenv(name);
             }
             if (value == null) {
                 value = fromSecretStore(name);
