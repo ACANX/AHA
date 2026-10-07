@@ -230,9 +230,64 @@ class AgentEngineStreamTest {
         assertThat(results).allSatisfy(result -> assertThat(result.success()).isFalse());
         assertThat(results.stream().map(r -> String.valueOf(r.result())).toList())
                 .anyMatch(text -> text.contains("不存在") || text.contains("missing-tool"));
+        // 工具层的已知拒绝不带堆栈：原因本身已自解释，堆栈只会白占模型 token
+        assertThat(results).allSatisfy(result ->
+                assertThat(String.valueOf(result.result())).doesNotContain(System.lineSeparator() + "\tat "));
         // 回灌给模型的消息仍带前缀：模型需要明确的失败标记
         assertThat(memory.loadHistory("s1", 10).stream().map(ChatMessage::content).toList())
                 .anyMatch(text -> text.startsWith("ERROR:"));
+    }
+
+    @Test
+    void streamKeepsStackTraceForUnexpectedToolBug() {
+        // 与上一条对照：**未预期**的异常仍要连堆栈一起给出去——
+        // 那时堆栈既是排障依据，也是回灌给模型的线索。
+        ScriptedLlmClient llm = new ScriptedLlmClient();
+        llm.scriptStream((listener, token) -> {
+            listener.onEvent(toolDelta(0, "call_1", "broken-tool", "{}"));
+            listener.onEvent(done("tool_calls"));
+        });
+
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new Tool() {
+            @Override
+            public String name() {
+                return "broken-tool";
+            }
+
+            @Override
+            public String description() {
+                return "故意抛异常的假工具";
+            }
+
+            @Override
+            public JsonSchema parameters() {
+                return JsonSchema.object(Map.of(), List.of());
+            }
+
+            @Override
+            public ToolPermission requiredPermission() {
+                return ToolPermission.READ;
+            }
+
+            @Override
+            public ToolResult execute(Map<String, Object> params, CancellationToken token) {
+                throw new IllegalStateException("工具内部炸了");
+            }
+        });
+
+        AgentEngine engine = new AgentEngine(llm, tools, new InMemoryMemoryStore());
+
+        List<AgentEvent> events = new ArrayList<>();
+        engine.stream("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
+                events::add, new CancellationToken());
+
+        List<ToolResultEvent> results = events.stream().filter(ToolResultEvent.class::isInstance)
+                .map(ToolResultEvent.class::cast).toList();
+        assertThat(results).isNotEmpty();
+        assertThat(results.stream().map(r -> String.valueOf(r.result())).toList())
+                .anyMatch(text -> text.contains("工具内部炸了"))
+                .allSatisfy(text -> assertThat(text).contains("at com.acanx"));
     }
 
     @Test
