@@ -12,10 +12,20 @@ jobs:
         include:
           - os: windows-latest
             maven: wrapper
+            optional: false
           - os: ubuntu-latest
             maven: wrapper
+            optional: false
           - os: ubuntu-latest
             maven: system
+            optional: false
+          # macOS 目前只作演示与可选验证（见 BuildSpec.md 第 4.1 节）：
+          # 不计入必需检查，失败不使整体构建失败。
+          - os: macos-latest
+            maven: wrapper
+            optional: true
+    # 可选腿失败只标注该腿自身，不算构建失败
+    continue-on-error: ${{ matrix.optional == true }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
