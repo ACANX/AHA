@@ -34,6 +34,13 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+<<<<<<< HEAD
+=======
+- **CodeQL 工作流上线实测与升级**：`init`（`build-mode: manual`）与 `compile` 三步运行全过，
+  失败集中在 `analyze`（上传结果）；已把 `github/codeql-action` 升到 `v4`（v3 将于 2026-12 弃用），
+  并注明 `build-mode` 那条提示为良性。`main` 规则集要求 CodeQL，而默认设置与高级设置互斥——
+  处置与验收标准见 `TODO.md` `G-04`
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 - **代码扫描（CodeQL）**：新增 `.github/workflows/CodeQL.yml`——`main` 的规则集要求 CodeQL 结果，
   而仓库此前没有任何 code scanning 配置，PR #7 因此永久停在「Waiting for Code Scanning results」。
   工作流显式覆盖 `pull_request → main`（默认设置只扫默认分支，覆盖不到），不参与必需检查

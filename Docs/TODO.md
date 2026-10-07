@@ -1,6 +1,10 @@
 # AHA 待办与调整项（暂存区）
 
+<<<<<<< HEAD
 **文档版本**：v0.15.0
+=======
+**文档版本**：v0.16.0
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -550,6 +554,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
 | v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
 | v0.15.0 | 2026-10-07 | `G-04` 改写：新增 `.github/workflows/CodeQL.yml`（高级设置/工作流方式，显式覆盖 `pull_request → main`，手工构建走统一 Maven 入口），说明为何默认设置覆盖不到 `main`、与必需检查契约无关，并给出「不要扫描就删规则 + 删工作流」的备选 | @ACANX |
+<<<<<<< HEAD
+=======
+| v0.16.0 | 2026-10-07 | `G-04` 补上线实测：工作流 init/compile 三次全过、失败仅在 `analyze`；因两份分支树零差异判定为配置冲突，指向「默认设置与高级设置互斥」并给出二选一处置；顺手把 codeql-action 升到 v4，并注明 build-mode 那条提示为良性 | @ACANX |
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -1147,11 +1155,46 @@ Waiting for Code Scanning results. Code Scanning may not be configured for the t
 **备选（若你不想要代码扫描）**：删掉 `main` 规则集的 `code_scanning` 规则，并删除本工作流。
 规则与产出必须成对——**要么都留，要么都去**。
 
+<<<<<<< HEAD
+=======
+**上线实测（2026-10-07）**：工作流**能跑**——`init`（含 `build-mode: manual`，被接受）与
+走仓库 Maven 的 `compile` 两步在三次运行里**全部成功**；三次运行里 **1 次成功、2 次失败**，
+失败**只在 `analyze`（上传 SARIF）**这一步：
+
+| 运行 | 事件 | 分支/方向 | 结果 |
+| ---- | ---- | ---- | ---- |
+| #1 | pull_request | `dev-ddd` → `dev` | **success** |
+| #2 | push | `dev` | failure（analyze） |
+| #3 | pull_request | `dev` → `main`（PR #7） | failure（analyze） |
+
+`#2`/`#3` 与 `#1` 的**代码完全相同**（两份分支树零差异），故不是代码问题，而是仓库侧配置冲突。
+**最可能的原因**：开启了 GitHub 的 Code scanning **默认设置**（Default setup）——它与高级设置（本工作流）
+**互斥**，来自工作流的结果会被拒收（错误原文：`CodeQL analyses from advanced configurations cannot be
+processed when the default setup is enabled.`）。**待你在 run #3 第 6 步的日志里确认原文**。
+
+**处置（二选一）**：
+
+| | 动作 | 后果 |
+| ---- | ---- | ---- |
+| ① **关掉默认设置，留工作流**（推荐） | Settings → Code security → Code scanning → Default setup → Disable，然后 Re-run 失败的那两次 | 本工作流显式覆盖 `pull_request → main`，PR #7 的规则能拿到结果 |
+| ② 留默认设置，删工作流 | 删 `.github/workflows/CodeQL.yml` | 默认设置只覆盖默认分支（`dev`）及指向它的 PR，覆盖不到 `main` → **PR #7 仍会永久等待**；真要走这条必须同时删掉 `main` 规则集的 `code_scanning` 规则 |
+
+**另已顺手修正**：`github/codeql-action` 由 `v3` 升到 **`v4`**（v3 计划 2026 年 12 月弃用，
+且 v3 目标 Node.js 20、会被强制跑在 Node 24 上并报弃用警告）。
+运行日志里那条 `Cannot build an overlay-base database because build-mode is set to "manual"…`
+是**良性**提示（回退为建立完整数据库，分析更完整），已在工作流里注明「不要为消掉它改成 `none`」。
+
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 **验收标准**：Security → Code scanning 出现 java-kotlin 的分析结果；
 PR #7 上「Code Scanning」由等待变为**给出结论**（按阈值：高危以上或存在错误才拦）。
 
 **闭环后**：本条改 ✅。
 
+<<<<<<< HEAD
+=======
+**闭环后**：本条改 ✅。
+
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 ### G-05 ☐ 未完成
 
 **内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
