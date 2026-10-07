@@ -623,7 +623,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | A-05 | `ExtensionSystemDesign.md` | 章节重编号 | ✅ 已完成 |
 | A-06 | `ExtensionSystemDesign.md`、`TestingSpec.md`、`ExtensionManager.java` | 统一阶段编号 | ✅ 已完成 |
 | A-07 | `BuildSpec.md` §6       | 核对引用链 | ◐ 进行中 |
-| F-08 | `Build.yml`、`BuildSpec.md` §8.1 | 恢复矩阵作业名；立「作业名是分支保护的契约」 | ✅ 已修 |
+| F-08 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) | 恢复矩阵作业名；立「作业名是分支保护的契约」 | ✅ 已修 |
 
 ### 阶段二：规范补充（需评审）
 
@@ -712,7 +712,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-05 | CI 矩阵 `fail-fast` 在一条腿失败时取消其余腿，掩盖平台差异 | 缺陷 | ✅ | P1 | ✅ 已完成 | `Build.yml`、`TestingSpec.md` §5.1 |
 | F-06 | macOS 无支持边界声明，容易被误读为「已支持」 | 风险 | ✅ | P3 | ✅ 已完成（已拍板） | `BuildSpec.md` §4.1、`Build.yml` |
 | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
-| F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1 |
+| F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -806,6 +806,8 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 **处理**：删掉 `optional` 键，可选腿改为按 `matrix.os == 'macos-latest'` 判定
 （不新增矩阵键），作业名恢复原样。**无需改动分支保护**。
+
+**详细复盘**：见 [DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md)（含取证对照表与自查命令）。
 
 **教训**：作业名是**对外契约**，不是内部细节。已写入 `BuildSpec.md` §8.1：
 必需腿不得增删矩阵键；`Gate.yml` / `Compat.yml` 的 job 级 `name:` 同样是检查名，

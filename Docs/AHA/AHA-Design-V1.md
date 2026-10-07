@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.51.0
+**文档版本**：v3.52.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -325,7 +325,7 @@ aha/
     │   ├── ToolUsageGuide.md
     │   ├── ExtensionAuthoringGuide.md
     │   └── TroubleshootingGuide.md
-    └── Diagrams/
+    ├── Diagrams/
         ├── ModuleArchitecture.svg
         ├── AgentFlow.svg
         ├── LlmAdapterFlow.svg
@@ -333,6 +333,8 @@ aha/
         ├── ConfigLoadingFlow.svg
         ├── ExtensionArchitecture.svg
         └── ExtensionLifecycle.svg
+    └── DevLog/
+        └── DevLog-20261007-20.md
 ```
 
 ## 2. 命名规范
@@ -435,6 +437,7 @@ aha/
 | v3.49.0 | 2026-10-07 | 第 5 条选型清单改为主版本线并说明版本单一来源；POM 片段不再复制具体版本号 | @ACANX |
 | v3.50.0 | 2026-10-07 | §5.1.1 补两条边界约定：`AHA_HOME` 取值顺序（系统属性优先于环境变量）、项目级向上查找止步于用户主目录 | @ACANX |
 | v3.51.0 | 2026-10-07 | §3.1 实测值按 Windows 平台缺陷修复后的 `clean verify` 刷新（604 用例 / 合计行覆盖 80.3%，4040/5033） | @ACANX |
+| v3.52.0 | 2026-10-07 | 目录树与附录 A 文档索引补 `Docs/DevLog/`（排障复盘按时间线命名） | @ACANX |
 
 ---
 ```
@@ -3669,6 +3672,14 @@ Closes #123
 | `ConfigLoadingFlow.svg` | 配置加载流程图 |
 | `ExtensionArchitecture.svg` | 扩展架构图 |
 | `ExtensionLifecycle.svg` | 扩展生命周期图 |
+
+### Docs/DevLog/
+
+排障复盘与事故记录，按时间线命名（`DevLog-YYYYmmdd-HH.md`，见 `DocumentationSpec.md` §1）。
+
+| 文件 | 说明 |
+|---|---|
+| `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
 
 ### .agents/skills/
 
