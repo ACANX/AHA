@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.11.4
+**文档版本**：v0.14.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -546,6 +546,9 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
 | v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
 | v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
+| v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
+| v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
+| v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -926,6 +929,14 @@ Git 无法自动合并（实测 9 个冲突，含 `add/add`）。
 **排障中的教训**：第一次用**本地** `dev`（`4f12cef`，已过期）做合并试探，得到
 「Already up to date」，差点把结论带偏——远端行为必须用 `origin/<branch>` 引用。
 
+**复发（2026-10-07，同日）**：PR #8 最终是以 **squash** 合入 `dev` 的
+（`aeadec4「Dependa (#8)」` 只有单父 `5d938f3`），于是**同一形态立刻重现**：`dev` 拿到内容、
+没拿到血缘。实测 `dev` 的树 == `dependa@1518056` 的树（逐字节相同）⇒ 内容相等，
+遂在 `dependa` 上 `git merge -s ours origin/dev`（合并提交 `d1de175`，树 `555e596…` 前后一致）
+接回血缘，模拟合并 `dev ← dependa` 得 0 冲突。**这条教训不是理论——它在同一天被真实验证了一遍。**
+为此在 `ReleaseProcess.md` §4.1 增加「被误用 squash 后必须立刻接回血缘」，
+并把更根本的预防（关闭 squash/rebase 合并）登记为 `G-05`。
+
 **立的规矩**：[ReleaseProcess.md](DevSpec/ReleaseProcess.md) §4「分支流向与合并方式（强制）」
 ——`dependa` 这类长期集成分支**只能真合并**；禁止 `git merge --squash` 加手工提交这类
 「重新落地」；用了 squash/rebase 就必须删源分支；`-s ours` 只允许在能证明
@@ -993,54 +1004,132 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送 `dependa`（含 PR #8 冲突修复的合并提交 `06c6121`） | PR #8 会一直卡在 `dirty` 合不进去；改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA == 本地 `dependa`；PR #8 的 `mergeable_state` 由 `dirty` 变为 `clean` | ☐ 未完成 |
-| G-02 | `main` 分支保护：把 `Gate` 与 `Compat` 设为**必需检查** | 门禁不拦人，等价于没配 | 两项均已勾选，**且**用一个预期失败的 PR 验证确实无法合并 | ☐ 未完成 |
+| G-01 | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
+| G-02 | **分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表 | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [DevLog-20261007-24.md](DevLog/DevLog-20261007-24.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
+| G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
+| G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 
-### G-01 ☐ 未完成（前半已完成）
+### G-01 ☐ 未完成
 
-**内容**：把本地 `dependa` 上尚未推送的提交推送到远端。
+**内容**：把本地 `dev` 上尚未推送的两条文档提交推上去
+（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录）。
 
-**进展（2026-10-07）**：此前那批提交**已推送**（`origin/dependa` 与本地一致，
-PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合并提交 `06c6121`
-（`-s ours origin/dev`，不改变任何文件内容，见 `F-12`）——推上去 PR #8 才会从
-`dirty` 转为可合并。
+**为什么必须人工**：① 本环境没有推送凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测
+`could not read Username`，exit 128）；② `dev` 的规则集带 `pull_request` 规则，
+**直接推 `dev` 可能被拒**——能否绕过取决于规则集的 bypass 名单（本环境读 API 时被限流，
+需在 Settings → Rules → 该规则集里确认）。不能绕过时，就从一个分支提 PR 合入 `dev`。
 
-**为什么必须人工**：本环境没有远端推送凭据，实测 `GIT_TERMINAL_PROMPT=0 git push`
-返回 `fatal: could not read Username for 'https://github.com'`（exit 128）。
+**分支现状（2026-10-07，方案 B 执行后）**：
 
-**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致
-（即出现 `06c6121`）；PR #8 的 `mergeable_state` 变为 `clean`，`Gate` 与 `Compat`
-在新一轮 CI 中通过（`macOS` 腿按设计允许失败）。
+| 分支 | SHA | 相对上游 |
+| ---- | ---- | ---- |
+| `dev` | `ca80c5c` | **ahead 2**（待推送） |
+| `dependa` | `1518056` | 与 `origin/dependa` **一致**（已复位，无需推送） |
+| `main` / `feat/local` | `4f12cef` | 一致 |
+
+**已知代价（实测，务必记住）**：`dependa` 复位后，**第一次把 `dev` 合进 `dependa` 时会冲突 6 个文件**——
+两侧相对分叉点 `5d938f3` 都改过它们，且改法的形状不同（这正是 squash 的后果，见 `F-12`）：
+
+```
+CHANGELOG.md
+Docs/AHA/AHA-Design-V1.md
+Docs/DevLog/DevLog-20261007-22.md
+Docs/DevSpec/BuildSpec.md
+Docs/DevSpec/ReleaseProcess.md
+Docs/TODO.md
+```
+
+解法：这些文件两侧除本次两条文档提交外**内容本就相同**，**取 `dev` 的版本**即可
+（`git checkout --theirs -- <文件>` 后 `git add`）。想要彻底避免这类差异，见 `G-05`（关闭 squash）。
+
+**验收标准**：`git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或对应 PR 已合入）；
+`dev → main` 的 PR（#7）能带上这批文档。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.1.1 收口。
 
 ### G-02 ☐ 未完成
 
-**现状（2026-10-07 观察）**：分支保护里**已配置**三条必需检查，但都是 `Build.yml` 的快速腿：
+**内容**：按下面的规格**一次性**配置两条分支规则集，让门禁真正拦人，同时**不把单人维护者锁死**。
 
-- `build (windows-latest, wrapper)`
-- `build (ubuntu-latest, wrapper)`
-- `build (ubuntu-latest, system)`
+**为什么必须人工**：规则集是仓库设置（Settings → Rules → Rulesets），工作流文件里写不了；
+本环境也没有可写的凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测 `could not read Username`）。
 
-这三条**建议保留**——它们跑得快，做合入门槛正合适。PR 上一度出现的
-「Expected — Waiting for status to be reported」与它们无关，是作业名被矩阵键改掉所致，
-见 `F-08`；修好作业名后它们会正常上报，**不需要**为此改分支保护。
+**现状（2026-10-07 API 实查）**：`GET /repos/ACANX/AHA/rulesets` → 两条仓库级规则集：
 
-**还需补配**两条慢检查。字符串必须与作业的 job 级 `name:` **完全一致**（含全角括号与冒号）：
+| 规则集 | id | 适用分支 | 现有规则 |
+| ---- | ---- | ---- | ---- |
+| `dev` | 24648482 | `refs/heads/dev` | `deletion`、`non_fast_forward`、`pull_request`（approvals=**1**）、`required_status_checks`（三条 `build (...)`） |
+| `main` | 24648542 | `refs/heads/main` | 上述全部，外加 **`code_scanning`（CodeQL）**、**`code_coverage`**，且 `pull_request` 带 `last_push_approval`=**true** |
 
-- `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）`
-- `兼容性（Maven 3.9.x 完整 verify）`
+**已造成的实际阻塞（`PR #7` `dev` → `main`）**：三条规则对「单人 + 机器」**无法满足**：
 
-**为什么必须人工**：分支保护是仓库设置，工作流文件里写不了（`Gate.yml` 注释已注明）。
+1. `pull_request`（approvals=1 + `last_push_approval`）——只有一位协作者，GitHub 禁止自我批准
+   → 提示「New changes require approval from someone other than ACANX because they were the last pusher」；
+2. `code_scanning` 要求 CodeQL 结果，仓库却**没配任何 code scanning**
+   → 提示「Waiting for Code Scanning results」；
+3. `code_coverage` 需要把覆盖率上传给 GitHub 或其支持的覆盖率服务，本项目只有本地 JaCoCo 门禁
+   （尚未报错，因为它排在其它条件之后）。
 
-**验收标准**：上述五项都出现在 `main` 的必需检查列表里，**并且**用一个预期失败的 PR
-验证确实无法合并——只勾选不验证，可能因名称不完全匹配而形同虚设。
+**方向相反的另一处**：`main` 的必需检查只有三条快检查，而 `BuildSpec.md` §8.1 要求
+`Gate` 与 `Compat` 也必须是必需检查——**该拦的没拦，不该锁的锁死了**。
 
-**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）。
-改 `Build.yml` / `Gate.yml` / `Compat.yml` 时，必须同步刷新本条。
+**目标规格（逐项照此设置）**：
+
+| 项 | `main` | `dev` | 理由 |
+| ---- | ---- | ---- | ---- |
+| `deletion` / `non_fast_forward` | 保留 | 保留 | 禁止删除与强推，与人数无关 |
+| 要求 PR | 保留 | 保留 | 改动走 PR 才挂得上必需检查 |
+| required_approving_review_count | **0** | **0** | 单人仓库里「1 个批准」= 禁止合并；卡点交给必需检查 |
+| require_last_push_approval | **false** | false | 同上 |
+| required_review_thread_resolution | 保留 `true` | 不适用 | 要求先解决评论，单人也能满足 |
+| required_status_checks | 三条 `build (...)` **+ `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）` + `兼容性（Maven 3.9.x 完整 verify）`** | 三条 `build (...)`（保持） | 慢检查是「合入 `main` 前」的卡点（`BuildSpec.md` §8.1）；`dev` 是集成分支，保持快反馈 |
+| `code_scanning` | **二选一**：① 开 CodeQL（推荐，见 `G-04`）并保留；② 不用就**删掉本规则** | 不适用 | 要求某工具的结果，就必须有人生产它 |
+| `code_coverage` | **建议删除** | 不适用 | 覆盖率已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关；再引外部服务属重复。若确实想要 PR 内可见覆盖率，需另行拍板（引入受支持的覆盖率服务） |
+
+**验收标准**：五项必需检查（三条 `build (...)` + `Gate` + `Compat`）都出现在 `main` 的
+必需检查里；用一个**预期失败的 PR** 验证确实合不进去；再用一个**正常 PR** 验证**单人也能合进去**
+（不再出现「等待批准」「等待 Code Scanning」）。只勾选不验证，可能因名称未完全匹配而形同虚设。
+
+**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）；
+改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+
+### G-05 ☐ 未完成
+
+**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
+只保留 `Create a merge commit`。
+
+**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。
+
+**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），
+它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——
+上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。
+2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），
+只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。
+
+**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**
+（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。
+此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。
+
+**闭环后**：本条改 ✅。
+
+### G-04 ☐ 未完成
+
+**内容**：为 `main` 规则集的 `code_scanning` 规则提供真结果——**开启 CodeQL**。
+
+**为什么必须人工**：需要管理员在 Settings → Code security → Code scanning 里开启。
+推荐用 **Default setup**（默认设置）：由 GitHub 维护配置、仓库里不必放工作流，也不会随
+Dependabot 的版本漂移而失修；仓库是 `public`，CodeQL 免费。
+
+**对应关系**：**开了它就保留 `code_scanning` 规则；不开就必须删掉那条规则**（见 `G-02`），
+否则 PR 会一直停在「Waiting for Code Scanning results」。
+
+**验收标准**：Security → Code scanning 出现分析结果；PR 上该检查给出明确结论
+（阈值 `high_or_higher` / `errors`，即高危以上或存在错误才拦）。
+
+**闭环后**：本条改 ✅。
 
 ### G-03 ☐ 未完成
 
