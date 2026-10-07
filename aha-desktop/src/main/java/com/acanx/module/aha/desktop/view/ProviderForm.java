@@ -3,6 +3,7 @@ package com.acanx.module.aha.desktop.view;
 import com.acanx.module.aha.core.config.ProviderConfig;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,6 +18,93 @@ public final class ProviderForm {
 
     /** 适配器可选值（与 core 的适配器实现对应）。 */
     public static final String[] ADAPTERS = {"openai-compatible", "anthropic", "gemini"};
+
+    /**
+     * 已知供应商的预设（ID → 适配器 / 基础地址 / 默认模型）。
+     *
+     * <p>内容与 {@code aha-core/src/main/resources/ModelDefault.yml} 保持一致，
+     * 模型名一律用该文件里的**真实**名字——不编造模型名，否则用户照着填会拿到 404。</p>
+     */
+    private static final Map<String, String[]> PRESETS = new LinkedHashMap<>();
+
+    /**
+     * 各供应商的候选模型（可下拉选，也可自己填）。
+     *
+     * <p>同样只收真实模型：默认那个来自 {@code ModelDefault.yml}，其余是同系列里广为人知的版本。
+     * 列表只是「省打字」，输入框本身是可编辑的，不限制用户填别的。</p>
+     */
+    private static final Map<String, String[]> MODELS = new LinkedHashMap<>();
+
+    static {
+        PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-4o"});
+        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-1"});
+        PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.5-flash"});
+        PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-chat"});
+        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-4.6"});
+        PRESETS.put("Qwen", new String[]{"openai-compatible", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"});
+
+        MODELS.put("OpenAI", new String[]{"gpt-4o", "gpt-4o-mini", "gpt-4.1"});
+        MODELS.put("Anthropic", new String[]{"claude-sonnet-5-1", "claude-opus-4-1", "claude-haiku-4-5"});
+        MODELS.put("Gemini", new String[]{"gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash"});
+        MODELS.put("DeepSeek", new String[]{"deepseek-chat", "deepseek-reasoner"});
+        MODELS.put("BigModelCN", new String[]{"glm-4.6", "glm-4.5-air"});
+        MODELS.put("Qwen", new String[]{"qwen-max", "qwen-plus", "qwen-turbo"});
+    }
+
+    /**
+     * 打开对话框时应当选中哪个供应商。
+     *
+     * <p>规则：优先选中**当前启用**的那个（用户最关心的就是「现在用的是谁」）；
+     * 它不在列表里（例如刚被删掉）或未设置时，退回第一个；列表为空返回 {@code null}。
+     * 抽成纯函数是为了让这条规则在无图形环境下也有测试。</p>
+     *
+     * @param activeId 当前启用的供应商 ID，可为 {@code null}
+     * @param ids      列表里的全部 ID
+     * @return 应当选中的 ID；无可选时返回 {@code null}
+     */
+    public static String selectedOnOpen(String activeId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return null;
+        }
+        return activeId != null && ids.contains(activeId) ? activeId : ids.get(0);
+    }
+
+    /**
+     * 已知供应商 ID 列表（用于「从预设新建」）。
+     *
+     * @return 不可变的 ID 列表
+     */
+    public static java.util.List<String> knownProviders() {
+        return List.copyOf(PRESETS.keySet());
+    }
+
+    /**
+     * 取某个供应商的候选模型；未知供应商返回空数组（仍可自由填写）。
+     *
+     * @param providerId 供应商 ID，可为 {@code null}
+     * @return 候选模型
+     */
+    public static String[] modelsFor(String providerId) {
+        if (providerId == null) {
+            return new String[0];
+        }
+        return MODELS.getOrDefault(providerId.trim(), new String[0]);
+    }
+
+    /**
+     * 按预设生成一份草稿（新增供应商时用）。
+     *
+     * @param providerId 供应商 ID；未知 ID 时只填 ID 与默认适配器
+     * @return 草稿
+     */
+    public static Draft preset(String providerId) {
+        String id = providerId == null ? "" : providerId.trim();
+        String[] values = PRESETS.get(id);
+        if (values == null) {
+            return new Draft(id, ADAPTERS[0], "https://", "", "", "60", "2");
+        }
+        return new Draft(id, values[0], values[1], "", values[2], "60", "2");
+    }
 
     private ProviderForm() {
     }

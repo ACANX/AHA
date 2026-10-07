@@ -10,6 +10,8 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
@@ -66,6 +68,13 @@ public final class ProviderDialog {
 
     private Button setDefault;
 
+    private ComboBox<String> modelBox;
+
+    private ComboBox<String> presetBox;
+
+    /** 当前启用的供应商 ID（用于列表里的绿灯）。 */
+    private String activeId;
+
     /**
      * @param path Model.yml 路径
      */
@@ -86,13 +95,35 @@ public final class ProviderDialog {
         dialog.setHeaderText("查看与修改供应商（保存后写回 " + store.path() + "）");
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         dialog.getDialogPane().setContent(buildBody(dialog, onChanged));
+        // 宽度翻倍：表单字段（尤其基础地址、API Key）需要一眼看全
+        dialog.getDialogPane().setPrefWidth(1240);
+        dialog.getDialogPane().setMinWidth(1240);
         reload(null);
         dialog.showAndWait();
     }
 
     private VBox buildBody(Dialog<ButtonType> dialog, Runnable onChanged) {
         list = new ListView<>();
-        list.setPrefWidth(180);
+        list.setPrefWidth(340);
+        list.setPrefHeight(380);
+        // 绿灯标识：● 当前启用（绿、加粗），○ 其余；后面跟该供应商的模型，一眼看清「启用了谁家的哪个模型」
+        list.setCellFactory(view -> new ListCell<>() {
+            @Override
+            protected void updateItem(String id, boolean empty) {
+                super.updateItem(id, empty);
+                if (empty || id == null) {
+                    setText(null);
+                    setStyle("");
+                    return;
+                }
+                boolean active = id.equals(activeId);
+                String model = modelOf(id);
+                setText((active ? "\u25cf " : "\u25cb ") + id + (model == null ? "" : "   " + model));
+                setStyle(active
+                        ? "-fx-text-fill: " + Palette.SUCCESS + "; -fx-font-weight: bold;"
+                        : "-fx-text-fill: " + Palette.FOREGROUND + ";");
+            }
+        });
         list.getSelectionModel().selectedItemProperty().addListener((obs, old, now) -> {
             if (now != null) {
                 load(now);
@@ -116,7 +147,12 @@ public final class ProviderDialog {
         adapter.getItems().addAll(ProviderForm.ADAPTERS);
         baseUrl = new TextField();
         model = new TextField();
+        modelBox = new ComboBox<>();
+        modelBox.setEditable(true);
+        modelBox.setPrefWidth(420);
+        modelBox.setPromptText("选择候选模型，或直接输入");
         apiKey = new PasswordField();
+        apiKey.setPrefWidth(420);
         apiKeyPlain = new TextField();
         apiKeyPlain.setVisible(false);
         apiKeyPlain.setManaged(false);
@@ -149,7 +185,7 @@ public final class ProviderDialog {
         grid.addRow(row++, new Label("供应商 ID"), idField);
         grid.addRow(row++, new Label("适配器"), adapter);
         grid.addRow(row++, new Label("基础地址"), baseUrl);
-        grid.addRow(row++, new Label("模型"), model);
+        grid.addRow(row++, new Label("模型"), new HBox(6, modelBox, model));
         grid.addRow(row++, new Label("API Key"), new HBox(6, apiKey, apiKeyPlain, toggle));
         grid.addRow(row++, new Label("超时（秒）"), timeout);
         grid.addRow(row++, new Label("重试次数"), retries);
@@ -158,6 +194,15 @@ public final class ProviderDialog {
         status.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");
         status.setWrapText(true);
         grid.add(status, 0, row++, 2, 1);
+        // 新增供应商：先从预设挑一个（自动填好适配器 / 基础地址 / 模型），再改
+        presetBox = new ComboBox<>();
+        presetBox.getItems().add("（自定义）");
+        presetBox.getItems().addAll(ProviderForm.knownProviders());
+        presetBox.setValue("（自定义）");
+        Button addFromPreset = new Button("按预设新建");
+        addFromPreset.setOnAction(event -> applyPreset());
+
+        grid.addRow(row++, new Label("新增供应商"), new HBox(6, presetBox, addFromPreset));
         grid.add(new HBox(8, save, setDefault, add, remove), 0, row, 2, 1);
 
         save.setOnAction(event -> {
@@ -191,14 +236,9 @@ public final class ProviderDialog {
 
         add.setOnAction(event -> {
             list.getSelectionModel().clearSelection();
-            idField.setText("NewProvider");
-            adapter.setValue(ProviderForm.ADAPTERS[0]);
-            baseUrl.setText("https://");
-            model.setText("");
-            apiKey.setText("");
-            timeout.setText("60");
-            retries.setText("2");
-            status.setText("填好后点「保存」即新增");
+            applyPresetValues(ProviderForm.preset("NewProvider"));
+            status.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");
+            status.setText("填好后点「保存」即新增（模型可下拉选候选，也可自己填）");
         });
 
         remove.setOnAction(event -> {
@@ -218,6 +258,51 @@ public final class ProviderDialog {
             });
         });
         return grid;
+    }
+
+    /**
+     * 按预设新建：填好 ID / 适配器 / 基础地址 / 默认模型，用户再补密钥。
+     */
+    private void applyPreset() {
+        String picked = presetBox.getValue();
+        if (picked == null || "（自定义）".equals(picked)) {
+            applyPresetValues(ProviderForm.preset("NewProvider"));
+        } else {
+            applyPresetValues(ProviderForm.preset(picked));
+        }
+        status.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");
+        status.setText("已按预设填好，补上 API Key 后点「保存」");
+    }
+
+    private void applyPresetValues(ProviderForm.Draft draft) {
+        idField.setText(draft.id());
+        adapter.setValue(draft.adapter());
+        baseUrl.setText(draft.baseUrl());
+        model.setText(draft.model());
+        apiKey.setText("");
+        timeout.setText(draft.timeoutSeconds());
+        retries.setText(draft.maxRetries());
+        fillModelCandidates(draft.id(), draft.model());
+    }
+
+    /**
+     * 填候选模型下拉。
+     *
+     * @param providerId 供应商 ID
+     * @param current    当前模型（保留在输入框里）
+     */
+    private void fillModelCandidates(String providerId, String current) {
+        modelBox.getItems().setAll(ProviderForm.modelsFor(providerId));
+        model.setText(current == null ? "" : current);
+    }
+
+    private String modelOf(String providerId) {
+        try {
+            ProviderConfig provider = store.load().providersOrEmpty().get(providerId);
+            return provider == null ? null : provider.model();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private Label hint() {
@@ -246,20 +331,29 @@ public final class ProviderDialog {
         apiKey.setText(draft.apiKey());
         timeout.setText(draft.timeoutSeconds());
         retries.setText(draft.maxRetries());
+        fillModelCandidates(id, draft.model());
         setDefault.setDisable(config.defaultProvider() != null && config.defaultProvider().equals(id));
     }
 
     private void reload(String selectId) {
         ModelConfig config = store.load();
+        activeId = config.defaultProvider();
         List<String> ids = new ArrayList<>(config.providersOrEmpty().keySet());
         list.getItems().setAll(ids);
-        String target = selectId != null ? selectId : config.defaultProvider();
-        if (target != null && ids.contains(target)) {
+        // 打开时默认选中**当前启用**的供应商；否则退回第一个
+        String target = selectId != null ? selectId : activeId;
+        if (target == null || !ids.contains(target)) {
+            target = ids.isEmpty() ? null : ids.get(0);
+        }
+        if (target != null) {
             list.getSelectionModel().select(target);
         }
-        status.setText("默认供应商：" + (config.defaultProvider() == null ? "（未设置）" : config.defaultProvider())
-                + " · 密钥：" + ProviderForm.mask(store.load().providersOrEmpty()
-                        .getOrDefault(config.defaultProvider(), new ProviderConfig(null, null, null, null, 0, 0, null, null))
-                        .apiKey()));
+        list.refresh();
+        ProviderConfig active = activeId == null ? null : config.providersOrEmpty().get(activeId);
+        status.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.SUCCESS + ";");
+        status.setText(active == null
+                ? "\u25cb 未设置默认供应商"
+                : "\u25cf 已启用：" + activeId + "   " + active.model()
+                        + "   密钥 " + ProviderForm.mask(active.apiKey()));
     }
 }

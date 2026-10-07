@@ -95,6 +95,42 @@ class ProviderFormTest {
     }
 
     @Test
+    void presetsMatchRepositoryDefaults() {
+        // 预设内容必须与 aha-core/src/main/resources/ModelDefault.yml 一致（模型名不得编造）
+        assertThat(ProviderForm.preset("DeepSeek").baseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(ProviderForm.preset("DeepSeek").model()).isEqualTo("deepseek-chat");
+        assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-4o");
+        assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic");
+        assertThat(ProviderForm.preset("Gemini").adapter()).isEqualTo("gemini");
+        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-4.6");
+        assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen-max");
+    }
+
+    @Test
+    void presetDraftIsValidExceptApiKey() {
+        // 预设新建后只差密钥：其余字段应当直接可用
+        assertThat(ProviderForm.validate(ProviderForm.preset("Gemini"))).isEmpty();
+    }
+
+    @Test
+    void unknownPresetFallsBackToBlankTemplate() {
+        ProviderForm.Draft draft = ProviderForm.preset("MyOwnGateway");
+
+        assertThat(draft.id()).isEqualTo("MyOwnGateway");
+        assertThat(draft.adapter()).isEqualTo(ProviderForm.ADAPTERS[0]);
+        assertThat(draft.model()).isEmpty();
+        assertThat(ProviderForm.modelsFor("MyOwnGateway")).isEmpty();
+    }
+
+    @Test
+    void modelCandidatesAreAvailableForKnownProviders() {
+        assertThat(ProviderForm.modelsFor("DeepSeek")).contains("deepseek-chat");
+        assertThat(ProviderForm.modelsFor("OpenAI")).contains("gpt-4o");
+        assertThat(ProviderForm.modelsFor(null)).isEmpty();
+        assertThat(ProviderForm.knownProviders()).contains("DeepSeek", "Qwen");
+    }
+
+    @Test
     void rateLimitIsTyped() {
         ProviderConfig withLimit = new ProviderConfig(
                 "openai-compatible", "https://x/v1", "k", "m", 60, 2,
