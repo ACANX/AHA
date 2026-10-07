@@ -117,6 +117,16 @@ public final class AhaDesktopApp extends Application {
     public void start(Stage stage) {
         FxDispatcher dispatcher = new PlatformFxDispatcher();
 
+        // 先定色表、再建界面：反过来不行——颜色是内联在样式串里的，界面建完再换主题
+        // 只能靠逐个重刷，那条路径一旦漏了某个控件，就会出现「日志说生效亮色、界面还是暗的」
+        // （真机上就是这么撞到的）。先定色的意思是：新节点天生是对的，重刷只是补充。
+        DesktopSettings settings = DesktopSettings.load(DesktopSettings.defaultFile());
+        Theme effective = Palette.setTheme(settings.theme());
+        LOG.info("界面设置：主题 {}（生效 {}），字号 {}px，前景 {} / 底色 {}，文件 {}",
+                settings.theme().label(), effective.label(), settings.fontSize(),
+                Palette.FOREGROUND, Palette.BASE,
+                settings.path() == null ? "不可用" : settings.path());
+
         // 骨架：菜单栏 + 三栏 + 底部状态栏（形态见 GUIDesign.md 第 2 节）
         DesktopShell shell = new DesktopShell(dispatcher, stage::close, this::configSummary);
         shell.setConfigSummary(configSummary());
@@ -146,13 +156,8 @@ public final class AhaDesktopApp extends Application {
         }
         shell.logPanel(new LogPanel(boot == null ? null : boot.loggingLevel()));
 
-        // 界面设置：主题与字号存在用户目录，进程重启后保持（见 DesktopSettings）
-        DesktopSettings settings = DesktopSettings.load(DesktopSettings.defaultFile());
-        Theme effective = shell.applyTheme(settings.theme());
+        // 记得改的文件：上面已经按设置定好色表，这里只把字号落到根节点上
         shell.fontSize(settings.fontSize());
-        LOG.info("界面设置：主题 {}（生效 {}），字号 {}px，文件 {}",
-                settings.theme().label(), effective.label(), settings.fontSize(),
-                settings.path() == null ? "不可用" : settings.path());
 
         // 主题切换：/theme、视图菜单、设置面板三条路径都走这里
         shell.onThemeCycle(() -> {
