@@ -63,6 +63,8 @@
         <jacoco.version>0.8.15</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
+        <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
+        <pmd.plugin.version>3.28.0</pmd.plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -190,6 +192,16 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-assembly-plugin</artifactId>
                     <version>${assembly.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-pmd-plugin</artifactId>
+                    <version>${pmd.plugin.version}</version>
+                    <configuration>
+                        <!-- 只统计主源码；最小 token 数决定「多长才算重复」 -->
+                        <minimumTokens>100</minimumTokens>
+                        <includeTests>false</includeTests>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
