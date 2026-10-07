@@ -5,6 +5,7 @@ import com.acanx.module.aha.common.exception.ConfigException;
 import com.acanx.module.aha.common.exception.ToolExecutionException;
 import com.acanx.module.aha.common.model.MemoryEntry;
 import com.acanx.module.aha.common.model.SessionConfig;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.model.ToolResult;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
@@ -128,6 +129,29 @@ public final class LocalAgentService implements AgentService {
                 sessionConfig == null || sessionConfig.systemPrompt() == null
                         ? 0 : sessionConfig.systemPrompt().length());
         return sessionId;
+    }
+
+    @Override
+    public List<SessionSummary> listSessions() {
+        return sessionManager.list();
+    }
+
+    @Override
+    public List<com.acanx.module.aha.core.llm.protocol.ChatMessage> loadHistory(
+            String sessionId, int limit) {
+        return memoryStore.loadHistory(sessionId, limit <= 0 ? Integer.MAX_VALUE : limit);
+    }
+
+    @Override
+    public void renameSession(String sessionId, String title) {
+        sessionManager.rename(sessionId, title);
+        LOG.info("重命名会话 session={} 标题={}", sessionId, title);
+    }
+
+    @Override
+    public void deleteSession(String sessionId) {
+        sessionManager.delete(sessionId);
+        LOG.info("删除会话 session={}（消息与记忆一并删除）", sessionId);
     }
 
     @Override

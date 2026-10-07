@@ -8,14 +8,17 @@ import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
 import com.acanx.module.aha.common.event.UsageEvent;
 import com.acanx.module.aha.common.model.SessionConfig;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.common.tool.CancellationToken;
 import com.acanx.module.aha.common.tool.ToolKind;
+import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.service.AgentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +41,9 @@ import java.util.function.LongSupplier;
 public final class ChatController {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChatController.class);
+
+    /** 切换会话时回放的历史条数上限（再长的历史用导出看，不必塞满界面）。 */
+    public static final int HISTORY_LIMIT = 200;
 
     /** 默认执行器：每一轮对话跑在一条虚拟线程上。 */
     public static final Executor VIRTUAL_THREADS =
@@ -152,6 +158,120 @@ public final class ChatController {
     }
 
     /**
+     * 列出会话摘要（最近创建的在前）。
+     *
+     * @return 会话摘要
+     */
+    public List<SessionSummary> sessions() {
+        return service.listSessions();
+    }
+
+    /**
+     * 切换到某个已有会话：关掉当前会话，把它的历史回放进对话流。
+     *
+     * <p>回放是**只读**的：不回写存储、不重新推理。工具消息只作为一行系统提示出现——
+     * 它们是给模型的中间产物，不是对话内容。</p>
+     *
+     * @param sessionId 会话 ID
+     * @return 回放进界面的消息条数
+     */
+    public synchronized int openSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return 0;
+        }
+        if (this.sessionId != null && !this.sessionId.equals(sessionId)) {
+            service.closeSession(this.sessionId);
+        }
+        this.sessionId = sessionId;
+        List<ChatMessage> history = service.loadHistory(sessionId, HISTORY_LIMIT);
+        ui.accept(view::clearConversation);
+        int shown = 0;
+        for (ChatMessage message : history) {
+            String text = message.content();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            switch (message.role()) {
+                case USER -> {
+                    ui.accept(() -> view.appendUser(text));
+                    shown++;
+                }
+                case ASSISTANT -> {
+                    ui.accept(() -> {
+                        view.appendAssistant(text);
+                        view.endAssistant();
+                    });
+                    shown++;
+                }
+                case TOOL -> {
+                    ui.accept(() -> view.appendNotice("工具输出：" + oneLine(text)));
+                    shown++;
+                }
+                default -> {
+                    ui.accept(() -> view.appendNotice(text));
+                    shown++;
+                }
+            }
+        }
+        ui.accept(() -> view.setBusy(false));
+        return shown;
+    }
+
+    /**
+     * 重命名会话。
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题
+     */
+    public void renameSession(String sessionId, String title) {
+        service.renameSession(sessionId, title);
+    }
+
+    /**
+     * 删除会话。
+     *
+     * <p>删掉的正是当前会话时，同时把它从内存会话里摘掉，避免后续消息写进一个已删除的会话。</p>
+     *
+     * @param sessionId 会话 ID
+     */
+    public synchronized void deleteSession(String sessionId) {
+        service.deleteSession(sessionId);
+        if (sessionId != null && sessionId.equals(this.sessionId)) {
+            this.sessionId = null;
+        }
+    }
+
+    /**
+     * 导出会话文本。
+     *
+     * @param sessionId 会话 ID
+     * @param markdown  {@code true} 导出 Markdown，否则导出 JSON
+     * @return 文本；会话不存在时返回空串
+     */
+    public String export(String sessionId, boolean markdown) {
+        List<ChatMessage> history = service.loadHistory(sessionId, 0);
+        String title = titleOf(sessionId);
+        long now = System.currentTimeMillis();
+        return markdown
+                ? SessionExport.markdown(title, sessionId, history, now)
+                : SessionExport.json(title, sessionId, history, now);
+    }
+
+    /**
+     * 会话标题（找不到时用占位）。
+     *
+     * @param sessionId 会话 ID
+     * @return 标题
+     */
+    public String titleOf(String sessionId) {
+        return sessions().stream()
+                .filter(summary -> summary.id().equals(sessionId))
+                .map(SessionSummary::title)
+                .findFirst()
+                .orElse(SessionSummary.UNTITLED);
+    }
+
+    /**
      * 结束会话（关窗时调用）。
      */
     public synchronized void close() {
@@ -172,6 +292,12 @@ public final class ChatController {
             LOG.info("已创建会话 {}", sessionId);
         }
         return sessionId;
+    }
+
+    /** 单行化：工具输出可能是几十行，回放时压成一行提示。 */
+    private static String oneLine(String text) {
+        String flat = text.replace('\n', ' ').replace('\r', ' ').strip();
+        return flat.length() <= 120 ? flat : flat.substring(0, 120) + "…";
     }
 
     private void onEvent(AgentEvent event) {

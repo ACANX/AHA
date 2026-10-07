@@ -77,6 +77,11 @@ public interface ChatView {
     void setUsage(int promptTokens, int completionTokens);
 
     /**
+     * 清空对话流（切换会话时先把旧的清掉）。
+     */
+    void clearConversation();
+
+    /**
      * 设置忙碌状态（发送中）。
      *
      * @param busy 忙碌返回 {@code true}

@@ -1,6 +1,7 @@
 package com.acanx.module.aha.core.service;
 
 import com.acanx.module.aha.common.model.SessionConfig;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.memory.MemoryStore;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -109,6 +111,38 @@ public final class SessionManager {
      */
     public boolean exists(String sessionId) {
         return sessions.containsKey(sessionId);
+    }
+
+    /**
+     * 列出会话摘要（最近创建的在前），供会话列表展示。
+     *
+     * @return 会话摘要
+     */
+    public List<SessionSummary> list() {
+        return memoryStore.listSessions();
+    }
+
+    /**
+     * 重命名会话。
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题；空白视为清除自定义标题（回退到首条用户消息）
+     */
+    public void rename(String sessionId, String title) {
+        memoryStore.updateSessionTitle(sessionId, title);
+    }
+
+    /**
+     * 删除会话（消息与记忆一并删除）。
+     *
+     * <p>与 {@link #close} 的区别：{@code close} 只是从内存缓存移除，记录仍在；
+     * {@code delete} 是**不可恢复**的删除，因此界面上必须二次确认。</p>
+     *
+     * @param sessionId 会话 ID
+     */
+    public void delete(String sessionId) {
+        memoryStore.deleteSession(sessionId);
+        sessions.remove(sessionId);
     }
 
     /**

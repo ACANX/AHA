@@ -1,9 +1,11 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.AppVersion;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
 import com.acanx.module.aha.desktop.chat.ChatView;
+import com.acanx.module.aha.desktop.chat.SessionList;
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
@@ -14,7 +16,15 @@ import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
@@ -27,6 +37,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -36,6 +47,8 @@ import javafx.scene.layout.VBox;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -103,6 +116,12 @@ public final class DesktopShell implements ChatView {
 
     /** 用量标签 id。 */
     public static final String USAGE_ID = "aha.usage";
+
+    /** 会话搜索框 id。 */
+    public static final String SESSION_SEARCH_ID = "aha.session.search";
+
+    /** 会话列表 id。 */
+    public static final String SESSION_LIST_ID = "aha.session.list";
 
     /** 工具卡片节点 id 前缀（后接句柄）。 */
     public static final String TOOL_CARD_ID_PREFIX = "aha.toolcard.";
@@ -198,6 +217,30 @@ public final class DesktopShell implements ChatView {
 
     /** 新建会话动作。 */
     private Runnable onNewSession = () -> { };
+
+    /** 切换会话动作（点会话列表）。 */
+    private Consumer<String> onSessionSelected = id -> { };
+
+    /** 重命名会话动作（会话 ID, 新标题）。 */
+    private BiConsumer<String, String> onSessionRename = (id, title) -> { };
+
+    /** 删除会话动作（会话 ID）。 */
+    private Consumer<String> onSessionDelete = id -> { };
+
+    /** 导出会话动作（会话 ID, 格式 md/json）。 */
+    private BiConsumer<String, String> onSessionExport = (id, format) -> { };
+
+    /** 会话搜索框。 */
+    private TextField sessionSearch;
+
+    /** 会话列表。 */
+    private ListView<SessionList.Item> sessionList;
+
+    /** 最近一次刷新的会话摘要（供搜索过滤复用）。 */
+    private List<SessionSummary> sessionSummaries = List.of();
+
+    /** 当前会话 ID（列表里高亮它）。 */
+    private String currentSessionId;
 
     /** 工具来源（工具列表对话框用）。 */
     private Supplier<List<ToolDescriptor>> toolSource = List::of;
@@ -337,8 +380,9 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
-     * 清空对话流。
+     * 清空对话流（切换会话时也走它）。
      */
+    @Override
     public void clearConversation() {
         messages.getChildren().clear();
         messages.getChildren().add(createEmptyState());
@@ -389,6 +433,86 @@ public final class DesktopShell implements ChatView {
      */
     public void onNewSession(Runnable handler) {
         this.onNewSession = handler == null ? () -> { } : handler;
+    }
+
+    /**
+     * 设置切换会话动作。
+     *
+     * @param handler 动作，入参为会话 ID
+     */
+    public void onSessionSelected(Consumer<String> handler) {
+        this.onSessionSelected = handler == null ? id -> { } : handler;
+    }
+
+    /**
+     * 设置重命名会话动作。
+     *
+     * @param handler 动作（会话 ID, 新标题）
+     */
+    public void onSessionRename(BiConsumer<String, String> handler) {
+        this.onSessionRename = handler == null ? (id, title) -> { } : handler;
+    }
+
+    /**
+     * 设置删除会话动作。
+     *
+     * @param handler 动作，入参为会话 ID
+     */
+    public void onSessionDelete(Consumer<String> handler) {
+        this.onSessionDelete = handler == null ? id -> { } : handler;
+    }
+
+    /**
+     * 设置导出会话动作。
+     *
+     * @param handler 动作（会话 ID, 格式：{@code md} / {@code json}）
+     */
+    public void onSessionExport(BiConsumer<String, String> handler) {
+        this.onSessionExport = handler == null ? (id, format) -> { } : handler;
+    }
+
+    /**
+     * 刷新会话列表。
+     *
+     * @param summaries 会话摘要（最近创建的在前）
+     * @param currentId 当前会话 ID，可为 {@code null}
+     */
+    public void refreshSessions(List<SessionSummary> summaries, String currentId) {
+        this.sessionSummaries = summaries == null ? List.of() : List.copyOf(summaries);
+        this.currentSessionId = currentId;
+        applySessionFilter(sessionSearch == null ? "" : sessionSearch.getText());
+    }
+
+    /**
+     * 会话列表里当前显示的行（测试与自证用）。
+     *
+     * @return 行文本
+     */
+    public List<String> sessionRows() {
+        if (sessionList == null) {
+            return List.of();
+        }
+        return sessionList.getItems().stream().map(SessionList.Item::line).toList();
+    }
+
+    /**
+     * 会话列表当前的行数。
+     *
+     * @return 行数
+     */
+    public int sessionRowCount() {
+        return sessionList == null ? 0 : sessionList.getItems().size();
+    }
+
+    /**
+     * 设置搜索框文本（等价于用户在搜索框里打字）。
+     *
+     * @param query 关键字
+     */
+    public void searchSessions(String query) {
+        if (sessionSearch != null) {
+            sessionSearch.setText(query == null ? "" : query);
+        }
     }
 
     /**
@@ -639,14 +763,41 @@ public final class DesktopShell implements ChatView {
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
         box.setStyle("-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
 
-        TextArea search = new TextArea();
-        search.setPromptText("⌕ 搜索（待会话数据接入）");
-        search.setPrefRowCount(1);
-        search.setDisable(true);
+        TextField search = new TextField();
+        search.setId(SESSION_SEARCH_ID);
+        search.setPromptText("⌕ 搜索会话");
+        search.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
+        // TextField 的 maxWidth 默认是「按内容算」，于是它会比左栏还宽并盖到中栏上
+        // （真机截图里能看到搜索框横向溢出）。必须显式放开，让 VBox 把它收进栏内。
+        search.setMaxWidth(Double.MAX_VALUE);
+        this.sessionSearch = search;
 
-        VBox.setVgrow(new Region(), Priority.ALWAYS);
+        sessionList = new ListView<>();
+        sessionList.setId(SESSION_LIST_ID);
+        sessionList.setPrefHeight(200);
+        sessionList.setMaxWidth(Double.MAX_VALUE);
+        sessionList.setMinHeight(120);
+        sessionList.setStyle("-fx-background-color: transparent; -fx-control-inner-background: "
+                + Palette.BLOCK_BACKGROUND + ";");
+        sessionList.setCellFactory(view -> new SessionCell());
+        sessionList.getSelectionModel().selectedItemProperty()
+                .addListener((observable, old, now) -> sessionList.refresh());
+        sessionList.setOnMouseClicked(event -> {
+            // 只响应左键：右键是上下文菜单（重命名 / 导出 / 删除），不该顺手切换会话
+            if (event.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            SessionList.Item item = sessionList.getSelectionModel().getSelectedItem();
+            if (item != null) {
+                onSessionSelected.accept(item.id());
+            }
+        });
+        sessionList.setContextMenu(buildSessionMenu());
+
         box.getChildren().addAll(search,
                 navButton("＋ 新建会话", () -> onNewSession.run()),
+                section("会话"),
+                sessionList,
                 navButton("供应商", this::openProviderDialog),
                 navButton("工具", this::openToolDialog),
                 navButton("记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。")),
@@ -654,6 +805,116 @@ public final class DesktopShell implements ChatView {
                 navButton("日志（0.2 后续）", () -> appendNotice("日志面板将在 0.2 后续接入。")),
                 spacer(), settings());
         return box;
+    }
+
+    /**
+     * 会话行的右键菜单。
+     *
+     * <p>删除是**不可恢复**的（连消息一起删），因此必须二次确认；
+     * 重命名用带预填的输入框，避免用户面对空白框重打一遍标题。</p>
+     *
+     * @return 上下文菜单
+     */
+    private ContextMenu buildSessionMenu() {
+        MenuItem rename = new MenuItem("重命名…");
+        rename.setOnAction(event -> askRenameSession());
+        MenuItem exportMd = new MenuItem("导出（Markdown）");
+        exportMd.setOnAction(event -> runOnSelection(id -> onSessionExport.accept(id, "md")));
+        MenuItem exportJson = new MenuItem("导出（JSON）");
+        exportJson.setOnAction(event -> runOnSelection(id -> onSessionExport.accept(id, "json")));
+        MenuItem delete = new MenuItem("删除…");
+        delete.setOnAction(event -> askDeleteSession());
+        return new ContextMenu(rename, exportMd, exportJson, new SeparatorMenuItem(), delete);
+    }
+
+    private void runOnSelection(Consumer<String> action) {
+        SessionList.Item item = sessionList.getSelectionModel().getSelectedItem();
+        if (item != null) {
+            action.accept(item.id());
+        }
+    }
+
+    private void askRenameSession() {
+        SessionList.Item item = sessionList.getSelectionModel().getSelectedItem();
+        if (item == null) {
+            return;
+        }
+        TextInputDialog dialog = new TextInputDialog(item.title());
+        dialog.setTitle("重命名会话");
+        dialog.setHeaderText("给这个会话起个名字");
+        dialog.setContentText("标题");
+        dialog.getDialogPane().setStyle(Palette.theme());
+        dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
+        dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
+    }
+
+    private void askDeleteSession() {
+        SessionList.Item item = sessionList.getSelectionModel().getSelectedItem();
+        if (item == null) {
+            return;
+        }
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "删除「" + item.title() + "」及其全部消息与记忆？此操作不可恢复。",
+                ButtonType.OK, ButtonType.CANCEL);
+        alert.setTitle("删除会话");
+        alert.setHeaderText("确认删除");
+        alert.getDialogPane().setStyle(Palette.theme());
+        alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
+        alert.showAndWait()
+                .filter(picked -> picked == ButtonType.OK)
+                .ifPresent(picked -> onSessionDelete.accept(item.id()));
+    }
+
+    /** 按关键字过滤会话；尽量保持原选择（否则列表一刷新，选择就跳走了）。 */
+    private void applySessionFilter(String query) {
+        if (sessionList == null) {
+            return;
+        }
+        SessionList.Item selected = sessionList.getSelectionModel().getSelectedItem();
+        String keep = selected != null ? selected.id() : currentSessionId;
+        long now = System.currentTimeMillis();
+        List<SessionList.Item> items = SessionList.filter(sessionSummaries, query).stream()
+                .map(summary -> SessionList.item(summary, now))
+                .toList();
+        sessionList.getItems().setAll(items);
+        for (SessionList.Item item : sessionList.getItems()) {
+            if (Objects.equals(item.id(), keep)) {
+                sessionList.getSelectionModel().select(item);
+                break;
+            }
+        }
+        sessionList.refresh();
+    }
+
+    /**
+     * 会话列表的一行：当前会话前置绿点并加粗。
+     *
+     * <p>不用「选中态」表示当前会话：选中态会被鼠标点击改变，用户就分不清
+     * 「我点的是哪个」与「消息会发到哪个」。两者必须分开表达。</p>
+     */
+    private final class SessionCell extends ListCell<SessionList.Item> {
+
+        @Override
+        protected void updateItem(SessionList.Item item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+            boolean current = Objects.equals(item.id(), currentSessionId);
+            setText((current ? "● " : "○ ") + item.line());
+            setTooltip(new Tooltip(item.tooltip()));
+            setStyle("-fx-text-fill: " + (current ? Palette.SUCCESS : Palette.FOREGROUND) + ";"
+                    + (current ? "-fx-font-weight: bold;" : ""));
+        }
+    }
+
+    /** 左栏分组标题。 */
+    private static Label section(String text) {
+        Label label = new Label(text);
+        label.setStyle("-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
+        return label;
     }
 
     private VBox buildRightContent() {

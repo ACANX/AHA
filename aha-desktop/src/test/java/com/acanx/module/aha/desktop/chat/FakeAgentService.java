@@ -6,6 +6,8 @@ import com.acanx.module.aha.common.model.SessionConfig;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.model.ToolResult;
 import com.acanx.module.aha.common.tool.CancellationToken;
+import com.acanx.module.aha.common.model.SessionSummary;
+import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.service.AgentEventListener;
 import com.acanx.module.aha.core.service.AgentResponse;
 import com.acanx.module.aha.core.service.AgentService;
@@ -86,6 +88,41 @@ final class FakeAgentService implements AgentService {
     @Override
     public List<MemoryEntry> recall(String sessionId, String query, int limit) {
         return List.of();
+    }
+
+    /** 会话列表（测试直接摆）。 */
+    final List<SessionSummary> sessions = new ArrayList<>();
+
+    /** 会话历史（按会话 ID）。 */
+    final Map<String, List<ChatMessage>> histories = new java.util.HashMap<>();
+
+    /** 被重命名的会话（"id=title"）。 */
+    final List<String> renamed = new ArrayList<>();
+
+    /** 被删除的会话。 */
+    final List<String> deleted = new ArrayList<>();
+
+    @Override
+    public List<SessionSummary> listSessions() {
+        return List.copyOf(sessions);
+    }
+
+    @Override
+    public List<ChatMessage> loadHistory(String sessionId, int limit) {
+        List<ChatMessage> history = histories.getOrDefault(sessionId, List.of());
+        return limit > 0 && history.size() > limit
+                ? List.copyOf(history.subList(0, limit))
+                : List.copyOf(history);
+    }
+
+    @Override
+    public void renameSession(String sessionId, String title) {
+        renamed.add(sessionId + "=" + title);
+    }
+
+    @Override
+    public void deleteSession(String sessionId) {
+        deleted.add(sessionId);
     }
 
     @Override

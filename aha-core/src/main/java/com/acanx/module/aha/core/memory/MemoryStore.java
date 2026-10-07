@@ -1,6 +1,7 @@
 package com.acanx.module.aha.core.memory;
 
 import com.acanx.module.aha.common.model.MemoryEntry;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 
 import java.util.List;
@@ -55,6 +56,41 @@ public interface MemoryStore {
      * @return 消息列表（时间正序）
      */
     List<ChatMessage> loadHistory(String sessionId, int limit);
+
+    /**
+     * 列出会话摘要，最近创建的在前。
+     *
+     * <p>默认实现返回空列表：不是每个存储都有「会话»这个概念（内存实现可能只按 ID 存消息）。
+     * 真正支持会话列表的实现（{@code SqliteMemoryStore}）覆写它。</p>
+     *
+     * @return 会话摘要
+     */
+    default List<SessionSummary> listSessions() {
+        return List.of();
+    }
+
+    /**
+     * 重命名会话。
+     *
+     * <p>默认实现什么都不做：标题是展示层信息，丢了不影响会话可用性。</p>
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题
+     */
+    default void updateSessionTitle(String sessionId, String title) {
+    }
+
+    /**
+     * 删除会话及其消息与记忆。
+     *
+     * <p>默认实现只清空历史（保留会话记录）。存储实现应覆写为连会话记录一起删，
+     * 否则删除后它仍会出现在会话列表里。</p>
+     *
+     * @param sessionId 会话 ID
+     */
+    default void deleteSession(String sessionId) {
+        clearHistory(sessionId);
+    }
 
     /**
      * 清空会话的历史消息（保留会话记录与配置）。

@@ -1,8 +1,10 @@
 package com.acanx.module.aha.desktop;
 
 import com.acanx.module.aha.common.AppVersion;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -14,6 +16,7 @@ import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -145,6 +148,39 @@ class AhaDesktopSmokeTest {
                 .as("失败卡片直接展开，用户不必再点一次才知道发生了什么").isTrue();
         assertThat(uiGet(() -> cards.toolCardResultText(handles[1])))
                 .isEqualTo("✗ 失败 · 0.1s · 1 行");
+
+        // 会话列表（GUIDesign 第 4.5 节）：当前会话高亮、搜索可用、右键菜单在位
+        DesktopShell sessionShell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+        long created = System.currentTimeMillis() - 120_000;
+        onUi(() -> {
+            sessionShell.buildRoot();
+            sessionShell.refreshSessions(List.of(
+                    new SessionSummary("AAA11111", "看看代码", created, 12),
+                    new SessionSummary("BBB22222", "写文档", created, 1)), "BBB22222");
+        });
+        assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(2);
+        assertThat(uiGet(sessionShell::sessionRows))
+                .anySatisfy(row -> assertThat(row).contains("看看代码"))
+                .anySatisfy(row -> assertThat(row).contains("12 条").contains("2 分钟前"));
+        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) sessionShell.buildRoot()
+                .lookup("#" + DesktopShell.SESSION_LIST_ID)) == null))
+                .as("会话列表必须真的在左栏里（且有右键菜单）")
+                .isFalse();
+        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) sessionShell.buildRoot()
+                .lookup("#" + DesktopShell.SESSION_LIST_ID)).getContextMenu().getItems().size()))
+                .isGreaterThanOrEqualTo(4);
+        // 左栏宽度是硬约束：控件溢出会盖住中栏（真机截图里搜索框曾经横向溢出）
+        assertThat(uiGet(() -> sessionShell.buildRoot()
+                .lookup("#" + DesktopShell.SESSION_SEARCH_ID).getLayoutBounds().getWidth()))
+                .as("搜索框不能超出左栏").isLessThanOrEqualTo(ShellLayout.LEFT_WIDTH);
+        assertThat(uiGet(() -> sessionShell.buildRoot()
+                .lookup("#" + DesktopShell.SESSION_LIST_ID).getLayoutBounds().getWidth()))
+                .as("会话列表不能超出左栏").isLessThanOrEqualTo(ShellLayout.LEFT_WIDTH);
+
+        onUi(() -> sessionShell.searchSessions("文档"));
+        assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(1);
+        onUi(() -> sessionShell.searchSessions(""));
+        assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(2);
 
         assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
 

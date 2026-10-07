@@ -173,6 +173,92 @@ class ChatControllerTest {
     }
 
     @Test
+    void openSessionReplaysHistoryIntoTheView() {
+        service.histories.put("S1", java.util.List.of(
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.USER, "第一句"),
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.ASSISTANT, "第一答"),
+                new com.acanx.module.aha.core.llm.protocol.ChatMessage(
+                        com.acanx.module.aha.core.llm.protocol.Role.TOOL, "输出内容",
+                        java.util.List.of(), "call_1", null),
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.SYSTEM, "系统提示")));
+
+        int shown = controller.openSession("S1");
+
+        assertThat(shown).isEqualTo(4);
+        assertThat(view.clears).isEqualTo(1);
+        assertThat(view.users).containsExactly("第一句");
+        assertThat(view.deltas).containsExactly("第一答");
+        assertThat(view.notices).containsExactly("工具输出：输出内容", "系统提示");
+        assertThat(view.ends).isEqualTo(1);
+        assertThat(controller.sessionId()).isEqualTo("S1");
+    }
+
+    @Test
+    void openSessionSkipsMessagesWithoutBody() {
+        service.histories.put("S2", java.util.List.of(
+                new com.acanx.module.aha.core.llm.protocol.ChatMessage(
+                        com.acanx.module.aha.core.llm.protocol.Role.ASSISTANT, "  ",
+                        java.util.List.of(
+                                new com.acanx.module.aha.core.llm.protocol.ToolCall(
+                                        "call_1", "file-read", java.util.Map.of())),
+                        null, null)));
+
+        assertThat(controller.openSession("S2")).isZero();
+        assertThat(view.notices).isEmpty();
+    }
+
+    @Test
+    void switchingSessionClosesThePreviousOne() {
+        controller.send("hello");
+        String first = controller.sessionId();
+
+        controller.openSession("S9");
+
+        assertThat(service.closed).contains(first);
+        assertThat(controller.sessionId()).isEqualTo("S9");
+    }
+
+    @Test
+    void sessionListAndRenameAndDeleteAreForwarded() {
+        service.sessions.add(new com.acanx.module.aha.common.model.SessionSummary(
+                "S1", "看看代码", 0, 3));
+
+        assertThat(controller.sessions()).hasSize(1);
+        assertThat(controller.titleOf("S1")).isEqualTo("看看代码");
+        assertThat(controller.titleOf("不存在"))
+                .isEqualTo(com.acanx.module.aha.common.model.SessionSummary.UNTITLED);
+
+        controller.renameSession("S1", "新名字");
+        assertThat(service.renamed).containsExactly("S1=新名字");
+
+        controller.send("hi");
+        String current = controller.sessionId();
+        controller.deleteSession("S1");
+        controller.deleteSession(current);
+        assertThat(service.deleted).containsExactly("S1", current);
+        assertThat(controller.sessionId())
+                .as("删掉的正是当前会话时，不能再把消息写进一个已删除的会话")
+                .isNull();
+    }
+
+    @Test
+    void exportProducesMarkdownAndJson() {
+        service.sessions.add(new com.acanx.module.aha.common.model.SessionSummary(
+                "S1", "看看代码", 0, 1));
+        service.histories.put("S1", java.util.List.of(
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.USER, "你好")));
+
+        assertThat(controller.export("S1", true))
+                .contains("# 看看代码").contains("## 你").contains("你好");
+        assertThat(controller.export("S1", false))
+                .contains("\"sessionId\": \"S1\"").contains("你好");
+    }
+
+    @Test
     void toolResultWithoutCardIsIgnored() {
         service.script.add(new ToolResultEvent("s1", "file-read", "x", true));
 

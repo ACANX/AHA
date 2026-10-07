@@ -12,6 +12,7 @@ import com.acanx.module.aha.core.service.AgentService;
 import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
 import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
+import com.acanx.module.aha.desktop.chat.SessionExport;
 import com.acanx.module.aha.desktop.view.ProviderDialog;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
@@ -27,11 +28,16 @@ import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -129,9 +135,34 @@ public final class AhaDesktopApp extends Application {
         shell.onCancel(controller::cancel);
         shell.onNewSession(() -> {
             controller.newSession();
+            shell.clearConversation();
             shell.appendNotice("已新建会话（供应商 / 模型改变后需要新建会话才生效）。");
+            refreshSessions(shell, controller);
         });
+
+        // 会话列表：左栏展示 + 切换 + 重命名 + 删除 + 导出（GUIDesign 第 4.5 节）
+        shell.onSessionSelected(sessionId -> {
+            int shown = controller.openSession(sessionId);
+            shell.appendNotice("已切换到会话 " + shortId(sessionId) + "，回放 " + shown + " 条消息。");
+            refreshSessions(shell, controller);
+        });
+        shell.onSessionRename((sessionId, title) -> {
+            controller.renameSession(sessionId, title);
+            refreshSessions(shell, controller);
+        });
+        shell.onSessionDelete(sessionId -> {
+            controller.deleteSession(sessionId);
+            controller.newSession();
+            shell.clearConversation();
+            shell.appendNotice("已删除会话 " + shortId(sessionId) + " 及其消息。");
+            refreshSessions(shell, controller);
+        });
+        shell.onSessionExport((sessionId, format) ->
+                exportSession(stage, shell, controller, sessionId, format));
         shell.tools(service::listTools);
+
+        // 首屏就把已有会话列出来（进程重启后仍能看到之前的会话）
+        refreshSessions(shell, controller);
 
         // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
@@ -183,6 +214,77 @@ public final class AhaDesktopApp extends Application {
         // 焦点给输入框：聊天应用启动后应当能直接打字
         shell.focusComposer();
         startStatusProbe(bridge);
+    }
+
+    /**
+     * 刷新左栏会话列表。
+     *
+     * <p>列表刷新失败不该把界面搞崩（比如存储被占用）：记一条日志，界面保持上一次的内容。</p>
+     *
+     * @param shell      界面
+     * @param controller 对话内核
+     */
+    private static void refreshSessions(DesktopShell shell, ChatController controller) {
+        try {
+            shell.refreshSessions(controller.sessions(), controller.sessionId());
+        } catch (RuntimeException e) {
+            LOG.warn("刷新会话列表失败：{}", e.getMessage());
+        }
+    }
+
+    /** 会话 ID 前 8 位（提示里够用，且不必把整串 UUID 摆到对话流里）。 */
+    private static String shortId(String sessionId) {
+        if (sessionId == null) {
+            return "";
+        }
+        return sessionId.length() <= 8 ? sessionId : sessionId.substring(0, 8);
+    }
+
+    /**
+     * 导出会话：先在内存里生成文本，再让用户选保存位置。
+     *
+     * <p>顺序刻意如此——先生成，会话为空时直接提示，避免用户选完路径才发现没内容可导。</p>
+     *
+     * @param owner      父窗口（文件对话框用）
+     * @param shell      界面（提示落在这里）
+     * @param controller 对话内核
+     * @param sessionId  会话 ID
+     * @param format     {@code md} / {@code json}
+     */
+    private static void exportSession(Stage owner, DesktopShell shell, ChatController controller,
+                                      String sessionId, String format) {
+        boolean markdown = !"json".equalsIgnoreCase(format);
+        String text;
+        String title;
+        try {
+            text = controller.export(sessionId, markdown);
+            title = controller.titleOf(sessionId);
+        } catch (RuntimeException e) {
+            LOG.warn("导出会话失败", e);
+            shell.appendNotice("导出失败：" + e.getMessage());
+            return;
+        }
+        if (text.isBlank()) {
+            shell.appendNotice("该会话没有可导出的内容。");
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(markdown ? "导出会话（Markdown）" : "导出会话（JSON）");
+        chooser.setInitialFileName(SessionExport.fileName(title, markdown ? "md" : "json"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
+                markdown ? "Markdown" : "JSON", markdown ? "*.md" : "*.json"));
+        File target = chooser.showSaveDialog(owner);
+        if (target == null) {
+            shell.appendNotice("已取消导出。");
+            return;
+        }
+        try {
+            Files.writeString(target.toPath(), text, StandardCharsets.UTF_8);
+            shell.appendNotice("已导出到 " + target.getAbsolutePath());
+        } catch (IOException e) {
+            LOG.warn("写入导出文件失败：{}", e.getMessage());
+            shell.appendNotice("写入失败：" + e.getMessage());
+        }
     }
 
     /**

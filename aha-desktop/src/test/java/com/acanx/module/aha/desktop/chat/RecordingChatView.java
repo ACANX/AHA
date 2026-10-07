@@ -79,6 +79,16 @@ final class RecordingChatView implements ChatView {
         usage = promptTokens + "/" + completionTokens;
     }
 
+    /** 清空次数（切换会话时应当先清一次）。 */
+    int clears;
+
+    @Override
+    public void clearConversation() {
+        clears++;
+        users.clear();
+        deltas.clear();
+    }
+
     @Override
     public void setBusy(boolean value) {
         busy.add(value);
