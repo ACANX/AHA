@@ -34,6 +34,11 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
+  把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
+  无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
+- **开发日志**：新增 `Docs/DevLog/DevLog-20261007-21.md`，记录门禁静默这一问题的核实方法
+  （配置检查 + 抬阈值使其失败一次）与结论
 - **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
   （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；
   首篇记录 CI 必需检查因矩阵作业名变更而永久挂起

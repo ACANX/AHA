@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.10.0
+**文档版本**：v1.11.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -24,6 +24,7 @@
 | v1.8.0 | 2026-10-07 | 新增 8.1「检查分层与门禁时机」：快检查（`Build.yml`）与门禁（`Gate.yml`，含 verify / 覆盖率 / 文档 / 重复率）分离；补重复率检查的口径、阈值与实测值；修正「CI 始终跑完整 verify（Build.yml）」的失效说法 | @ACANX |
 | v1.9.0 | 2026-10-07 | §3 更正 wrapper 配置片段（补 `wrapperVersion` / `distributionType`，并说明以文件为准）；§4 明确两条流水线分别由 `Gate.yml` 与 `Compat.yml` 承担、兼容基线固定补丁版本且不使用 runner 预装 `mvn`、新增每周定期扫描；§8.1 分层表补「兼容性」层并把 `Compat` 一并列为必需检查 | @ACANX |
 | v1.10.0 | 2026-10-07 | §8.1 新增「作业名是分支保护的契约」：必需腿不得增删矩阵键（附真实事故：`optional` 键使作业名多出 `, false`，必需检查永久停在 Expected）；`Gate` / `Compat` 的 `name:` 同样属契约 | @ACANX |
+| v1.11.0 | 2026-10-07 | §8.1 新增「门禁必须自证（强制）」：静默的检查要把实测值与标准写进日志，覆盖率由 `bin/ReportCoverage.py` 输出且阈值读自 pom；门禁内容补「并打印覆盖率实测值」 | @ACANX |
 
 ---
 
@@ -208,7 +209,7 @@ POM 语法必须兼容 Maven 3.9.x：
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
 | **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿 |
-| **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查 |
+| **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |
 
 **合入 `main` 的前置条件**：仓库分支保护规则必须把 `Gate` 与 `Compat` 都设为**必需检查**
@@ -233,6 +234,15 @@ POM 语法必须兼容 Maven 3.9.x：
 
 报告缺失时 `CheckDuplication.py` **直接失败**，不做静默跳过——否则 CI 上「没跑」
 会被误读成「通过」。
+
+**门禁必须自证（强制）**：JaCoCo 的 `check` 通过时不打印百分比，日志上与「没配门禁」
+无法区分（真实发生过：`./mvnw clean verify` 日志里只有 `Analyzed bundle`，被合理质疑
+"何来的门禁"）。因此凡是不出声的检查，都必须把实测值与判定标准写进日志：
+
+- 覆盖率由 `bin/ReportCoverage.py` 输出（阈值从 `pom.xml` 读取，**不在脚本里复制**）；
+- 判定仍由 `jacoco:check` 独家执行，脚本只报数——单一判定来源；
+- 验证一条门禁是否真的会拦，唯一可靠办法是**让它失败一次**（临时抬高阈值 → 看到
+  `Rule violated` → 还原），只读配置只能证明「应该会拦」。
 
 **作业名是分支保护的契约（强制）**：GitHub 的必需检查按**作业名**匹配，而矩阵作业的名字
 会把矩阵的**全部键值**拼进去（`<作业名> (值1, 值2, …)`）。因此：

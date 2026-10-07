@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.7.0
+**文档版本**：v0.8.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -530,6 +530,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
 | v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
 | v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
+| v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -713,6 +714,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-06 | macOS 无支持边界声明，容易被误读为「已支持」 | 风险 | ✅ | P3 | ✅ 已完成（已拍板） | `BuildSpec.md` §4.1、`Build.yml` |
 | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
 | F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) |
+| F-09 | 覆盖率门禁**静默**：`jacoco:check` 通过时不打印任何百分比，日志上与「没配门禁」无法区分，被质疑「何来的门禁」 | 缺陷 | ✅ | P2 | ✅ 已修 | `Gate.yml`、`bin/ReportCoverage.py`、`TestingSpec.md` §3.1、[DevLog-20261007-21.md](DevLog/DevLog-20261007-21.md) |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -812,6 +814,32 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 **教训**：作业名是**对外契约**，不是内部细节。已写入 `BuildSpec.md` §8.1：
 必需腿不得增删矩阵键；`Gate.yml` / `Compat.yml` 的 job 级 `name:` 同样是检查名，
 改名必须同步更新分支保护与本文件 `G-02`。
+
+---
+
+### F-09 ✅ 已修（2026-10-07）
+
+**现象**：`Gate.yml` 声称含覆盖率门禁，但 `./mvnw clean verify` 日志里只有
+`Loading execution data file` 与 `Analyzed bundle '…' with N classes`，**没有任何百分比**，
+因此被合理质疑「看不到数据，何来的门禁」。
+
+**核实（两步，缺一不可）**：
+
+1. **配置**：规则挂在 `check` goal（不是 `report`——挂错 goal 会得到「只出报告不拦人」的假门禁）、
+   绑定 `verify`、`BUNDLE`/`LINE`/`COVEREDRATIO` = 0.70，且声明在 `<build><plugins>`
+   而非仅 `pluginManagement`；
+2. **行为**：临时把阈值改成 `0.99` 跑 `./mvnw -pl aha-common verify`，得到
+   `Rule violated for bundle aha-common: lines covered ratio is 0.90, but expected minimum is 0.99`
+   → `BUILD FAILURE`。随后恢复 `pom.xml` 并逐字节核对。
+
+**结论**：门禁在且会拦，问题在**不可自证**。
+
+**处理**：新增 `bin/ReportCoverage.py`（读 CSV 输出各模块与合计；阈值读自 `pom.xml`，
+不在脚本里复制），`Gate.yml` 在 `verify` 之后执行它——**能跑到该步即门禁已通过**，
+数字同时留在日志里。判定仍归 `jacoco:check` 独家所有，脚本只报数。
+
+**教训**：静默的门禁与不存在的门禁不可区分；凡不出声的检查都要把实测值与标准写进日志。
+已写入 `BuildSpec.md` §8.1「门禁必须自证（强制）」。
 
 ---
 

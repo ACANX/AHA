@@ -1,6 +1,6 @@
 # 测试规范
 
-**文档版本**：v1.13.0
+**文档版本**：v1.14.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -27,6 +27,7 @@
 | v1.11.0 | 2026-10-07 | 新增 §5.1「测试的环境无关性（强制）」：隔离用户目录、不假设环境干净、用平台自身路径、只写合法文件名的特殊字符；并约定向上查找须有边界、CI 矩阵不得 fail-fast | @ACANX |
 | v1.12.0 | 2026-10-07 | §3.3 实测值按 Windows 修复后的 `clean verify` 刷新（604 用例 / 合计行覆盖 80.3%，4040/5033） | @ACANX |
 | v1.13.0 | 2026-10-07 | §3.1 补「执行时机」：覆盖率门禁只在完整 verify 生效，CI 上由 `Gate.yml` 承担，`Build.yml` 不再采集覆盖率 | @ACANX |
+| v1.14.0 | 2026-10-07 | §3.1 补「门禁静默」：JaCoCo check 通过时不打印百分比，改用 `bin/ReportCoverage.py` 输出实测值；并说明「跑到该步即门禁已过」 | @ACANX |
 
 ---
 
@@ -82,6 +83,11 @@ aha-core/src/test/resources/
   CI 上由 `Gate.yml` 承担（合入 `main` 前 / 发布前）；每次 push 的 `Build.yml`
   跑的是 `clean test -Djacoco.skip=true`，**不采集覆盖率**（见 `BuildSpec.md` §8.1）。
   本地在实现代码改动后也不需要每次都跑覆盖率——按变更范围选择即可。
+- **门禁静默**：JaCoCo 的 `check` 通过时**不打印任何百分比**，日志里只有
+  `Loading execution data file` 与 `Analyzed bundle '…' with N classes`。因此
+  「门禁生效」与「门禁没配」在日志上看起来一样——`Gate.yml` 在 verify 之后固定跑一步
+  `python3 bin/ReportCoverage.py` 把实测值打进日志，跑到那一步即说明门禁已通过。
+  本地同理：`python3 bin/ReportCoverage.py`（数字与文档口径一致，见 §3.3）。
 
 ### 3.2 排除项
 
