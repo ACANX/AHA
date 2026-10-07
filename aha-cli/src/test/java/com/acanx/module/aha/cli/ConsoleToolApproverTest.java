@@ -4,8 +4,13 @@ import com.acanx.module.aha.common.tool.ToolPermission;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.UserInterruptException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +26,38 @@ import static org.mockito.Mockito.when;
  * @since 0.1.0
  */
 class ConsoleToolApproverTest {
+
+    private ByteArrayOutputStream stdout;
+    private ByteArrayOutputStream stderr;
+    private PrintStream originalOut;
+    private PrintStream originalErr;
+
+    /**
+     * 捕获输出：授权提示是写给用户看的，测试里不捕获就会直接喷到构建日志。
+     *
+     * <p>本类会触发多次授权询问，CI 上曾因此出现 50 行提示文本，把真正的失败淡掉了。
+     * 捕获后既能保持日志干净，也能顺势断言提示内容（见 {@link #acceptsOnYes()}）。</p>
+     */
+    @BeforeEach
+    void captureOutput() throws Exception {
+        originalOut = System.out;
+        originalErr = System.err;
+        stdout = new ByteArrayOutputStream();
+        stderr = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
+    }
+
+    @AfterEach
+    void restoreOutput() {
+        System.setOut(originalOut);
+        System.setErr(originalErr);
+    }
+
+    /** 本轮测试期间被捕获的输出（stdout + stderr）。 */
+    private String output() {
+        return stdout.toString(StandardCharsets.UTF_8) + stderr.toString(StandardCharsets.UTF_8);
+    }
 
     private static LineReader readerReturning(String... answers) {
         LineReader reader = mock(LineReader.class);
@@ -39,6 +76,12 @@ class ConsoleToolApproverTest {
         ConsoleToolApprover approver = new ConsoleToolApprover(readerReturning("y"));
 
         assertThat(approver.approve("file-write", ToolPermission.WRITE, Map.of("path", "a"))).isTrue();
+        // 提示必须说清「谁在要什么权限」以及三个选项，用户才能判断
+        assertThat(output())
+                .contains("需要授权：file-write 请求 WRITE 权限")
+                .contains("[y] 允许本次")
+                .contains("[n] 拒绝")
+                .contains("[a] 本次会话内始终允许 WRITE");
     }
 
     @Test
