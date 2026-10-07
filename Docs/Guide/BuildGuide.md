@@ -1,0 +1,247 @@
+# 构建指南
+
+**文档版本**：v1.6.0
+**状态**：冻结
+**生效日期**：2026-10-06
+**最后更新**：2026-10-07
+**负责人**：@ACANX
+**适用版本**：AHA 0.1.x
+
+---
+
+## 变更日志
+
+| 版本 | 日期 | 变更内容 | 变更人 |
+|---|---|---|---|
+| v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
+| v1.1.0 | 2026-10-06 | 新增构建发行包（`dist/`）说明 | @ACANX |
+| v1.2.0 | 2026-10-06 | 新增「运行中的 AHA 锁定 `dist/lib` 导致 assembly 失败」排错项 | @ACANX |
+| v1.3.0 | 2026-10-07 | 新增「依赖自动升级」章节（Dependabot 每日检测，PR 先合入 `dependa` 分支） | @ACANX |
+| v1.4.0 | 2026-10-07 | 新增「按变更范围选择检查」（`bin/CheckChanged.py`）与耗时量级参考 | @ACANX |
+| v1.5.0 | 2026-10-07 | 排错项更正根因：最常见占用者是 **IDEA 的 Maven server**（非仅运行中的 AHA）；补三种占用者的识别与处置、定位命令，并说明不要用 `-Dassembly.skipAssembly` 绕过 | @ACANX |
+| v1.6.0 | 2026-10-07 | 补记「IDEA 会在文件变化时自动重生 Maven server 并重新锁定 `dist/lib`」，给出构建窗口期的处置建议 | @ACANX |
+
+---
+
+## 1. 适用范围
+
+本指南说明 AHA 的**构建操作**，属于用户指南（`Docs/Guide/`）。
+
+**强制要求**（版本锁定、双版本验证、覆盖率门禁）见 [BuildSpec.md](../DevSpec/BuildSpec.md)。
+
+## 2. 前置准备
+
+| 组件 | 版本 |
+|---|---|
+| JDK | 25 (LTS) |
+| Maven 运行时 | 4.x（Maven Wrapper 固定，无需单独安装） |
+| Maven 兼容基线 | 3.9.x（仅兼容验证时需要） |
+
+确认环境：
+
+```bash
+java -version          # 应输出 25.x
+./mvnw -v              # 应输出 Apache Maven 4.x
+```
+
+## 3. 构建命令
+
+```bash
+./mvnw clean verify          # Maven 4 运行时（推荐）
+mvn clean verify             # Maven 3.9.x 兼容验证
+```
+
+`verify` 会依次执行：编译 → 测试 → 覆盖率报告 → 覆盖率门禁。
+
+### 3.1 构建发行包
+
+`package` 阶段会自动组装发行包到项目根 `dist/`：
+
+```bash
+./mvnw clean package
+```
+
+```
+dist/
+├── bin/     Aha.sh、Aha.bat
+├── lib/     JPMS 模块路径（本项目模块 + 全部运行时依赖）
+├── README.md、LICENSE、CHANGELOG.md
+```
+
+验证：
+
+```bash
+./dist/bin/Aha.sh version     # Linux / macOS
+dist\bin\Aha.bat version      # Windows
+```
+
+由 `maven-assembly-plugin` 与 `aha-cli/src/assembly/dist.xml` 驱动。
+`dist/` 已在 `.gitignore` 中忽略；`mvn clean` 会清空其中的构建产物（保留目录）。
+这一步不可或缺：assembly 只覆盖同名文件，依赖升级后旧版本的 jar 会残留，
+而 JPMS 下一个模块出现两个版本是致命错误（`java.lang.module.FindException`），
+发行包会直接启不来。
+
+### 3.2 按变更范围选择检查
+
+三个 `Check*.py` 各覆盖一类文件，`verify` 则是分钟级。用 `bin/CheckChanged.py`
+按实际改了什么决定跑什么（缺省读 git 工作区变更）：
+
+```bash
+python3 bin/CheckChanged.py                 # 按 git 变更自动判定
+python3 bin/CheckChanged.py Docs/README.md  # 按给定路径判定
+python3 bin/CheckChanged.py --dry-run       # 只打印计划
+python3 bin/CheckChanged.py --all           # 无条件全部执行
+```
+
+量级参考（本项目在 WSL `/mnt/e` 下实测；慢文件系统上差异明显）：
+
+| 场景 | 命令 | 量级 |
+|---|---|---|
+| 仅文档 | `CheckChanged.py <md>` | 亚秒 |
+| 仅脚本 | `CheckChanged.py <py>` | 亚秒 |
+| 实现代码 | `./mvnw -pl aha-cli -am test -Djacoco.skip=true` | 约 1 分钟 |
+| 完整验收 | `./mvnw clean verify` | 3~5 分钟 |
+
+何时**必须**跑完整 `verify` 见 [BuildSpec.md](../DevSpec/BuildSpec.md) 第 8 节。
+CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没必要省。
+
+## 4. 单模块构建
+
+```bash
+# 构建某模块及其依赖
+./mvnw -pl aha-core -am clean install
+
+# 仅跑某模块测试
+./mvnw -pl aha-core test
+
+# 跳过测试快速编译
+./mvnw -q clean install -DskipTests -Djacoco.skip=true
+```
+
+> 提示：`-DskipTests` 会跳过测试，因而**不产出覆盖率数据**；
+> 若同时触发 `verify`，需加 `-Djacoco.skip=true` 避免门禁误报。
+
+## 5. 查看覆盖率报告
+
+`verify` 阶段自动生成报告并执行门禁检查：
+
+```bash
+./mvnw clean verify
+# 报告：<module>/target/site/jacoco/index.html
+# 门禁：BUNDLE 级 LINE COVEREDRATIO ≥ 0.70
+```
+
+无测试数据的模块（如 `aha-desktop`）自动跳过，不参与门禁。
+
+## 6. 生成 Javadoc
+
+```bash
+./mvnw javadoc:javadoc           # 单模块
+./mvnw javadoc:aggregate         # 全量聚合（需先 install）
+
+# 输出：<module>/target/reports/apidocs/index.html
+```
+
+配置：`maven-javadoc-plugin (javadoc.plugin.version)`，`doclint=none`、`failOnError=false`、`locale=zh_CN`；
+不绑定生命周期，避免拖慢日常 `verify`。
+
+## 7. 构建期常见问题
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `release version 25 not supported` | JDK 版本过低 | 升级到 JDK 25（LTS） |
+| `module not found` / `Module ... not found` | JPMS 配置错误 | 检查 `module-info.java` 的 `requires` 与运行参数 `--module-path` |
+| `Unable to make field ... accessible`（picocli） | JPMS 下反射受限 | `module-info` 添加 `opens <pkg> to info.picocli;` |
+| `package com.sun.net.httpserver is not visible` | 测试在 module-path 上编译，未读取 `jdk.httpserver` | 改用自包含 `MiniHttpServer`（见 `DefaultLlmClientTest`），不向 `module-info` 添加测试专用依赖 |
+| `ServiceLoader` 找不到工具 / 适配器 | classpath 模式下 `module-info` 的 `provides` 不生效 | 同时提供 `META-INF/services` 文件（JPMS 与 classpath 双兼容） |
+| `FAIL_ON_NULL_FOR_PRIMITIVES` | Jackson 3 默认拒绝 `null` → `int` | `ConfigLoader` 显式 `disable`，或契约字段改用包装类型 |
+| `SQLITE_CANTOPEN` | 数据库父目录不存在 | `SqliteMemoryStore.init()` 先 `Files.createDirectories` |
+| `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.version` |
+| `Coverage checks have not been met` | 覆盖率低于门禁阈值 | 补测试；确有必要排除时需登记理由（见 `BuildSpec.md` 第 6 节） |
+| Maven 4 报语法错误 | 使用了 Maven 4 专有语法 | 改回 Maven 3.9.x 兼容写法（见 `BuildSpec.md` 第 5 节） |
+| `Failed to create assembly: Problem copying files : .../dist/lib/xxx.jar` | **有进程占着 `dist/lib` 下的 jar**（或 `dist/bin` 目录）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `dist/`」的占用者清单与处置 |
+
+> **关于 `dist/`**：发行包输出到**项目根**的 `dist/`（而非 `target/`），因此 `./mvnw clean`
+> **不会**删除它。已存在的 `dist/` 本身**不影响构建**（assembly 会覆盖同名文件）；
+> 只有其中的文件（或 `dist/bin` 目录）被别的进程占用时才会失败。
+>
+> 实测过的三种占用者，**第一种最常见，也最容易被误判成「AHA 还开着」**：
+>
+> | 占用者 | 怎么认 | 怎么放 |
+> |---|---|---|
+> | **IDEA 的 Maven server** | Windows 侧命令行含 `org.jetbrains.idea.maven.server.RemoteMavenServer36`；长期驻留，不会自己退出 | `taskkill /PID <pid> /F`。IDEA 需要时会自动重启该辅助进程；必要时在 IDEA 里执行一次「Reload Maven Project」 |
+> | 运行中的 AHA 会话 | `java.exe` 命令行含 `com.acanx.module.aha.cli` | 关闭 `chat` 会话（会话已持久化，可用 `aha chat --session <id>` 续接） |
+> | 把 `dist/bin` 当工作目录的终端窗口 | 文件都能改，但删**目录**报 `The process cannot access the file` | 关闭该终端窗口 |
+>
+> 定位（Windows 侧，从 WSL 同样可执行）：
+>
+> ```bat
+> tasklist | findstr /I java
+> powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=<pid>').CommandLine"
+> ```
+>
+> 处置：结束占用者后**直接重跑 `mvn clean verify` 即可**——assembly 会覆盖同名文件，
+> 不必先删 `dist/`。确实要清空时用 Windows 侧命令删目录：
+> `cmd.exe /c "rmdir /s /q E:\GitRepo\GitHub\ACANX\AHA\dist"`；
+> WSL 的 `rm -rf` / `mv` 对 9p 上的目录常报 `Permission denied`，属已知限制。
+>
+> **注意 IDEA 会自动重生这个进程**：项目里有文件变化（尤其 `pom.xml`）时，IDEA 会重新导入
+> Maven 项目，于是辅助进程又起来、又把 `dist/lib` 锁上。实测连续两轮都出现这种情况。
+> 因此**打包 / 发版前先结束它、并避免在 IDE 里触发重新导入**；结束后的窗口期内完成构建最省事。
+>
+> **不要**用 `-Dassembly.skipAssembly=true` 绕过：那会跳过发行包组装，`dist/` 停在旧版本，
+> 而 JPMS 下一个模块出现两个版本会让发行包直接启不来。
+
+## 8. 依赖自动升级
+
+依赖更新由 Dependabot 自动检测并提交 PR，配置见 `.github/dependabot.yml`。
+
+| 生态 | 覆盖范围 | 检测频率 |
+|---|---|---|
+| `maven` | `pom.xml`（版本集中在父 POM 的 `<properties>`） | 每日 09:00（Asia/Shanghai） |
+| `github-actions` | `.github/workflows/*.yml` 中 `uses:` 引用的 action | 每日 09:00（Asia/Shanghai） |
+
+**合入路径**：
+
+Dependabot 的 PR **只指向 `dependa` 分支**（配置里的 `target-branch`），不会直接打到默认分支：
+
+```
+dependabot/xxx ──PR──▶ dependa ──PR（人工发起）──▶ 默认分支
+```
+
+**处理方式**：
+
+1. PR 打开后先看 CI 是否全绿（双 Maven 版本 + 覆盖率门禁），这与人工 PR 的要求一致
+2. `minor` / `patch` 已按生态合并为单个 PR，确认无破坏性变更即可合入 `dependa`
+3. `major` 不并入分组，逐个单独提交，需先阅读上游变更说明再决定
+4. `dependa` 上积累若干升级并验证稳定后，按正常流程提 PR 合入默认分支
+5. 手动触发检测：仓库 **Insights → Dependency graph → Dependabot**，点 **Check for updates**
+
+**首次启用前需准备**：
+
+1. `.github/dependabot.yml` 必须位于**默认分支**（Dependabot 只从默认分支读取配置）
+2. 创建并推送 `dependa` 分支，且其中包含 `pom.xml` 与 `.github/workflows/`
+   —— 指定 `target-branch` 后，Dependabot 读取的是**该分支**上的清单文件
+3. `dependa` 需长期保留，不要随版本发布删除
+
+```bash
+git switch -c dependa          # 从默认分支创建
+git push -u origin dependa
+```
+
+**不在覆盖范围内**：
+
+- **Maven Wrapper 版本**（`.mvn/wrapper/maven-wrapper.properties`）由 [BuildSpec.md](../DevSpec/BuildSpec.md)
+  第 3 节锁定，需手工升级并同步更新该节示例
+- **JDK 版本**（第 2 节工具链锁定），JDK 25 为 LTS，升级需走规范变更程序
+
+> 前提：Dependabot 只在**默认分支**上生效，`.github/dependabot.yml` 必须先合入默认分支。
+
+## 9. 相关文档
+
+| 文档 | 用途 |
+|---|---|
+| [BuildSpec.md](../DevSpec/BuildSpec.md) | 构建的强制要求 |
+| [TestingSpec.md](../DevSpec/TestingSpec.md) | 测试层级与覆盖率要求 |
+| [TroubleshootingGuide.md](TroubleshootingGuide.md) | 运行时与配置问题排错 |
+| [GettingStarted.md](GettingStarted.md) | 环境准备与首次运行 |
