@@ -408,6 +408,12 @@
 [0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
 
 ### 变更
+- **桌面端可用了（最小可用版）**：接入 Agent，能真的对话——流式正文、工具卡片（类别配色 + 结果行）、
+  错误展示、用量回填、`Esc` 中断；左栏导航可用（新建会话 / 供应商 / 工具）；
+  输入框启动即获得焦点；供应商配置改为**可查看与修改的表单**（适配器 / 基础地址 / 模型 /
+  API Key（打码，可显示）/ 超时 / 重试 + 保存 / 设为默认 / 新增 / 删除，写回 `Model.yml`）。
+  对话内核与表单校验都抽成不依赖 JavaFX 的类（`ChatController` / `ChatView` / `ToolSummary` /
+  `DesktopToolApprover` / `ProviderForm`），因此整条链路在无图形环境下有 49 例测试覆盖
 - **桌面端窗口图标与标志**：把 `Logo.svg` 栅格化为 PNG 入库（新增 `bin/GenLogoPng.py`），
   用作窗口 / 任务栏图标与空会话展示；生成器把 SVG 根元素宽高写成目标像素数、
   开一个更高的窗口，再自己解码 PNG 按 alpha 裁掉透明边并**自检包围盒**

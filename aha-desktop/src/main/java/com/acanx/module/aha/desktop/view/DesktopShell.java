@@ -1,6 +1,11 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.AppVersion;
+import com.acanx.module.aha.common.model.ToolDescriptor;
+import com.acanx.module.aha.common.tool.ToolKind;
+import com.acanx.module.aha.desktop.chat.ChatView;
+import com.acanx.module.aha.desktop.fx.FxBridge;
+import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
@@ -25,6 +30,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -45,7 +53,7 @@ import java.util.function.Supplier;
  *
  * @since 0.2.0
  */
-public final class DesktopShell {
+public final class DesktopShell implements ChatView {
 
     /** 菜单栏 id。 */
     public static final String MENU_BAR_ID = "aha.menubar";
@@ -89,6 +97,9 @@ public final class DesktopShell {
     /** 配置摘要标签 id（D-11 的真机自证）。 */
     public static final String CONFIG_ID = "aha.config";
 
+    /** 用量标签 id。 */
+    public static final String USAGE_ID = "aha.usage";
+
     /** 空会话状态节点 id（标志 + 提示，出现首条消息时整体移除）。 */
     public static final String EMPTY_ID = "aha.empty";
 
@@ -105,9 +116,9 @@ public final class DesktopShell {
     public static final String COMPOSER_PROMPT =
             "继续输入…（Enter 发送 / Shift+Enter 换行，/ 命令，@ 引用文件）";
 
-    /** 发送后追加的说明：当前尚未接入模型，避免让人误以为「已发送给 AI」。 */
-    public static final String NOT_WIRED_HINT =
-            "（尚未接入 Agent：0.2 后续会把这条发给模型并流式显示回复）";
+
+    /** UI 线程投递器（助手流式文本的合流要用它）。 */
+    private final FxDispatcher dispatcher;
 
     /** 退出动作（由宿主提供，通常是关窗）。 */
     private final Runnable onExit;
@@ -129,6 +140,39 @@ public final class DesktopShell {
     private final VBox leftContent;
 
     private final VBox rightContent;
+
+    /** 助手流式文本的合流器：每个 token 一次界面更新会拖慢界面，这里合并成每帧一次。 */
+    private FxBridge<String> assistantBridge;
+
+    /** 正在流式写入的助手消息（本轮）。 */
+    private Label currentAssistant;
+
+    /** 本轮助手文本缓冲。 */
+    private final StringBuilder assistantBuffer = new StringBuilder();
+
+    /** 工具卡片的状态行（句柄 = 下标 + 1）。 */
+    private final List<Label> toolStatus = new ArrayList<>();
+
+    /** 发送按钮（生成中禁用）。 */
+    private Button sendButton;
+
+    /** 底栏用量标签。 */
+    private Label usageLabel;
+
+    /** 发送动作（由宿主接到对话内核）。 */
+    private Consumer<String> onSend = text -> { };
+
+    /** 中断动作。 */
+    private Runnable onCancel = () -> { };
+
+    /** 新建会话动作。 */
+    private Runnable onNewSession = () -> { };
+
+    /** 工具来源（工具列表对话框用）。 */
+    private Supplier<List<ToolDescriptor>> toolSource = List::of;
+
+    /** 供应商对话框。 */
+    private ProviderDialog providerDialog;
 
     private final HBox leftBox;
 
@@ -153,7 +197,8 @@ public final class DesktopShell {
      * @param onExit        退出动作
      * @param configSummary 配置摘要（帮助 → 关于 用）
      */
-    public DesktopShell(Runnable onExit, Supplier<String> configSummary) {
+    public DesktopShell(FxDispatcher dispatcher, Runnable onExit, Supplier<String> configSummary) {
+        this.dispatcher = dispatcher;
         this.onExit = onExit;
         this.configSummary = configSummary;
         this.collapseLeft = new CheckMenuItem("折叠左栏");
@@ -162,6 +207,11 @@ public final class DesktopShell {
         this.rightContent = buildRightContent();
         this.leftBox = buildLeftColumn();
         this.rightBox = buildRightColumn();
+        this.assistantBridge = new FxBridge<>(dispatcher, text -> {
+            if (currentAssistant != null) {
+                currentAssistant.setText(text);
+            }
+        });
         applyPaneState();
     }
 
@@ -249,9 +299,9 @@ public final class DesktopShell {
         if (text.isEmpty()) {
             return false;
         }
-        appendMessage("你", text, Palette.READ);
-        appendMessage("系统", NOT_WIRED_HINT, Palette.MUTED);
         composer.clear();
+        // 真正的发送交给对话内核（ChatController）；界面只负责把文本递出去
+        onSend.accept(text);
         return true;
     }
 
@@ -279,6 +329,194 @@ public final class DesktopShell {
      */
     public TextArea composer() {
         return composer;
+    }
+
+    // ---------------------------------------------------------------- 接线
+
+    /**
+     * 设置发送动作（由宿主接到 ChatController）。
+     *
+     * @param handler 动作
+     */
+    public void onSend(Consumer<String> handler) {
+        this.onSend = handler == null ? text -> { } : handler;
+    }
+
+    /**
+     * 设置中断动作。
+     *
+     * @param handler 动作
+     */
+    public void onCancel(Runnable handler) {
+        this.onCancel = handler == null ? () -> { } : handler;
+    }
+
+    /**
+     * 设置「新建会话」动作。
+     *
+     * @param handler 动作
+     */
+    public void onNewSession(Runnable handler) {
+        this.onNewSession = handler == null ? () -> { } : handler;
+    }
+
+    /**
+     * 设置工具来源（工具列表对话框用）。
+     *
+     * @param source 工具来源
+     */
+    public void tools(Supplier<List<ToolDescriptor>> source) {
+        this.toolSource = source == null ? List::of : source;
+    }
+
+    /**
+     * 设置供应商对话框。
+     *
+     * @param dialog 对话框
+     */
+    public void providerDialog(ProviderDialog dialog) {
+        this.providerDialog = dialog;
+    }
+
+    /**
+     * 把键盘焦点交给输入框（开窗后调用）。
+     *
+     * <p>聊天类应用启动后应当能直接打字；不设这一步，焦点会落在左栏第一个按钮上，
+     * 用户敲的第一个空格就把那个按钮按下去了（真机验证时踩到）。</p>
+     */
+    public void focusComposer() {
+        composer.requestFocus();
+    }
+
+    /**
+     * 关闭内部桥接（关窗时调用）。
+     */
+    public void closeBridges() {
+        if (assistantBridge != null) {
+            assistantBridge.close();
+        }
+    }
+
+    // ------------------------------------------------------- ChatView 实现
+
+    @Override
+    public void appendUser(String text) {
+        appendMessage("你", text, Palette.READ);
+    }
+
+    @Override
+    public void appendAssistant(String delta) {
+        if (currentAssistant == null) {
+            streamBufferReset();
+            // 先建标签再提交文本：两者进的是同一个 UI 队列，顺序有保证
+            dispatcher.dispatch(() -> {
+                currentAssistant = new Label();
+                currentAssistant.setWrapText(true);
+                currentAssistant.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
+                addRow("助手", currentAssistant, Palette.SUCCESS);
+            });
+        }
+        assistantBuffer.append(delta);
+        // 每个 token 一次界面更新会拖慢界面；FxBridge 合并成每帧至多一次
+        assistantBridge.submit(assistantBuffer.toString());
+    }
+
+    @Override
+    public void endAssistant() {
+        currentAssistant = null;
+        assistantBuffer.setLength(0);
+    }
+
+    @Override
+    public void appendNotice(String text) {
+        appendMessage("系统", text, Palette.MUTED);
+    }
+
+    @Override
+    public void showError(String code, String message) {
+        appendMessage("错误 " + code, message == null ? "" : message, Palette.FAILURE);
+    }
+
+    @Override
+    public int beginToolCall(String kindLabel, String toolName, String target) {
+        String accent = Palette.forToolKind(ToolKind.of(toolName));
+        Label head = new Label(kindLabel + "  " + toolName
+                + (target == null || target.isBlank() ? "" : "  " + target));
+        head.setStyle("-fx-text-fill: " + accent + ";");
+        Label state = new Label("运行中…");
+        state.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        VBox card = new VBox(2, head, state);
+        card.setStyle("-fx-background-color: " + Palette.BLOCK_BACKGROUND
+                + "; -fx-background-radius: 6; -fx-padding: 6;");
+        removeEmptyState();
+        messages.getChildren().add(card);
+        toolStatus.add(state);
+        return toolStatus.size();
+    }
+
+    @Override
+    public void finishToolCall(int handle, boolean success, String summary, String output) {
+        int index = handle - 1;
+        if (index < 0 || index >= toolStatus.size()) {
+            return;
+        }
+        Label state = toolStatus.get(index);
+        state.setText(summary);
+        state.setStyle("-fx-text-fill: " + (success ? Palette.SUCCESS : Palette.FAILURE) + ";");
+        if (output != null && !output.isBlank()) {
+            state.setTooltip(new Tooltip(output.length() > 2000
+                    ? output.substring(0, 2000) + "…" : output));
+        }
+    }
+
+    @Override
+    public void setUsage(int promptTokens, int completionTokens) {
+        if (usageLabel != null) {
+            usageLabel.setText("输入 " + promptTokens + " / 输出 " + completionTokens + " tok");
+        }
+    }
+
+    @Override
+    public void setBusy(boolean busy) {
+        if (sendButton != null) {
+            sendButton.setDisable(busy);
+        }
+        status.setText(busy ? "生成中…（Esc 中断）" : "就绪");
+    }
+
+    private void streamBufferReset() {
+        assistantBuffer.setLength(0);
+    }
+
+    private void openProviderDialog() {
+        if (providerDialog == null) {
+            appendNotice("供应商配置尚不可用（未接线）。");
+            return;
+        }
+        providerDialog.show(composer.getScene() == null ? null : composer.getScene().getWindow(),
+                onNewSession);
+    }
+
+    private void openToolDialog() {
+        new ToolListDialog(toolSource)
+                .show(composer.getScene() == null ? null : composer.getScene().getWindow());
+    }
+
+    /**
+     * 左栏导航按钮。
+     *
+     * @param text    文案
+     * @param action  点击动作
+     * @return 按钮
+     */
+    private static Button navButton(String text, Runnable action) {
+        Button button = new Button(text);
+        button.setMaxWidth(Double.MAX_VALUE);
+        button.setAlignment(Pos.CENTER_LEFT);
+        button.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.FOREGROUND + ";");
+        button.setOnAction(event -> action.run());
+        return button;
     }
 
     /**
@@ -373,15 +611,15 @@ public final class DesktopShell {
         search.setPrefRowCount(1);
         search.setDisable(true);
 
-        Label sessions = new Label("会话");
-        Label memory = new Label("记忆");
-        Label tools = new Label("工具");
-        Label extensions = new Label("扩展");
-        Label providers = new Label("供应商");
-        Label logs = new Label("日志");
         VBox.setVgrow(new Region(), Priority.ALWAYS);
-        box.getChildren().addAll(search, sessions, emptyNote("暂无会话"),
-                memory, tools, extensions, providers, logs, spacer(), settings());
+        box.getChildren().addAll(search,
+                navButton("＋ 新建会话", () -> onNewSession.run()),
+                navButton("供应商", this::openProviderDialog),
+                navButton("工具", this::openToolDialog),
+                navButton("记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。")),
+                navButton("扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。")),
+                navButton("日志（0.2 后续）", () -> appendNotice("日志面板将在 0.2 后续接入。")),
+                spacer(), settings());
         return box;
     }
 
@@ -467,14 +705,17 @@ public final class DesktopShell {
             if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
                 event.consume();
                 submitComposer();
+            } else if (event.getCode() == KeyCode.ESCAPE) {
+                event.consume();
+                onCancel.run();
             }
         });
 
-        Button send = new Button("发送");
-        send.setId(SEND_ID);
-        send.setOnAction(event -> submitComposer());
+        sendButton = new Button("发送");
+        sendButton.setId(SEND_ID);
+        sendButton.setOnAction(event -> submitComposer());
 
-        HBox actions = new HBox(ShellLayout.GAP, send);
+        HBox actions = new HBox(ShellLayout.GAP, sendButton);
         actions.setAlignment(Pos.CENTER_RIGHT);
 
         VBox box = new VBox(ShellLayout.GAP, composer, actions);
@@ -496,14 +737,17 @@ public final class DesktopShell {
         status.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
         config.setId(CONFIG_ID);
         config.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        Label hint = new Label("[Esc] 中断（待接入）");
+        usageLabel = new Label("");
+        usageLabel.setId(USAGE_ID);
+        usageLabel.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        Label hint = new Label("[Esc] 中断");
         hint.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
         Label version = new Label("v" + AppVersion.version());
         version.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        bar.getChildren().addAll(connection, status, config, spacer, hint, version);
+        bar.getChildren().addAll(connection, status, config, spacer, usageLabel, hint, version);
         return bar;
     }
 
@@ -529,11 +773,21 @@ public final class DesktopShell {
     }
 
     private void appendMessage(String who, String text, String accent) {
-        if (emptyState != null) {
-            // 首条消息到来：把空态（标志 + 提示）整体撤掉
-            messages.getChildren().remove(emptyState);
-            emptyState = null;
-        }
+        Label body = new Label(text);
+        body.setWrapText(true);
+        body.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
+        addRow(who, body, accent);
+    }
+
+    /**
+     * 加一行「左侧竖条 + 标签 + 内容」的消息（与会话流一致，不用气泡）。
+     *
+     * @param who    说话人标签
+     * @param body   内容控件
+     * @param accent 强调色
+     */
+    private void addRow(String who, javafx.scene.Node body, String accent) {
+        removeEmptyState();
         Region bar = new Region();
         bar.setMinWidth(2);
         bar.setPrefWidth(2);
@@ -541,14 +795,18 @@ public final class DesktopShell {
 
         Label whoLabel = new Label(who);
         whoLabel.setStyle("-fx-text-fill: " + accent + "; -fx-font-size: 12px;");
-        Label body = new Label(text);
-        body.setWrapText(true);
-        body.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
 
         VBox column = new VBox(2, whoLabel, body);
         HBox.setHgrow(column, Priority.ALWAYS);
         HBox row = new HBox(ShellLayout.GAP, bar, column);
         messages.getChildren().add(row);
+    }
+
+    private void removeEmptyState() {
+        if (emptyState != null) {
+            messages.getChildren().remove(emptyState);
+            emptyState = null;
+        }
     }
 
     /**

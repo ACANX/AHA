@@ -46,6 +46,25 @@ public final class Palette {
     /** 输入框边框（与 CLI 的高亮紫一致）。 */
     public static final String FOCUS_BORDER = "#AF87FF";
 
+    /**
+     * 按工具类别取语义色。
+     *
+     * <p>类别判定（哪个工具算读取 / 写入 / 执行 / 网络）来自 {@code aha-common} 的
+     * {@code ToolKind}，CLI 与桌面端共用同一套；这里只做「类别 → 十六进制」的投影。</p>
+     *
+     * @param kind 工具类别
+     * @return 十六进制颜色
+     */
+    public static String forToolKind(com.acanx.module.aha.common.tool.ToolKind kind) {
+        return switch (kind) {
+            case READ -> READ;
+            case WRITE -> WRITE;
+            case EXEC -> EXEC;
+            case NETWORK -> NETWORK;
+            default -> OTHER;
+        };
+    }
+
     private Palette() {
     }
 }

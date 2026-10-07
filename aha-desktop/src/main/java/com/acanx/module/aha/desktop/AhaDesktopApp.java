@@ -1,8 +1,18 @@
 package com.acanx.module.aha.desktop;
 
 import com.acanx.module.aha.common.AppVersion;
+import com.acanx.module.aha.common.model.SessionConfig;
+import com.acanx.module.aha.common.tool.ToolPermission;
 import com.acanx.module.aha.core.boot.AhaBootstrap;
 import com.acanx.module.aha.core.config.ConfigLoader;
+import com.acanx.module.aha.core.config.ModelConfig;
+import com.acanx.module.aha.core.config.ModelConfigStore;
+import com.acanx.module.aha.core.config.ProviderConfig;
+import com.acanx.module.aha.core.service.AgentService;
+import com.acanx.module.aha.core.service.AgentServiceFactory;
+import com.acanx.module.aha.desktop.chat.ChatController;
+import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
+import com.acanx.module.aha.desktop.view.ProviderDialog;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
@@ -10,6 +20,9 @@ import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
@@ -20,6 +33,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * AHA 桌面端主类。
@@ -91,8 +108,30 @@ public final class AhaDesktopApp extends Application {
         FxDispatcher dispatcher = new PlatformFxDispatcher();
 
         // 骨架：菜单栏 + 三栏 + 底部状态栏（形态见 GUIDesign.md 第 2 节）
-        DesktopShell shell = new DesktopShell(stage::close, this::configSummary);
+        DesktopShell shell = new DesktopShell(dispatcher, stage::close, this::configSummary);
         shell.setConfigSummary(configSummary());
+
+        // Agent 服务：与 CLI 用同一个工厂、同一份配置；工具授权走桌面端弹窗
+        AgentService service = AgentServiceFactory.local(
+                boot == null ? null : boot.config(),
+                new DesktopToolApprover((toolName, permission, arguments) ->
+                        askApproval(stage, dispatcher, toolName, permission, arguments)));
+
+        // 供应商配置来自 Model.yml（与 CLI 同一份），默认供应商的模型决定本轮会话用哪个模型
+        ModelConfigStore modelStore =
+                new ModelConfigStore(ConfigLoader.resolveModelPath(boot == null ? null : boot.config()));
+        shell.providerDialog(new ProviderDialog(modelStore.path()));
+
+        ChatController controller = new ChatController(shell, service,
+                new SessionConfig(activeModel(modelStore), null, null),
+                ChatController.VIRTUAL_THREADS, dispatcher::dispatch);
+        shell.onSend(controller::send);
+        shell.onCancel(controller::cancel);
+        shell.onNewSession(() -> {
+            controller.newSession();
+            shell.appendNotice("已新建会话（供应商 / 模型改变后需要新建会话才生效）。");
+        });
+        shell.tools(service::listTools);
 
         // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
@@ -132,10 +171,17 @@ public final class AhaDesktopApp extends Application {
         LOG.info("窗口：{}×{}（逻辑），屏幕可用 {}×{}（物理），缩放 {}x/{}x",
                 (int) width, (int) height, (int) bounds.getWidth(), (int) bounds.getHeight(),
                 scaleX, scaleY);
-        // 关窗联动：关闭桥接，之后到达的后台更新一律丢弃
-        stage.setOnCloseRequest(event -> bridge.close());
+        // 关窗联动：关闭桥接与对话内核，之后到达的后台更新一律丢弃
+        stage.setOnCloseRequest(event -> {
+            shell.closeBridges();
+            controller.close();
+            service.shutdown();
+            bridge.close();
+        });
         stage.show();
 
+        // 焦点给输入框：聊天应用启动后应当能直接打字
+        shell.focusComposer();
         startStatusProbe(bridge);
     }
 
@@ -152,6 +198,80 @@ public final class AhaDesktopApp extends Application {
             LOG.debug("状态探针线程启动：{}", Thread.currentThread());
             bridge.submit("后台线程已就绪：" + Thread.currentThread());
         });
+    }
+
+    /**
+     * 取当前默认供应商的模型名。
+     *
+     * <p>取不到就返回 {@code null}，由 core 按自己的兜底规则解析——
+     * 桌面端不在这里重复实现一套模型解析。</p>
+     *
+     * @param store 模型配置存取器
+     * @return 模型名，可为 {@code null}
+     */
+    private static String activeModel(ModelConfigStore store) {
+        try {
+            if (!store.exists()) {
+                return null;
+            }
+            ModelConfig config = store.load();
+            String id = config.defaultProvider();
+            if (id == null || id.isBlank()) {
+                return null;
+            }
+            ProviderConfig provider = config.providersOrEmpty().get(id);
+            return provider == null ? null : provider.model();
+        } catch (RuntimeException e) {
+            LOG.warn("读取 {} 失败：{}", store.path(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 询问用户是否允许一次工具调用（在 UI 线程弹窗，阻塞工具线程等待选择）。
+     *
+     * <p>三种选择与 CLI 一致：本次允许 / 本会话内始终允许该权限 / 拒绝。</p>
+     *
+     * @param owner      父窗口
+     * @param dispatcher UI 线程投递器
+     * @param toolName   工具名
+     * @param permission 所需权限
+     * @param arguments  调用参数
+     * @return 用户选择
+     */
+    private static DesktopToolApprover.Decision askApproval(Stage owner, FxDispatcher dispatcher,
+                                                            String toolName, ToolPermission permission,
+                                                            Map<String, Object> arguments) {
+        AtomicReference<DesktopToolApprover.Decision> choice =
+                new AtomicReference<>(DesktopToolApprover.Decision.DENY);
+        CountDownLatch answered = new CountDownLatch(1);
+        dispatcher.dispatch(() -> {
+            try {
+                ButtonType once = new ButtonType("本次允许", ButtonBar.ButtonData.YES);
+                ButtonType always = new ButtonType("本会话始终允许", ButtonBar.ButtonData.APPLY);
+                ButtonType deny = new ButtonType("拒绝", ButtonBar.ButtonData.NO);
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                        String.valueOf(arguments == null ? "（无参数）" : arguments), once, always, deny);
+                alert.initOwner(owner);
+                alert.setTitle("工具授权");
+                alert.setHeaderText(permission + "  " + toolName);
+                alert.showAndWait().ifPresent(picked -> choice.set(picked == once
+                        ? DesktopToolApprover.Decision.ALLOW_ONCE
+                        : picked == always
+                        ? DesktopToolApprover.Decision.ALLOW_SESSION
+                        : DesktopToolApprover.Decision.DENY));
+            } finally {
+                answered.countDown();
+            }
+        });
+        try {
+            if (!answered.await(5, TimeUnit.MINUTES)) {
+                LOG.warn("工具授权等待超时，按拒绝处理：{}", toolName);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return choice.get();
     }
 
     /**

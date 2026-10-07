@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.25.0
+**文档版本**：v0.26.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -526,6 +526,7 @@ desktop 亦未列 tool 依赖。
 | v0.23.0 | 2026-10-08 | `D-11` 结项：抽出 `AhaBootstrap`（CLI 与桌面端共用读配置/装配日志/装密钥库），桌面端窗口显示配置摘要；含单测与 CLI 端到端实测证据 | @ACANX |
 | v0.24.0 | 2026-10-08 | 新增并结项 `D-12`（桌面端三栏骨架 + 折叠三条路径 + 纯逻辑 `FoldState`），遗留项记明（工具卡片 / Agent 接线 / `ToolKind` 下移） | @ACANX |
 | v0.25.0 | 2026-10-08 | 新增 `F-17`（`-Djavafx.platform` 触发 `recursive variable reference` 的构建日志噪音） | @ACANX |
+| v0.26.0 | 2026-10-08 | `D-12` 遗留更新：Agent 接入与 `ToolKind` 下移、供应商配置已完成；列明尚未做项（工具卡片展开/输出预览、会话列表、记忆/扩展/日志面板、`/` `@`、主题、设置、授权弹窗样式） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -557,10 +558,12 @@ Enter 发送 / Shift+Enter 换行（默认跳过，需图形环境）。
 
 **遗留**：
 
-1. 对话流与工具卡片的真实数据、授权弹窗、`/` `@` 补全、暗/亮主题、设置 —— 0.2 内继续；
-2. **尚未接入 Agent**：发消息只落到本地消息流，并显示明确提示，不假装已发给模型；
-3. 工具卡片的语义判定要与 CLI 共用：`aha-cli` 的 `ToolKind` 目前是包私有，
-   做工具卡片时应下移到 `aha-common`，免得两侧各写一套「哪个工具算写入」的判定。
+1. ~~接入 Agent~~ ✅ 已完成（`ChatController` + `ChatView`；Windows 真机已验证流式往返）；
+2. ~~`ToolKind` 下移~~ ✅ 已完成（现位于 `aha-common`，两端共用语义）；
+3. 供应商配置 ✅ 已完成（可查看/修改/保存，含校验）；
+4. **尚未做**：工具卡片的折叠展开与输出预览（当前只有首行 + 结果行）、
+   会话列表持久化展示、记忆 / 扩展 / 日志面板、`/` `@` 补全、暗/亮主题切换、设置面板、
+   授权弹窗的自定义样式（现为系统默认 Alert）。
 
 ---
 
