@@ -11,6 +11,7 @@ import com.acanx.module.aha.common.event.UsageEvent;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
+import com.acanx.module.aha.common.tool.ToolKind;
 
 /**
  * 流式渲染器：内联（inline）输出，不使用全屏备用缓冲区。

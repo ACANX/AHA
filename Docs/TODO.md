@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.24.0
+**文档版本**：v0.25.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -525,6 +525,7 @@ desktop 亦未列 tool 依赖。
 | v0.22.0 | 2026-10-08 | `D-07` 结项（线程模型小节 + 桥接契约 + 静态扫描 + 6 例单测）、`D-10` 结项（版本号下移 `aha-common`、日志装配下移 `aha-core`，并更正早期「缺 `log4j2.xml`」的误判）、`D-04` 记为「门禁方式已定」（冒烟默认跳过）、新增 `D-11`（桌面端不读 `Aha.yaml`） | @ACANX |
 | v0.23.0 | 2026-10-08 | `D-11` 结项：抽出 `AhaBootstrap`（CLI 与桌面端共用读配置/装配日志/装密钥库），桌面端窗口显示配置摘要；含单测与 CLI 端到端实测证据 | @ACANX |
 | v0.24.0 | 2026-10-08 | 新增并结项 `D-12`（桌面端三栏骨架 + 折叠三条路径 + 纯逻辑 `FoldState`），遗留项记明（工具卡片 / Agent 接线 / `ToolKind` 下移） | @ACANX |
+| v0.25.0 | 2026-10-08 | 新增 `F-17`（`-Djavafx.platform` 触发 `recursive variable reference` 的构建日志噪音） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -560,6 +561,19 @@ Enter 发送 / Shift+Enter 换行（默认跳过，需图形环境）。
 2. **尚未接入 Agent**：发消息只落到本地消息流，并显示明确提示，不假装已发给模型；
 3. 工具卡片的语义判定要与 CLI 共用：`aha-cli` 的 `ToolKind` 目前是包私有，
    做工具卡片时应下移到 `aha-common`，免得两侧各写一套「哪个工具算写入」的判定。
+
+---
+
+### F-17 ☐ 新增（2026-10-08）：`-Djavafx.platform=win` 时构建输出 `recursive variable reference: javafx.platform`
+
+**现象**：在 WSL 里用 `-Djavafx.platform=win` 打 Windows 便携包时，构建日志出现两行
+`[ERROR] recursive variable reference: javafx.platform`；**构建仍然成功**，产物名与内容都正确。
+
+**影响**：目前只是日志噪音；但它可能意味着某个 `${javafx.platform}` 的插值路径不健康，
+值得在 Windows 原生构建（profile 自动生效、无 `-D`）时对照确认一次是否同样出现。
+
+**验收标准**：在 Windows 原生 `./mvnw -pl aha-desktop -am package` 输出里确认有无该行；
+若有则定位到具体插件/属性并消除。
 
 ---
 

@@ -7,10 +7,14 @@ import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
+import javafx.geometry.Rectangle2D;
+import javafx.scene.image.Image;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +41,9 @@ public final class AhaDesktopApp extends Application {
 
     /** 引导结果，供界面显示配置来源与生效日志级别（{@code D-11}）。 */
     private AhaBootstrap.Result boot;
+
+    /** 窗口最多占屏幕可用区域的这个比例，留出任务栏与边框的余量。 */
+    private static final double SCREEN_USAGE = 0.9;
 
     @Override
     public void init() {
@@ -92,7 +99,39 @@ public final class AhaDesktopApp extends Application {
 
         Parent root = shell.buildRoot();
         stage.setTitle(AppVersion.DISPLAY + " 桌面端（0.2 开发中）");
-        stage.setScene(new Scene(root, ShellLayout.WINDOW_WIDTH, ShellLayout.WINDOW_HEIGHT));
+
+        // 窗口 / 任务栏图标：Logo.svg 的位图版本（见 LogoImage 的说明）
+        Image logo = LogoImage.load();
+        if (logo != null) {
+            stage.getIcons().add(logo);
+        } else {
+            LOG.warn("标志资源 logo.png 缺失，窗口将使用系统默认图标");
+        }
+
+        // 尺寸按**屏幕可用区域**算，而不是写死 1280×800：
+        // 高 DPI 缩放下写死的 800 逻辑像素会变成 1000+ 物理像素，把底栏与输入框顶出屏幕
+        // （第一次在 Windows 上启动就踩到了：只能看到消息区，输入框不见了）。
+        // Screen 报的是**物理**像素，而场景尺寸是**逻辑**像素：必须除以缩放比，
+        // 否则 800 逻辑像素在 150% 缩放下变成 1200 物理像素，把底栏与输入区顶出屏幕
+        // （第一次在 Windows 上启动就撞到了，日志里能看到 1707x1067 与 1280x800 并存）。
+        Screen screen = Screen.getPrimary();
+        Rectangle2D bounds = screen.getVisualBounds();
+        double scaleX = screen.getOutputScaleX() > 0 ? screen.getOutputScaleX() : 1;
+        double scaleY = screen.getOutputScaleY() > 0 ? screen.getOutputScaleY() : 1;
+        double availWidth = bounds.getWidth() / scaleX;
+        double availHeight = bounds.getHeight() / scaleY;
+        double width = Math.min(ShellLayout.WINDOW_WIDTH, availWidth * SCREEN_USAGE);
+        double height = Math.min(ShellLayout.WINDOW_HEIGHT, availHeight * SCREEN_USAGE);
+        stage.setScene(new Scene(root, width, height));
+        stage.setX(bounds.getMinX() / scaleX + (availWidth - width) / 2);
+        stage.setY(bounds.getMinY() / scaleY + (availHeight - height) / 2);
+        // 尺寸下限：否则用户把窗口拖小后，输入区与底栏会被挤没
+        stage.setMinWidth(ShellLayout.MIN_WIDTH);
+        stage.setMinHeight(ShellLayout.MIN_HEIGHT);
+        // 写进日志：出问题时不必猜，直接看日志
+        LOG.info("窗口：{}×{}（逻辑），屏幕可用 {}×{}（物理），缩放 {}x/{}x",
+                (int) width, (int) height, (int) bounds.getWidth(), (int) bounds.getHeight(),
+                scaleX, scaleY);
         // 关窗联动：关闭桥接，之后到达的后台更新一律丢弃
         stage.setOnCloseRequest(event -> bridge.close());
         stage.show();

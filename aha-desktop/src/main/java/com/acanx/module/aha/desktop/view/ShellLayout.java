@@ -28,6 +28,12 @@ public final class ShellLayout {
     /** 窗口初始高度（px）。 */
     public static final double WINDOW_HEIGHT = 800;
 
+    /** 窗口最小宽度（px）：再小就放不下三栏。 */
+    public static final double MIN_WIDTH = 900;
+
+    /** 窗口最小高度（px）：再小底栏与输入区会互相挤。 */
+    public static final double MIN_HEIGHT = 560;
+
     private ShellLayout() {
     }
 

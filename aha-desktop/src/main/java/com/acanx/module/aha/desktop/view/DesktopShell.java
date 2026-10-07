@@ -14,6 +14,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -88,6 +89,12 @@ public final class DesktopShell {
     /** 配置摘要标签 id（D-11 的真机自证）。 */
     public static final String CONFIG_ID = "aha.config";
 
+    /** 空会话状态节点 id（标志 + 提示，出现首条消息时整体移除）。 */
+    public static final String EMPTY_ID = "aha.empty";
+
+    /** 标志节点 id。 */
+    public static final String LOGO_ID = "aha.logo";
+
     /** 消息流为空时的提示。 */
     public static final String EMPTY_HINT = "还没有对话。在下面输入，Enter 发送。";
 
@@ -109,6 +116,9 @@ public final class DesktopShell {
     private final Supplier<String> configSummary;
 
     private final VBox messages = new VBox(ShellLayout.GAP);
+
+    /** 空态节点；首条消息到来时整体移除，清空对话后重建。 */
+    private VBox emptyState;
 
     private final Label status = new Label(STATUS_INITIAL);
 
@@ -162,6 +172,7 @@ public final class DesktopShell {
      */
     public Parent buildRoot() {
         BorderPane root = new BorderPane();
+        root.setStyle(darkTheme());
         root.setTop(new VBox(buildMenuBar()));
         root.setCenter(buildMiddleRow());
         root.setBottom(buildStatusBar());
@@ -249,7 +260,7 @@ public final class DesktopShell {
      */
     public void clearConversation() {
         messages.getChildren().clear();
-        messages.getChildren().add(emptyHint());
+        messages.getChildren().add(createEmptyState());
     }
 
     /**
@@ -268,6 +279,23 @@ public final class DesktopShell {
      */
     public TextArea composer() {
         return composer;
+    }
+
+    /**
+     * 暗色主题（{@code GUIDesign.md} 第 3.1 节：暗色优先，亮色作为等价映射）。
+     *
+     * <p>直接给根节点设 JavaFX 的「被查色」（looked-up colors），子节点自动继承——
+     * 不引入额外 CSS 文件，也就不会在 JPMS 下遇到「样式表找不到」的问题。
+     * 第一次在 Windows 上启动时没上主题，浅色文字压在浅灰底上几乎看不见。</p>
+     *
+     * @return 内联样式
+     */
+    private static String darkTheme() {
+        return "-fx-base: #1E1E1E;"
+                + "-fx-background: #1E1E1E;"
+                + "-fx-control-inner-background: #252526;"
+                + "-fx-text-background-color: " + Palette.FOREGROUND + ";"
+                + "-fx-accent: " + Palette.FOCUS_BORDER + ";";
     }
 
     private MenuBar buildMenuBar() {
@@ -337,6 +365,8 @@ public final class DesktopShell {
         box.setPrefWidth(ShellLayout.LEFT_WIDTH);
         box.setMinWidth(ShellLayout.LEFT_WIDTH);
         box.setMaxWidth(ShellLayout.LEFT_WIDTH);
+        // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
+        box.setStyle("-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
 
         TextArea search = new TextArea();
         search.setPromptText("⌕ 搜索（待会话数据接入）");
@@ -362,6 +392,7 @@ public final class DesktopShell {
         box.setPrefWidth(ShellLayout.RIGHT_WIDTH);
         box.setMinWidth(ShellLayout.RIGHT_WIDTH);
         box.setMaxWidth(ShellLayout.RIGHT_WIDTH);
+        box.setStyle("-fx-border-color: #3A3A3A; -fx-border-width: 0 0 0 1;");
         Label title = new Label("本轮");
         box.getChildren().addAll(title, emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
         return box;
@@ -376,7 +407,8 @@ public final class DesktopShell {
         leftToggle.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         leftToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         leftToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-        leftToggle.setMaxHeight(Double.MAX_VALUE);
+        // 不要拉满整列高度：否则 ‹ 会飘到栏底，看不出它属于哪一栏
+        leftToggle.setMaxHeight(Region.USE_PREF_SIZE);
 
         HBox strip = new HBox(leftToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -396,7 +428,7 @@ public final class DesktopShell {
         rightToggle.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-        rightToggle.setMaxHeight(Double.MAX_VALUE);
+        rightToggle.setMaxHeight(Region.USE_PREF_SIZE);
 
         HBox strip = new HBox(rightToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -413,10 +445,13 @@ public final class DesktopShell {
         center.setPadding(new Insets(ShellLayout.GAP));
 
         messages.setId(MESSAGES_ID);
-        messages.getChildren().add(emptyHint());
+        messages.getChildren().add(createEmptyState());
         ScrollPane scroll = new ScrollPane(messages);
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, Priority.ALWAYS);
+        // 关键：ScrollPane 默认最小高度由内容撑开，会把下面的输入区顶出窗口
+        // （第一次启动就是只能看到消息区，输入框不见踪影）。
+        scroll.setMinHeight(0);
 
         center.getChildren().addAll(scroll, buildComposerBox());
         return center;
@@ -494,10 +529,10 @@ public final class DesktopShell {
     }
 
     private void appendMessage(String who, String text, String accent) {
-        if (!messages.getChildren().isEmpty()
-                && messages.getChildren().get(0) instanceof Label) {
-            // 去掉空态提示
-            messages.getChildren().remove(0);
+        if (emptyState != null) {
+            // 首条消息到来：把空态（标志 + 提示）整体撤掉
+            messages.getChildren().remove(emptyState);
+            emptyState = null;
         }
         Region bar = new Region();
         bar.setMinWidth(2);
@@ -516,8 +551,27 @@ public final class DesktopShell {
         messages.getChildren().add(row);
     }
 
-    private static Label emptyHint() {
-        return emptyNote(EMPTY_HINT);
+    /**
+     * 空会话状态：标志 + 一句提示。
+     *
+     * <p>标志用 {@code Logo.svg} 渲染出的 PNG（见 {@link LogoImage}）。图片缺失时只显示提示，
+     * 不让「少一张图」把窗口搞崩。</p>
+     *
+     * @return 空态节点
+     */
+    private VBox createEmptyState() {
+        VBox box = new VBox(ShellLayout.GAP, emptyNote(EMPTY_HINT));
+        box.setId(EMPTY_ID);
+        box.setAlignment(Pos.CENTER);
+        // 占满宽度再居中，否则整块会贴在右边（父容器默认靠左，但空态宽度只由内容决定）
+        box.setMaxWidth(Double.MAX_VALUE);
+        ImageView logo = LogoImage.view(LogoImage.DISPLAY_SIZE);
+        if (logo != null) {
+            logo.setId(LOGO_ID);
+            box.getChildren().add(0, logo);
+        }
+        emptyState = box;
+        return box;
     }
 
     private static Label emptyNote(String text) {

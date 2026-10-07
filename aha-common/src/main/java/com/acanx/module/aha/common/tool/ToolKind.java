@@ -1,4 +1,4 @@
-package com.acanx.module.aha.cli.render;
+package com.acanx.module.aha.common.tool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,13 +8,18 @@ import java.util.Map;
 /**
  * 工具调用的类别：决定区块配色与展示文案。
  *
+ * <p><strong>CLI 与桌面端共用这一份判定。</strong>{@code GUIDesign.md} 第 3.1 节要求两端
+ * 使用同一套语义（CLI 用 256 色、GUI 用十六进制，但「哪个工具算写入」必须一致），
+ * 所以放在 {@code aha-common}：一侧改了、另一侧不会悄悄分叉。
+ * 本类只依赖 JDK，符合 {@code aha-common} 的零外部依赖约定。</p>
+ *
  * <p>读文件、写文件、执行命令、发请求这四类操作的「后果」完全不同——读取是安全的、
  * 写入会改数据、执行会跑命令。用颜色把它们分开，用户扫一眼就知道刚才发生了什么，
  * 不必逐行读工具名。</p>
  *
  * @since 0.1.0
  */
-enum ToolKind {
+public enum ToolKind {
 
     /** 读取文件。 */
     READ("读取文件", "path", List.of("file-read", "file-list", "read")),
@@ -48,7 +53,7 @@ enum ToolKind {
      *
      * @return 标签
      */
-    String label() {
+    public String label() {
         return label;
     }
 
@@ -58,7 +63,7 @@ enum ToolKind {
      * @param toolName 工具名，可为 {@code null}
      * @return 类别；未识别时返回 {@link #OTHER}
      */
-    static ToolKind of(String toolName) {
+    public static ToolKind of(String toolName) {
         if (toolName == null) {
             return OTHER;
         }
@@ -80,7 +85,7 @@ enum ToolKind {
      * @param args 调用参数，可为 {@code null}
      * @return 目标描述；无法判断时返回 {@code null}
      */
-    String targetOf(Map<String, Object> args) {
+    public String targetOf(Map<String, Object> args) {
         if (args == null || args.isEmpty()) {
             return null;
         }
@@ -109,7 +114,7 @@ enum ToolKind {
      * @param args 调用参数，可为 {@code null}
      * @return 程序名；不适用时返回 {@code null}
      */
-    String programOf(Map<String, Object> args) {
+    public String programOf(Map<String, Object> args) {
         if (this != EXEC || args == null) {
             return null;
         }
@@ -134,7 +139,7 @@ enum ToolKind {
      * @param args 调用参数
      * @return 有序参数
      */
-    static Map<String, String> summary(Map<String, Object> args) {
+    public static Map<String, String> summary(Map<String, Object> args) {
         Map<String, String> result = new LinkedHashMap<>();
         if (args == null) {
             return result;
