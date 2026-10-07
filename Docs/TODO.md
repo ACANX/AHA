@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.14.0
+**文档版本**：v0.15.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -549,6 +549,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
 | v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
 | v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
+| v0.15.0 | 2026-10-07 | `G-04` 改写：新增 `.github/workflows/CodeQL.yml`（高级设置/工作流方式，显式覆盖 `pull_request → main`，手工构建走统一 Maven 入口），说明为何默认设置覆盖不到 `main`、与必需检查契约无关，并给出「不要扫描就删规则 + 删工作流」的备选 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -1095,6 +1096,61 @@ Docs/TODO.md
 改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+
+### G-05 ☐ 未完成
+
+**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
+只保留 `Create a merge commit`。
+
+**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。
+
+**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），
+它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——
+上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。
+2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），
+只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。
+
+**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**
+（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。
+此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。
+
+**闭环后**：本条改 ✅。
+
+### G-04 ◐ 已提供 CodeQL 工作流，待你确认最后一处设置
+
+**现象**：PR #7（`dev` → `main`）停在
+
+```
+Waiting for Code Scanning results. Code Scanning may not be configured for the target branch.
+```
+
+`main` 规则集有一条 `code_scanning` 规则（tool=`CodeQL`，`security_alerts_threshold=high_or_higher`、
+`alerts_threshold=errors`），而仓库此前**没有任何 code scanning 配置**——没有结果可等，于是永久等待。
+
+**已做（2026-10-07）**：新增 `.github/workflows/CodeQL.yml`（**高级设置**，即工作流方式）：
+
+| 设计点 | 取值 | 理由 |
+| ---- | ---- | ---- |
+| 触发分支 | `pull_request: branches: [main, dev]` + `push: [main, dev]` + 每周一 04:00 UTC + 手动 | **必须覆盖目标分支**：规则作用在 `main`，只扫默认分支（`dev`）满足不了它 |
+| 权限 | `contents: read`、`security-events: write`、`actions: read` | 上传 SARIF 必需，其余不收 |
+| 构建 | `build-mode: manual` + 经 `./.github/actions/maven-run` 跑 `./mvnw -B -DskipTests -Djacoco.skip=true compile` | 用仓库固定工具链（Wrapper 的 Maven 4.0.0-rc-7 + JDK 25），并享受失败标记清理与定向重试 |
+| 与必需检查的关系 | **不进**必需检查 | 规则集用的是 `code_scanning`（按扫描结果判定），不是 `required_status_checks`，因此不改动作业名契约（`F-08`） |
+
+> ⚠️ **未能在本环境验证**：CodeQL 只能在 GitHub 上跑。首次运行要盯一眼日志——若报
+> 「`build-mode` 取值不合法」，删掉那一行即可（工作流里已写明）。若报权限不足，检查
+> Settings → Actions → General → Workflow permissions。
+
+**为什么不用 GitHub 的「默认设置」（Default setup）**：它由平台托管、配置更省心，但扫描范围是
+**默认分支**（本仓库为 `dev`）及指向它的 PR，覆盖不到 `main`——规则照样等不到结果。
+（此点未能在本环境核实：docs.github.com 与 raw 文档源均被限流。工作流方案不依赖它，故取工作流。）
+
+**备选（若你不想要代码扫描）**：删掉 `main` 规则集的 `code_scanning` 规则，并删除本工作流。
+规则与产出必须成对——**要么都留，要么都去**。
+
+**验收标准**：Security → Code scanning 出现 java-kotlin 的分析结果；
+PR #7 上「Code Scanning」由等待变为**给出结论**（按阈值：高危以上或存在错误才拦）。
+
+**闭环后**：本条改 ✅。
 
 ### G-05 ☐ 未完成
 

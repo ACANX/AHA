@@ -34,6 +34,9 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **代码扫描（CodeQL）**：新增 `.github/workflows/CodeQL.yml`——`main` 的规则集要求 CodeQL 结果，
+  而仓库此前没有任何 code scanning 配置，PR #7 因此永久停在「Waiting for Code Scanning results」。
+  工作流显式覆盖 `pull_request → main`（默认设置只扫默认分支，覆盖不到），不参与必需检查
 - **文档提交改落在 `dev`**：规则集整改规格与 `F-12` 复发记录两条文档提交现位于 `dev`
   （`abd5d85` / `ca80c5c`），`dependa` 已复位到 `origin/dependa`；复位后的实测代价
   （首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法）已记入 `TODO.md` `G-01`
