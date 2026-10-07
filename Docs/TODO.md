@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.8.0
+**文档版本**：v0.9.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -531,6 +531,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
 | v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
 | v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
+| v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -715,6 +716,8 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
 | F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) |
 | F-09 | 覆盖率门禁**静默**：`jacoco:check` 通过时不打印任何百分比，日志上与「没配门禁」无法区分，被质疑「何来的门禁」 | 缺陷 | ✅ | P2 | ✅ 已修 | `Gate.yml`、`bin/ReportCoverage.py`、`TestingSpec.md` §3.1、[DevLog-20261007-21.md](DevLog/DevLog-20261007-21.md) |
+| F-10 | 工具层的**已知拒绝**（`UNKNOWN_TOOL` / `TOOL_DISABLED` / `PERMISSION_DENIED`）被记成 `ERROR` 并附完整堆栈，违反 `LoggingDesign` §4「预期业务结果记 INFO」；Console 阈值是 ERROR，于是模型偶尔叫错工具名就会在终端刷出堆栈 | 规范偏差 | ✅ | P1 | ✅ 已修 | `AgentEngine.executeTool`、`LoggingDesign.md` §4、`ToolSystemDesign.md` |
+| F-11 | 测试自身产生的输出把构建日志打满（CI 上 80 余行 `[stdout] ... at com.acanx...` 堆栈 + 50 行授权提示），真正的失败被淹没 | 缺陷 | ✅ | P2 | ✅ 已修 | `aha-core/src/test/resources/log4j2-test.xml`、`ConsoleToolApproverTest`、`TestingSpec.md` §5.1 |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -840,6 +843,36 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 **教训**：静默的门禁与不存在的门禁不可区分；凡不出声的检查都要把实测值与标准写进日志。
 已写入 `BuildSpec.md` §8.1「门禁必须自证（强制）」。
+
+---
+
+### F-10 / F-11 ✅ 已修（2026-10-07）
+
+**现象**：CI 日志里 `AgentEngineStreamTest.streamHandlesToolFailureGracefully` 打出
+`工具执行异常 session=s1 tool=missing-tool` 与 80 余行堆栈，看起来像失败，实际该用例通过。
+追问「为何依然会报错」时定位到两个独立问题。
+
+**F-10（规范偏差）**：`AgentEngine.executeTool` 的 `catch` 分支对所有 `RuntimeException`
+一律记 `ERROR` 并附堆栈。但 `ToolRegistry` 抛出的三个错误码——`UNKNOWN_TOOL`、
+`TOOL_DISABLED`、`PERMISSION_DENIED`——都属于**预期内的业务结果**，
+`LoggingDesign.md` §4 早已规定这类情况记 `INFO`（理由：Console 阈值是 ERROR，
+记 ERROR 会打断对话）。而且回灌给模型的文本也带上了堆栈，白占 token。
+
+**修法**：按类型分流——`ToolExecutionException`（工具层的已知拒绝）走 `INFO` 且不带堆栈；
+其余未预期异常维持 `ERROR` + 堆栈。结果文本同样分流：已知拒绝只给原因。
+
+**F-11（测试输出污染）**：测试产生两类输出，都会灌进构建日志——
+① **日志**：测试故意触发错误路径，生产代码按规范记 ERROR + 堆栈；
+② **直接写 stdout 的交互提示**：`ConsoleToolApprover` 的授权询问（50 行）。
+分别处理：`aha-core` 新增 `src/test/resources/log4j2-test.xml`（console 关闭、写
+`target/test-logs/AHA-test.log`）；`ConsoleToolApproverTest` 捕获 `System.out/err`
+并顺势断言提示内容（原先只是把提示喷到日志，什么也没验证）。这是**出口**的调整，不是级别调整。
+于是构建日志被刷成堆栈墙。新增 `aha-core/src/test/resources/log4j2-test.xml`：
+console 关闭、日志写 `target/test-logs/AHA-test.log`。这是**出口**的调整，不是级别调整。
+
+**验证（实测）**：构建日志 `[stdout]` 行 **0** / 堆栈行 **0** / 授权提示 **0**（修复前约 130 行）；
+日志文件里「未知工具」16 次且为 `INFO`，另有 8 条 `ERROR`（新测试故意触发的未预期异常，
+堆栈保留）。新增对照测试 `streamKeepsStackTraceForUnexpectedToolBug` 钉住另一侧。
 
 ---
 

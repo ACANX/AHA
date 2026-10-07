@@ -34,6 +34,12 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **工具失败的日志语义**：工具层的已知拒绝（未知工具 / 未启用 / 未获授权）改记 `INFO`
+  且不带堆栈——它们与「用户拒绝授权」同类，属预期业务结果；Console 阈值是 ERROR，
+  原先记 ERROR 会让模型偶尔叫错工具名就在终端刷出堆栈。未预期异常仍记 `ERROR` + 堆栈
+- **测试输出出口**：新增 `aha-core/src/test/resources/log4j2-test.xml` 把测试日志写入
+  `target/test-logs/` 并关闭 console；`ConsoleToolApproverTest` 捕获 stdout/stderr
+  并顺势断言授权提示内容。构建日志里的测试输出从约 130 行降为 0
 - **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
   把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
   无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
