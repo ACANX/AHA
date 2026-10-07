@@ -67,7 +67,7 @@ class CliCommandTest {
         stderr = new ByteArrayOutputStream();
         System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
         System.setErr(new PrintStream(stderr, true, StandardCharsets.UTF_8));
-        cmd = new CommandLine(new AhaCli());
+        cmd = AhaCli.commandLine();
         cmd.setOut(new PrintWriter(new OutputStreamWriter(stdout, StandardCharsets.UTF_8), true));
         cmd.setErr(new PrintWriter(new OutputStreamWriter(stderr, StandardCharsets.UTF_8), true));
     }

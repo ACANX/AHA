@@ -127,8 +127,13 @@ class MemorySessionCommandTest {
     // ── view ────────────────────────────────────────────────────────────
 
     @Test
-    void viewShowsSourceAndInjectedText() {
+    void viewShowsSourceAndInjectedText() throws Exception {
         String sessionId = newSession();
+        // 自己写一份用户级身份，而不是指望「环境里恰好没有身份文件」：
+        // Windows 的临时目录位于主目录之下，开发机主目录里的 AHA.md 会被“就近查找”命中，
+        // 而 /tmp 在 Linux 上不居于 /root 之下，同一个用例因此只在 Windows 上红。
+        Files.createDirectories(userFile().getParent());
+        Files.writeString(userFile(), "你是 AHA。");
 
         dispatch(sessionId, "/memory");
 

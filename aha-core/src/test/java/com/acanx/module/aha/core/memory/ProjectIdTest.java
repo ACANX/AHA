@@ -12,6 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>项目 ID 是记忆的存储位置，一旦定下就不能随意变动（否则历史记忆会「找不到」），
  * 因此这里把格式钉死。</p>
  *
+ * <p><b>平台无关</b>：格式用纯函数 {@link ProjectId#sanitize} 钉（UNIX 与 Windows 形式都覆盖）；
+ * 需要经过 {@link ProjectId#of} 的用例一律用平台自身的路径构造期望值——
+ * {@code Path.of("/home/me")} 在 Windows 上是「当前盘的绝对路径」，会得到 {@code E:\home\me}。</p>
+ *
  * @since 0.1.0
  */
 class ProjectIdTest {
@@ -51,24 +55,40 @@ class ProjectIdTest {
 
     @Test
     void ignoresTrailingSeparatorAndRelativeSegments() {
-        assertThat(ProjectId.of(Path.of("/tmp/aha-id-test/"))).isEqualTo("-tmp-aha-id-test");
-        assertThat(ProjectId.of(Path.of("/tmp/aha-id-test/./sub/..")))
-                .isEqualTo("-tmp-aha-id-test");
+        // 不要写 POSIX 字面量：Windows 上 Path.of("/tmp/x") 是「当前盘下的绝对路径」，
+        // 规范化后会带上盘符（E:\tmp\x），期望值随之不同。这里改用平台自身的路径。
+        Path base = Path.of(System.getProperty("java.io.tmpdir"), "aha-id-test");
+        String expected = ProjectId.sanitize(base.toAbsolutePath().normalize().toString());
+
+        assertThat(ProjectId.of(Path.of(base + "/"))).isEqualTo(expected);
+        assertThat(ProjectId.of(base.resolve("./sub/.."))).isEqualTo(expected);
     }
 
     @Test
     void buildsProjectScopedMemoryDirectory() {
-        Path dir = ProjectId.memoryDir(Path.of("/home/me/.aha"), Path.of("/home/me/proj"));
+        Path home = Path.of(System.getProperty("user.home"), "aha-home");
+        Path project = Path.of(System.getProperty("user.home"), "aha-proj");
 
-        assertThat(dir.toString().replace('\\', '/'))
-                .isEqualTo("/home/me/.aha/Project/-home-me-proj/Memory");
+        Path dir = ProjectId.memoryDir(home, project);
+
+        // 形状：<home>/Project/<项目 ID>/Memory
+        assertThat(dir.getFileName().toString()).isEqualTo(ProjectId.MEMORY_DIR);
+        assertThat(dir.getParent().getFileName().toString()).isEqualTo(ProjectId.of(project));
+        assertThat(dir.getParent().getParent().getFileName().toString())
+                .isEqualTo(ProjectId.PROJECT_DIR);
+        assertThat(dir.getParent().getParent().getParent()).isEqualTo(home);
     }
 
     @Test
     void memoryDirFallsBackToDotWhenHomeIsNull() {
-        Path dir = ProjectId.memoryDir(null, Path.of("/home/me/proj"));
+        Path project = Path.of(System.getProperty("user.home"), "aha-proj");
 
-        assertThat(dir.toString().replace('\\', '/'))
-                .isEqualTo("./Project/-home-me-proj/Memory");
+        Path dir = ProjectId.memoryDir(null, project);
+
+        // ahaHome 为 null 时基准目录退化为「当前目录」，路径以 ./Project 开头
+        String shown = dir.toString().replace('\\', '/');
+        assertThat(shown).startsWith("./" + ProjectId.PROJECT_DIR + "/")
+                .endsWith("/" + ProjectId.MEMORY_DIR)
+                .contains("/" + ProjectId.of(project) + "/");
     }
 }

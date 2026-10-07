@@ -1,5 +1,7 @@
 package com.acanx.module.aha.core.config;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,6 +20,39 @@ class SystemPromptLoaderTest {
 
     @TempDir
     Path tempDir;
+
+    private String savedAhaHome;
+    private String savedUserHome;
+
+    /**
+     * 隔离用户级目录：本类所有用例都把 {@code AHA_HOME} 与 {@code user.home} 指向临时目录。
+     *
+     * <p>不隔离就会读到开发机上真实的 {@code ~/.aha/AHA.md}：只要用户写过全局身份文件，
+     * 这里拿到的就是与预期完全无关的内容（在 Windows 上五个用例首跑即红）。</p>
+     */
+    @BeforeEach
+    void isolateUserLevelDirectory() throws Exception {
+        savedAhaHome = System.getProperty("AHA_HOME");
+        savedUserHome = System.getProperty("user.home");
+
+        Path userHome = Files.createDirectories(tempDir.resolve("home"));
+        System.setProperty("user.home", userHome.toString());
+        System.setProperty("AHA_HOME", userHome.resolve(".aha").toString());
+    }
+
+    @AfterEach
+    void restoreUserLevelDirectory() {
+        restoreProperty("AHA_HOME", savedAhaHome);
+        restoreProperty("user.home", savedUserHome);
+    }
+
+    private static void restoreProperty(String name, String value) {
+        if (value == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, value);
+        }
+    }
 
     @Test
     void explicitTextWinsOverEverything() throws Exception {
