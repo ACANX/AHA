@@ -18,6 +18,15 @@
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
   `Llm.ModelFile` 的未展开占位符被直接当作路径（`Illegal char <:>`）；项目级身份查找没有边界，
   会一路走到用户主目录把 `~/AHA.md` 当成项目级身份（临时目录位于主目录之下，故仅在 Windows 触发）
+- **CI 卡点组合**：`Gate.yml` 增加每周**定期扫描**（`schedule`），并新增
+  `Compat.yml` 做 Maven 3.9.x 兼容性验证（固定补丁版本，不用 runner 预装 `mvn`）；
+  门禁第一步显式断言 `./mvnw` 实际使用的 Maven 版本与 Wrapper 配置一致，
+  发布前置为 `gate + compat`
+- **检查分层**：慢检查（覆盖率门禁、完整 `clean verify`、文档检查、重复率）集中到
+  新的 `Gate.yml`，只在合入 `main` / `release/**` 前、手动触发与发布前运行；
+  每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
+- **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
+  阈值判定（默认 2.0%，0.1.0 实测 0.40%）
 - **CI 平台矩阵**：新增 `macos-latest` 可选腿，以 `continue-on-error` 标注，
   仅作演示与提前暴露跨平台退化，不参与必需检查、也不代表已支持 macOS（见 `BuildSpec.md` §4.1）
 - **测试与 CI**：测试类隔离 `AHA_HOME` / `user.home` 并不再假定「环境里没有身份文件」；

@@ -41,6 +41,26 @@ dist\bin\Aha.bat chat        # Windows
 
 覆盖率报告：`<module>/target/site/jacoco/index.html`。
 
+### 检查分层
+
+慢检查（覆盖率门禁、完整 `verify`、文档检查、重复率）**不再**跟每次改动一起跑——
+它们集中在 CI 的 `Gate.yml`，只在合入 `main` 前与发布前执行。日常改动只需快检查：
+
+| 场景 | 命令 |
+|---|---|
+| 日常改动（快） | `./mvnw -B clean test -Djacoco.skip=true` |
+| 按变更选择检查 | `python3 bin/CheckChanged.py` |
+| 重复率（改到 PMD 配置 / 阈值时） | `./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py` |
+| 合入 `main` 前（完整门禁，CI 亦会跑） | `./mvnw -B clean verify` + 四个 `Check*.py` + `GenPixelLogo.py --verify` |
+| Maven 3.9.x 兼容（POM 改动时） | `mvn -B clean verify`（CI 由 `Compat.yml` 承担） |
+
+CI 侧的分工：`Build.yml` 每次 push/PR 只做编译与单元测试；`Gate.yml` 承载
+verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、每周定期、发布前**运行；
+`Compat.yml` 承载 Maven 3.9.x 兼容验证。`Gate` 与 `Compat` 都应在 main 的
+分支保护里设为必需检查。
+
+判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8.1 节。
+
 ## 模块结构
 
 | 模块 | 说明 | 依赖 |
