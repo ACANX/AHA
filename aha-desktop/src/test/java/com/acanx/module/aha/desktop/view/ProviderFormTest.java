@@ -3,6 +3,7 @@ package com.acanx.module.aha.desktop.view;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.RateLimitConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.Map;
 
@@ -88,6 +89,101 @@ class ProviderFormTest {
     }
 
     @Test
+    void saveWritesProviderThatCoreCanReadBack(@TempDir java.nio.file.Path tempDir) throws Exception {
+        // 这条测试直接对着「点了新增没反应」这个事故：不仅写入，还要能被 core 读回来
+        java.nio.file.Path file = tempDir.resolve("Model.yml");
+        com.acanx.module.aha.core.config.ModelConfigStore store =
+                new com.acanx.module.aha.core.config.ModelConfigStore(file);
+
+        String error = ProviderForm.save(store, new ProviderForm.Draft(
+                "MyGateway", "openai-compatible", "https://x/v1", "sk-12345678",
+                "my-model", "60", "2"), true);
+
+        assertThat(error).isNull();
+        assertThat(store.load().providersOrEmpty()).containsKey("MyGateway");
+        // core 自己的加载路径也必须认这份文件（含字段名 PascalCase 校验）
+        com.acanx.module.aha.core.config.ModelConfig loaded =
+                com.acanx.module.aha.core.config.ConfigLoader.loadModel(file);
+        assertThat(loaded.providersOrEmpty()).containsKey("MyGateway");
+        assertThat(loaded.providersOrEmpty().get("MyGateway").model()).isEqualTo("my-model");
+    }
+
+    @Test
+    void saveRejectsDuplicateOnCreateButAllowsUpdate(@TempDir java.nio.file.Path tempDir) {
+        com.acanx.module.aha.core.config.ModelConfigStore store =
+                new com.acanx.module.aha.core.config.ModelConfigStore(tempDir.resolve("Model.yml"));
+        assertThat(ProviderForm.save(store, new ProviderForm.Draft(
+                "Dup", "openai-compatible", "https://x/v1", "", "m1", "60", "2"), true)).isNull();
+
+        String error = ProviderForm.save(store, new ProviderForm.Draft(
+                "Dup", "openai-compatible", "https://x/v1", "", "m2", "60", "2"), true);
+        assertThat(error).contains("已存在");
+
+        assertThat(ProviderForm.save(store, new ProviderForm.Draft(
+                "Dup", "openai-compatible", "https://x/v1", "", "m3", "60", "2"), false)).isNull();
+        assertThat(store.load().providersOrEmpty().get("Dup").model()).isEqualTo("m3");
+    }
+
+    @Test
+    void saveReportsValidationErrorsInsteadOfSilentlyDoingNothing(@TempDir java.nio.file.Path tempDir) {
+        com.acanx.module.aha.core.config.ModelConfigStore store =
+                new com.acanx.module.aha.core.config.ModelConfigStore(tempDir.resolve("Model.yml"));
+
+        // 模型为空 —— 正是这次事故的现象：校验拦住了，但界面当初没在按钮旁提示
+        String error = ProviderForm.save(store, new ProviderForm.Draft(
+                "Ok", "openai-compatible", "https://x/v1", "", "", "60", "2"), true);
+
+        assertThat(error).contains("模型名不能为空");
+        assertThat(store.load().providersOrEmpty()).doesNotContainKey("Ok");
+    }
+
+    @Test
+    void loadSafelyReportsBadConfigInsteadOfThrowing(@TempDir java.nio.file.Path tempDir)
+            throws Exception {
+        // 复现用户遇到的那次崩溃：文件里有个小写键名，core 拒绝加载整份配置。
+        // 界面必须能打开并指出问题，而不是抛异常。
+        java.nio.file.Path file = tempDir.resolve("Model.yml");
+        java.nio.file.Files.writeString(file, """
+                Model:
+                  Default: "qqqqq"
+                  Providers:
+                    qqqqq:
+                      Adapter: "anthropic"
+                      BaseUrl: "https://AAA.com/"
+                      ApiKey: ""
+                      Model: "aaaaaa"
+                      TimeoutSeconds: 60
+                      MaxRetries: 2
+                """, java.nio.charset.StandardCharsets.UTF_8);
+        com.acanx.module.aha.core.config.ModelConfigStore store =
+                new com.acanx.module.aha.core.config.ModelConfigStore(file);
+
+        ProviderForm.LoadResult result = ProviderForm.loadSafely(store);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.config()).isNull();
+        assertThat(result.error()).contains("PascalCase").contains("qqqqq");
+    }
+
+    @Test
+    void saveRefusesWhenConfigIsBroken(@TempDir java.nio.file.Path tempDir) throws Exception {
+        java.nio.file.Path file = tempDir.resolve("Model.yml");
+        java.nio.file.Files.writeString(file, """
+                Model:
+                  Providers:
+                    qqqqq:
+                      Model: "m"
+                """, java.nio.charset.StandardCharsets.UTF_8);
+        com.acanx.module.aha.core.config.ModelConfigStore store =
+                new com.acanx.module.aha.core.config.ModelConfigStore(file);
+
+        String error = ProviderForm.save(store, new ProviderForm.Draft(
+                "Good", "openai-compatible", "https://x/v1", "", "m", "60", "2"), true);
+
+        assertThat(error).contains("配置读取失败");
+    }
+
+    @Test
     void maskHidesKeyBodies() {
         assertThat(ProviderForm.mask(null)).isEqualTo("（未设置）");
         assertThat(ProviderForm.mask("short")).isEqualTo("（已设置，短值）");
@@ -120,6 +216,32 @@ class ProviderFormTest {
         assertThat(draft.adapter()).isEqualTo(ProviderForm.ADAPTERS[0]);
         assertThat(draft.model()).isEmpty();
         assertThat(ProviderForm.modelsFor("MyOwnGateway")).isEmpty();
+    }
+
+    @Test
+    void idMustBePascalCaseLikeCoreRequires() {
+        // 这条曾经漏掉：界面允许小写 ID，而 core 按 YAML 字段规范校验，
+        // 于是写出的配置让 CLI 直接拒绝加载整份文件（「YAML 字段必须为 PascalCase」）
+        assertThat(ProviderForm.validate(new ProviderForm.Draft(
+                "qqqqq", "openai-compatible", "https://x/v1", "", "m", "60", "2")))
+                .containsKey("id");
+        assertThat(ProviderForm.validate(new ProviderForm.Draft(
+                "My_Gateway", "openai-compatible", "https://x/v1", "", "m", "60", "2")))
+                .containsKey("id");
+
+        assertThat(ProviderForm.validate(new ProviderForm.Draft(
+                "MyGateway2", "openai-compatible", "https://x/v1", "", "m", "60", "2")))
+                .isEmpty();
+    }
+
+    @Test
+    void duplicateIdIsDetectedForCreateForm() {
+        java.util.List<String> existing = java.util.List.of("OpenAI", "DeepSeek");
+
+        assertThat(ProviderForm.idExists("DeepSeek", existing)).isTrue();
+        assertThat(ProviderForm.idExists("  DeepSeek  ", existing)).isTrue();
+        assertThat(ProviderForm.idExists("NewOne", existing)).isFalse();
+        assertThat(ProviderForm.idExists(null, existing)).isFalse();
     }
 
     @Test

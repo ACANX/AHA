@@ -37,6 +37,7 @@ public final class ToolListDialog {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.initOwner(owner);
         alert.setTitle("工具");
+        alert.getDialogPane().setStyle(Palette.theme());
         List<ToolDescriptor> list;
         try {
             list = tools.get();
@@ -48,11 +49,13 @@ public final class ToolListDialog {
         for (ToolDescriptor tool : list) {
             Label line = new Label("%s  ·  %s".formatted(tool.name(),
                     tool.permission() == null ? "权限未声明" : tool.permission().name()));
-            line.setStyle("-fx-font-size: 12px;");
+            line.setStyle("-fx-font-size: 12px; -fx-text-fill: " + Palette.FOREGROUND + ";");
             box.getChildren().add(line);
         }
         if (list.isEmpty()) {
-            box.getChildren().add(new Label("（没有可用工具：检查 Aha.Tools.Enabled 与 aha-tool 依赖）"));
+            Label empty = new Label("（没有可用工具：检查 Aha.Tools.Enabled 与 aha-tool 依赖）");
+            empty.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
+            box.getChildren().add(empty);
         }
         alert.getDialogPane().setContent(box);
         alert.showAndWait();

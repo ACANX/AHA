@@ -1,5 +1,6 @@
 package com.acanx.module.aha.desktop.view;
 
+import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ProviderConfig;
 
 import java.util.LinkedHashMap;
@@ -49,6 +50,23 @@ public final class ProviderForm {
         MODELS.put("DeepSeek", new String[]{"deepseek-chat", "deepseek-reasoner"});
         MODELS.put("BigModelCN", new String[]{"glm-4.6", "glm-4.5-air"});
         MODELS.put("Qwen", new String[]{"qwen-max", "qwen-plus", "qwen-turbo"});
+    }
+
+    /**
+     * 新增时检查 ID 是否已被占用。
+     *
+     * <p>新增与编辑是两件事：ID 已存在应当明确报出来并让用户去「编辑」区，
+     * 而不是静默覆盖掉一个能用的配置。</p>
+     *
+     * @param id       待新增的 ID
+     * @param existing 现有 ID 集合
+     * @return 已存在返回 {@code true}
+     */
+    public static boolean idExists(String id, java.util.Collection<String> existing) {
+        if (id == null || existing == null) {
+            return false;
+        }
+        return existing.contains(id.trim());
     }
 
     /**
@@ -144,6 +162,16 @@ public final class ProviderForm {
     }
 
     /**
+     * 与 core 的 {@code ConfigLoader} 保持一致的大驼峰规则。
+     *
+     * <p>供应商 ID 就是 YAML 字段名：{@code ConfigLoader.validateFieldNames} 会用同样的正则校验，
+     * 不符时**整份配置都读不出来**（CLI 报「YAML 字段必须为 PascalCase」并拒绝加载）。
+     * 界面若放宽校验，等于允许用户写出自己都读不回来的配置。</p>
+     */
+    private static final java.util.regex.Pattern PASCAL_CASE =
+            java.util.regex.Pattern.compile("^[A-Z][a-zA-Z0-9]*$");
+
+    /**
      * 校验草稿。
      *
      * @param draft 草稿
@@ -153,8 +181,12 @@ public final class ProviderForm {
         Map<String, String> errors = new LinkedHashMap<>();
         if (blank(draft.id())) {
             errors.put("id", "供应商 ID 不能为空");
-        } else if (!draft.id().trim().matches("[A-Za-z0-9_.-]+")) {
-            errors.put("id", "ID 只允许字母、数字、下划线、点与减号");
+        } else if (!PASCAL_CASE.matcher(draft.id().trim()).matches()) {
+            // 必须与 core 的 ConfigLoader.validateFieldNames 一致：
+            // 供应商 ID 就是 YAML 字段名，不符合大驼峰会让**整份配置读不出来**
+            // （CLI 报「YAML 字段必须为 PascalCase」并拒绝加载）。界面放宽校验等于
+            // 允许用户写出自己都读不回来的配置。
+            errors.put("id", "供应商 ID 必须是大驼峰，如 DeepSeek（core 按 YAML 字段规范校验）");
         }
         if (blank(draft.adapter())) {
             errors.put("adapter", "适配器不能为空");
@@ -195,6 +227,85 @@ public final class ProviderForm {
                 Integer.parseInt(draft.maxRetries().trim()),
                 original == null ? null : original.rateLimit(),
                 original == null ? null : original.extra());
+    }
+
+    /**
+     * 安全读取的结果。
+     *
+     * @param config 配置；读取失败时为 {@code null}
+     * @param error  失败说明；成功时为 {@code null}
+     */
+    public record LoadResult(com.acanx.module.aha.core.config.ModelConfig config, String error) {
+
+        /**
+         * 是否读取成功。
+         *
+         * @return 成功返回 {@code true}
+         */
+        public boolean ok() {
+            return error == null;
+        }
+    }
+
+    /**
+     * 安全读取 Model.yml：**坏配置不能让界面崩掉**。
+     *
+     * <p>为什么需要它：core 按 YAML 字段规范做严格校验（供应商 ID 必须大驼峰），
+     * 一旦文件里出现 {@code qqqqq} 这类键名，{@code ConfigLoader} 会拒绝加载**整份文件**，
+     * 而对话框原先直接调用 {@code store.load()}，于是「打开供应商」当场抛异常——
+     * 用户只看到报错，看不到是哪一行坏了。</p>
+     *
+     * <p>现在的行为：对话框照常打开，并把 core 的原始错误（含出错字段名）显示出来。</p>
+     *
+     * @param store 存取器
+     * @return 读取结果
+     */
+    public static LoadResult loadSafely(com.acanx.module.aha.core.config.ModelConfigStore store) {
+        try {
+            return new LoadResult(store.load(), null);
+        } catch (RuntimeException e) {
+            return new LoadResult(null, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * 落盘：新增或修改一个供应商，并**读回自检**。
+     *
+     * <p>为什么要有这个方法：第一版的「新增」直接写在对话框里，结果模型字段读到空值
+     * （可编辑 ComboBox 的输入文本不会自动提交到 value，失焦还会被清空），
+     * 校验失败却只在左上角留一行提示——用户看到的就是「点了新增没反应」。
+     * 把落盘抽出来之后，它可以被单元测试覆盖，而且写完立刻读回确认。</p>
+     *
+     * @param store  存取器
+     * @param draft  表单草稿
+     * @param create {@code true} 表示新增（ID 已存在则拒绝），{@code false} 表示修改
+     * @return 成功返回 {@code null}；失败返回给用户看的说明
+     */
+    public static String save(ModelConfigStore store, Draft draft, boolean create) {
+        Map<String, String> errors = validate(draft);
+        if (!errors.isEmpty()) {
+            return String.join("；", errors.values());
+        }
+        LoadResult current = loadSafely(store);
+        if (!current.ok()) {
+            return "配置读取失败，无法保存：" + current.error();
+        }
+        String id = draft.id().trim();
+        ProviderConfig existing = current.config().providersOrEmpty().get(id);
+        if (create && existing != null) {
+            return "供应商 ID 已存在：" + id + "。改已有配置请用上面的「编辑」区。";
+        }
+        if (!create && existing == null) {
+            return "供应商不存在：" + id;
+        }
+        store.putProvider(id, toConfig(draft, existing));
+        // 读回自检：写完立刻确认这份配置能被读出来（否则「点了没反应」会再次静默发生）
+        LoadResult reloaded = loadSafely(store);
+        ProviderConfig saved = reloaded.ok() ? reloaded.config().providersOrEmpty().get(id) : null;
+        if (saved == null || !saved.model().equals(draft.model().trim())) {
+            return "写入后读回校验失败：" + id + "（请检查 " + store.path() + " 的写权限）";
+        }
+        return null;
     }
 
     /**

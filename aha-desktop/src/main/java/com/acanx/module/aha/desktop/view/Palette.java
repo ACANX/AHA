@@ -47,6 +47,24 @@ public final class Palette {
     public static final String FOCUS_BORDER = "#AF87FF";
 
     /**
+     * 暗色主题（JavaFX 的「被查色」，子节点自动继承）。
+     *
+     * <p>必须应用到**每一个顶层容器**，不只是主窗口：{@code Dialog} / {@code Alert} 有自己的
+     * 场景根，不会继承主窗口的样式。第一版只给主窗口套了主题，于是对话框是 JavaFX 默认白底，
+     * 而列表文字用的是 {@link #FOREGROUND}（近白）——白底白字，看上去发灰、费眼。
+     * 那个 bug 不是配色选择问题，是**主题没铺到对话框**。</p>
+     *
+     * @return 内联样式
+     */
+    public static String theme() {
+        return "-fx-base: #1E1E1E;"
+                + "-fx-background: #1E1E1E;"
+                + "-fx-control-inner-background: #252526;"
+                + "-fx-text-background-color: " + FOREGROUND + ";"
+                + "-fx-accent: " + FOCUS_BORDER + ";";
+    }
+
+    /**
      * 按工具类别取语义色。
      *
      * <p>类别判定（哪个工具算读取 / 写入 / 执行 / 网络）来自 {@code aha-common} 的

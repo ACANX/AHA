@@ -222,7 +222,7 @@ public final class DesktopShell implements ChatView {
      */
     public Parent buildRoot() {
         BorderPane root = new BorderPane();
-        root.setStyle(darkTheme());
+        root.setStyle(Palette.theme());
         root.setTop(new VBox(buildMenuBar()));
         root.setCenter(buildMiddleRow());
         root.setBottom(buildStatusBar());
@@ -517,23 +517,6 @@ public final class DesktopShell implements ChatView {
                 + Palette.FOREGROUND + ";");
         button.setOnAction(event -> action.run());
         return button;
-    }
-
-    /**
-     * 暗色主题（{@code GUIDesign.md} 第 3.1 节：暗色优先，亮色作为等价映射）。
-     *
-     * <p>直接给根节点设 JavaFX 的「被查色」（looked-up colors），子节点自动继承——
-     * 不引入额外 CSS 文件，也就不会在 JPMS 下遇到「样式表找不到」的问题。
-     * 第一次在 Windows 上启动时没上主题，浅色文字压在浅灰底上几乎看不见。</p>
-     *
-     * @return 内联样式
-     */
-    private static String darkTheme() {
-        return "-fx-base: #1E1E1E;"
-                + "-fx-background: #1E1E1E;"
-                + "-fx-control-inner-background: #252526;"
-                + "-fx-text-background-color: " + Palette.FOREGROUND + ";"
-                + "-fx-accent: " + Palette.FOCUS_BORDER + ";";
     }
 
     private MenuBar buildMenuBar() {

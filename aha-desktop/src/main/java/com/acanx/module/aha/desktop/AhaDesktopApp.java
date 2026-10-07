@@ -254,6 +254,7 @@ public final class AhaDesktopApp extends Application {
                         String.valueOf(arguments == null ? "（无参数）" : arguments), once, always, deny);
                 alert.initOwner(owner);
                 alert.setTitle("工具授权");
+                alert.getDialogPane().setStyle(com.acanx.module.aha.desktop.view.Palette.theme());
                 alert.setHeaderText(permission + "  " + toolName);
                 alert.showAndWait().ifPresent(picked -> choice.set(picked == once
                         ? DesktopToolApprover.Decision.ALLOW_ONCE
