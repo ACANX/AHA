@@ -253,6 +253,9 @@ public final class DesktopShell implements ChatView {
     /** 主题切换动作（/theme 与视图菜单共用）。 */
     private Runnable onThemeCycle;
 
+    /** 撤销本会话全部授权（工具菜单 / Ctrl+Shift+R）。 */
+    private Runnable onRevokeApprovals;
+
     /** 最近一次刷新的会话摘要（供搜索过滤复用）。 */
     private List<SessionSummary> sessionSummaries = List.of();
 
@@ -710,6 +713,15 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
+     * 设置「全部撤销本会话授权」动作。
+     *
+     * @param handler 动作
+     */
+    public void onRevokeApprovals(Runnable handler) {
+        this.onRevokeApprovals = handler;
+    }
+
+    /**
      * 设置主题切换动作（{@code /theme} 与「视图 → 主题」共用）。
      *
      * @param handler 动作
@@ -917,9 +929,20 @@ public final class DesktopShell implements ChatView {
         session.getItems().add(clear);
 
         Menu tools = new Menu("工具(_T)");
-        MenuItem toolList = new MenuItem("工具列表（待接入）");
-        toolList.setDisable(true);
-        tools.getItems().add(toolList);
+        MenuItem toolList = new MenuItem("工具列表");
+        toolList.setOnAction(event -> openToolDialog());
+        // 会话内「始终允许」必须有一个显眼的撤回入口（GUIDesign 第 5.1 节）
+        MenuItem revoke = new MenuItem("全部撤销本会话授权");
+        revoke.setAccelerator(new KeyCodeCombination(KeyCode.R,
+                KeyCombination.SHORTCUT_DOWN, KeyCombination.SHIFT_DOWN));
+        revoke.setOnAction(event -> {
+            if (onRevokeApprovals == null) {
+                appendNotice("撤销授权尚不可用（未接线）。");
+            } else {
+                onRevokeApprovals.run();
+            }
+        });
+        tools.getItems().addAll(toolList, new SeparatorMenuItem(), revoke);
 
         Menu view = new Menu("视图(_V)");
         collapseLeft.setSelected(!leftFold.isExpanded());

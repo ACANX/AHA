@@ -24,9 +24,6 @@ import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
@@ -121,10 +118,17 @@ public final class AhaDesktopApp extends Application {
         shell.setConfigSummary(configSummary());
 
         // Agent 服务：与 CLI 用同一个工厂、同一份配置；工具授权走桌面端弹窗
+        DesktopToolApprover approver = new DesktopToolApprover(
+                (toolName, permission, arguments, alreadyAllowed) -> askApproval(
+                        stage, dispatcher, toolName, permission, arguments, alreadyAllowed));
         AgentService service = AgentServiceFactory.local(
-                boot == null ? null : boot.config(),
-                new DesktopToolApprover((toolName, permission, arguments) ->
-                        askApproval(stage, dispatcher, toolName, permission, arguments)));
+                boot == null ? null : boot.config(), approver);
+        shell.onRevokeApprovals(() -> {
+            int revoked = approver.clearSessionAllowed();
+            shell.appendNotice(revoked == 0
+                    ? "本会话没有已放行的权限。"
+                    : "已撤销本会话的 " + revoked + " 项授权，后续同类操作会重新询问。");
+        });
 
         // 供应商配置来自 Model.yml（与 CLI 同一份），默认供应商的模型决定本轮会话用哪个模型
         ModelConfigStore modelStore =
@@ -361,26 +365,16 @@ public final class AhaDesktopApp extends Application {
      */
     private static DesktopToolApprover.Decision askApproval(Stage owner, FxDispatcher dispatcher,
                                                             String toolName, ToolPermission permission,
-                                                            Map<String, Object> arguments) {
+                                                            Map<String, Object> arguments,
+                                                            java.util.Set<ToolPermission> alreadyAllowed) {
         AtomicReference<DesktopToolApprover.Decision> choice =
                 new AtomicReference<>(DesktopToolApprover.Decision.DENY);
         CountDownLatch answered = new CountDownLatch(1);
         dispatcher.dispatch(() -> {
             try {
-                ButtonType once = new ButtonType("本次允许", ButtonBar.ButtonData.YES);
-                ButtonType always = new ButtonType("本会话始终允许", ButtonBar.ButtonData.APPLY);
-                ButtonType deny = new ButtonType("拒绝", ButtonBar.ButtonData.NO);
-                Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                        String.valueOf(arguments == null ? "（无参数）" : arguments), once, always, deny);
-                alert.initOwner(owner);
-                alert.setTitle("工具授权");
-                alert.getDialogPane().setStyle(com.acanx.module.aha.desktop.view.Palette.theme());
-                alert.setHeaderText(permission + "  " + toolName);
-                alert.showAndWait().ifPresent(picked -> choice.set(picked == once
-                        ? DesktopToolApprover.Decision.ALLOW_ONCE
-                        : picked == always
-                        ? DesktopToolApprover.Decision.ALLOW_SESSION
-                        : DesktopToolApprover.Decision.DENY));
+                // 工具线程在这里阻塞等待用户选择；弹窗本身在 UI 线程（见 DesktopDesign 第 6 节）
+                choice.set(new com.acanx.module.aha.desktop.view.ApprovalDialog(
+                        toolName, permission, arguments, alreadyAllowed).show(owner));
             } finally {
                 answered.countDown();
             }

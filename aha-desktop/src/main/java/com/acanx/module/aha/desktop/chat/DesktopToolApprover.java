@@ -48,12 +48,18 @@ public final class DesktopToolApprover implements ToolApprover {
         /**
          * 询问用户。
          *
-         * @param toolName   工具名
-         * @param permission 所需权限
-         * @param arguments  调用参数
+         * <p>把「本会话已经放行了哪些权限」一并给出，是因为弹窗要如实告诉用户
+         * 现在的放宽范围（{@code GUIDesign.md} 第 4.4 节：「本次会话内，X 已自动允许」）。
+         * 让实现去反查 approver 会把两者绕成一个环，不如直接传。</p>
+         *
+         * @param toolName       工具名
+         * @param permission     所需权限
+         * @param arguments      调用参数
+         * @param alreadyAllowed 本会话已放行的权限
          * @return 用户选择；无法询问时返回 {@link Decision#DENY}
          */
-        Decision ask(String toolName, ToolPermission permission, Map<String, Object> arguments);
+        Decision ask(String toolName, ToolPermission permission, Map<String, Object> arguments,
+                     Set<ToolPermission> alreadyAllowed);
     }
 
     /** 本会话内已放行的权限。 */
@@ -65,7 +71,9 @@ public final class DesktopToolApprover implements ToolApprover {
      * @param prompt 询问通道
      */
     public DesktopToolApprover(Prompt prompt) {
-        this.prompt = prompt == null ? (name, permission, args) -> Decision.DENY : prompt;
+        this.prompt = prompt == null
+                ? (name, permission, args, allowed) -> Decision.DENY
+                : prompt;
     }
 
     @Override
@@ -73,7 +81,7 @@ public final class DesktopToolApprover implements ToolApprover {
         if (sessionAllowed.contains(permission)) {
             return true;
         }
-        Decision decision = prompt.ask(toolName, permission, arguments);
+        Decision decision = prompt.ask(toolName, permission, arguments, sessionAllowed());
         if (decision == Decision.ALLOW_SESSION) {
             sessionAllowed.add(permission);
         }
@@ -87,5 +95,19 @@ public final class DesktopToolApprover implements ToolApprover {
      */
     public Set<ToolPermission> sessionAllowed() {
         return Set.copyOf(sessionAllowed);
+    }
+
+    /**
+     * 撤销本会话内的全部授权（「工具 → 全部撤销本会话授权」）。
+     *
+     * <p>会话内「始终允许」是个便利但危险的状态，必须有一个显眼的撤回入口——
+     * CLI 端只能靠重开会话，GUI 端可以做得更好（{@code GUIDesign.md} 第 5.1 节）。</p>
+     *
+     * @return 被撤销的权限数量
+     */
+    public int clearSessionAllowed() {
+        int removed = sessionAllowed.size();
+        sessionAllowed.clear();
+        return removed;
     }
 }
