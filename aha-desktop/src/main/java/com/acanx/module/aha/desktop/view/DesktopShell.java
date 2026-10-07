@@ -4,9 +4,12 @@ import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
 import com.acanx.module.aha.desktop.chat.ChatView;
+import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import javafx.geometry.Insets;
+import javafx.scene.Cursor;
+import javafx.scene.Node;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
@@ -32,6 +35,7 @@ import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -100,6 +104,24 @@ public final class DesktopShell implements ChatView {
     /** 用量标签 id。 */
     public static final String USAGE_ID = "aha.usage";
 
+    /** 工具卡片节点 id 前缀（后接句柄）。 */
+    public static final String TOOL_CARD_ID_PREFIX = "aha.toolcard.";
+
+    /** 工具卡片首行 id 前缀（可点，展开 / 收起）。 */
+    public static final String TOOL_HEAD_ID_PREFIX = "aha.toolcard.head.";
+
+    /** 工具卡片正文 id 前缀（默认隐藏）。 */
+    public static final String TOOL_BODY_ID_PREFIX = "aha.toolcard.body.";
+
+    /** 工具卡片「全部输出」按钮 id 前缀。 */
+    public static final String TOOL_ALL_ID_PREFIX = "aha.toolcard.all.";
+
+    /** 工具卡片「复制输出」按钮 id 前缀。 */
+    public static final String TOOL_COPY_ID_PREFIX = "aha.toolcard.copy.";
+
+    /** 工具卡片「重试」按钮 id 前缀。 */
+    public static final String TOOL_RETRY_ID_PREFIX = "aha.toolcard.retry.";
+
     /** 空会话状态节点 id（标志 + 提示，出现首条消息时整体移除）。 */
     public static final String EMPTY_ID = "aha.empty";
 
@@ -150,8 +172,17 @@ public final class DesktopShell implements ChatView {
     /** 本轮助手文本缓冲。 */
     private final StringBuilder assistantBuffer = new StringBuilder();
 
-    /** 工具卡片的状态行（句柄 = 下标 + 1）。 */
-    private final List<Label> toolStatus = new ArrayList<>();
+    /** 工具卡片（句柄 = 下标 + 1）。 */
+    private final List<ToolCardNode> toolCards = new ArrayList<>();
+
+    /**
+     * 主题切换时需要重新套一遍样式的动作。
+     *
+     * <p>颜色是内联样式（没有外部 CSS 文件），因此换主题时必须把已建好的节点重刷一遍。
+     * 所有走 {@link #themed} 建的节点都会登记到这里，于是「新增一个控件忘了支持主题」
+     * 最多是漏一处，不会像第一版那样整套白底白字。</p>
+     */
+    private final List<Runnable> restylers = new ArrayList<>();
 
     /** 发送按钮（生成中禁用）。 */
     private Button sendButton;
@@ -438,34 +469,53 @@ public final class DesktopShell implements ChatView {
     }
 
     @Override
-    public int beginToolCall(String kindLabel, String toolName, String target) {
+    public int beginToolCall(String kindLabel, String toolName, String target,
+                             Map<String, Object> args) {
         String accent = Palette.forToolKind(ToolKind.of(toolName));
-        Label head = new Label(kindLabel + "  " + toolName
-                + (target == null || target.isBlank() ? "" : "  " + target));
-        head.setStyle("-fx-text-fill: " + accent + ";");
-        Label state = new Label("运行中…");
-        state.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        VBox card = new VBox(2, head, state);
-        card.setStyle("-fx-background-color: " + Palette.BLOCK_BACKGROUND
-                + "; -fx-background-radius: 6; -fx-padding: 6;");
+        ToolCardNode card = createToolCard(kindLabel, toolName, target, args, accent);
         removeEmptyState();
-        messages.getChildren().add(card);
-        toolStatus.add(state);
-        return toolStatus.size();
+        messages.getChildren().add(card.node);
+        toolCards.add(card);
+        int handle = toolCards.size();
+        // id 里带句柄：真机排查与自动化测试都能直接定位到第几张卡片
+        card.node.setId(TOOL_CARD_ID_PREFIX + handle);
+        card.head.setId(TOOL_HEAD_ID_PREFIX + handle);
+        card.body.setId(TOOL_BODY_ID_PREFIX + handle);
+        card.all.setId(TOOL_ALL_ID_PREFIX + handle);
+        card.copy.setId(TOOL_COPY_ID_PREFIX + handle);
+        card.retry.setId(TOOL_RETRY_ID_PREFIX + handle);
+        return handle;
     }
 
     @Override
-    public void finishToolCall(int handle, boolean success, String summary, String output) {
+    public void finishToolCall(int handle, boolean success, String output, long millis) {
         int index = handle - 1;
-        if (index < 0 || index >= toolStatus.size()) {
+        if (index < 0 || index >= toolCards.size()) {
             return;
         }
-        Label state = toolStatus.get(index);
-        state.setText(summary);
-        state.setStyle("-fx-text-fill: " + (success ? Palette.SUCCESS : Palette.FAILURE) + ";");
-        if (output != null && !output.isBlank()) {
-            state.setTooltip(new Tooltip(output.length() > 2000
-                    ? output.substring(0, 2000) + "…" : output));
+        ToolCardNode card = toolCards.get(index);
+        card.fullOutput = output == null ? "" : output;
+        int lines = ToolCard.lines(card.fullOutput);
+
+        card.result.setText(ToolCard.resultLine(true, success, millis, lines));
+        card.result.setStyle("-fx-text-fill: "
+                + (success ? Palette.SUCCESS : Palette.FAILURE) + ";");
+        card.outputTitle.setText(ToolCard.outputTitle(lines));
+        card.output.setText(ToolCard.numbered(ToolCard.preview(card.fullOutput)));
+        card.output.setPrefRowCount(Math.max(3, Math.min(18, lines)));
+        boolean hasOutput = lines > 0;
+        show(card.outputTitle, hasOutput);
+        show(card.output, hasOutput);
+        show(card.copy, hasOutput);
+        show(card.all, hasOutput);
+        // 失败才给重试入口。放在**首行**而不是展开区里：卡片默认折叠，
+        // 藏进折叠区等于没有入口（CLI 端失败时也是立刻能看到下一步动作的）
+        show(card.retry, !success);
+        card.node.setStyle(cardStyle(success, !success));
+        if (!success) {
+            // 失败卡片直接把正文摊开：用户不需要再点一次才知道发生了什么
+            card.expanded = true;
+            applyCardState(card);
         }
     }
 
@@ -755,6 +805,216 @@ public final class DesktopShell implements ChatView {
         toggle.setTooltip(new Tooltip(fold.tooltip()));
     }
 
+    /**
+     * 建一张工具卡片：首行常驻，正文（参数 + 输出）默认折叠。
+     *
+     * @param kindLabel 类别标签
+     * @param toolName  工具名
+     * @param target    操作目标
+     * @param args      调用参数
+     * @param accent    类别语义色
+     * @return 卡片节点集合
+     */
+    private ToolCardNode createToolCard(String kindLabel, String toolName, String target,
+                                        Map<String, Object> args, String accent) {
+        ToolCardNode card = new ToolCardNode(toolName);
+
+        card.caret = new Label(ToolCard.CARET_COLLAPSED);
+        card.caret.setStyle("-fx-text-fill: " + Palette.MUTED + "; -fx-min-width: 14px;");
+        card.headline = new Label(ToolCard.headline(kindLabel, toolName, target));
+        card.headline.setStyle("-fx-text-fill: " + accent + ";");
+        card.result = new Label(ToolCard.RUNNING);
+        card.result.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+
+        card.retry = new Button("重试");
+        card.retry.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.FAILURE + "; -fx-underline: true;");
+        // 重试不本地重放工具：把失败事实与原参数交回模型，由它决定是否重试
+        card.retry.setOnAction(event -> {
+            event.consume();
+            onSend.accept(ToolCard.retryMessage(toolName, args));
+        });
+        card.revise = new Button("改参数后重试");
+        card.revise.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + "; -fx-underline: true;");
+        card.revise.setOnAction(event -> {
+            event.consume();
+            composer.setText(ToolCard.params(args));
+            composer.positionCaret(composer.getText().length());
+            focusComposer();
+        });
+        show(card.retry, false);
+        show(card.revise, false);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        card.head = new HBox(ShellLayout.GAP / 2.0,
+                card.caret, card.headline, spacer, card.revise, card.retry, card.result);
+        card.head.setAlignment(Pos.CENTER_LEFT);
+        card.head.setCursor(Cursor.HAND);
+        card.head.setPadding(new Insets(4, 6, 4, 6));
+        card.head.setOnMouseClicked(event -> toggleToolCard(card.node.getId()));
+
+        Label paramsTitle = themed(new Label("参数"), () -> mutedStyle(12));
+        TextArea params = new TextArea(ToolCard.params(args));
+        params.setEditable(false);
+        params.setWrapText(true);
+        params.setPrefRowCount(Math.max(2, Math.min(6, ToolCard.lines(ToolCard.params(args)))));
+        params.setStyle(CODE_STYLE);
+
+        card.outputTitle = themed(new Label(""), () -> mutedStyle(12));
+        card.copy = new Button("复制");
+        card.copy.setOnAction(event -> {
+            event.consume();
+            card.outputTitle.setText(Clipboards.copy(card.fullOutput)
+                    ? "已复制输出（共 " + ToolCard.lines(card.fullOutput) + " 行）"
+                    : "复制失败：剪贴板不可用");
+        });
+        card.all = new Button("全部");
+        card.all.setOnAction(event -> openOutput(card));
+        HBox outputHead = new HBox(ShellLayout.GAP / 2.0, card.outputTitle, spacerFor(),
+                card.copy, card.all);
+        outputHead.setAlignment(Pos.CENTER_LEFT);
+        card.outputHead = outputHead;
+
+        card.output = new TextArea("");
+        card.output.setEditable(false);
+        card.output.setWrapText(false);
+        card.output.setStyle(CODE_STYLE);
+
+        card.body = new VBox(ShellLayout.GAP / 2.0, paramsTitle, params, outputHead, card.output);
+        card.node = new VBox(card.head, card.body);
+        card.node.setStyle(cardStyle(true, false));
+
+        applyCardState(card);
+        return card;
+    }
+
+    /**
+     * 展开 / 收起一张工具卡片。
+     *
+     * @param cardId 卡片节点 id（{@link #TOOL_CARD_ID_PREFIX} + 句柄）
+     * @return 展开后的状态；找不到卡片返回 {@code false}
+     */
+    public boolean toggleToolCard(String cardId) {
+        for (ToolCardNode card : toolCards) {
+            if (card.node.getId() != null && card.node.getId().equals(cardId)) {
+                card.expanded = !card.expanded;
+                applyCardState(card);
+                return card.expanded;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 展开 / 收起第 {@code handle} 张工具卡片。
+     *
+     * @param handle 卡片句柄（从 1 开始）
+     * @return 展开后的状态
+     */
+    public boolean toggleToolCard(int handle) {
+        return toggleToolCard(TOOL_CARD_ID_PREFIX + handle);
+    }
+
+    /**
+     * 第 {@code handle} 张卡片是否已展开。
+     *
+     * @param handle 卡片句柄（从 1 开始）
+     * @return 展开返回 {@code true}
+     */
+    public boolean isToolCardExpanded(int handle) {
+        int index = handle - 1;
+        return index >= 0 && index < toolCards.size() && toolCards.get(index).expanded;
+    }
+
+    /**
+     * 第 {@code handle} 张卡片的正文是否可见。
+     *
+     * @param handle 卡片句柄
+     * @return 可见返回 {@code true}
+     */
+    public boolean isToolCardBodyVisible(int handle) {
+        int index = handle - 1;
+        return index >= 0 && index < toolCards.size()
+                && toolCards.get(index).body.isVisible();
+    }
+
+    /**
+     * 第 {@code handle} 张卡片的结果行文本。
+     *
+     * @param handle 卡片句柄
+     * @return 文本；句柄越界返回空串
+     */
+    public String toolCardResultText(int handle) {
+        int index = handle - 1;
+        return index >= 0 && index < toolCards.size() ? toolCards.get(index).result.getText() : "";
+    }
+
+    /** 工具卡片数量。 */
+    public int toolCardCount() {
+        return toolCards.size();
+    }
+
+    private void applyCardState(ToolCardNode card) {
+        show(card.body, card.expanded);
+        card.caret.setText(ToolCard.caret(card.expanded));
+        Tooltip.install(card.head, new Tooltip(ToolCard.tooltip(card.expanded)));
+    }
+
+    private void openOutput(ToolCardNode card) {
+        new OutputDialog("工具输出 · " + card.toolName, card.fullOutput)
+                .show(composer.getScene() == null ? null : composer.getScene().getWindow());
+    }
+
+    /**
+     * 工具卡片的边框与底色。
+     *
+     * @param success      是否成功
+     * @param failed       是否失败（红边）
+     * @return 样式
+     */
+    private static String cardStyle(boolean success, boolean failed) {
+        String border = failed ? Palette.FAILURE : "#3A3A3A";
+        return "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";"
+                + "-fx-background-radius: 6;"
+                + "-fx-border-color: " + border + "; -fx-border-radius: 6;"
+                + "-fx-padding: 2;";
+    }
+
+    /** 等宽代码样式（工具输出与参数区）。 */
+    private static final String CODE_STYLE =
+            "-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace; -fx-font-size: 12px;";
+
+    private static String mutedStyle(int size) {
+        return "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: " + size + "px;";
+    }
+
+    private static void show(Node node, boolean visible) {
+        node.setVisible(visible);
+        node.setManaged(visible);
+    }
+
+    private static Region spacerFor() {
+        Region region = new Region();
+        HBox.setHgrow(region, Priority.ALWAYS);
+        return region;
+    }
+
+    /**
+     * 登记节点的样式来源，供主题切换时重刷。
+     *
+     * @param node  节点
+     * @param style 样式提供者
+     * @param <T>   节点类型
+     * @return 原节点
+     */
+    private <T extends Node> T themed(T node, Supplier<String> style) {
+        restylers.add(() -> node.setStyle(style.get()));
+        node.setStyle(style.get());
+        return node;
+    }
+
     private void appendMessage(String who, String text, String accent) {
         Label body = new Label(text);
         body.setWrapText(true);
@@ -826,6 +1086,51 @@ public final class DesktopShell implements ChatView {
         Label label = new Label("⚙ 设置");
         label.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
         return label;
+    }
+
+    /**
+     * 一张工具卡片需要被后续更新与折叠的部件。
+     *
+     * <p>用一个小容器把「哪个 Label 是结果行、哪个 VBox 是正文」记下来，
+     * 比在下标里翻 {@code HBox.getChildren()} 稳得多（顺序一改就全错）。</p>
+     */
+    private static final class ToolCardNode {
+
+        private final String toolName;
+
+        private VBox node;
+
+        private HBox head;
+
+        private VBox body;
+
+        private Label caret;
+
+        private Label headline;
+
+        private Label result;
+
+        private Label outputTitle;
+
+        private HBox outputHead;
+
+        private TextArea output;
+
+        private Button copy;
+
+        private Button all;
+
+        private Button retry;
+
+        private Button revise;
+
+        private boolean expanded;
+
+        private String fullOutput = "";
+
+        ToolCardNode(String toolName) {
+            this.toolName = toolName;
+        }
     }
 
     private static Region spacer() {

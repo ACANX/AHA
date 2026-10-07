@@ -1,5 +1,7 @@
 package com.acanx.module.aha.desktop.chat;
 
+import java.util.Map;
+
 /**
  * 对话界面对「对话内核」暴露的动作。
  *
@@ -51,19 +53,20 @@ public interface ChatView {
      * @param kindLabel 类别标签（如「读取」）
      * @param toolName  工具名
      * @param target    操作目标（可为 {@code null}）
+     * @param args      调用参数（可为 {@code null}）；展开卡片时显示
      * @return 卡片句柄，结果到达时原样回传
      */
-    int beginToolCall(String kindLabel, String toolName, String target);
+    int beginToolCall(String kindLabel, String toolName, String target, Map<String, Object> args);
 
     /**
      * 更新工具卡片的执行结果。
      *
      * @param handle  卡片句柄
      * @param success 是否成功
-     * @param summary 结果摘要（如「✓ 完成 · 412 行」）
      * @param output  输出文本（可为 {@code null}）
+     * @param millis  耗时（毫秒）；不足 100ms 时界面不显示耗时
      */
-    void finishToolCall(int handle, boolean success, String summary, String output);
+    void finishToolCall(int handle, boolean success, String output, long millis);
 
     /**
      * 更新本轮用量。

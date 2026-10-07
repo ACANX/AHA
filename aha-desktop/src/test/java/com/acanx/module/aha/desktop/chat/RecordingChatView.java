@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.chat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 记录式 {@link ChatView}：把界面动作记下来供断言。
@@ -63,14 +64,14 @@ final class RecordingChatView implements ChatView {
     }
 
     @Override
-    public int beginToolCall(String kindLabel, String toolName, String target) {
-        cards.add(kindLabel + "|" + toolName + "|" + target);
+    public int beginToolCall(String kindLabel, String toolName, String target, Map<String, Object> args) {
+        cards.add(kindLabel + "|" + toolName + "|" + target + "|" + args);
         return cards.size();
     }
 
     @Override
-    public void finishToolCall(int handle, boolean success, String summary, String output) {
-        cardResults.add(handle + "|" + success + "|" + summary);
+    public void finishToolCall(int handle, boolean success, String output, long millis) {
+        cardResults.add(handle + "|" + success + "|" + millis + "|" + ToolCard.lines(output));
     }
 
     @Override

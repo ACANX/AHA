@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * 对话内核：把 {@link AgentService} 的事件流翻译成界面动作。
@@ -56,6 +57,12 @@ public final class ChatController {
     /** 同一轮内同名工具的卡片句柄（工具调用是顺序的，先进先出匹配结果）。 */
     private final Map<String, Deque<Integer>> openCards = new ConcurrentHashMap<>();
 
+    /** 卡片句柄 → 调用开始的纳秒时刻（耗时只在结果行展示，不参与业务逻辑）。 */
+    private final Map<Integer, Long> cardStartedAt = new ConcurrentHashMap<>();
+
+    /** 计时源；注入以便在没有时间流逝的测试里断言耗时口径。 */
+    private final LongSupplier clock;
+
     private String sessionId;
 
     private volatile CancellationToken token = new CancellationToken();
@@ -69,11 +76,25 @@ public final class ChatController {
      */
     public ChatController(ChatView view, AgentService service, SessionConfig sessionConfig,
                           Executor executor, Consumer<Runnable> ui) {
+        this(view, service, sessionConfig, executor, ui, System::nanoTime);
+    }
+
+    /**
+     * @param view          对话界面
+     * @param service       Agent 服务
+     * @param sessionConfig 会话配置（模型、系统提示词等）
+     * @param executor      执行器（每轮一个任务）
+     * @param ui            UI 线程投递器
+     * @param clock         计时源（纳秒）；测试注入固定值即可断言耗时口径
+     */
+    public ChatController(ChatView view, AgentService service, SessionConfig sessionConfig,
+                          Executor executor, Consumer<Runnable> ui, LongSupplier clock) {
         this.view = Objects.requireNonNull(view, "view");
         this.service = Objects.requireNonNull(service, "service");
         this.sessionConfig = sessionConfig;
         this.executor = Objects.requireNonNull(executor, "executor");
         this.ui = Objects.requireNonNull(ui, "ui");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**
@@ -174,8 +195,10 @@ public final class ChatController {
     private void onToolCall(ToolCallEvent call) {
         ToolKind kind = ToolKind.of(call.toolName());
         String target = kind.targetOf(call.args());
+        long startedAt = clock.getAsLong();
         ui.accept(() -> {
-            int handle = view.beginToolCall(kind.label(), call.toolName(), target);
+            int handle = view.beginToolCall(kind.label(), call.toolName(), target, call.args());
+            cardStartedAt.put(handle, startedAt);
             openCards.computeIfAbsent(call.toolName(), name -> new ArrayDeque<>()).addLast(handle);
         });
     }
@@ -187,8 +210,9 @@ public final class ChatController {
             LOG.debug("工具 {} 的结果没有对应卡片，忽略", result.toolName());
             return;
         }
-        String output = ToolSummary.textOf(result.result());
-        String summary = ToolSummary.result(result.success(), output);
-        ui.accept(() -> view.finishToolCall(handle, result.success(), summary, output));
+        String output = ToolCard.textOf(result.result());
+        Long startedAt = cardStartedAt.remove(handle);
+        long millis = startedAt == null ? 0 : Math.max(0, (clock.getAsLong() - startedAt) / 1_000_000);
+        ui.accept(() -> view.finishToolCall(handle, result.success(), output, millis));
     }
 }

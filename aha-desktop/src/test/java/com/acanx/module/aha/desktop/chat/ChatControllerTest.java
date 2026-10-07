@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,12 +31,15 @@ class ChatControllerTest {
 
     private ChatController controller;
 
+    /** 可控计时源：默认不流逝，于是耗时断言与机器快慢无关。 */
+    private final AtomicLong nanos = new AtomicLong();
+
     @BeforeEach
     void setUp() {
         service = new FakeAgentService();
         view = new RecordingChatView();
         controller = new ChatController(view, service,
-                new SessionConfig("gpt-4o", null, null), Runnable::run, Runnable::run);
+                new SessionConfig("gpt-4o", null, null), Runnable::run, Runnable::run, nanos::get);
     }
 
     @Test
@@ -62,9 +66,27 @@ class ChatControllerTest {
 
         controller.send("读一下文件");
 
-        assertThat(view.cards).containsExactly("读取文件|file-read|AgentEngine.java");
+        assertThat(view.cards)
+                .containsExactly("读取文件|file-read|AgentEngine.java|{path=AgentEngine.java}");
         assertThat(view.cardResults).hasSize(1);
-        assertThat(view.cardResults.get(0)).contains("|true|").contains("3 行");
+        // 句柄 | 成功 | 耗时毫秒 | 输出行数
+        assertThat(view.cardResults.get(0)).isEqualTo("1|true|0|3");
+    }
+
+    @Test
+    void toolDurationIsMeasuredFromCallToResult() {
+        // 每次读时钟都前进 125ms：于是「调用 → 结果」之间恰好 125ms。
+        // 用可控时钟而不是 sleep，测试才不会随机器快慢漂移。
+        ChatController ticking = new ChatController(view, service,
+                new SessionConfig("gpt-4o", null, null), Runnable::run, Runnable::run,
+                () -> nanos.addAndGet(125_000_000L));
+        service.script.add(new ToolCallEvent("s1", "file-read", Map.of("path", "a.txt")));
+        service.script.add(new ToolResultEvent("s1", "file-read", "x", true));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        ticking.send("读一下文件");
+
+        assertThat(view.cardResults).containsExactly("1|true|125|1");
     }
 
     @Test

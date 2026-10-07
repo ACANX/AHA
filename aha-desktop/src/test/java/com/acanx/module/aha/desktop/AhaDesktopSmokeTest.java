@@ -1,6 +1,7 @@
 package com.acanx.module.aha.desktop;
 
 import com.acanx.module.aha.common.AppVersion;
+import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
@@ -13,6 +14,7 @@ import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -118,6 +120,31 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(() -> messages.getChildren().size()))
                 .as("Enter 应把输入作为消息发出")
                 .isGreaterThan(before);
+
+        // 工具卡片（GUIDesign 第 4.2 节）：默认折叠 → 可展开 → 失败卡片直接摊开且带重试入口
+        DesktopShell cards = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+        int[] handles = new int[2];
+        onUi(() -> {
+            cards.buildRoot();
+            handles[0] = cards.beginToolCall("读取", "file-read", "AgentEngine.java",
+                    Map.of("path", "AgentEngine.java"));
+            cards.finishToolCall(handles[0], true, "a\nb\nc", 250);
+            handles[1] = cards.beginToolCall("执行", "shell-exec", "rm -rf build",
+                    Map.of("command", "rm -rf build"));
+            cards.finishToolCall(handles[1], false, "permission denied", 120);
+        });
+        assertThat(uiGet(() -> cards.toolCardCount())).isEqualTo(2);
+        assertThat(uiGet(() -> cards.isToolCardBodyVisible(handles[0])))
+                .as("卡片默认折叠：长输出不能淹没对话").isFalse();
+        assertThat(uiGet(() -> cards.toolCardResultText(handles[0])))
+                .isEqualTo("✓ 完成 · 0.3s · 3 行");
+        onUi(() -> cards.toggleToolCard(handles[0]));
+        assertThat(uiGet(() -> cards.isToolCardBodyVisible(handles[0]))).isTrue();
+        assertThat(uiGet(() -> cards.isToolCardExpanded(handles[0]))).isTrue();
+        assertThat(uiGet(() -> cards.isToolCardBodyVisible(handles[1])))
+                .as("失败卡片直接展开，用户不必再点一次才知道发生了什么").isTrue();
+        assertThat(uiGet(() -> cards.toolCardResultText(handles[1])))
+                .isEqualTo("✗ 失败 · 0.1s · 1 行");
 
         assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
 
