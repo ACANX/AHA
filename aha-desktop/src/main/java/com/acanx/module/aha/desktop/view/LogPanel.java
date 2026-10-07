@@ -163,6 +163,16 @@ public final class LogPanel {
     }
 
     /**
+     * 停止自动刷新（关窗时，或测试用完时）。
+     *
+     * <p>公开出来是因为 {@link #build()} 也会启动刷新：只 build 不 show 的调用方
+     * （测试、将来的预览）必须能自己收尾，否则会留下一个一直在跑的定时器。</p>
+     */
+    public void close() {
+        stopTicker();
+    }
+
+    /**
      * 设置级别门槛（等价于用户在下拉里选）。
      *
      * @param level 级别

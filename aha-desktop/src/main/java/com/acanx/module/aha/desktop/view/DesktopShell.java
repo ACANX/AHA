@@ -158,6 +158,15 @@ public final class DesktopShell implements ChatView {
     /** 状态标签初始文案。 */
     public static final String STATUS_INITIAL = "正在启动…";
 
+    /** 默认字号（px）。 */
+    public static final int DEFAULT_FONT_SIZE = 13;
+
+    /** 最小字号（px）。 */
+    public static final int MIN_FONT_SIZE = 12;
+
+    /** 最大字号（px）。 */
+    public static final int MAX_FONT_SIZE = 18;
+
     /** 输入区占位提示（与设计稿一致）。 */
     public static final String COMPOSER_PROMPT =
             "继续输入…（Enter 发送 / Shift+Enter 换行，/ 命令，@ 引用文件）";
@@ -256,6 +265,15 @@ public final class DesktopShell implements ChatView {
     /** 撤销本会话全部授权（工具菜单 / Ctrl+Shift+R）。 */
     private Runnable onRevokeApprovals;
 
+    /** 打开设置面板。 */
+    private Runnable onOpenSettings;
+
+    /** 根节点（换字号时要用）。 */
+    private Parent rootNode;
+
+    /** 当前字号（px）。 */
+    private int fontSize = DEFAULT_FONT_SIZE;
+
     /** 最近一次刷新的会话摘要（供搜索过滤复用）。 */
     private List<SessionSummary> sessionSummaries = List.of();
 
@@ -319,11 +337,60 @@ public final class DesktopShell implements ChatView {
      */
     public Parent buildRoot() {
         BorderPane root = new BorderPane();
-        root.setStyle(Palette.theme());
+        themed(root, this::rootStyle);
         root.setTop(new VBox(buildMenuBar()));
         root.setCenter(buildMiddleRow());
         root.setBottom(buildStatusBar());
+        rootNode = root;
         return root;
+    }
+
+    /** 根节点样式：主题 + 字号（字号属于设置，见 SettingsDialog）。 */
+    private String rootStyle() {
+        return Palette.theme() + "-fx-font-size: " + fontSize + "px;";
+    }
+
+    /**
+     * 切换主题：先换色表，再把所有登记过的节点重刷一遍。
+     *
+     * <p>为什么必须重刷：颜色是内联在样式串里的（没有外部 CSS），换色表不会自动影响已建节点。
+     * 每个走 {@link #themed} 的节点都在 {@link #restylers} 里留了「怎么重新上样式」，
+     * 因此换主题是整屏一致地换，而不是只换新出现的控件。</p>
+     *
+     * @param theme 目标主题
+     * @return 实际生效的主题（{@code 跟随系统} 会被解析）
+     */
+    public Theme applyTheme(Theme theme) {
+        Theme resolved = Palette.setTheme(theme);
+        for (Runnable restyle : restylers) {
+            restyle.run();
+        }
+        // 会话列表的单元格是自己画的，刷新一次就会按新配色重建
+        if (sessionList != null) {
+            sessionList.refresh();
+        }
+        return resolved;
+    }
+
+    /**
+     * 设置字号（重建根样式即可，子控件按继承生效）。
+     *
+     * @param size 字号（px）
+     */
+    public void fontSize(int size) {
+        this.fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, size));
+        if (rootNode != null) {
+            rootNode.setStyle(rootStyle());
+        }
+    }
+
+    /**
+     * 当前字号。
+     *
+     * @return 字号（px）
+     */
+    public int fontSize() {
+        return fontSize;
     }
 
     /**
@@ -458,6 +525,21 @@ public final class DesktopShell implements ChatView {
         }
         out.append('\n').append("  输入 @ 可引用项目内文件；↑ / ↓ 翻历史输入。");
         return out.toString();
+    }
+
+    /**
+     * {@code /help} 的输出是否包含命令目录（真机自证用：确认命令没被当成正文发给模型）。
+     *
+     * @return 包含返回 {@code true}
+     */
+    public boolean helpTextContainsCatalog() {
+        String text = helpText();
+        for (SlashCommands.Command command : SlashCommands.CATALOG) {
+            if (!text.contains("/" + command.name())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -684,6 +766,15 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
+     * 打开供应商配置（设置面板的「默认模型」入口用）。
+     *
+     * <p>设置面板不直接持有供应商对话框：把入口留在界面壳里，一处接线、两处调用。</p>
+     */
+    public void openProviderDialogForSettings() {
+        openProviderDialog();
+    }
+
+    /**
      * 设置工具来源（工具列表对话框用）。
      *
      * @param source 工具来源
@@ -710,6 +801,15 @@ public final class DesktopShell implements ChatView {
         this.projectRoot = source == null
                 ? () -> Path.of(System.getProperty("user.dir", "."))
                 : source;
+    }
+
+    /**
+     * 设置打开设置面板的动作。
+     *
+     * @param handler 动作
+     */
+    public void onOpenSettings(Runnable handler) {
+        this.onOpenSettings = handler;
     }
 
     /**
@@ -773,7 +873,7 @@ public final class DesktopShell implements ChatView {
             dispatcher.dispatch(() -> {
                 currentAssistant = new Label();
                 currentAssistant.setWrapText(true);
-                currentAssistant.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
+                themed(currentAssistant, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
                 addRow("助手", currentAssistant, Palette.SUCCESS);
             });
         }
@@ -828,7 +928,7 @@ public final class DesktopShell implements ChatView {
         int lines = ToolCard.lines(card.fullOutput);
 
         card.result.setText(ToolCard.resultLine(true, success, millis, lines));
-        card.result.setStyle("-fx-text-fill: "
+        themed(card.result, () -> "-fx-text-fill: "
                 + (success ? Palette.SUCCESS : Palette.FAILURE) + ";");
         card.outputTitle.setText(ToolCard.outputTitle(lines));
         card.output.setText(ToolCard.numbered(ToolCard.preview(card.fullOutput)));
@@ -841,7 +941,7 @@ public final class DesktopShell implements ChatView {
         // 失败才给重试入口。放在**首行**而不是展开区里：卡片默认折叠，
         // 藏进折叠区等于没有入口（CLI 端失败时也是立刻能看到下一步动作的）
         show(card.retry, !success);
-        card.node.setStyle(cardStyle(success, !success));
+        themed(card.node, () -> cardStyle(success, !success));
         if (!success) {
             // 失败卡片直接把正文摊开：用户不需要再点一次才知道发生了什么
             card.expanded = true;
@@ -886,6 +986,17 @@ public final class DesktopShell implements ChatView {
         logPanel.show(composer.getScene() == null ? null : composer.getScene().getWindow());
     }
 
+    /**
+     * 打开设置面板。
+     */
+    private void openSettings() {
+        if (onOpenSettings == null) {
+            appendNotice("设置面板尚不可用（未接线）。");
+        } else {
+            onOpenSettings.run();
+        }
+    }
+
     private void openToolDialog() {
         new ToolListDialog(toolSource)
                 .show(composer.getScene() == null ? null : composer.getScene().getWindow());
@@ -898,11 +1009,11 @@ public final class DesktopShell implements ChatView {
      * @param action  点击动作
      * @return 按钮
      */
-    private static Button navButton(String text, Runnable action) {
+    private Button navButton(String text, Runnable action) {
         Button button = new Button(text);
         button.setMaxWidth(Double.MAX_VALUE);
         button.setAlignment(Pos.CENTER_LEFT);
-        button.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+        themed(button, () -> "-fx-background-color: transparent; -fx-text-fill: "
                 + Palette.FOREGROUND + ";");
         button.setOnAction(event -> action.run());
         return button;
@@ -995,7 +1106,7 @@ public final class DesktopShell implements ChatView {
         box.setMinWidth(ShellLayout.LEFT_WIDTH);
         box.setMaxWidth(ShellLayout.LEFT_WIDTH);
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
-        box.setStyle("-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
+        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
 
         TextField search = new TextField();
         search.setId(SESSION_SEARCH_ID);
@@ -1011,7 +1122,7 @@ public final class DesktopShell implements ChatView {
         sessionList.setPrefHeight(200);
         sessionList.setMaxWidth(Double.MAX_VALUE);
         sessionList.setMinHeight(120);
-        sessionList.setStyle("-fx-background-color: transparent; -fx-control-inner-background: "
+        themed(sessionList, () -> "-fx-background-color: transparent; -fx-control-inner-background: "
                 + Palette.BLOCK_BACKGROUND + ";");
         sessionList.setCellFactory(view -> new SessionCell());
         sessionList.getSelectionModel().selectedItemProperty()
@@ -1037,7 +1148,8 @@ public final class DesktopShell implements ChatView {
                 navButton("记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。")),
                 navButton("扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。")),
                 navButton("日志", this::openLogPanel),
-                spacer(), settings());
+                navButton("⚙ 设置", this::openSettings),
+                spacer());
         return box;
     }
 
@@ -1145,9 +1257,9 @@ public final class DesktopShell implements ChatView {
     }
 
     /** 左栏分组标题。 */
-    private static Label section(String text) {
+    private Label section(String text) {
         Label label = new Label(text);
-        label.setStyle("-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
+        themed(label, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
         return label;
     }
 
@@ -1158,7 +1270,7 @@ public final class DesktopShell implements ChatView {
         box.setPrefWidth(ShellLayout.RIGHT_WIDTH);
         box.setMinWidth(ShellLayout.RIGHT_WIDTH);
         box.setMaxWidth(ShellLayout.RIGHT_WIDTH);
-        box.setStyle("-fx-border-color: #3A3A3A; -fx-border-width: 0 0 0 1;");
+        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 0 0 1;");
         Label title = new Label("本轮");
         box.getChildren().addAll(title, emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
         return box;
@@ -1339,18 +1451,18 @@ public final class DesktopShell implements ChatView {
         bar.setMaxHeight(ShellLayout.STATUS_BAR_HEIGHT);
 
         Label connection = new Label("● 未连接");
-        connection.setStyle("-fx-text-fill: " + Palette.FAILURE + ";");
+        themed(connection, () -> "-fx-text-fill: " + Palette.FAILURE + ";");
         status.setId(STATUS_ID);
-        status.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(status, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         config.setId(CONFIG_ID);
-        config.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(config, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         usageLabel = new Label("");
         usageLabel.setId(USAGE_ID);
-        usageLabel.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(usageLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         Label hint = new Label("[Esc] 中断");
-        hint.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(hint, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         Label version = new Label("v" + AppVersion.version());
-        version.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(version, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -1394,14 +1506,14 @@ public final class DesktopShell implements ChatView {
         ToolCardNode card = new ToolCardNode(toolName);
 
         card.caret = new Label(ToolCard.CARET_COLLAPSED);
-        card.caret.setStyle("-fx-text-fill: " + Palette.MUTED + "; -fx-min-width: 14px;");
+        themed(card.caret, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-min-width: 14px;");
         card.headline = new Label(ToolCard.headline(kindLabel, toolName, target));
-        card.headline.setStyle("-fx-text-fill: " + accent + ";");
+        themed(card.headline, () -> "-fx-text-fill: " + accent + ";");
         card.result = new Label(ToolCard.RUNNING);
-        card.result.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(card.result, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         card.retry = new Button("重试");
-        card.retry.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+        themed(card.retry, () -> "-fx-background-color: transparent; -fx-text-fill: "
                 + Palette.FAILURE + "; -fx-underline: true;");
         // 重试不本地重放工具：把失败事实与原参数交回模型，由它决定是否重试
         card.retry.setOnAction(event -> {
@@ -1409,7 +1521,7 @@ public final class DesktopShell implements ChatView {
             onSend.accept(ToolCard.retryMessage(toolName, args));
         });
         card.revise = new Button("改参数后重试");
-        card.revise.setStyle("-fx-background-color: transparent; -fx-text-fill: "
+        themed(card.revise, () -> "-fx-background-color: transparent; -fx-text-fill: "
                 + Palette.MUTED + "; -fx-underline: true;");
         card.revise.setOnAction(event -> {
             event.consume();
@@ -1434,7 +1546,7 @@ public final class DesktopShell implements ChatView {
         params.setEditable(false);
         params.setWrapText(true);
         params.setPrefRowCount(Math.max(2, Math.min(6, ToolCard.lines(ToolCard.params(args)))));
-        params.setStyle(CODE_STYLE);
+        themed(params, () -> CODE_STYLE);
 
         card.outputTitle = themed(new Label(""), () -> mutedStyle(12));
         card.copy = new Button("复制");
@@ -1454,11 +1566,11 @@ public final class DesktopShell implements ChatView {
         card.output = new TextArea("");
         card.output.setEditable(false);
         card.output.setWrapText(false);
-        card.output.setStyle(CODE_STYLE);
+        themed(card.output, () -> CODE_STYLE);
 
         card.body = new VBox(ShellLayout.GAP / 2.0, paramsTitle, params, outputHead, card.output);
         card.node = new VBox(card.head, card.body);
-        card.node.setStyle(cardStyle(true, false));
+        themed(card.node, () -> cardStyle(true, false));
 
         applyCardState(card);
         return card;
@@ -1584,6 +1696,7 @@ public final class DesktopShell implements ChatView {
      * @return 原节点
      */
     private <T extends Node> T themed(T node, Supplier<String> style) {
+        // 登记「怎么重新上样式」，换主题时整屏重刷（见 restylers 的说明）
         restylers.add(() -> node.setStyle(style.get()));
         node.setStyle(style.get());
         return node;
@@ -1592,7 +1705,7 @@ public final class DesktopShell implements ChatView {
     private void appendMessage(String who, String text, String accent) {
         Label body = new Label(text);
         body.setWrapText(true);
-        body.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
+        themed(body, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
         addRow(who, body, accent);
     }
 
@@ -1608,10 +1721,10 @@ public final class DesktopShell implements ChatView {
         Region bar = new Region();
         bar.setMinWidth(2);
         bar.setPrefWidth(2);
-        bar.setStyle("-fx-background-color: " + accent + ";");
+        themed(bar, () -> "-fx-background-color: " + accent + ";");
 
         Label whoLabel = new Label(who);
-        whoLabel.setStyle("-fx-text-fill: " + accent + "; -fx-font-size: 12px;");
+        themed(whoLabel, () -> "-fx-text-fill: " + accent + "; -fx-font-size: 12px;");
 
         VBox column = new VBox(2, whoLabel, body);
         HBox.setHgrow(column, Priority.ALWAYS);
@@ -1649,18 +1762,13 @@ public final class DesktopShell implements ChatView {
         return box;
     }
 
-    private static Label emptyNote(String text) {
+    private Label emptyNote(String text) {
         Label label = new Label(text);
         label.setWrapText(true);
-        label.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        themed(label, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         return label;
     }
 
-    private static Label settings() {
-        Label label = new Label("⚙ 设置");
-        label.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        return label;
-    }
 
     /**
      * 一张工具卡片需要被后续更新与折叠的部件。

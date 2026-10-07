@@ -2,22 +2,34 @@ package com.acanx.module.aha.desktop;
 
 import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.model.SessionSummary;
+import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
+import com.acanx.module.aha.desktop.log.LogBuffer;
+import com.acanx.module.aha.desktop.log.LogLevel;
+import com.acanx.module.aha.desktop.log.LogLine;
+import com.acanx.module.aha.desktop.view.ApprovalDialog;
+import com.acanx.module.aha.desktop.view.LogPanel;
+import com.acanx.module.aha.desktop.view.Palette;
+import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
+import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -181,6 +193,96 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(1);
         onUi(() -> sessionShell.searchSessions(""));
         assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(2);
+
+        // 输入区增强（GUIDesign 第 4.3 节）：/ 命令面板、↑↓ 历史、@ 文件引用
+        DesktopShell inputShell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+        AtomicReference<Stage> inputStage = new AtomicReference<>();
+        onUi(() -> {
+            Stage extra = new Stage();
+            extra.setScene(new Scene(inputShell.buildRoot(), 900, 600));
+            extra.show();
+            inputStage.set(extra);
+        });
+        TextArea input = (TextArea) uiGet(() -> inputStage.get().getScene()
+                .lookup("#" + DesktopShell.COMPOSER_ID));
+        onUi(() -> {
+            input.setText("/he");
+            input.positionCaret(3);
+        });
+        assertThat(uiGet(inputShell::completionVisible)).as("打了 /he 应当弹出命令候选").isTrue();
+        assertThat(uiGet(inputShell::completionItems)).anySatisfy(item ->
+                assertThat(item).contains("/help"));
+        onUi(inputShell::acceptCompletion);
+        assertThat(uiGet(() -> input.getText())).isEqualTo("/help");
+        assertThat(uiGet(inputShell::completionVisible)).isFalse();
+
+        // Enter 执行命令：/help 应当把命令一览写进对话流，而不是发给模型
+        onUi(inputShell::submitComposer);
+        assertThat(uiGet(() -> (int) ((VBox) inputStage.get().getScene()
+                .lookup("#" + DesktopShell.MESSAGES_ID)).getChildren().size()))
+                .isGreaterThan(1);
+        assertThat(uiGet(() -> inputShell.history().size())).isEqualTo(1);
+        assertThat(uiGet(inputShell::helpTextContainsCatalog))
+                .as("/help 的输出应当列出命令").isTrue();
+
+        // ↑ / ↓ 翻历史，且不丢草稿
+        onUi(() -> {
+            input.setText("随手打的草稿");
+            input.positionCaret(input.getText().length());
+        });
+        onUi(() -> input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.UP,
+                false, false, false, false)));
+        assertThat(uiGet(() -> input.getText())).isEqualTo("/help");
+        onUi(() -> input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.DOWN,
+                false, false, false, false)));
+        assertThat(uiGet(() -> input.getText())).as("翻回草稿").isEqualTo("随手打的草稿");
+
+        // @ 文件引用：项目里一定有 pom.xml
+        onUi(() -> {
+            input.setText("@pom");
+            input.positionCaret(4);
+        });
+        assertThat(uiGet(inputShell::completionVisible)).isTrue();
+        assertThat(uiGet(inputShell::completionItems)).anySatisfy(item ->
+                assertThat(item).contains("pom.xml"));
+        onUi(inputShell::acceptCompletion);
+        assertThat(uiGet(() -> input.getText())).contains("pom.xml");
+        onUi(() -> inputShell.applyTheme(Theme.LIGHT));
+        assertThat(uiGet(() -> inputStage.get().getScene().getRoot().getStyle()))
+                .as("换主题要连根节点的样式一起换").contains(Palette.BASE);
+        assertThat(uiGet(() -> ((Button) inputStage.get().getScene()
+                .lookup("#" + DesktopShell.SEND_ID)).getStyle()))
+                .as("已建好的控件也必须被重刷，而不是只换新控件").contains(Palette.FOREGROUND);
+        onUi(() -> inputShell.applyTheme(Theme.DARK));
+        onUi(() -> inputStage.get().close());
+
+        // 日志面板：级别过滤 + 渲染
+        LogPanel panel = new LogPanel("DEBUG");
+        LogBuffer buffer = com.acanx.module.aha.desktop.log.LogCapture.buffer();
+        onUi(() -> {
+            panel.build();
+            buffer.clear();
+            buffer.add(new LogLine(LogLevel.DEBUG, "com.acanx.module.aha.X", "调试行", null, 0));
+            buffer.add(new LogLine(LogLevel.ERROR, "com.acanx.module.aha.Y", "错误行", null, 0));
+            panel.setFilter(LogLevel.ERROR);
+        });
+        assertThat(uiGet(panel::text)).contains("错误行").doesNotContain("调试行");
+        onUi(panel::close);
+
+        // 授权弹窗：三个按钮 + 权限名写进按钮 + 默认拒绝
+        AtomicReference<javafx.scene.control.Dialog<DesktopToolApprover.Decision>> approve =
+                new AtomicReference<>();
+        onUi(() -> approve.set(new ApprovalDialog("file-write",
+                com.acanx.module.aha.common.tool.ToolPermission.WRITE,
+                Map.of("path", "a.txt"), Set.of()).build()));
+        assertThat(uiGet(() -> approve.get().getDialogPane().lookupButton(
+                approve.get().getDialogPane().getButtonTypes().get(0)).getId()))
+                .isEqualTo(ApprovalDialog.DENY_ID);
+        assertThat(uiGet(() -> ((Button) approve.get().getDialogPane().lookupButton(
+                approve.get().getDialogPane().getButtonTypes().get(2))).getText()))
+                .as("按钮上要写出被放宽的权限名").contains("WRITE");
+        assertThat(uiGet(() -> ((TextArea) approve.get().getDialogPane().lookup(
+                "#" + ApprovalDialog.ARGS_ID)).getText())).contains("path: a.txt");
 
         assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
 

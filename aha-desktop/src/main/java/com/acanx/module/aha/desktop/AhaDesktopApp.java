@@ -20,6 +20,10 @@ import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.Palette;
+import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.Theme;
+import com.acanx.module.aha.desktop.view.DesktopSettings;
 import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
@@ -141,6 +145,30 @@ public final class AhaDesktopApp extends Application {
             LOG.warn("日志面板未能接入日志系统：面板仍可打开，但没有实时数据");
         }
         shell.logPanel(new LogPanel(boot == null ? null : boot.loggingLevel()));
+
+        // 界面设置：主题与字号存在用户目录，进程重启后保持（见 DesktopSettings）
+        DesktopSettings settings = DesktopSettings.load(DesktopSettings.defaultFile());
+        Theme effective = shell.applyTheme(settings.theme());
+        shell.fontSize(settings.fontSize());
+        LOG.info("界面设置：主题 {}（生效 {}），字号 {}px，文件 {}",
+                settings.theme().label(), effective.label(), settings.fontSize(),
+                settings.path() == null ? "不可用" : settings.path());
+
+        // 主题切换：/theme、视图菜单、设置面板三条路径都走这里
+        shell.onThemeCycle(() -> {
+            Theme next = Palette.current().next();
+            Theme resolved = shell.applyTheme(next);
+            settings.theme(next);
+            settings.save();
+            shell.appendNotice("主题已切换到「" + next.label() + "」"
+                    + (next == Theme.SYSTEM ? "（生效：" + resolved.label() + "）" : "") + "。");
+        });
+        shell.onOpenSettings(() -> new SettingsDialog(
+                settings,
+                this::configSummary,
+                () -> shell.openProviderDialogForSettings(),
+                shell::applyTheme,
+                shell::fontSize).show(stage));
 
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),

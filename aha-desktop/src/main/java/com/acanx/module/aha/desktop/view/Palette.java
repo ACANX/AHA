@@ -1,79 +1,135 @@
 package com.acanx.module.aha.desktop.view;
 
+import com.acanx.module.aha.common.tool.ToolKind;
+
 /**
- * 语义配色（十六进制）。
+ * 语义配色（十六进制），支持暗色 / 亮色两套。
  *
  * <p>{@code GUIDesign.md} 第 3.1 节：CLI（256 色）与 GUI（十六进制）使用**同一套语义**，
- * 用户在两端看到同一种含义。这里只放 GUI 侧的字面量；语义本身（哪个工具属于哪类）
- * 与 CLI 共用同一套判定，落在后续的工具卡片实现里。</p>
+ * 用户在两端看到同一种含义。</p>
  *
- * <p>颜色值有测试钉住，改设计必须同时改测试——否则「文档说一套、界面做一套」会悄悄发生。</p>
+ * <p><strong>为什么是可变静态字段</strong>：样式是内联字符串，切换主题时必须把已经建好的节点
+ * 重刷一遍。如果颜色是 {@code final}，就只能走「每个控件一个取色方法」的路子——
+ * 那意味着几十处调用点各写一次，而且很容易漏掉一处，于是「文档说一套、界面做一套」。
+ * 这里保留字段本身，只允许 {@link #setTheme(Theme)} 一处改动它们；切换后由
+ * {@code DesktopShell} 重刷所有登记过的节点（见那里的 {@code themed}）。
+ * 换句话说：**颜色的唯一来源仍是这张表**，只是它可以在主题之间切换。</p>
+ *
+ * <p>颜色值有测试钉住，改设计必须同时改测试。</p>
  *
  * @since 0.2.0
  */
 public final class Palette {
 
     /** 读取：查看文件、列目录。 */
-    public static final String READ = "#87AFD7";
+    public static String READ = "#87AFD7";
 
     /** 写入：修改 / 新建文件。 */
-    public static final String WRITE = "#D7AF5F";
+    public static String WRITE = "#D7AF5F";
 
     /** 执行：运行命令 / 脚本。 */
-    public static final String EXEC = "#FF875F";
+    public static String EXEC = "#FF875F";
 
     /** 网络：发起请求。 */
-    public static final String NETWORK = "#5FD7D7";
+    public static String NETWORK = "#5FD7D7";
 
     /** 其它：未识别工具。 */
-    public static final String OTHER = "#BCBCBC";
+    public static String OTHER = "#BCBCBC";
 
     /** 成功：完成。 */
-    public static final String SUCCESS = "#7FD37F";
+    public static String SUCCESS = "#7FD37F";
 
     /** 失败：错误、拒绝。 */
-    public static final String FAILURE = "#FF5F5F";
+    public static String FAILURE = "#FF5F5F";
 
     /** 区块底：工具卡片底。 */
-    public static final String BLOCK_BACKGROUND = "#303030";
+    public static String BLOCK_BACKGROUND = "#303030";
 
-    /** 正文前景（暗色优先主题）。 */
-    public static final String FOREGROUND = "#E4E4E4";
+    /** 正文前景。 */
+    public static String FOREGROUND = "#E4E4E4";
 
     /** 弱化的元信息色。 */
-    public static final String MUTED = "#9A9A9A";
+    public static String MUTED = "#9A9A9A";
 
     /** 输入框边框（与 CLI 的高亮紫一致）。 */
-    public static final String FOCUS_BORDER = "#AF87FF";
+    public static String FOCUS_BORDER = "#AF87FF";
+
+    /** 分隔线。 */
+    public static String BORDER = "#3A3A3A";
+
+    /** 主题底色（{@code -fx-base}）。 */
+    public static String BASE = "#1E1E1E";
+
+    /** 控件内部底色（{@code -fx-control-inner-background}）。 */
+    public static String CONTROL_INNER = "#252526";
+
+    /** 当前主题（{@link Theme#SYSTEM} 会被解析成实际生效的那一个）。 */
+    private static Theme current = Theme.DARK;
+
+    /** 窗口 / 对话框的样式串（{@code Dialog} 有独立场景根，必须逐个套）。 */
+    private static String themeStyle = buildThemeStyle();
+
+    private Palette() {
+    }
 
     /**
-     * 暗色主题（JavaFX 的「被查色」，子节点自动继承）。
+     * 当前生效的主题（已解析，不会是 {@link Theme#SYSTEM}）。
+     *
+     * <p>名字刻意不叫 {@code theme()}：那个名字留给**样式串**（已有几十处调用），
+     * 两者重名会让「取主题」与「取样式」在各调用点读起来一样，迟早出错。</p>
+     *
+     * @return 主题
+     */
+    public static Theme current() {
+        return current;
+    }
+
+    /**
+     * 主题样式串。
      *
      * <p>必须应用到**每一个顶层容器**，不只是主窗口：{@code Dialog} / {@code Alert} 有自己的
      * 场景根，不会继承主窗口的样式。第一版只给主窗口套了主题，于是对话框是 JavaFX 默认白底，
-     * 而列表文字用的是 {@link #FOREGROUND}（近白）——白底白字，看上去发灰、费眼。
-     * 那个 bug 不是配色选择问题，是**主题没铺到对话框**。</p>
+     * 而列表文字用的是 {@link #FOREGROUND}（近白）——白底白字，看上去发灰、费眼。</p>
      *
      * @return 内联样式
      */
     public static String theme() {
-        return "-fx-base: #1E1E1E;"
-                + "-fx-background: #1E1E1E;"
-                + "-fx-control-inner-background: #252526;"
-                + "-fx-text-background-color: " + FOREGROUND + ";"
-                + "-fx-accent: " + FOCUS_BORDER + ";";
+        return themeStyle;
+    }
+
+    /**
+     * 切换主题。
+     *
+     * <p>{@link Theme#SYSTEM} 会按系统偏好解析成暗色或亮色（见 {@link SystemTheme}）。</p>
+     *
+     * @param theme 主题
+     * @return 实际生效的主题
+     */
+    public static Theme setTheme(Theme theme) {
+        Theme requested = theme == null ? Theme.DARK : theme;
+        Theme resolved = requested == Theme.SYSTEM
+                ? requested.resolve(SystemTheme.prefersDark())
+                : requested.resolve(false);
+        current = resolved;
+        if (resolved == Theme.LIGHT) {
+            applyLight();
+        } else {
+            applyDark();
+        }
+        themeStyle = buildThemeStyle();
+        return resolved;
     }
 
     /**
      * 按工具类别取语义色。
      *
      * <p>类别判定（哪个工具算读取 / 写入 / 执行 / 网络）来自 {@code aha-common} 的
-     * {@code ToolKind}，CLI 与桌面端共用同一套；这里只做「类别 → 十六进制」的投影。</p>
+     * {@link ToolKind}，CLI 与桌面端共用同一套；这里只做「类别 → 十六进制」的投影。</p>
      *
      * @param kind 工具类别
      * @return 十六进制颜色
      */
-    public static String forToolKind(com.acanx.module.aha.common.tool.ToolKind kind) {
+    public static String forToolKind(ToolKind kind) {
         return switch (kind) {
             case READ -> READ;
             case WRITE -> WRITE;
@@ -83,6 +139,51 @@ public final class Palette {
         };
     }
 
-    private Palette() {
+    private static void applyDark() {
+        READ = "#87AFD7";
+        WRITE = "#D7AF5F";
+        EXEC = "#FF875F";
+        NETWORK = "#5FD7D7";
+        OTHER = "#BCBCBC";
+        SUCCESS = "#7FD37F";
+        FAILURE = "#FF5F5F";
+        BLOCK_BACKGROUND = "#303030";
+        FOREGROUND = "#E4E4E4";
+        MUTED = "#9A9A9A";
+        FOCUS_BORDER = "#AF87FF";
+        BORDER = "#3A3A3A";
+        BASE = "#1E1E1E";
+        CONTROL_INNER = "#252526";
+    }
+
+    /**
+     * 亮色主题。
+     *
+     * <p>语义色不是把暗色版「调亮」，而是重新挑：亮底上 #FF5F5F 这类高饱和色的对比度不足，
+     * 因此失败 / 成功 / 强调色都取了更深的版本，保证在白底上仍可读。</p>
+     */
+    private static void applyLight() {
+        READ = "#2A5D9F";
+        WRITE = "#8A5A00";
+        EXEC = "#B4441A";
+        NETWORK = "#0F6E6E";
+        OTHER = "#555555";
+        SUCCESS = "#1E7A34";
+        FAILURE = "#C0392B";
+        BLOCK_BACKGROUND = "#F0F0F0";
+        FOREGROUND = "#1F1F1F";
+        MUTED = "#666666";
+        FOCUS_BORDER = "#6A3FD0";
+        BORDER = "#C8C8C8";
+        BASE = "#F4F4F4";
+        CONTROL_INNER = "#FFFFFF";
+    }
+
+    private static String buildThemeStyle() {
+        return "-fx-base: " + BASE + ";"
+                + "-fx-background: " + BASE + ";"
+                + "-fx-control-inner-background: " + CONTROL_INNER + ";"
+                + "-fx-text-background-color: " + FOREGROUND + ";"
+                + "-fx-accent: " + FOCUS_BORDER + ";";
     }
 }
