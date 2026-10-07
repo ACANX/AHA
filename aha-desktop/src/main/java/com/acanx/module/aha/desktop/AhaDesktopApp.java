@@ -13,11 +13,13 @@ import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
 import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
 import com.acanx.module.aha.desktop.chat.SessionExport;
+import com.acanx.module.aha.desktop.log.LogCapture;
 import com.acanx.module.aha.desktop.view.ProviderDialog;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
@@ -128,6 +130,13 @@ public final class AhaDesktopApp extends Application {
                 new ModelConfigStore(ConfigLoader.resolveModelPath(boot == null ? null : boot.config()));
         shell.providerDialog(new ProviderDialog(modelStore.path()));
 
+        // 日志面板：先把内存 appender 挂上（越早越好，启动阶段的事件也想看到），
+        // 再把面板交给界面。挂不上不影响使用，面板会显示「未接入日志系统」。
+        if (!LogCapture.install()) {
+            LOG.warn("日志面板未能接入日志系统：面板仍可打开，但没有实时数据");
+        }
+        shell.logPanel(new LogPanel(boot == null ? null : boot.loggingLevel()));
+
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),
                 ChatController.VIRTUAL_THREADS, dispatcher::dispatch);
@@ -208,6 +217,7 @@ public final class AhaDesktopApp extends Application {
             controller.close();
             service.shutdown();
             bridge.close();
+            LogCapture.uninstall();
         });
         stage.show();
 

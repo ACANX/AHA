@@ -248,6 +248,9 @@ public final class DesktopShell implements ChatView {
     /** 供应商对话框。 */
     private ProviderDialog providerDialog;
 
+    /** 日志面板（未接线时导航按钮说明原因，而不是假动作）。 */
+    private LogPanel logPanel;
+
     private final HBox leftBox;
 
     private final HBox rightBox;
@@ -534,6 +537,15 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
+     * 设置日志面板。
+     *
+     * @param panel 面板
+     */
+    public void logPanel(LogPanel panel) {
+        this.logPanel = panel;
+    }
+
+    /**
      * 把键盘焦点交给输入框（开窗后调用）。
      *
      * <p>聊天类应用启动后应当能直接打字；不设这一步，焦点会落在左栏第一个按钮上，
@@ -671,6 +683,15 @@ public final class DesktopShell implements ChatView {
                 onNewSession);
     }
 
+    /** 打开日志面板（实时日志 + 级别过滤）。 */
+    private void openLogPanel() {
+        if (logPanel == null) {
+            appendNotice("日志面板尚不可用（未接线）。");
+            return;
+        }
+        logPanel.show(composer.getScene() == null ? null : composer.getScene().getWindow());
+    }
+
     private void openToolDialog() {
         new ToolListDialog(toolSource)
                 .show(composer.getScene() == null ? null : composer.getScene().getWindow());
@@ -802,7 +823,7 @@ public final class DesktopShell implements ChatView {
                 navButton("工具", this::openToolDialog),
                 navButton("记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。")),
                 navButton("扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。")),
-                navButton("日志（0.2 后续）", () -> appendNotice("日志面板将在 0.2 后续接入。")),
+                navButton("日志", this::openLogPanel),
                 spacer(), settings());
         return box;
     }
