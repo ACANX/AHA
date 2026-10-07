@@ -15,6 +15,9 @@
 ### 新增
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
+- **文档**：选型清单改为只写主版本线（README / 设计文档 / Constitution），`BuildSpec.md` §7 新增
+  「版本单一来源」规则，消除文档与父 POM 之间的依赖版本漂移
+
 - **启动横幅**：交互式会话启动时在右侧打印 `Logo.svg` 对应的**纯 ASCII 标志**（两档尺寸，按终端宽度自动换档或隐藏），顶栏字段与标志并排、其余细节整宽在下；字段对齐改为按显示宽度补位，修正中文标签错列
 - **启动横幅**：标志提供**像素风**（48x48 / 24x24 半块字符，粗像素、硬边界）与**线框风**（纯 ASCII）两种，`aha chat --logo auto|pixel|ascii|off` 切换；宽度不足时逐档降级，非 TTY 不着色不出标志
 - **文档**：权威设计文档移至 `Docs/AHA/AHA-Design-V1.md`（原 `Docs/AHA-Design-V1.md`）；正文相对链接、两处目录树、附录 A 索引、7 个 SVG 占位说明与全部外部引用同步更新

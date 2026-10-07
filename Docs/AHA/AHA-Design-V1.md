@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.48.0
+**文档版本**：v3.49.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -141,11 +141,14 @@ common ← extension-api ← core ← desktop
 |---|---|---|
 | CLI 框架 | picocli + JLine | 除非有重大安全或性能问题 |
 | GUI | OpenJFX 25，WebView + FXML | 除非有重大安全或性能问题 |
-| JSON/YAML | Jackson 3.1.3（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
+| JSON/YAML | Jackson 3.x（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
 | 日志 | SLF4J + Log4j2 | 可替换 Log4j2 后端 |
 | HTTP 客户端 | JDK HttpClient 或 OkHttp | 二选一，由 Core 层适配器隔离 |
 | 持久化 | SQLite (xerial) + Jackson | 除非有重大安全或性能问题 |
 | DI | 手动工厂 + ServiceLoader + ExtensionRuntime | 禁止引入 Spring/Guice |
+
+> 本清单只写**主版本线**。依赖的确切版本以父 POM 的 `<properties>` 为唯一来源——
+> 升级由 Dependabot 每日提出，把具体版本号抄进文档必然漂移。
 | 并发 | 虚拟线程 + 自定义 CancellationToken | 结构化并发仅限预览评估 |
 | 工具协议 | 自定义 Tool 接口 + MCP 适配器预留 | 内部协议不可更换 |
 | LLM 协议适配 | 内部 IR + 适配器 SPI | 不可更换 |
@@ -429,6 +432,7 @@ aha/
 | v3.46.0 | 2026-10-07 | §3.2 更正 JaCoCo 版本为 0.8.15（与 `pom.xml` 一致） | @ACANX |
 | v3.47.0 | 2026-10-07 | 本文件移至 `Docs/AHA/AHA-Design-V1.md`：正文相对链接改为 `../`，两处目录树与附录 A 索引登记新位置 | @ACANX |
 | v3.48.0 | 2026-10-07 | 第 10 条补「权威设计文档（本文件）→ `Docs/AHA/`」 | @ACANX |
+| v3.49.0 | 2026-10-07 | 第 5 条选型清单改为主版本线并说明版本单一来源；POM 片段不再复制具体版本号 | @ACANX |
 
 ---
 ```
@@ -884,17 +888,10 @@ aha/
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <javafx.version>25</javafx.version>
-        <jackson.version>3.1.3</jackson.version>
-        <picocli.version>4.7.6</picocli.version>
-        <jline.version>3.28.0</jline.version>
-        <sqlite.version>3.53.2.0</sqlite.version>
-        <slf4j.version>2.0.16</slf4j.version>
-        <log4j.version>2.24.1</log4j.version>
-        <junit.version>6.1.3</junit.version>
-        <assertj.version>3.27.3</assertj.version>
-        <mockito.version>5.14.2</mockito.version>
-        <testfx.version>4.0.18</testfx.version>
+        <!-- 依赖版本集中在这里，是本仓库的唯一来源。此处刻意不复制具体版本号：
+             升级由 Dependabot 每日提出，抄进文档必然漂移。属性名如下——
+             javafx / jackson / picocli / jline / sqlite / slf4j / log4j /
+             junit / assertj / mockito / testfx / jacoco 及若干插件版本 -->
     </properties>
 
     <dependencyManagement>

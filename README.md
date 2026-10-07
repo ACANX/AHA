@@ -39,7 +39,7 @@ AHA 的长期目标是成为**可独立承担研发工作的 Agent Harness**。
 | 工具调用 | 文件读写、Shell 执行、HTTP 请求；按后果分级授权 |
 | 记忆管理 | SQLite 持久化、按项目隔离、会话与上下文压缩 |
 | 配置与凭据 | 用户级 `~/.aha` 目录、环境变量、加密密钥库 |
-| 交互体验 | 流式输出、Markdown 渲染、会话内命令、Tab 补全 |
+| 交互体验 | 流式输出、Markdown 渲染、会话内命令、Tab 补全、右侧像素风标志 |
 | 扩展契约 | SPI 契约已定（运行时自 0.3 起提供） |
 
 ## 快速开始
@@ -73,7 +73,8 @@ dist/bin/Aha.sh              # Linux / macOS
 dist\bin\Aha.bat             # Windows
 ```
 
-启动时显示供应商、模型、端点、工作目录、项目根与会话 ID。也可显式指定子命令：
+启动时在右侧打印 Logo（宽终端为像素风，窄终端自动降级为线框风，可用 `--logo` 指定），
+并显示供应商、模型、端点、工作目录、项目根与会话 ID。也可显式指定子命令：
 
 ```bash
 dist/bin/Aha.sh chat
@@ -100,7 +101,10 @@ dist/
 | Maven 兼容基线 | **3.9.x** |
 | OpenJFX | **25**（桌面端，0.1 不启用） |
 | JPMS | **强制启用** |
-| JSON/YAML | Jackson 3.1.3（groupId `tools.jackson`） |
+| JSON/YAML | Jackson **3.x**（groupId `tools.jackson`） |
+
+> 依赖的确切版本集中在父 `pom.xml` 的 `<properties>`，由 Dependabot 每日升级；
+> 本表只写主版本线，避免与升级脱节。
 
 ## 模块
 
@@ -133,8 +137,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) | 常见问题排查 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
-其余目录：`Docs/DevSpec/`（开发规范）、`Docs/Design/`（子系统设计）、
-`Docs/Diagrams/`（图资源）、`Docs/PLAN.md`（开发计划与待办）。
+其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、
+`Docs/Design/`（子系统设计）、`Docs/Diagrams/`（图资源）、`Docs/PLAN.md`（开发计划与待办）。
 
 ## 许可证
 

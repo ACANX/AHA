@@ -1,6 +1,6 @@
 # AHA 工具宪法
 
-**文档版本**：v1.11.0
+**文档版本**：v1.12.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -26,6 +26,7 @@
 | v1.8.0 | 2026-10-07 | 新增运行目录命名规范（`$AHA_HOME` 下按大驼峰单数命名） | @ACANX |
 | v1.10.0 | 2026-10-07 | 日志文件名更正为 `AHA.log`；第 10 条新增第 8 项「日志文件名与切分命名」约定 | @ACANX |
 | v1.11.0 | 2026-10-07 | 第 10 条第 5 项补「权威设计文档 → `Docs/AHA/`」 | @ACANX |
+| v1.12.0 | 2026-10-07 | 第 5 条选型清单改为主版本线（Jackson 3.x），消除与父 POM 的版本漂移 | @ACANX |
 
 ---
 
@@ -136,7 +137,7 @@ common ← extension-api ← core ← desktop
 |---|---|---|
 | CLI 框架 | picocli + JLine | 除非有重大安全或性能问题 |
 | GUI | OpenJFX 25，WebView + FXML | 除非有重大安全或性能问题 |
-| JSON/YAML | Jackson 3.1.3（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
+| JSON/YAML | Jackson 3.x（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
 | 日志 | SLF4J + Log4j2 | 可替换 Log4j2 后端 |
 | HTTP 客户端 | JDK HttpClient 或 OkHttp | 二选一，由 Core 层适配器隔离 |
 | 持久化 | SQLite (xerial) + Jackson | 除非有重大安全或性能问题 |

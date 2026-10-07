@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.3.0
+**文档版本**：v0.4.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -185,7 +185,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 2. 调用方（`LocalAgentService` / `ChatCommand` / `RunCommand`）统一判空
 3. 补单元测试覆盖「首轮空 choices」「流中断无 DONE」两条边界
 
-### B-03 ◐ 进行中
+### B-03 ✅ 已解决（2026-10-07）
 
 **原问题**：`jackson-annotations` 版本（`2.21`）与 Jackson 核心（`3.1.3`）不同步，疑为版本冲突。
 
@@ -203,8 +203,9 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 `Constitution.md` 第 5 条选型清单仍写 **「Jackson 3.1.3（groupId `tools.jackson`）」**，
 与父 POM 的 `3.2.3` **已漂移**。
 
-**残留动作**：在 `Constitution.md` 第 5 条或 `BuildSpec.md` 中补一句说明
-（注解构件版本独立演进，非冲突），并把选型清单版本号与父 POM 对齐。
+**残留动作（已完成）**：`Constitution.md`、`AHA-Design-V1.md`、`README.md` 的选型清单已由
+具体版本号改为**主版本线**（`3.x`）；`BuildSpec.md` §7 新增「版本单一来源」规则：
+确切版本以父 POM 的 `<properties>` 为唯一来源，文档不得复制。
 
 ---
 
@@ -478,6 +479,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.2.0 | 2026-10-07 | 新增第 6 节「记忆能力（0.6 起）」：推进顺序、写入策略、载体选型实测依据、跨环境共享机制 | @ACANX |
 | v0.3.0 | 2026-10-07 | **重排版**：清除重复副本与误粘贴的会话日志（见 `PLAN.md` §4）；全部条目表格新增「状态」列并逐条复核；新增第 9 节「复核结论汇总」 | @ACANX |
 | v0.3.0 | 2026-10-07 | `Docs/` 清单更新：设计文档已移入 `Docs/AHA/` | @ACANX |
+| v0.4.0 | 2026-10-07 | B-03 版本漂移结项 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -622,7 +624,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 项 | 说明 |
 |---|---|
 | **D-09** | `aha-desktop` 未依赖 `aha-tool`，桌面端当前形态**不具备任何工具能力**；`Constitution.md` 第 4 条依赖矩阵亦未覆盖此边 |
-| **B-03 版本漂移** | 父 POM `jackson.version` 已升至 `3.2.3`，但 `Constitution.md` 第 5 条选型清单仍写 `3.1.3` |
+| **B-03 版本漂移** | ✅ 已解决：文档改为主版本线，并在 `BuildSpec.md` §7 立「版本单一来源」规则防复发 |
 | **A-07 定性修正** | `TestingSpec.md` 内部编号**无重复**，问题收窄为 `BuildSpec.md` §6 的单一引用链 |
 | **E-12** | 原文档中「见 D-05」的文件名合规问题**编号错误**（D-05 是覆盖率排除项），现独立为 E-12 |
 
