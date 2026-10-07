@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.4.0
+**文档版本**：v0.7.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -59,6 +59,11 @@
 > 因暂存区文件生命周期短，暂按现行名保留（`AGENTS.md` 与 `PLAN.md` 均按此名引用），
 > **正式化时需一并处理**（见 E-12）。
 
+> **需要人工执行的动作**（推送、仓库 / 分支保护设置、平台侧配置、外部环境验收——即
+> 自动化做不到、又必须有人做才能收口的事）单独记在**第 11 节** `G-xx`，每条都写明
+> **验收标准**（怎么算做完）。这类事项**不得只写在对话里**：对话会滚走，漏掉之后
+> 既没有闭环，也无从判断「到底做过没有」。
+
 ---
 
 ## 1. 文档与仓库卫生
@@ -72,6 +77,8 @@
 | A-05 | `ExtensionSystemDesign.md` 有两个「## 5.」  | 文档缺陷 | ✅    | P1     | ✅ 已完成 | `ExtensionSystemDesign.md`                    |
 | A-06 | 扩展阶段编号「阶段八」与「阶段一」冲突      | 文档缺陷 | ✅    | P1     | ✅ 已完成 | `ExtensionSystemDesign.md`、`TestingSpec.md`、`ExtensionManager.java` |
 | A-07 | `BuildSpec.md` §6 的覆盖率排除项引用失准    | 文档缺陷 | ⚠️    | P2     | ◐ 进行中  | `BuildSpec.md` §6                             |
+| A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
+| A-09 | `PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引 | 文档缺陷 | ✅ | P2 | ☐ 未完成 | `PLAN.md` §8.2 |
 
 ### A-01 ✅ 已完成
 
@@ -148,13 +155,30 @@ dist\bin\Aha.bat chat        # Windows
 
 ---
 
+### A-09 ☐ 未完成
+
+**现象（✅ 已核实）**：`PLAN.md` §8.2 的条目表里有两个 `8.2.7`——一个是
+「`SystemPromptLoaderTest` 不具环境无关性」，另一个是「日志文件长期不生成（见 §8.5）」。
+
+**影响**：`PLAN.md` 正文按编号互引（如 §8.5 处提到「见 8.2.7」），编号重复会让引用指向
+错误条目，也让「这一条到底做没做」变得含糊。
+
+**残留动作**：为后者另取编号并核对全部 `8.2.x` 引用；本条目由第 11 节的留痕约定顺带发现，
+与既定工作无关。
+
+---
+
 ## 2. 代码健壮性
 
 | 编号 | 事项                                                   | 类型 | 证据 | 优先级 | 状态      | 落地文档                               |
 | ---- | ------------------------------------------------------ | ---- | ---- | ------ | --------- | -------------------------------------- |
 | B-01 | `AgentEngine.run()` 空 choices 时返回 `null` 正文      | 风险 | ✅    | P1     | ☐ 未完成  | `AgentEngine`、`AgentServiceDesign.md` |
 | B-02 | `AgentEngine.stream()` 的 `finishReason` 可能为 `null` | 风险 | ✅    | P1     | ☐ 未完成  | 同上                                   |
-| B-03 | `jackson-annotations` 版本与 Jackson 3 是否对齐        | 调研 | ⚠️    | P2     | ◐ 进行中  | `Constitution.md` 第 5 条              |
+| B-03 | `jackson-annotations` 版本与 Jackson 3 是否对齐        | 调研 | ✅    | P2     | ✅ 已解决  | `Constitution.md` 第 5 条、`BuildSpec.md` §7 |
+| B-04 | `resolveModelPath` 把未展开的 `${AHA_HOME:-~/.aha}` 当路径（Windows 抛 `InvalidPathException`，Linux 静默得到相对路径） | 缺陷 | ✅ | P1 | ✅ 已完成 | `ConfigLoader`、`BuildSpec.md` §8.1 |
+| B-05 | 项目级身份查找无上界，会走到用户主目录并写入（Windows 临时目录位于主目录之下，故仅在 Windows 暴露） | 缺陷 | ✅ | P1 | ✅ 已完成 | `SystemPromptLoader`、`AHA-Design-V1.md` §5.1.1 |
+| B-06 | `--help` 在非交互场景输出 ANSI 转义序列（picocli `Ansi.AUTO` 把 Windows 一律视为支持 ANSI） | 缺陷 | ✅ | P1 | ✅ 已完成 | `AhaCli.commandLine()` |
+| B-07 | 测试依赖真实用户目录、且假设「环境里没有身份文件」，`verify` 在开发机与 CI 均不可复现 | 风险 | ✅ | P1 | ✅ 已完成 | `TestingSpec.md` §5.1 |
 
 ### B-01 / B-02 ☐ 未完成
 
@@ -206,6 +230,29 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **残留动作（已完成）**：`Constitution.md`、`AHA-Design-V1.md`、`README.md` 的选型清单已由
 具体版本号改为**主版本线**（`3.x`）；`BuildSpec.md` §7 新增「版本单一来源」规则：
 确切版本以父 POM 的 `<properties>` 为唯一来源，文档不得复制。
+
+---
+
+### B-04 ~ B-07 ✅ 已完成（2026-10-07）：Windows 平台暴露的四类缺陷
+
+**发现方式（✅ 已核实）**：PR #6 在 CI 上始终卡在 `build (windows-latest, wrapper)`，
+但 Linux 侧三处都过。用 Windows 侧 Git Bash 执行与 CI 完全相同的
+`./mvnw clean verify` 复现，得到 **15 个失败 / 错误**，归为四类。修完后两个平台
+（Windows Git Bash 与 Linux）均为 BUILD SUCCESS。
+
+| 编号 | 现象 | 性质 | 处理 |
+| ---- | ---- | ---- | ---- |
+| B-04 | `ConfigLoader.resolveModelPath` 把未展开的 `${AHA_HOME:-~/.aha}/Model.yml` 直接交给 `Path.of` | **生产缺陷**。Windows 因 `:` 抛 `InvalidPathException`；Linux 因 `:` 合法而静默变成一个名为 `${AHA_HOME:-~/.aha}` 的相对路径——**两个平台都不对，只是 Linux 不报错** | 先展开占位符；仍含 `${` 或含平台非法字符时回退默认位置 |
+| B-05 | 项目级身份查找沿目录向上**没有边界** | **生产缺陷**。会一路走到用户主目录，把 `~/AHA.md` 当成项目级身份：既绕过用户级目录 `~/.aha`，又让来源标注失真。Windows 的临时目录位于 `%LOCALAPPDATA%`（主目录之下），因此只在 Windows 暴露；Linux 的 `/tmp` 不在 `/root` 之下，侥幸通过 | 查找止步于用户主目录（`user.home`，并参考 `USERPROFILE` / `HOME`）；`resolve` 与 `findProjectRoot` 共用该边界 |
+| B-06 | `--help` 输出混入 ANSI 转义序列 | **生产缺陷**。picocli 的 `Ansi.AUTO` 把 Windows 一律视为支持 ANSI，于是 `aha --help > help.txt` 也会把转义序列写进文件 | 新增 `AhaCli.commandLine()` 统一按 `System.console()` 决定 `Help.Ansi`，`main`、无参数分支与测试共用同一入口 |
+| B-07 | 测试读写开发机真实用户目录、并假设「环境里没有身份文件」 | **测试可靠性缺陷**。`SystemPromptLoaderTest` 一度在用户写过 `~/.aha/AHA.md` 后 7 个用例全红（此前已登记于 `PLAN.md` §8.2.7，本轮方知它正是 CI 失败主因）；`ProjectIdTest` 用 `Path.of("/home/me/proj")` 造期望值，在 Windows 上是「当前盘下的绝对路径」 | 测试类隔离 `AHA_HOME` / `user.home`；断言改用平台自身路径；需要身份内容时自己写一份已知内容的文件 |
+
+**规范落点**：`TestingSpec.md` 新增 §5.1「测试的环境无关性（强制）」——
+隔离用户目录、不假设环境干净、用平台自身路径、只写合法文件名的特殊字符，
+并约定「向上查找须有边界」「CI 矩阵不得 fail-fast」。
+
+> **注**：B-05 的边界同时修正了「`~/.aha` 之外的用户级文件被当成项目级」这一
+> 语义含混；若用户确实需要全局身份，正确位置是 `~/.aha/AHA.md`（用户级目录）。
 
 ---
 
@@ -480,6 +527,9 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.3.0 | 2026-10-07 | **重排版**：清除重复副本与误粘贴的会话日志（见 `PLAN.md` §4）；全部条目表格新增「状态」列并逐条复核；新增第 9 节「复核结论汇总」 | @ACANX |
 | v0.3.0 | 2026-10-07 | `Docs/` 清单更新：设计文档已移入 `Docs/AHA/` | @ACANX |
 | v0.4.0 | 2026-10-07 | B-03 版本漂移结项 | @ACANX |
+| v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
+| v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
+| v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -555,7 +605,9 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 8    | D-07 | 桌面端技术选型：进程内直调（8.1）vs 本地 HTTP + WebView（8.2）？ | 0.2 全部实现                 | ⏸ 待决策 |
 | 9    | E-12 | `TODO.md` 文件名是否改名？                                   | 文档规范一致性               | ⏸ 待决策 |
 | 10   | D-09 | 桌面端是否需要内置工具（引入 `aha-tool`）？                  | 依赖矩阵与 `Constitution.md` | ⏸ 待决策 |
-
+| 11   | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/`？ | 文档存放规范 | ⏸ 待决策 |
+| 12   | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并？ | 检查覆盖面与目录约定 | ⏸ 待决策 |
+| 13   | H-01 | 启动标志默认风格：像素风（现状）还是线框风？ | 首屏观感 | ⏸ 待决策 |
 ---
 
 ## 8. 落地去向映射
@@ -571,6 +623,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | A-05 | `ExtensionSystemDesign.md` | 章节重编号 | ✅ 已完成 |
 | A-06 | `ExtensionSystemDesign.md`、`TestingSpec.md`、`ExtensionManager.java` | 统一阶段编号 | ✅ 已完成 |
 | A-07 | `BuildSpec.md` §6       | 核对引用链 | ◐ 进行中 |
+| F-08 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) | 恢复矩阵作业名；立「作业名是分支保护的契约」 | ✅ 已修 |
 
 ### 阶段二：规范补充（需评审）
 
@@ -582,7 +635,9 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | C-04 | `BuildSpec.md` §7                  | 补充 `jlink` 禁令解除条件     | ☐ 未完成 |
 | D-05 | `TestingSpec.md` §3                | 补充 Desktop 覆盖率策略       | ☐ 未完成（待决策） |
 | E-10 | `BuildSpec.md` §6/§8               | 补充 native 产物验收标准      | ☐ 未完成（待决策） |
-| B-03 | `Constitution.md` 第 5 条 或 `BuildSpec.md` | 补注解构件版本说明 + 对齐 3.2.3 | ◐ 进行中 |
+| B-03 | `Constitution.md` 第 5 条、`BuildSpec.md` §7 | 选型清单改为主版本线；立「版本单一来源」规则（实测记录除外） | ✅ 已完成 |
+| A-08 | `DocumentationSpec.md` §2 | 明确 `Docs/` 根下暂存区文件的存放位置 | ⏸ 待决策 |
+| F-07 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 | 明确 `.ps1` 是否纳入检查、`Script/` 目录去留 | ⏸ 待决策 |
 | E-12 | `DocumentationSpec.md` 第 1 节     | 文件名保留名单（若采纳）      | ☐ 未完成（待决策） |
 
 ### 阶段三：设计与实现（0.2 前）
@@ -610,6 +665,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 本轮对全部条目逐条对照仓库现状复核，结论如下。
 
+> **本小节是 2026-10-07 当日快照，不随后续变动更新。** 之后新增的条目
+> （`B-04`~`B-07`、`F-01`~`F-06`）与状态变化见第 2 节汇总表与第 10 节；
+> 例如 `B-03` 已于同日收口为 ✅ 已解决，本快照中的「◐ 进行中」是当时的记录。
+
 ### 9.1 统计
 
 | 状态     | 条目数 | 编号                                                         |
@@ -636,6 +695,228 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 文末误粘贴**会话日志与 `file-write` 权限报错**（含 `session=c1624777-…`、工具入参全文） | 已删除 |
 | 全部条目表**无状态列**，已完成项与未开始项无法区分 | 已为所有表格新增「状态」列 |
 | `PLAN.md` §4 登记的「`TODO.md` 重复内容清理」 | 本条即对该项的落实 |
+
+---
+
+## 10. CI、门禁与工程效能
+
+> 本节于 2026-10-07 追加在文件末尾，而非按编号插在前部：§0.3 与 §7 之间已有
+> 「见第 7 节」这类内部引用，插号会连带出错。
+
+| 编号 | 事项 | 类型 | 证据 | 优先级 | 状态 | 落地文档 |
+| ---- | ---- | ---- | ---- | ------ | ---- | -------- |
+| F-01 | 慢检查（完整 verify、覆盖率、文档、技能、脚本、重复率）作为每次 push 的卡点，反馈环路达分钟级且频繁阻塞 | 风险 | ✅ | P1 | ✅ 已完成 | `BuildSpec.md` §8.1、`Build.yml`、`Gate.yml` |
+| F-02 | 门禁未校验「实际使用的 Maven 版本」是否等于 Wrapper 固定版本（结论靠推断） | 风险 | ✅ | P1 | ✅ 已完成 | `BuildSpec.md` §3、`Gate.yml` |
+| F-03 | 无 Maven 3.9.x 独立兼容验证（基线混在快速矩阵里，失败原因不可辨；且依赖 runner 预装版本） | 风险 | ✅ | P1 | ✅ 已完成 | `BuildSpec.md` §4、`Compat.yml` |
+| F-04 | 无重复代码率度量与阈值 | 风险 | ✅ | P2 | ✅ 已完成 | `BuildSpec.md` §8.1、`bin/CheckDuplication.py` |
+| F-05 | CI 矩阵 `fail-fast` 在一条腿失败时取消其余腿，掩盖平台差异 | 缺陷 | ✅ | P1 | ✅ 已完成 | `Build.yml`、`TestingSpec.md` §5.1 |
+| F-06 | macOS 无支持边界声明，容易被误读为「已支持」 | 风险 | ✅ | P3 | ✅ 已完成（已拍板） | `BuildSpec.md` §4.1、`Build.yml` |
+| F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
+| F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1、[DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md) |
+
+### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
+
+**现象（✅ 已核实）**：完整 `clean verify`（含覆盖率门禁与打包）在本项目约需数分钟，
+再叠加文档、技能、脚本与重复率检查，每次写完一个特性都要付这个代价；
+这类检查的价值在「合入前拦住」，而非「每次改动都跑一遍」。
+
+**处理**：按耗时分层，慢检查整体移出「每次改动」路径。
+
+| 层 | 工作流 | 触发 | 内容 |
+| --- | --- | --- | --- |
+| 快检查 | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`） |
+| 门禁 | `Gate.yml` | 合入 `main` / `release/**`、**每周定期**、手动、发布前 | 完整 verify（覆盖率 ≥ 70%）+ 文档 / 技能 / 脚本 / 像素标志 / 重复率 |
+| 兼容性 | `Compat.yml` | 与门禁相同时机 | Maven 3.9.x 完整 verify |
+
+**定期扫描（异步）**：`Gate.yml` 增加 `schedule`（每周一 03:00 UTC）。要拦的是
+「与开发动作无关的漂移」——Dependabot 升级依赖、runner 镜像变化、外部规范演进。
+
+**残留动作**：`main` 分支保护需把 `Gate` 与 `Compat` 设为**必需检查**
+（GitHub 仓库设置项，工作流文件里写不了）。未配置时它们只是「跑给人看」。
+`schedule` 仅在默认分支生效，合入 `main` 后才会开始定期触发。
+
+### F-02 ✅ 已完成（2026-10-07）：门禁断言实际使用的 Maven 版本
+
+**现象**：`Gate.yml` 跑 `./mvnw`，wrapper 的 `distributionUrl` 确实固定为 4.0.0-rc-7，
+但这条保证只存在于「读一眼配置文件」的推断里——runner 上恰好存在别的 `mvn`、
+或脚本被改走系统 Maven，日志里都看不出来。
+
+**处理**：门禁第一步从 `.mvn/wrapper/maven-wrapper.properties` **反推期望版本**，
+与 `./mvnw -v` 的实际输出比对，不一致即失败。刻意不在工作流里写版本字面量：
+Dependabot 升级 wrapper 后自动跟随，不形成两处口径。
+
+### F-03 ✅ 已完成（2026-10-07）：Maven 3.9.x 兼容性独立工作流
+
+**处理**：新增 `Compat.yml`。三条设计决定：
+
+1. **独立工作流**——目标运行时（Maven 4）与兼容基线（3.9.x）失败原因不同，
+   混在一个矩阵里一次失败要花时间判断是哪一版的问题；
+2. **显式固定补丁版本**并从 Maven Central 获取，不用 runner 预装的 `mvn`
+   （镜像会变，兼容性结论就不可复现），跑之前先断言 `mvn -v` 确为 3.9.x；
+3. **跑完整 `clean verify`**——兼容性要验的是 POM 解析、插件解析与打包全链路。
+
+`Release.yml` 的发布前置改为 `needs: [gate, compat]`。
+
+### F-04 ✅ 已完成（2026-10-07）：重复代码率检查
+
+**处理**：此前**没有任何重复率度量**。补上工具链：
+
+| 项 | 规定 |
+| --- | --- |
+| 工具 | PMD CPD（`./mvnw pmd:cpd`），版本由父 POM 的 `pmd.plugin.version` 固定，交由 Dependabot 跟踪 |
+| 最小 token 数 | 100（`<minimumTokens>`，短于此时不计为重复） |
+| 判定 | `bin/CheckDuplication.py`，默认阈值 **2.0%** |
+| 口径 | 重复行数 = Σ 每个 duplication 块 `(出现次数 − 1) × 块行数`；总行数 = 各模块 `src/main/java` 下 `*.java` 的物理行数；只统计主源码 |
+| 实测（0.1.0） | 合计 **0.40%**（74 / 18633 行），最高模块 `aha-core` 1.05% |
+
+报告缺失时脚本**直接失败**而非静默跳过，否则 CI 上「没跑」会被误读成「通过」。
+
+### F-05 ✅ 已完成（2026-10-07）：矩阵不再 fail-fast
+
+**现象（✅ 已核实）**：PR #6 的 Windows 腿一失败，GitHub 立即取消 Linux 两条腿，
+页面上只看到「第一条红」，掩盖了「另一个平台究竟是什么结果」——排查因此多绕很久。
+
+**处理**：`Build.yml` 的矩阵加 `fail-fast: false`，并把该教训写入 `TestingSpec.md` §5.1。
+
+### F-06 ✅ 已完成（2026-10-07，已拍板）：macOS 仅作演示与可选
+
+**处理**：新增 `macos-latest` 腿，以矩阵的 `optional` 标记驱动 `continue-on-error`：
+失败只标注该腿自身，不使整体构建失败。三条必需腿（Windows、Linux wrapper、
+Linux system）不变。规范写明两条边界：**不能用它的通过宣称已支持 macOS**，
+**不能用它的失败判定构建失败**。将来真要支持时，只需把 `optional` 改为 `false`。
+
+---
+
+### F-08 ✅ 已修（2026-10-07）
+
+**现象（✅ 已核实）**：PR 的合并框里三条必需检查显示
+`Expected — Waiting for status to be reported`，看起来像 CI 卡住，实际是**名字对不上**。
+
+**取证**：抓取 Actions 运行页的作业标签，与分支保护要求的名字逐条比对：
+
+| 分支保护要求 | 实际上报 |
+| --- | --- |
+| `build (windows-latest, wrapper)` | `build (windows-latest, wrapper, false)` |
+| `build (ubuntu-latest, wrapper)` | `build (ubuntu-latest, wrapper, false)` |
+| `build (ubuntu-latest, system)` | `build (ubuntu-latest, system, false)` |
+
+**根因**：为消除「未定义矩阵键」的歧义，给每条腿都补了 `optional: false`。GitHub 会把矩阵的
+**全部键值**拼进作业名，于是名字多出 `, false`；而必需检查严格按名字匹配，匹配不上就永远
+处于 Expected。
+
+**处理**：删掉 `optional` 键，可选腿改为按 `matrix.os == 'macos-latest'` 判定
+（不新增矩阵键），作业名恢复原样。**无需改动分支保护**。
+
+**详细复盘**：见 [DevLog-20261007-20.md](DevLog/DevLog-20261007-20.md)（含取证对照表与自查命令）。
+
+**教训**：作业名是**对外契约**，不是内部细节。已写入 `BuildSpec.md` §8.1：
+必需腿不得增删矩阵键；`Gate.yml` / `Compat.yml` 的 job 级 `name:` 同样是检查名，
+改名必须同步更新分支保护与本文件 `G-02`。
+
+---
+
+### F-07 ⏸ 待决策
+
+**现象（✅ 已核实）**：`Script/PowerShell/CountJavaLoc.ps1` 是一段统计 Java 代码行数的
+辅助脚本，但 `bin/CheckScripts.py` 的检查范围只含 `.bat`/`.cmd`/`.sh`/`.py`/`.gitattributes`/
+`.gitignore`，**不含 `.ps1`**，因此它的编码与行尾没有任何保障；同时 `Script/` 与 `bin/`
+两个目录都放脚本，职责重叠。
+
+**待拍板**：两件事——① 是否把 `.ps1` 纳入检查（需要先定编码与行尾规约，`.ps1` 与
+`.cmd` 的约束不同）；② `Script/` 是否并入 `bin/`。
+
+**为什么记在这**：这是取舍问题（纳入检查会增加维护面），没有技术上的唯一正解。
+
+---
+
+## 11. 待人工执行的动作（需仓库 / 平台权限）
+
+> **为什么单独成节**：这类动作需要有人在仓库或平台上执行（推送凭据、分支保护设置、
+> 平台侧配置、外部环境验收），自动化流程做不到。它们此前**只出现在对话里**——
+> 对话会滚走，一旦漏掉就没有闭环，事后连「有没有做过」都无从判断。
+>
+> **约定（自 2026-10-07 起）**：凡是我方无法执行、又必须由人完成才能收口的事项，
+> 一律在此登记 `G-xx` 并写明**验收标准**，同时在 `PLAN.md` 的阻塞项中交叉引用。
+> **不得只在对话里交代。**
+>
+> 与第 7 节的分工：第 7 节是「需要拍板」（想清楚就能推进），本节是「需要动手」
+> （拍板了也得有人在平台上点下去）。
+
+| 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
+| ---- | ---- | -------- | -------- | ---- |
+| G-01 | 推送本地提交到远端 `dependa` | PR #6 无法重跑 CI，改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；PR #6 出现新一轮 CI 运行 | ☐ 未完成 |
+| G-02 | `main` 分支保护：把 `Gate` 与 `Compat` 设为**必需检查** | 门禁不拦人，等价于没配 | 两项均已勾选，**且**用一个预期失败的 PR 验证确实无法合并 | ☐ 未完成 |
+| G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
+
+### G-01 ☐ 未完成
+
+**内容**：把本地 `dependa` 上尚未推送的提交推送到远端（`git push origin dependa`）。
+
+**为什么必须人工**：本环境没有远端推送凭据，`git push` 无法鉴权。
+
+**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；
+`PR #6` 触发新一轮 CI——`Gate`（Maven 4 门禁）与 `Compat`（Maven 3.9.x）应通过，
+`macOS` 腿按设计允许失败。
+
+**闭环后**：本条改 ✅，并在 `PLAN.md` §8.1.1 收口。
+
+### G-02 ☐ 未完成
+
+**现状（2026-10-07 观察）**：分支保护里**已配置**三条必需检查，但都是 `Build.yml` 的快速腿：
+
+- `build (windows-latest, wrapper)`
+- `build (ubuntu-latest, wrapper)`
+- `build (ubuntu-latest, system)`
+
+这三条**建议保留**——它们跑得快，做合入门槛正合适。PR 上一度出现的
+「Expected — Waiting for status to be reported」与它们无关，是作业名被矩阵键改掉所致，
+见 `F-08`；修好作业名后它们会正常上报，**不需要**为此改分支保护。
+
+**还需补配**两条慢检查。字符串必须与作业的 job 级 `name:` **完全一致**（含全角括号与冒号）：
+
+- `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）`
+- `兼容性（Maven 3.9.x 完整 verify）`
+
+**为什么必须人工**：分支保护是仓库设置，工作流文件里写不了（`Gate.yml` 注释已注明）。
+
+**验收标准**：上述五项都出现在 `main` 的必需检查列表里，**并且**用一个预期失败的 PR
+验证确实无法合并——只勾选不验证，可能因名称不完全匹配而形同虚设。
+
+**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）。
+改 `Build.yml` / `Gate.yml` / `Compat.yml` 时，必须同步刷新本条。
+
+**闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+
+### G-03 ☐ 未完成
+
+**内容**：确认 `Gate.yml` 的 `schedule`（每周一 03:00 UTC）真的生效。
+
+**为什么必须人工**：GitHub 的 `schedule` **只在默认分支上生效**，必须等本次改动合入
+`main` 之后才能验证；在此之前它不会触发，也无法用 PR 验证。
+
+**验收标准**：合入 `main` 后先用 `workflow_dispatch` 手动跑通一次；随后在 Actions 页面
+看到 `schedule` 触发的运行记录（时间戳应落在周一 03:00 UTC 附近）。
+
+**闭环后**：本条改 ✅。
+
+---
+
+## 12. 展示与终端体验
+
+| 编号 | 事项 | 类型 | 证据 | 优先级 | 状态 | 落地文档 |
+| ---- | ---- | ---- | ---- | ------ | ---- | -------- |
+| H-01 | 启动标志的默认风格：像素风（现状）还是线框风？ | 待决策 | ✅ | P3 | ⏸ 待决策 | `PixelLogoDesign.md`、`TUIDesign.md` §3.2 |
+
+### H-01 ⏸ 待决策
+
+**背景**：`aha chat` 的启动横幅右侧会打印标志，`--logo` 支持 `auto|pixel|ascii|off`。
+当前 `auto` 为**像素风优先**，受符号能力与 256 色门禁约束，不满足时降级为线框风。
+
+**待拍板**：默认是否改用线框风。影响仅限首屏观感；改动量是把候选顺序对调一行
+（`StartupBanner.compose` 的候选列表）。
+
+**为什么记在这**：这是人对观感的偏好，技术上没有唯一正解。此前只在对话里提过，
+按 §11 的约定需要留痕，避免漏掉。
 
 ---
 

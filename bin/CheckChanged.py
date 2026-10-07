@@ -16,6 +16,10 @@ Maven 验证分两档——改的是普通实现代码时不要顺手跑完整 v
 
 需要跑完整 verify 的时机见 Docs/DevSpec/BuildSpec.md 第 8 节。
 
+注意：覆盖率门禁、完整 verify、文档检查与重复率属于「慢检查」，已集中到 CI 的
+Gate.yml（合入 main 前 / 发布前），不再作为每次改动的卡点；本脚本只服务于
+开发过程中的快速自查。
+
 用法：
     python3 bin/CheckChanged.py                # 按 git 工作区变更判定
     python3 bin/CheckChanged.py <路径>...      # 按给定路径判定
@@ -37,6 +41,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DOC_CHECK = "CheckDocs.py"
 SKILL_CHECK = "CheckSkills.py"
 SCRIPT_CHECK = "CheckScripts.py"
+
+# 重复率检查不在本脚本内执行：它要先由 Maven 生成 CPD 报告，这里只做提示
+DUP_HINTS = ("CheckDuplication.py", "maven-pmd-plugin", "pmd.")
 
 DOC_SUFFIXES = {".md", ".markdown"}
 SCRIPT_SUFFIXES = {".bat", ".cmd", ".sh", ".bash", ".py"}
@@ -109,6 +116,11 @@ def select(paths: list[str]) -> list[str]:
         if suffix in SCRIPT_SUFFIXES or lower.endswith(".gitattributes") or lower.endswith(".gitignore"):
             checks.add(SCRIPT_CHECK)
     return [name for name in (DOC_CHECK, SKILL_CHECK, SCRIPT_CHECK) if name in checks]
+
+
+def duplication_relevant(paths: list[str]) -> bool:
+    """是否触及重复率检查（PMD 插件配置或阈值脚本）。"""
+    return any(any(hint in path for hint in DUP_HINTS) for path in paths)
 
 
 def needs_maven(paths: list[str]) -> bool:
@@ -199,6 +211,10 @@ def main() -> int:
             print(f"  ./mvnw{scope} test -Djacoco.skip=true    快速：只跑测试")
             print("  ./mvnw clean verify                          完整：含覆盖率门禁")
             print("  仅当需要刷新文档里的实测值、或交付验收时才跑完整 verify。")
+
+    if duplication_relevant(paths) or args.all:
+        print("\n需要重复率检查（本脚本不代为执行，需先生成报告）：")
+        print("  ./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py")
 
     return 1 if failed else 0
 

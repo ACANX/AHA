@@ -15,6 +15,32 @@
 ### 新增
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
+- **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
+  `Llm.ModelFile` 的未展开占位符被直接当作路径（`Illegal char <:>`）；项目级身份查找没有边界，
+  会一路走到用户主目录把 `~/AHA.md` 当成项目级身份（临时目录位于主目录之下，故仅在 Windows 触发）
+- **协作留痕**：需要人工或平台权限才能完成的事项（推送提交、分支保护设为必需检查、
+  定期扫描生效验证）登记进 `TODO.md` 第 11 节并写明**验收标准**，`PLAN.md` 交叉引用；
+  约定此类事项不得只写在对话里
+- **修复 CI 必需检查失配**：给必需腿补的 `optional` 矩阵键会改变作业名
+  （`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，
+  PR 永久停在 `Expected — Waiting for status to be reported`；改为按 `matrix.os` 判定
+  可选腿，不额外增删矩阵键
+- **CI 卡点组合**：`Gate.yml` 增加每周**定期扫描**（`schedule`），并新增
+  `Compat.yml` 做 Maven 3.9.x 兼容性验证（固定补丁版本，不用 runner 预装 `mvn`）；
+  门禁第一步显式断言 `./mvnw` 实际使用的 Maven 版本与 Wrapper 配置一致，
+  发布前置为 `gate + compat`
+- **检查分层**：慢检查（覆盖率门禁、完整 `clean verify`、文档检查、重复率）集中到
+  新的 `Gate.yml`，只在合入 `main` / `release/**` 前、手动触发与发布前运行；
+  每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
+- **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
+  阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
+  （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；
+  首篇记录 CI 必需检查因矩阵作业名变更而永久挂起
+- **CI 平台矩阵**：新增 `macos-latest` 可选腿，以 `continue-on-error` 标注，
+  仅作演示与提前暴露跨平台退化，不参与必需检查、也不代表已支持 macOS（见 `BuildSpec.md` §4.1）
+- **测试与 CI**：测试类隔离 `AHA_HOME` / `user.home` 并不再假定「环境里没有身份文件」；
+  断言改用平台自身路径；构建矩阵改为 `fail-fast: false`，避免一条腿失败即取消其余腿而掩盖平台差异
 - **文档**：选型清单改为只写主版本线（README / 设计文档 / Constitution），`BuildSpec.md` §7 新增
   「版本单一来源」规则，消除文档与父 POM 之间的依赖版本漂移
 

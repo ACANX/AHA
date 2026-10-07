@@ -65,12 +65,14 @@ class LoggingSetupTest {
 
     @Test
     void buildConfigWithFileContainsRollingFileAppender() {
-        String xml = LoggingSetup.xml("DEBUG", Path.of("/tmp/aha.log"));
+        // 用平台自身的路径构造期望值：硬编码 "/tmp/..." 在 Windows 上会变成 "\\tmp\\..."
+        Path logFile = Path.of(System.getProperty("java.io.tmpdir"), "aha-log-xml", "AHA.log");
+        String xml = LoggingSetup.xml("DEBUG", logFile);
 
         assertThat(xml).contains("<RollingFile name=\"File\"");
-        assertThat(xml).contains("fileName=\"/tmp/aha.log\"");
+        assertThat(xml).contains("fileName=\"" + logFile + "\"");
         // 切分文件命名契约：<基名>-yyyy-MM-dd-NN.log，序号补零，且不压缩
-        assertThat(xml).contains("filePattern=\"/tmp/aha-%d{yyyy-MM-dd}-%02i.log\"");
+        assertThat(xml).contains("filePattern=\"" + LoggingSetup.rolledPath(logFile) + "\"");
         assertThat(xml).doesNotContain(".gz");
         assertThat(xml).contains("<Root level=\"DEBUG\">");
         // 滚动策略必须完整，否则文件会无限增长
@@ -108,10 +110,14 @@ class LoggingSetupTest {
 
     @Test
     void escapesSpecialCharactersInPath() {
-        String xml = LoggingSetup.xml("INFO", Path.of("/tmp/a&b/c<d>.log"));
+        // Windows 文件名不允许 < > "，这里只用两个平台都合法的特殊字符走路径；
+        // 其余特殊字符由下面的纯字符串断言（escape）覆盖。
+        Path logFile = Path.of(System.getProperty("java.io.tmpdir"), "aha&log", "c(d).log");
 
-        assertThat(xml).contains("/tmp/a&amp;b/c&lt;d&gt;.log");
-        assertThat(xml).doesNotContain("/tmp/a&b");
+        String xml = LoggingSetup.xml("INFO", logFile);
+
+        assertThat(xml).contains("aha&amp;log");
+        assertThat(xml).doesNotContain("aha&log");
     }
 
     /**
@@ -159,14 +165,16 @@ class LoggingSetupTest {
      */
     @Test
     void rolledPathInsertsDateAndPaddedIndexBeforeExtension() {
-        assertThat(LoggingSetup.rolledPath(Path.of("/home/x/.aha/Log/AHA.log")))
-                .isEqualTo("/home/x/.aha/Log/AHA-%d{yyyy-MM-dd}-%02i.log");
+        Path dir = Path.of(System.getProperty("java.io.tmpdir"), "aha-log-roll");
+
+        assertThat(LoggingSetup.rolledPath(dir.resolve("AHA.log")))
+                .isEqualTo(dir.resolve("AHA") + "-%d{yyyy-MM-dd}-%02i.log");
         // 无扩展名时直接追加
-        assertThat(LoggingSetup.rolledPath(Path.of("/tmp/AHA")))
-                .isEqualTo("/tmp/AHA-%d{yyyy-MM-dd}-%02i");
+        assertThat(LoggingSetup.rolledPath(dir.resolve("AHA")))
+                .isEqualTo(dir.resolve("AHA") + "-%d{yyyy-MM-dd}-%02i");
         // 其它扩展名同样保留
-        assertThat(LoggingSetup.rolledPath(Path.of("/tmp/x.txt")))
-                .isEqualTo("/tmp/x-%d{yyyy-MM-dd}-%02i.txt");
+        assertThat(LoggingSetup.rolledPath(dir.resolve("x.txt")))
+                .isEqualTo(dir.resolve("x") + "-%d{yyyy-MM-dd}-%02i.txt");
     }
 
     /**

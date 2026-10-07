@@ -52,7 +52,7 @@ class SecretCommandTest {
         Files.createDirectories(home.resolve("Key"));
         writeAhaYaml();
 
-        cmd = new CommandLine(new AhaCli());
+        cmd = AhaCli.commandLine();
         cmd.setOut(new PrintWriter(new OutputStreamWriter(stdout, StandardCharsets.UTF_8), true));
         cmd.setErr(new PrintWriter(new OutputStreamWriter(stderr, StandardCharsets.UTF_8), true));
         CliContext.invalidate();

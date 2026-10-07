@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.15.0
+**文档版本**：v1.21.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -29,6 +29,12 @@
 | v1.13.0 | 2026-10-07 | §8.1.4 标记完成：根因是 IDEA 的 Maven server 占用 `dist`，完整 `clean verify` 已通过 | @ACANX |
 | v1.14.0 | 2026-10-07 | 设计文档路径更新到 `Docs/AHA/`；「未勾验收项」的行号引用改为小节引用（行号已失效） | @ACANX |
 | v1.15.0 | 2026-10-07 | §6.1 改写为「首次提交已完成（本地）」：14 个提交 / 371 个文件的批次表与排除项核对；§8.1.1 改为「本地已完成、待推送」 | @ACANX |
+| v1.16.0 | 2026-10-07 | §8.2.7 标记已修（并指出它正是 PR #6 Windows 失败的主因）；新增 §8.2.8 记录 Windows 腿的 15 个失败与四类修法，以及 CI 矩阵改 `fail-fast: false` | @ACANX |
+| v1.17.0 | 2026-10-07 | 记录决策：CI 增加 `macos-latest` 可选腿（仅演示，`continue-on-error` 不参与必需检查），规范落在 `BuildSpec.md` §4.1 | @ACANX |
+| v1.18.0 | 2026-10-07 | 记录决策：慢检查（verify / 覆盖率 / 文档 / 重复率）从每次 push 的卡点中移出，集中到 `Gate.yml`（合入 main 前与发布前）；新增 PMD CPD + `bin/CheckDuplication.py` 重复率检查（阈值 2.0%，实测 0.40%） | @ACANX |
+| v1.19.0 | 2026-10-07 | 记录决策：`Gate.yml` 增加每周定期扫描；新增 `Compat.yml`（Maven 3.9.x 兼容验证，固定补丁版本）；门禁显式断言 wrapper 固定的 Maven 版本；发布前置改为 gate + compat | @ACANX |
+| v1.20.0 | 2026-10-07 | §8 落地去向表的「`TODO.md` 复核结论未回灌」改为 ◐ 进行中并刷新实况（B-03 已收口；新增 B-04~B-07、F-01~F-06 均已落地） | @ACANX |
+| v1.21.0 | 2026-10-07 | 新增 §8.2.9（分支保护未配置）与 §8.2.10（定期扫描未验证）两条发布前阻塞项，均交叉引用 `TODO.md` 第 11 节的 `G-xx`；§8.1.1 改为指向 `G-01` | @ACANX |
 
 ---
 
@@ -184,7 +190,7 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 | 记忆的记录与整理机制 | 同上 7.5 | 原则已定，实施待 0.6 |
 | 会话历史是否也改为项目级 | 同上 8.6 | 未定（牵连会话列表与统计） |
 | ~~`Docs/TODO.md` 的重复内容清理~~ | `Docs/TODO.md` 自身 | ✅ **已完成（2026-10-07）**：已删除重复副本与误粘贴的会话日志，`TODO.md` 升 v0.3.0 并逐条复核。**本行可从表中移除** |
-| `TODO.md` 复核结论未回灌正式文档 | `Docs/TODO.md` §8、各目标文档 | ☐ 未开始：复核后 7 条已完成、4 条进行中，但尚未按 §8 的落地映射合并进 `DevSpec` / `Design`；且新增条目 D-09 / E-12 / B-03 版本漂移待收口 |
+| `TODO.md` 复核结论未回灌正式文档 | `Docs/TODO.md` §8、各目标文档 | ◐ 进行中：`B-03` 版本漂移已收口（`BuildSpec.md` §7 立「版本单一来源」规则）；本轮新增的 `B-04`~`B-07`（Windows 平台缺陷）与 `F-01`~`F-06`（CI 门禁与工程效能）均已同步落地到 `BuildSpec` / `TestingSpec` / `BuildGuide` / `AGENTS`；仍待回灌的是 `D-09` / `E-12` 等 0.2 及以后的条目 |
 | `mvn clean` 无法删除被占用的文件 | `aha-cli/pom.xml` | 已缓解（`failOnError=false`）：被锁的必然是当前版本同名文件（assembly 覆盖），旧版本残留无人占用可正常删 |
 
 ---
@@ -326,6 +332,7 @@ git switch -c dependa && git push -u origin dependa
 
 - [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
 - [TODO.md](TODO.md)：待办与调整项
+- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
 - [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
 - [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
 
@@ -340,7 +347,7 @@ git switch -c dependa && git push -u origin dependa
 
 | # | 问题 | 状态 |
 |---|---|---|
-| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 本地已完成：`main` 上 14 个提交、371 个文件；**待推送**并建 `dev` / `dependa`（见 §6.1） |
+| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建；本地提交**待推送**——操作步骤与验收标准见 [TODO.md](TODO.md) `G-01` |
 | 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
 | 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
 | 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `dist/`」 |
@@ -354,7 +361,26 @@ git switch -c dependa && git push -u origin dependa
 | 8.2.3 | CLI 文案残留「插件」 | ✅ 已修（代码 23 处 + 文档 2 处，全部改为「扩展」） |
 | 8.2.4 | `CliDesign.md` 未按命名约定改名 | ✅ 已修（→ `CLIDesign.md`，7 处引用同步） |
 | 8.2.5 | 真实供应商 API Key 端到端验收 | ⬜ 待做（需外部环境） |
-| 8.2.7 | **`SystemPromptLoaderTest` 不具环境无关性**：7 个用例假设用户级身份文件不存在，一旦用户真跑过一次 `aha chat`（会自动创建 `~/.aha/AHA.md`）便全部失败，`mvn verify` 在开发者本机与 CI 均变红 | ⬜ 待修（测试内隔离 `AHA_HOME` / `user.home`，约 10 行） |
+| 8.2.7 | `SystemPromptLoaderTest` 不具环境无关性（用户级身份文件一存在就 7 个用例全红） | ✅ 已修（2026-10-07）：测试类在 `@BeforeEach` 隔离 `AHA_HOME` / `user.home`；**该缺陷正是 PR #6 在 Windows 上失败的主因**，详见 8.2.8 |
+| 8.2.8 | **Windows 腿的真实失败（PR #6 之前在 wrapper 处就断了，从未暴露）**：`build (windows-latest, wrapper)` 退出码 1，实为 15 个用例失败 | ✅ 已修（2026-10-07）：见下 |
+| 8.2.9 | **`main` 分支保护未配置**：`Gate` 与 `Compat` 尚未设为必需检查，门禁形同虚设 | ☐ 待做（步骤与验收标准见 [TODO.md](TODO.md) `G-02`） |
+| 8.2.10 | **定期扫描未经验证**：`Gate.yml` 的每周 `schedule` 只在默认分支生效，合入前无法确认其真的会跑 | ☐ 待做（见 [TODO.md](TODO.md) `G-03`） |
+
+在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
+共 15 个失败 / 错误，归为四类：
+
+| 类别 | 现象 | 修法 |
+|---|---|---|
+| 生产缺陷 | `--help` 混入 ANSI 转义序列（picocli 的 `Ansi.AUTO` 把 Windows 一律当支持 ANSI，重定向到文件也会写转义） | `AhaCli.commandLine()` 统一按 `System.console()` 决定 `Help.Ansi`，非交互一律关闭 |
+| 生产缺陷 | `ConfigLoader.resolveModelPath` 把未展开的 `${AHA_HOME:-~/.aha}/Model.yml` 直接交给 `Path.of`，Windows 上 `Illegal char <:>`；Linux 上则静默变成名为 `${AHA_HOME:-~/.aha}` 的相对路径 | 先展开占位符；仍含 `${` 或含平台非法字符时回退默认位置 |
+| 生产缺陷 | 项目级向上查找**没有边界**，会一路走到用户主目录，把 `~/AHA.md` 当成项目级身份（Windows 临时目录位于主目录之下，故只在 Windows 暴露） | 查找止步于用户主目录（`user.home`，并参考 `USERPROFILE` / `HOME`）；`resolve` 与 `findProjectRoot` 同用此边界 |
+| 测试写法 | 断言硬编码 `/` 分隔符、路径里用 `<` `>`（Windows 非法）、假定「环境里没有任何身份文件」 | 用平台自身路径构造期望值；特殊字符改用纯字符串断言；前提自己造 |
+
+**顺带修复（CI 配置）**：`Build.yml` 的矩阵加 `fail-fast: false`。此前 Windows 腿一失败，
+GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖了「两个平台到底是什么结果」——
+这次排查为此多绕了很久。
+
+**验收**：Windows（Git Bash + `./mvnw clean verify`）与 Linux（`./mvnw clean verify`）均 BUILD SUCCESS。
 | 8.2.6 | Windows 真机走查（整体观感、旧 CMD 降级、滚动复制、`/memory` 分支） | 🟡 部分：日志落盘 / `Aha.bat` / `dist` 冒烟已验证；观感与降级待走查 |
 | 8.2.7 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
 

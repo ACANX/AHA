@@ -1,6 +1,6 @@
 # 构建指南
 
-**文档版本**：v1.6.0
+**文档版本**：v1.8.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -20,6 +20,8 @@
 | v1.4.0 | 2026-10-07 | 新增「按变更范围选择检查」（`bin/CheckChanged.py`）与耗时量级参考 | @ACANX |
 | v1.5.0 | 2026-10-07 | 排错项更正根因：最常见占用者是 **IDEA 的 Maven server**（非仅运行中的 AHA）；补三种占用者的识别与处置、定位命令，并说明不要用 `-Dassembly.skipAssembly` 绕过 | @ACANX |
 | v1.6.0 | 2026-10-07 | 补记「IDEA 会在文件变化时自动重生 Maven server 并重新锁定 `dist/lib`」，给出构建窗口期的处置建议 | @ACANX |
+| v1.7.0 | 2026-10-07 | §3.2 补「完整门禁不在每次改动后跑」：列出合入前自查的五类命令与重复率口径 | @ACANX |
+| v1.8.0 | 2026-10-07 | §3.2 补充慢检查的触发时机（含每周定期扫描）与 Maven 3.9.x 兼容验证（Compat.yml）及本地命令 | @ACANX |
 
 ---
 
@@ -100,6 +102,39 @@ python3 bin/CheckChanged.py --all           # 无条件全部执行
 | 仅文档 | `CheckChanged.py <md>` | 亚秒 |
 | 仅脚本 | `CheckChanged.py <py>` | 亚秒 |
 | 实现代码 | `./mvnw -pl aha-cli -am test -Djacoco.skip=true` | 约 1 分钟 |
+
+**完整门禁不在每次改动后跑**。覆盖率门禁、完整 `clean verify`、文档检查、技能检查、
+脚本检查与重复率检查都属于慢检查，已集中到 CI 的 `Gate.yml`——它在**合入 `main` /
+`release/**` 前**、**每周定期**、手动触发与发布前运行。这类检查适合异步：要拦的是
+「与开发动作无关的漂移」（依赖被 Dependabot 升级、runner 镜像变化、外部规范演进），
+不必在写完一个特性后就触发。完整设计见
+[BuildSpec.md](../DevSpec/BuildSpec.md) 第 8.1 节。
+
+Maven 3.9.x 兼容性由独立的 `Compat.yml` 验证（同属卡点，且是发布前置）：它固定一个
+3.9.x 补丁版本，不使用 runner 预装的 `mvn`，以保证结论可复现。`Gate.yml` 的第一步会
+断言实际使用的 Maven 版本与 `.mvn/wrapper/maven-wrapper.properties` 一致——
+「门禁跑的到底是哪一版 Maven」不靠推断。
+
+本地在合入前自查时按下面执行：
+
+```bash
+./mvnw -B clean verify                 # 构建 + 测试 + 覆盖率门禁（≥ 70%）
+python3 bin/CheckDocs.py               # 文档围栏与链接
+python3 bin/CheckSkills.py             # 技能符合 Agent Skills 规范
+python3 bin/CheckScripts.py            # 脚本编码与行尾
+python3 bin/GenPixelLogo.py --verify   # 像素标志与生成器一致
+./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py   # 重复率（默认阈值 2.0%）
+```
+
+重复率口径：重复行数 = Σ 每个 duplication 块 `(出现次数 − 1) × 块行数`，
+总行数为各模块 `src/main/java` 下 `*.java` 的物理行数；只统计主源码。
+报告缺失时 `CheckDuplication.py` 直接失败，不做静默跳过。
+
+兼容基线（POM 语法不得越界；见 [BuildSpec.md](../DevSpec/BuildSpec.md) 第 4 节）：
+
+```bash
+mvn -B clean verify            # 用本机的 Maven 3.9.x；CI 由 Compat.yml 承担
+```
 | 完整验收 | `./mvnw clean verify` | 3~5 分钟 |
 
 何时**必须**跑完整 `verify` 见 [BuildSpec.md](../DevSpec/BuildSpec.md) 第 8 节。
