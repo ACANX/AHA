@@ -52,7 +52,7 @@
         <javafx.version>25</javafx.version>
         <jackson.version>3.2.3</jackson.version>
         <picocli.version>4.7.7</picocli.version>
-        <jline.version>3.30.17</jline.version>
+        <jline.version>4.4.6</jline.version>
         <sqlite.version>3.53.4.0</sqlite.version>
         <slf4j.version>2.0.20</slf4j.version>
         <log4j.version>2.26.1</log4j.version>
