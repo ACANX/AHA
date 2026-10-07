@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.agent;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.exception.Exceptions;
+import com.acanx.module.aha.common.exception.ToolExecutionException;
 import com.acanx.module.aha.common.event.ContentEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
@@ -327,12 +328,25 @@ public final class AgentEngine {
         try {
             result = toolRegistry.invoke(call.name(), call.arguments(), token);
         } catch (RuntimeException e) {
-            // 异常必须连堆栈一起带出去：只给一句 message，用户拿到的
-            // 「工具执行失败: null」既不知道哪儿错，也没法搜。堆栈对模型同样有用。
-            LOG.error("工具执行异常 session={} tool={} args={}", sessionId, call.name(),
-                    call.arguments(), e);
-            result = ToolResult.failure("工具执行异常: " + Exceptions.message(e)
-                    + System.lineSeparator() + stackTrace(e));
+            // 工具层的**已知拒绝**（未知工具 / 未启用 / 未获授权）与 ToolResult.failure 是同一类：
+            // 都是预期内的业务结果，不是故障（见 LoggingDesign.md 第 5 节）。因此：
+            //   - 记 INFO 且不带堆栈。Console appender 的阈值是 ERROR，记 ERROR 会把整段堆栈
+            //     打到 stderr，正好违背「不打扰对话」的既定设计：模型偶尔叫错工具名，
+            //     用户就会在终端刷到一大段栈；
+            //   - 回灌给模型的文本也只给原因。这里的原因本身已自解释（「未知工具: x」），
+            //     堆栈只会白占 token。
+            // 只有**未预期**的异常才记 ERROR 并连堆栈：那时堆栈既是排障依据，也是给模型的线索。
+            boolean businessOutcome = e instanceof ToolExecutionException;
+            String detail = Exceptions.message(e);
+            if (businessOutcome) {
+                LOG.info("工具未执行 session={} tool={} args={} 原因={}", sessionId, call.name(),
+                        call.arguments(), detail);
+            } else {
+                LOG.error("工具执行异常 session={} tool={} args={}", sessionId, call.name(),
+                        call.arguments(), e);
+                detail = detail + System.lineSeparator() + stackTrace(e);
+            }
+            result = ToolResult.failure(detail);
         }
         if (result.success()) {
             LOG.info("工具执行成功 session={} tool={} args={} 输出={} 字符",
