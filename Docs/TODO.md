@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.11.4
+**文档版本**：v0.12.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -546,6 +546,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
 | v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
 | v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
+| v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -994,8 +995,9 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
 | G-01 | 推送 `dependa`（含 PR #8 冲突修复的合并提交 `06c6121`） | PR #8 会一直卡在 `dirty` 合不进去；改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA == 本地 `dependa`；PR #8 的 `mergeable_state` 由 `dirty` 变为 `clean` | ☐ 未完成 |
-| G-02 | `main` 分支保护：把 `Gate` 与 `Compat` 设为**必需检查** | 门禁不拦人，等价于没配 | 两项均已勾选，**且**用一个预期失败的 PR 验证确实无法合并 | ☐ 未完成 |
+| G-02 | **分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表 | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [DevLog-20261007-24.md](DevLog/DevLog-20261007-24.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
+| G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成（前半已完成）
 
@@ -1017,30 +1019,67 @@ PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合�
 
 ### G-02 ☐ 未完成
 
-**现状（2026-10-07 观察）**：分支保护里**已配置**三条必需检查，但都是 `Build.yml` 的快速腿：
+**内容**：按下面的规格**一次性**配置两条分支规则集，让门禁真正拦人，同时**不把单人维护者锁死**。
 
-- `build (windows-latest, wrapper)`
-- `build (ubuntu-latest, wrapper)`
-- `build (ubuntu-latest, system)`
+**为什么必须人工**：规则集是仓库设置（Settings → Rules → Rulesets），工作流文件里写不了；
+本环境也没有可写的凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测 `could not read Username`）。
 
-这三条**建议保留**——它们跑得快，做合入门槛正合适。PR 上一度出现的
-「Expected — Waiting for status to be reported」与它们无关，是作业名被矩阵键改掉所致，
-见 `F-08`；修好作业名后它们会正常上报，**不需要**为此改分支保护。
+**现状（2026-10-07 API 实查）**：`GET /repos/ACANX/AHA/rulesets` → 两条仓库级规则集：
 
-**还需补配**两条慢检查。字符串必须与作业的 job 级 `name:` **完全一致**（含全角括号与冒号）：
+| 规则集 | id | 适用分支 | 现有规则 |
+| ---- | ---- | ---- | ---- |
+| `dev` | 24648482 | `refs/heads/dev` | `deletion`、`non_fast_forward`、`pull_request`（approvals=**1**）、`required_status_checks`（三条 `build (...)`） |
+| `main` | 24648542 | `refs/heads/main` | 上述全部，外加 **`code_scanning`（CodeQL）**、**`code_coverage`**，且 `pull_request` 带 `last_push_approval`=**true** |
 
-- `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）`
-- `兼容性（Maven 3.9.x 完整 verify）`
+**已造成的实际阻塞（`PR #7` `dev` → `main`）**：三条规则对「单人 + 机器」**无法满足**：
 
-**为什么必须人工**：分支保护是仓库设置，工作流文件里写不了（`Gate.yml` 注释已注明）。
+1. `pull_request`（approvals=1 + `last_push_approval`）——只有一位协作者，GitHub 禁止自我批准
+   → 提示「New changes require approval from someone other than ACANX because they were the last pusher」；
+2. `code_scanning` 要求 CodeQL 结果，仓库却**没配任何 code scanning**
+   → 提示「Waiting for Code Scanning results」；
+3. `code_coverage` 需要把覆盖率上传给 GitHub 或其支持的覆盖率服务，本项目只有本地 JaCoCo 门禁
+   （尚未报错，因为它排在其它条件之后）。
 
-**验收标准**：上述五项都出现在 `main` 的必需检查列表里，**并且**用一个预期失败的 PR
-验证确实无法合并——只勾选不验证，可能因名称不完全匹配而形同虚设。
+**方向相反的另一处**：`main` 的必需检查只有三条快检查，而 `BuildSpec.md` §8.1 要求
+`Gate` 与 `Compat` 也必须是必需检查——**该拦的没拦，不该锁的锁死了**。
 
-**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）。
-改 `Build.yml` / `Gate.yml` / `Compat.yml` 时，必须同步刷新本条。
+**目标规格（逐项照此设置）**：
+
+| 项 | `main` | `dev` | 理由 |
+| ---- | ---- | ---- | ---- |
+| `deletion` / `non_fast_forward` | 保留 | 保留 | 禁止删除与强推，与人数无关 |
+| 要求 PR | 保留 | 保留 | 改动走 PR 才挂得上必需检查 |
+| required_approving_review_count | **0** | **0** | 单人仓库里「1 个批准」= 禁止合并；卡点交给必需检查 |
+| require_last_push_approval | **false** | false | 同上 |
+| required_review_thread_resolution | 保留 `true` | 不适用 | 要求先解决评论，单人也能满足 |
+| required_status_checks | 三条 `build (...)` **+ `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）` + `兼容性（Maven 3.9.x 完整 verify）`** | 三条 `build (...)`（保持） | 慢检查是「合入 `main` 前」的卡点（`BuildSpec.md` §8.1）；`dev` 是集成分支，保持快反馈 |
+| `code_scanning` | **二选一**：① 开 CodeQL（推荐，见 `G-04`）并保留；② 不用就**删掉本规则** | 不适用 | 要求某工具的结果，就必须有人生产它 |
+| `code_coverage` | **建议删除** | 不适用 | 覆盖率已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关；再引外部服务属重复。若确实想要 PR 内可见覆盖率，需另行拍板（引入受支持的覆盖率服务） |
+
+**验收标准**：五项必需检查（三条 `build (...)` + `Gate` + `Compat`）都出现在 `main` 的
+必需检查里；用一个**预期失败的 PR** 验证确实合不进去；再用一个**正常 PR** 验证**单人也能合进去**
+（不再出现「等待批准」「等待 Code Scanning」）。只勾选不验证，可能因名称未完全匹配而形同虚设。
+
+**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）；
+改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+
+### G-04 ☐ 未完成
+
+**内容**：为 `main` 规则集的 `code_scanning` 规则提供真结果——**开启 CodeQL**。
+
+**为什么必须人工**：需要管理员在 Settings → Code security → Code scanning 里开启。
+推荐用 **Default setup**（默认设置）：由 GitHub 维护配置、仓库里不必放工作流，也不会随
+Dependabot 的版本漂移而失修；仓库是 `public`，CodeQL 免费。
+
+**对应关系**：**开了它就保留 `code_scanning` 规则；不开就必须删掉那条规则**（见 `G-02`），
+否则 PR 会一直停在「Waiting for Code Scanning results」。
+
+**验收标准**：Security → Code scanning 出现分析结果；PR 上该检查给出明确结论
+（阈值 `high_or_higher` / `errors`，即高危以上或存在错误才拦）。
+
+**闭环后**：本条改 ✅。
 
 ### G-03 ☐ 未完成
 
