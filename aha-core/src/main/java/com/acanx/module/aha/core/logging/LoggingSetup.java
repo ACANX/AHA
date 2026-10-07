@@ -185,7 +185,7 @@ public final class LoggingSetup {
      * @param logging 日志配置
      * @return 级别名；无效时退回 INFO
      */
-    static String resolveLevel(LoggingConfig logging) {
+    public static String resolveLevel(LoggingConfig logging) {
         String level = logging == null ? null : logging.level();
         if (level == null || level.isBlank()) {
             return DEFAULT_LEVEL;

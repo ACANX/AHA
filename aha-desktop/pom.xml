@@ -90,6 +90,20 @@
 
     <build>
         <plugins>
+            <!--
+                每个测试类各用独立 JVM。
+
+                原因：配置引导测试会调用 AhaBootstrap.boot，它按设计**替换**进程级的 log4j2
+                配置（换成「console(ERROR) + 文件」）。若与其它测试共用 JVM，后续用例的日志出口
+                就被改掉了（曾因此让构建日志里冒出本不该出现的 ERROR 行）。
+                代价是几个 JVM 启动时间，换来「测试之间互不改变对方的全局状态」。
+            -->
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <reuseForks>false</reuseForks>
+                </configuration>
+            </plugin>
             <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <executions>

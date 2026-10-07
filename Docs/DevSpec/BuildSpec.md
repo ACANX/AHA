@@ -214,7 +214,8 @@ POM 语法必须兼容 Maven 3.9.x：
 
 ## 8. 验收标准
 
-**`mvn clean verify` 通过是唯一验收标准**，其余检查（格式化、静态分析等）均为其前置补充。
+**`mvn clean verify` 通过是唯一验收标准——由 CI 判定**（`Gate.yml` / `Compat.yml`），
+其余检查（格式化、静态分析等）均为其前置补充。**本机不跑它**，见 8.1。
 
 **按变更范围选择验证项（强制）**：全套检查在慢文件系统上可达分钟级，不得无条件重跑。
 可用 `bin/CheckChanged.py` 自动判定。
@@ -228,15 +229,18 @@ POM 语法必须兼容 Maven 3.9.x：
 | 实现代码（Java / POM / YAML） | `./mvnw -pl <模块> -am test -Djacoco.skip=true` | 覆盖率门禁、文档检查 |
 | 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | `./mvnw -B pmd:cpd && bin/CheckDuplication.py` | 构建 |
 
-**必须跑完整 `./mvnw clean verify` 的情形**：
+**本地不跑完整 `verify`（强制）**：完整 `verify`（覆盖率采集 + 打包 + javadoc + 覆盖率门禁）
+**只在 CI 跑**。即使改动触及下列内容，也一样**推送后看 CI**，不要在本机补跑：
 
-- 改动触及构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`、`.github/actions/`
-- 改动可能影响覆盖率口径：JaCoCo 排除项、模块结构、包名
-- 需要刷新文档中的实测覆盖率 / 用例数
+- 构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`、`.github/actions/`
+- 可能影响覆盖率口径：JaCoCo 排除项、模块结构、包名
+- 需要刷新文档中的实测覆盖率 / 用例数（数字从 CI 的 `Gate` 日志或
+  `python3 bin/ReportCoverage.py` 在 CI 的输出里取）
 - 发布前验收（见 [ReleaseProcess.md](ReleaseProcess.md)）
 
-> 本节规定的是**开发过程中的最小验证**，用于避免每次改动都付分钟级代价。
-> 它**不能替代**合入前的门禁：合入 `main` 与发布前一律跑完整检查（见 8.1）。
+> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息。
+> 本地唯一允许的重验证手段是 `./mvnw -pl <模块> -am test -Djacoco.skip=true`（不含覆盖率采集）
+> 与各 `bin/Check*.py`。
 
 ### 8.1 检查分层与门禁时机
 

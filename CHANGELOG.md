@@ -403,6 +403,10 @@
 [0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
 
 ### 变更
+- **桌面端正式读取配置**：新增 `aha-core` 的启动引导 `AhaBootstrap`（读项目 `./Aha.yaml`
+  → 装配日志 → 装密钥库回退源），CLI 与桌面端共用；桌面端窗口新增一行配置摘要
+  「配置：<路径> · 日志级别：<级别>」。此前桌面端固定用默认日志配置，
+  `Aha.Logging.*` 在桌面端完全不生效
 - **版本号与日志装配下移到公共模块**：`version.properties` 与 `AppVersion` 迁到 `aha-common`
   （picocli 适配留在 `aha-cli` 的 `CliVersionProvider`，避免把 picocli 带进零依赖模块）；
   `LoggingSetup` 迁到 `aha-core`（该模块的 `log4j-core` 改 `compile`）。桌面端因此能取到版本号、
@@ -412,6 +416,8 @@
   `aha-desktop-<版本>-<系统>-<架构>.zip` 命名保持一致
 
 ### 修复
+- **主配置不可用时不再让后续流程抛异常**：启动引导会退回内置默认并记一条警告；
+  此前 CLI 会把 `null` 传给后续流程，`CliContext` 二次读取配置时会抛错
 - **版本号清单不完整（静默错版本）**：`ReleaseProcess.md` 原文称「版本号只需改根 `pom.xml`」，
   实测只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析——反应堆显示
   `Building AHA-Common 0.1.0`、产物名 `aha-common-0.1.0.jar`、`aha --version` 仍报旧版本，

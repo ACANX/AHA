@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.22.0
+**文档版本**：v0.23.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -356,7 +356,8 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ◐ 流水线已就位 | `Build.yml`、`DesktopDesign.md` §3 |
 | D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已落地（pom 已声明） | `aha-desktop/pom.xml`、`DesktopDesign.md` |
 | D-10 | 桌面端包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-common`、`aha-core` |
-| D-11 | 桌面端不读 `Aha.yaml`（只用默认日志配置） | 设计缺口 | ✅ | P2 | ☐ 未完成 | `aha-desktop`、`aha-core` |
+| D-11 | 桌面端不读 `Aha.yaml`（只用默认日志配置） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-core/boot`、`aha-desktop` |
+| F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -521,6 +522,7 @@ desktop 亦未列 tool 依赖。
 | v0.20.0 | 2026-10-08 | `D-01` 结项（机制 + 描述符落地）、`D-02` 完成（桌面端启动脚本）、`D-09` 落地（`aha-tool` 已声明）、`D-08` 改为「流水线已就位」（`Release.yml` 矩阵化 + 双向自证 + 上传）；§5 制品表补桌面端便携包 | @ACANX |
 | v0.21.0 | 2026-10-08 | 新增 `D-10`：桌面端便携包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`，而 `cli` 与 `desktop` 不得互相依赖），含实测证据、影响与建议动作 | @ACANX |
 | v0.22.0 | 2026-10-08 | `D-07` 结项（线程模型小节 + 桥接契约 + 静态扫描 + 6 例单测）、`D-10` 结项（版本号下移 `aha-common`、日志装配下移 `aha-core`，并更正早期「缺 `log4j2.xml`」的误判）、`D-04` 记为「门禁方式已定」（冒烟默认跳过）、新增 `D-11`（桌面端不读 `Aha.yaml`） | @ACANX |
+| v0.23.0 | 2026-10-08 | `D-11` 结项：抽出 `AhaBootstrap`（CLI 与桌面端共用读配置/装配日志/装密钥库），桌面端窗口显示配置摘要；含单测与 CLI 端到端实测证据 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -536,15 +538,45 @@ desktop 亦未列 tool 依赖。
 > ——日志装配一直是程序化的（理由见 `LoggingDesign.md`：JPMS 下 `getResources` 不搜模块路径）。
 > 真正缺的是**类**，现已下移。
 
-### D-11 ☐ 未完成（新增条目，2026-10-08）
+### F-16 ☐ 新增（2026-10-08）：Maven 4 下 verify 日志出现 10 行 `[stderr]`
 
-**现状**：桌面端启动时只调 `LoggingSetup.apply(null)`（默认日志配置），**不读 `Aha.yaml`**，
-于是 `Aha.Logging.*`、`Aha.Agent.*` 等配置在桌面端**不生效**。
+**现象**：一次 `./mvnw clean verify`（Maven 4.0.0-rc-7）中共出现 10 行 `[stderr]`，
+而同一提交在 Maven 3.9.11 下为 0 行——与 `F-11` 治好的「测试输出污染构建日志」同类。
 
-**建议动作**：0.2 把「配置加载 → 日志装配 → 会话创建」抽成 CLI 与桌面端**共用**的引导流程
-（放 `aha-core`，桌面端在 `init()` 里调用），避免两处各写一遍、口径分叉。
+**推断**（未证实）：`AhaBootstrapTest` 会按设计**替换进程级 log4j2 配置**（换成
+console(ERROR) + 文件），此后同 JVM 内的其它 core 测试若记录 ERROR，就会打到 stderr。
 
-**验收标准**：真机改 `Aha.yaml` 的 `Logging.Level` 后，桌面端日志级别随之变化。
+**验收标准**：在 CI 的 `Gate` 日志中确认来源并消除（可为 `aha-core` 加 `reuseForks=false`，
+或让该用例不替换共享 context）；修复后 CI 日志 `[stderr]` 行数应为 0。
+**不要为了复现它而在本地重跑 verify**（慢检查只在 CI 跑）。
+
+---
+
+### D-11 ✅ 已完成（2026-10-08）：桌面端真读 `Aha.yaml`
+
+**做法**：把「读主配置 → 装配日志 → 装密钥库回退源」抽成 `aha-core` 的 `AhaBootstrap`，
+CLI 与桌面端共用（两者不得互相依赖，各写一遍必然分叉）。
+
+| 方法 | 副作用 | 用途 |
+|---|---|---|
+| `load(Path)` | 无 | 纯解析，便于测试 |
+| `boot()` / `boot(Path)` | **有**（替换进程级日志配置、注册静态回退源） | 入口启动 |
+
+**失败降级**：配置不存在 → 用内置默认（不算错误，不刷警告）；YAML 破损 / 密钥库不可用 →
+记 warning 继续启动（CLI 打 stderr，桌面端记日志）。顺带修掉一处旧行为：CLI 以前在读配置
+失败时传 `null` 给后续流程，会让 `CliContext` 二次读取时抛异常。
+
+**桌面端可见自证**：窗口新增一行配置摘要 `配置：<路径> · 日志级别：<级别>`（id `#aha.config`）。
+
+**实测证据**：
+
+- 单测（无图形环境）：`AhaBootstrapTest` 断言「配置里的 `WARN` 真的成了 log4j2 的生效级别」；
+  `AhaDesktopAppConfigTest` 断言桌面端引导读到配置且摘要随之变化；
+- 端到端（CLI 同一代码路径，真跑发行包）：`Level: WARN` → 指定路径日志里 DEBUG 行 **0** 条；
+  `Level: DEBUG` → 同一路径 DEBUG 行 **1** 条；`File: './Log/custom.log'` → 按 CWD 解析生成；
+  无 `Aha.yaml` → 落到 `~/.aha/Log/AHA.log`。
+
+**遗留**：桌面端尚未把配置用于界面行为（会话模型、工具开关等随真实界面接入）。
 
 ---
 

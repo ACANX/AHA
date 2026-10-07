@@ -25,6 +25,7 @@ module com.acanx.module.aha.core {
     exports com.acanx.module.aha.core.config;
     exports com.acanx.module.aha.core.security;
     exports com.acanx.module.aha.core.logging;
+    exports com.acanx.module.aha.core.boot;
     exports com.acanx.module.aha.core.mcp;
     exports com.acanx.module.aha.core.extension;
     exports com.acanx.module.aha.core.extension.event;

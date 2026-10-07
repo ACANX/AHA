@@ -8,6 +8,31 @@
 
 ---
 
+## ⛔ 本地不跑慢检查（强制，已多次重申，勿再违反）
+
+**本机不做 `clean verify` / 覆盖率采集 / 重复率扫描 / javadoc 这类分钟级任务。**
+它们一律由 CI 承担：
+
+| 工作流 | 承担 |
+|---|---|
+| `Build.yml` | 每次 push / PR：编译 + 单元测试（`clean test -Djacoco.skip=true`） |
+| `Gate.yml` | 合入 `main` 前 / 每周 / 发布前：完整 `clean verify`、覆盖率门禁、文档/技能/脚本/像素标志、重复率 |
+| `Compat.yml` | Maven 3.9.x 兼容（`mvn clean verify`） |
+| `Release.yml` | 发布：按平台出包并挂 release 页面 |
+
+规则：
+
+- 本地默认**只用**：`./mvnw -pl <模块> -am test -Djacoco.skip=true`，以及
+  `python3 bin/Check{Changed,Docs,Skills,Scripts}.py`；
+- **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 需要刷新实测值」就在本地补跑 verify
+  —— 推送后看 CI 结果；
+- 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Gate` 日志取**，不要在本机重跑；
+- 唯一例外：用户**明确要求**本地跑，或 CI 不可用且用户确认。
+
+判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8 节。
+
+---
+
 ## 项目概览
 
 AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
@@ -17,9 +42,17 @@ AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
 
 ### 构建
 
+> 下列命令是 **CI 与发布**用的，不要在本地执行（见文首「本地不跑慢检查」）。
+
 ```bash
-./mvnw clean verify          # Maven 4 运行时
-mvn clean verify             # Maven 3.9.x 兼容验证
+./mvnw clean verify          # Maven 4 运行时（CI：Gate.yml）
+mvn clean verify             # Maven 3.9.x 兼容验证（CI：Compat.yml）
+```
+
+本地验证只需要快检查：
+
+```bash
+./mvnw -pl aha-core -am test -Djacoco.skip=true   # 改到哪个模块就换成哪个
 ```
 
 ### 运行 CLI
@@ -34,12 +67,10 @@ dist\bin\Aha.bat chat        # Windows
 ### 运行测试
 
 ```bash
-./mvnw test                  # 全部测试
-./mvnw -pl aha-core test     # 单模块测试
-./mvnw clean verify          # 构建 + 测试 + 覆盖率门禁（≥ 70%）
+./mvnw -pl aha-core -am test -Djacoco.skip=true   # 单模块（本地默认）
 ```
 
-覆盖率报告：`<module>/target/site/jacoco/index.html`。
+覆盖率门禁（≥ 70%）与报告由 CI 的 `Gate.yml` 产出，本地不跑。
 
 ### 检查分层
 
@@ -52,8 +83,8 @@ dist\bin\Aha.bat chat        # Windows
 | 按变更选择检查 | `python3 bin/CheckChanged.py` |
 | 看覆盖率实测值 | `python3 bin/ReportCoverage.py`（门禁判定仍由 `jacoco:check` 执行） |
 | 重复率（改到 PMD 配置 / 阈值时） | `./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py` |
-| 合入 `main` 前（完整门禁，CI 亦会跑） | `./mvnw -B clean verify` + 四个 `Check*.py` + `GenPixelLogo.py --verify` |
-| Maven 3.9.x 兼容（POM 改动时） | `mvn -B clean verify`（CI 由 `Compat.yml` 承担） |
+| 合入 `main` 前 | **由 CI 的 `Gate.yml` 跑**（本地不跑；本地只补跑 `Check*.py`） |
+| Maven 3.9.x 兼容（POM 改动时） | **由 CI 的 `Compat.yml` 承担**（本地不跑） |
 
 CI 侧的分工：`Build.yml` 每次 push/PR 只做编译与单元测试；`Gate.yml` 承载
 verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、每周定期、发布前**运行；
@@ -171,7 +202,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 | 命令 | 说明 |
 |---|---|
-| `./mvnw clean verify` | 完整构建 + 测试 + 覆盖率门禁 |
+| `./mvnw clean verify` | 完整构建 + 测试 + 覆盖率门禁（**仅 CI / 发布**） |
 | `./mvnw -pl aha-core test` | 单模块测试 |
 | `./mvnw -pl aha-cli exec:java` | 运行 CLI |
 | `./mvnw dependency:tree` | 查看依赖树 |

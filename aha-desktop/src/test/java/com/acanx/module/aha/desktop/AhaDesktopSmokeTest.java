@@ -59,6 +59,9 @@ class AhaDesktopSmokeTest {
         assertThat(stage.getTitle()).contains(AppVersion.version());
         assertThat(uiGet(() -> stage.getScene().lookup("#" + AhaDesktopApp.STATUS_ID)))
                 .isInstanceOf(Label.class);
+        // D-11：窗口里必须能看到配置来源与生效日志级别
+        assertThat(uiGet(() -> stage.getScene().lookup("#" + AhaDesktopApp.CONFIG_ID)))
+                .isInstanceOf(Label.class);
         assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
 
         onUi(stage::close);

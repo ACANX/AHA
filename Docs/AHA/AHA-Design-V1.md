@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.62.0
+**文档版本**：v3.63.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -458,8 +458,9 @@ aha/
 | v3.58.0 | 2026-10-08 | 五项决策落地：JPMS 改为「优先启用（非强制）」并新增定位说明（`C-01`）；fat JAR 禁用理由改述；路线图 0.2 行与第 5 条 GUI 选型改为「原生控件 + 进程内直调」（`D-07`） | @ACANX |
 | v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
 | v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
-| v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（615 用例 / 合计行覆盖 80.3%（4049/5040）），补 `aha-desktop` 用例数 | @ACANX |
+| v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（621 用例 / 合计行覆盖 80.8%（4087/5061）），补 `aha-desktop` 用例数 | @ACANX |
 | v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
+| v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 
 ---
 ```
@@ -1452,7 +1453,8 @@ aha
 0.1 只有占位；0.1.1 起落地窗口骨架与线程桥接契约（实现细节见
 [DesktopDesign.md](../Design/DesktopDesign.md) §4 与 §6）：
 
-- 启动：`AhaDesktopApp extends Application`，装配日志（`aha-core` 的 `LoggingSetup`）后开窗；
+- 启动：`AhaDesktopApp extends Application`，开窗前走 `aha-core` 的 `AhaBootstrap`
+  （读项目 `./Aha.yaml` → 装配日志 → 装密钥库回退源，与 CLI 同一实现）并在窗口显示配置摘要；
 - 线程：界面改动一律经 `FxDispatcher` / `FxBridge` 投递到 UI 线程，主源码扫描钉住该约束；
 - 打包：per-OS profile 解析 JavaFX 分类器，assembly 产出
   `aha-desktop-<版本>-<系统>-<架构>.zip` 便携包（`ReleaseProcess.md` §3.2）。
@@ -3146,15 +3148,15 @@ aha-core/src/test/resources/
 |---|---|---|
 | `aha-extension-api` | 100.0%（23/23） | ✅ |
 | `aha-common` | 88.8%（175/197） | ✅ |
-| `aha-cli` | 83.9%（2190/2609） | ✅ |
+| `aha-cli` | 84.3%（2190/2597） | ✅ |
 | `aha-tool` | 79.6%（148/186） | ✅ |
-| `aha-core` | 74.7%（1513/2025） | ✅ |
+| `aha-core` | 75.4%（1551/2058） | ✅ |
 
-合计行覆盖 **80.3%**（4049/5040 行），共 **615** 个测试用例
-（`aha-common` 60 / `aha-extension-api` 6 / `aha-core` 207 / `aha-tool` 25 /
-`aha-cli` 309 / `aha-desktop` 8）。
+合计行覆盖 **80.8%**（4087/5061 行），共 **621** 个测试用例
+（`aha-common` 60 / `aha-extension-api` 6 / `aha-core` 211 / `aha-tool` 25 /
+`aha-cli` 309 / `aha-desktop` 10）。
 
-> **口径与复现**：数据取自 `./mvnw clean verify`（Maven 4 wrapper；JaCoCo 0.8.15；
+> **口径与复现**：数据取自 CI 的 `Gate.yml`（`./mvnw clean verify`；Maven 4 wrapper；JaCoCo 0.8.15；
 > 门禁 `BUNDLE` 行覆盖 ≥ 0.70）。合计 = 各模块 `LINE_COVERED / (LINE_COVERED + LINE_MISSED)`
 > 求和；`aha-desktop` 是 0.1 占位模块，已从门禁排除，不计入合计。
 >
