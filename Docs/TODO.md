@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.13.0
+**文档版本**：v0.14.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -548,6 +548,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
 | v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
 | v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
+| v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -1003,27 +1004,47 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送 `dependa`（含本次「补血缘」的合并提交 `d1de175` 与规则集文档提交 `98b20c0`） | 上游看不到这批改动；下个 PR 的血缘修补不生效 | `git ls-remote origin refs/heads/dependa` 与本地一致；新开 `dependa → dev` 的 PR 直接是 `clean` | ☐ 未完成 |
+| G-01 | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
 | G-02 | **分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表 | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [DevLog-20261007-24.md](DevLog/DevLog-20261007-24.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 
-### G-01 ☐ 未完成（前半已完成）
+### G-01 ☐ 未完成
 
-**内容**：把本地 `dependa` 上尚未推送的提交推送到远端。
+**内容**：把本地 `dev` 上尚未推送的两条文档提交推上去
+（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录）。
 
-**进展（2026-10-07）**：此前那批提交**已推送**（`origin/dependa` 与本地一致，
-PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合并提交 `06c6121`
-（`-s ours origin/dev`，不改变任何文件内容，见 `F-12`）——推上去 PR #8 才会从
-`dirty` 转为可合并。
+**为什么必须人工**：① 本环境没有推送凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测
+`could not read Username`，exit 128）；② `dev` 的规则集带 `pull_request` 规则，
+**直接推 `dev` 可能被拒**——能否绕过取决于规则集的 bypass 名单（本环境读 API 时被限流，
+需在 Settings → Rules → 该规则集里确认）。不能绕过时，就从一个分支提 PR 合入 `dev`。
 
-**为什么必须人工**：本环境没有远端推送凭据，实测 `GIT_TERMINAL_PROMPT=0 git push`
-返回 `fatal: could not read Username for 'https://github.com'`（exit 128）。
+**分支现状（2026-10-07，方案 B 执行后）**：
 
-**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致
-（即出现 `06c6121`）；PR #8 的 `mergeable_state` 变为 `clean`，`Gate` 与 `Compat`
-在新一轮 CI 中通过（`macOS` 腿按设计允许失败）。
+| 分支 | SHA | 相对上游 |
+| ---- | ---- | ---- |
+| `dev` | `ca80c5c` | **ahead 2**（待推送） |
+| `dependa` | `1518056` | 与 `origin/dependa` **一致**（已复位，无需推送） |
+| `main` / `feat/local` | `4f12cef` | 一致 |
+
+**已知代价（实测，务必记住）**：`dependa` 复位后，**第一次把 `dev` 合进 `dependa` 时会冲突 6 个文件**——
+两侧相对分叉点 `5d938f3` 都改过它们，且改法的形状不同（这正是 squash 的后果，见 `F-12`）：
+
+```
+CHANGELOG.md
+Docs/AHA/AHA-Design-V1.md
+Docs/DevLog/DevLog-20261007-22.md
+Docs/DevSpec/BuildSpec.md
+Docs/DevSpec/ReleaseProcess.md
+Docs/TODO.md
+```
+
+解法：这些文件两侧除本次两条文档提交外**内容本就相同**，**取 `dev` 的版本**即可
+（`git checkout --theirs -- <文件>` 后 `git add`）。想要彻底避免这类差异，见 `G-05`（关闭 squash）。
+
+**验收标准**：`git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或对应 PR 已合入）；
+`dev → main` 的 PR（#7）能带上这批文档。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.1.1 收口。
 

@@ -34,6 +34,9 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+- **文档提交改落在 `dev`**：规则集整改规格与 `F-12` 复发记录两条文档提交现位于 `dev`
+  （`abd5d85` / `ca80c5c`），`dependa` 已复位到 `origin/dependa`；复位后的实测代价
+  （首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法）已记入 `TODO.md` `G-01`
 - **补回 `dev` 的血缘**：PR #8 以 squash 合入，使 `dev` 拿到内容却没拿到分支历史——
   与 `F-12` 同一形态并在同日复发。已在 `dependa` 上用 `-s ours` 接回（树不变、零内容改动），
   并按 `ReleaseProcess.md` §4.1 立下「被误用 squash 后必须立刻接回血缘」；
