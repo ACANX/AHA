@@ -5,7 +5,10 @@ import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
 import com.acanx.module.aha.desktop.chat.ChatView;
+import com.acanx.module.aha.desktop.chat.FileMentions;
+import com.acanx.module.aha.desktop.chat.InputHistory;
 import com.acanx.module.aha.desktop.chat.SessionList;
+import com.acanx.module.aha.desktop.chat.SlashCommands;
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
@@ -46,8 +49,10 @@ import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -236,6 +241,18 @@ public final class DesktopShell implements ChatView {
     /** 会话列表。 */
     private ListView<SessionList.Item> sessionList;
 
+    /** 输入历史（↑ / ↓）。 */
+    private final InputHistory history = new InputHistory();
+
+    /** 候选弹层（/ 命令与 @ 文件共用）。 */
+    private CompletionPopup completion;
+
+    /** 项目根（@ 文件候选的扫描起点）。 */
+    private Supplier<Path> projectRoot = () -> Path.of(System.getProperty("user.dir", "."));
+
+    /** 主题切换动作（/theme 与视图菜单共用）。 */
+    private Runnable onThemeCycle;
+
     /** 最近一次刷新的会话摘要（供搜索过滤复用）。 */
     private List<SessionSummary> sessionSummaries = List.of();
 
@@ -377,9 +394,154 @@ public final class DesktopShell implements ChatView {
             return false;
         }
         composer.clear();
+        completion.hide();
+        history.add(text);
+        // 会话内命令在本端执行，**不发给模型**：把 /help 丢给模型既浪费一次调用，
+        // 又会得到一段与真实命令无关的回复。
+        Optional<SlashCommands.Command> command = SlashCommands.parse(text);
+        if (command.isPresent()) {
+            runCommand(command.get());
+            return true;
+        }
         // 真正的发送交给对话内核（ChatController）；界面只负责把文本递出去
         onSend.accept(text);
         return true;
+    }
+
+    /**
+     * 执行一条会话内命令。
+     *
+     * @param command 命令
+     * @return 是否已处理
+     */
+    public boolean runCommand(SlashCommands.Command command) {
+        switch (command.name()) {
+            case "help" -> appendNotice(helpText());
+            case "new" -> onNewSession.run();
+            case "clear" -> {
+                clearConversation();
+                appendNotice("已清空当前界面（已保存的历史不受影响，可在左栏切回）。");
+            }
+            case "model" -> openProviderDialog();
+            case "tools" -> openToolDialog();
+            case "log" -> openLogPanel();
+            case "theme" -> {
+                if (onThemeCycle == null) {
+                    appendNotice("主题切换尚不可用（未接线）。");
+                } else {
+                    onThemeCycle.run();
+                }
+            }
+            case "exit" -> onExit.run();
+            default -> {
+                appendNotice("未知命令：/" + command.name());
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 命令一览（/help 的输出）。
+     *
+     * @return 文本
+     */
+    public static String helpText() {
+        StringBuilder out = new StringBuilder("可用命令：");
+        for (SlashCommands.Command command : SlashCommands.CATALOG) {
+            out.append('\n').append("  /").append(command.name())
+                    .append("　").append(command.label())
+                    .append("　").append(command.description());
+        }
+        out.append('\n').append("  输入 @ 可引用项目内文件；↑ / ↓ 翻历史输入。");
+        return out.toString();
+    }
+
+    /**
+     * 输入历史（测试与真机自证用）。
+     *
+     * @return 历史
+     */
+    public InputHistory history() {
+        return history;
+    }
+
+    /**
+     * 候选弹层里的候选（显示文本）。
+     *
+     * @return 候选
+     */
+    public java.util.List<String> completionItems() {
+        return completion == null ? java.util.List.of() : completion.displays();
+    }
+
+    /**
+     * 候选弹层是否可见。
+     *
+     * @return 可见返回 {@code true}
+     */
+    public boolean completionVisible() {
+        return completion != null && completion.isVisible();
+    }
+
+    /**
+     * 把光标处的候选补进输入框（Enter / Tab）。
+     *
+     * @return 补了返回 {@code true}
+     */
+    public boolean acceptCompletion() {
+        if (completion == null || !completion.isVisible()) {
+            return false;
+        }
+        CompletionPopup.Item item = completion.selected();
+        if (item == null) {
+            completion.hide();
+            return false;
+        }
+        String text = composer.getText() == null ? "" : composer.getText();
+        String value = item.value();
+        if (value.startsWith("/")) {
+            // 命令候选：整行替换（命令后面本来就不该有别的字）
+            composer.setText(value);
+            composer.positionCaret(value.length());
+        } else {
+            FileMentions.Insertion insertion =
+                    FileMentions.insert(text, composer.getCaretPosition(), value);
+            composer.setText(insertion.text());
+            composer.positionCaret(Math.min(insertion.caret(), insertion.text().length()));
+        }
+        completion.hide();
+        return true;
+    }
+
+    /** 按当前输入更新候选弹层（/ 命令或 @ 文件）。 */
+    private void updateCompletion() {
+        if (completion == null) {
+            return;
+        }
+        String text = composer.getText() == null ? "" : composer.getText();
+        String trimmed = text.strip();
+        // 命令只在「整行就是 /xxx」时提示：带空格说明已经在写正文了
+        if (trimmed.startsWith("/") && !trimmed.contains(" ") && !trimmed.contains("\n")) {
+            java.util.List<CompletionPopup.Item> items = SlashCommands.match(trimmed.substring(1))
+                    .stream()
+                    .map(command -> new CompletionPopup.Item(command.display(),
+                            SlashCommands.completionText(command)))
+                    .toList();
+            completion.show(composer, items);
+            return;
+        }
+        String token = FileMentions.token(text, composer.getCaretPosition());
+        if (token != null) {
+            java.util.List<CompletionPopup.Item> items = FileMentions
+                    .candidates(projectRoot.get(), token.substring(1), 0)
+                    .stream()
+                    .map(path -> new CompletionPopup.Item(path, path))
+                    .toList();
+            completion.show(composer, items);
+            return;
+        }
+        completion.hide();
     }
 
     /**
@@ -534,6 +696,26 @@ public final class DesktopShell implements ChatView {
      */
     public void providerDialog(ProviderDialog dialog) {
         this.providerDialog = dialog;
+    }
+
+    /**
+     * 设置项目根（{@code @} 文件候选的扫描起点）。
+     *
+     * @param source 项目根来源，可为 {@code null}
+     */
+    public void projectRoot(Supplier<Path> source) {
+        this.projectRoot = source == null
+                ? () -> Path.of(System.getProperty("user.dir", "."))
+                : source;
+    }
+
+    /**
+     * 设置主题切换动作（{@code /theme} 与「视图 → 主题」共用）。
+     *
+     * @param handler 动作
+     */
+    public void onThemeCycle(Runnable handler) {
+        this.onThemeCycle = handler;
     }
 
     /**
@@ -746,7 +928,15 @@ public final class DesktopShell implements ChatView {
         collapseRight.setSelected(!rightFold.isExpanded());
         collapseRight.setAccelerator(new KeyCodeCombination(KeyCode.J, KeyCombination.SHORTCUT_DOWN));
         collapseRight.setOnAction(event -> toggleRight());
-        view.getItems().addAll(collapseLeft, collapseRight);
+        MenuItem theme = new MenuItem("主题（暗色 / 亮色 / 跟随系统）");
+        theme.setOnAction(event -> {
+            if (onThemeCycle == null) {
+                appendNotice("主题切换尚不可用（未接线）。");
+            } else {
+                onThemeCycle.run();
+            }
+        });
+        view.getItems().addAll(collapseLeft, collapseRight, new SeparatorMenuItem(), theme);
 
         Menu help = new Menu("帮助(_H)");
         MenuItem about = new MenuItem("关于 AHA");
@@ -1017,14 +1207,73 @@ public final class DesktopShell implements ChatView {
         composer.setPrefRowCount(3);
         // Enter 发送、Shift+Enter 换行（若直接放行，TextArea 会把 Enter 当换行）
         composer.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
-                event.consume();
-                submitComposer();
-            } else if (event.getCode() == KeyCode.ESCAPE) {
-                event.consume();
-                onCancel.run();
+            // 候选弹层打开时，方向键与确认键归弹层用（都在这个过滤器里处理，
+            // 弹层自己从不抢焦点，见 CompletionPopup 的说明）
+            if (completionVisible()) {
+                switch (event.getCode()) {
+                    case UP -> {
+                        event.consume();
+                        completion.moveSelection(-1);
+                        return;
+                    }
+                    case DOWN -> {
+                        event.consume();
+                        completion.moveSelection(1);
+                        return;
+                    }
+                    case ENTER, TAB -> {
+                        event.consume();
+                        acceptCompletion();
+                        return;
+                    }
+                    case ESCAPE -> {
+                        event.consume();
+                        completion.hide();
+                        return;
+                    }
+                    default -> {
+                        // 其它键继续往下走（继续打字时应当重新算候选）
+                    }
+                }
+            }
+            switch (event.getCode()) {
+                case ENTER -> {
+                    if (!event.isShiftDown()) {
+                        // Ctrl+Enter 与 Enter 都发送：设计里的「多行编辑时强制发送」
+                        // 在桌面端就是「不必先清空换行」
+                        event.consume();
+                        submitComposer();
+                    }
+                }
+                case ESCAPE -> {
+                    event.consume();
+                    onCancel.run();
+                }
+                case UP -> {
+                    // 只有光标在第一行时才翻历史，否则会抢走「在多行文本里移光标」
+                    if (caretOnFirstLine() && !composer.getText().isBlank()) {
+                        event.consume();
+                        setComposerText(history.previous(composer.getText()));
+                    } else if (composer.getText().isEmpty()) {
+                        event.consume();
+                        setComposerText(history.previous(""));
+                    }
+                }
+                case DOWN -> {
+                    if (caretOnLastLine() && !history.atDraft()) {
+                        event.consume();
+                        setComposerText(history.next());
+                    }
+                }
+                default -> {
+                    // 其余按键交给输入框
+                }
             }
         });
+        // 输入变化时重算候选（文字与光标位置都要跟着动）
+        completion = new CompletionPopup();
+        composer.textProperty().addListener((observable, old, now) -> updateCompletion());
+        composer.caretPositionProperty().addListener((observable, old, now) -> updateCompletion());
 
         sendButton = new Button("发送");
         sendButton.setId(SEND_ID);
@@ -1035,6 +1284,26 @@ public final class DesktopShell implements ChatView {
 
         VBox box = new VBox(ShellLayout.GAP, composer, actions);
         return box;
+    }
+
+    /** 光标是否在第一行。 */
+    private boolean caretOnFirstLine() {
+        String text = composer.getText() == null ? "" : composer.getText();
+        int caret = Math.max(0, Math.min(composer.getCaretPosition(), text.length()));
+        return text.substring(0, caret).indexOf('\n') < 0;
+    }
+
+    /** 光标是否在最后一行。 */
+    private boolean caretOnLastLine() {
+        String text = composer.getText() == null ? "" : composer.getText();
+        int caret = Math.max(0, Math.min(composer.getCaretPosition(), text.length()));
+        return text.substring(caret).indexOf('\n') < 0;
+    }
+
+    /** 把历史里的内容放进输入框并把光标放到末尾。 */
+    private void setComposerText(String text) {
+        composer.setText(text == null ? "" : text);
+        composer.positionCaret(composer.getText().length());
     }
 
     private HBox buildStatusBar() {

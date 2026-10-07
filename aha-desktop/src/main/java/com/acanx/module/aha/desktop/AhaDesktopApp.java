@@ -8,6 +8,7 @@ import com.acanx.module.aha.core.config.ConfigLoader;
 import com.acanx.module.aha.core.config.ModelConfig;
 import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ProviderConfig;
+import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
 import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
@@ -169,6 +170,13 @@ public final class AhaDesktopApp extends Application {
         shell.onSessionExport((sessionId, format) ->
                 exportSession(stage, shell, controller, sessionId, format));
         shell.tools(service::listTools);
+
+        // @ 文件引用要有个扫描起点：与 CLI 用同一套项目根探测（有 .git / pom.xml 的那一层）。
+        // 只算一次：每敲一个字符都走一遍目录树是没必要的。
+        Path projectRoot = SystemPromptLoader.findProjectRoot(
+                Path.of(System.getProperty("user.dir", ".")));
+        shell.projectRoot(() -> projectRoot);
+        LOG.info("项目根：{}", projectRoot == null ? "未找到（@ 引用将没有候选）" : projectRoot);
 
         // 首屏就把已有会话列出来（进程重启后仍能看到之前的会话）
         refreshSessions(shell, controller);
