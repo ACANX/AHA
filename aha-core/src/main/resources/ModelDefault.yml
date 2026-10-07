@@ -1,0 +1,85 @@
+# AHA 默认模型供应商配置（classpath:ModelDefault.yml）
+#
+# 该文件提供内置默认供应商；用户级 Model.yml
+# （${AHA_HOME:-~/.aha}/Model.yml，或由 Aha.yaml 的 Llm.ModelFile 指定）
+# 会覆盖同名供应商，并以其中的 Default 作为当前选中的供应商。
+#
+# 一键切换供应商：  aha provider use <ProviderId>
+# 查看供应商列表：  aha provider list
+# 新增供应商：      aha provider add <ProviderId> --adapter openai-compatible \
+#                       --base-url <url> --model <name> [--api-key <key>] [--default]
+# 删除供应商：      aha provider remove <ProviderId>
+#
+# 字段命名规范：YAML 字段统一 PascalCase；ApiKey 支持 ${ENV} / ${ENV:-default} 占位。
+# BaseUrl 为「基础地址」，适配器负责拼接端点路径（如 /chat/completions）。
+
+Model:
+  # 当前默认（选中）的供应商
+  Default: OpenAI
+
+  Providers:
+    OpenAI:
+      Adapter: openai-compatible
+      BaseUrl: "https://api.openai.com/v1"
+      ApiKey: '${AHA_API_KEY_OPENAI}'
+      Model: gpt-4o
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    Anthropic:
+      Adapter: anthropic
+      BaseUrl: https://api.anthropic.com
+      ApiKey: '${AHA_API_KEY_ANTHROPIC}'
+      Model: claude-sonnet-5-1
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    Gemini:
+      Adapter: gemini
+      BaseUrl: https://generativelanguage.googleapis.com
+      ApiKey: '${AHA_API_KEY_GEMINI}'
+      Model: gemini-3.5-flash
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    DeepSeek:
+      Adapter: openai-compatible
+      BaseUrl: https://api.deepseek.com/v1
+      ApiKey: '${AHA_API_KEY_DEEPSEEK}'
+      Model: deepseek-chat
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    BigModelCN:
+      Adapter: openai-compatible
+      BaseUrl: https://open.bigmodel.cn/api/paas/v4
+      ApiKey: '${AHA_API_KEY_BIG_MODEL_CN}'
+      Model: glm-4.6
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    Qwen:
+      Adapter: openai-compatible
+      BaseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+      ApiKey: '${AHA_API_KEY_QWEN}'
+      Model: qwen-max
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000

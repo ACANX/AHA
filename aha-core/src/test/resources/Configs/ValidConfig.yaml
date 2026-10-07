@@ -1,0 +1,36 @@
+Aha:
+  Llm:
+    DefaultProvider: OpenAI
+    Providers:
+      OpenAI:
+        Adapter: openai-compatible
+        BaseUrl: https://api.openai.com/v1
+        ApiKey: test-key
+        Model: gpt-4o
+        TimeoutSeconds: 120
+        MaxRetries: 3
+        RateLimit:
+          Rpm: 60
+          Tpm: 100000
+  Memory:
+    Storage: sqlite
+    Path: ./target/test/Aha.db
+    MaxContextEntries: 100
+  Tools:
+    Enabled:
+      - file-read
+    Shell:
+      AllowedCommands: []
+      TimeoutSeconds: 30
+  Security:
+    KeyStore: encrypted-file
+    KeyStorePath: ./target/test/Aha.keystore
+  Logging:
+    Level: INFO
+    File: ./target/test/AHA.log
+  Extension:
+    Enabled: true
+    Path: ./target/test/extension
+    AutoLoad: false
+    Disabled: []
+    Settings: {}

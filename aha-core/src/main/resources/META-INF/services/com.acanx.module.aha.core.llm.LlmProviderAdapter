@@ -1,0 +1,3 @@
+com.acanx.module.aha.core.llm.openai.OpenAiAdapter
+com.acanx.module.aha.core.llm.anthropic.AnthropicAdapter
+com.acanx.module.aha.core.llm.gemini.GeminiAdapter

@@ -1,0 +1,104 @@
+# AHA 默认配置（classpath:AhaDefault.yaml）
+#
+# 命名规范：
+#   - YAML 字段：AHA 自有字段统一 PascalCase
+#   - SQLite 表名（单数）与字段名：snake_case，时间字段沿用 gmt_create
+#
+# 模型供应商配置已与主配置分离：
+#   - 本文件只声明「兜底（降级回退）模型」与「模型配置文件路径」
+#   - 供应商明细位于 Model.yml，默认位于用户级目录（模型配置含 API Key，属凭据类配置）：
+#       $AHA_HOME/Model.yml（已设置 AHA_HOME）
+#       ~/.aha/Model.yml（未设置 AHA_HOME）
+#   - 不再读取工作目录下的 ./Model.yml：相对路径会随 CWD 变化，且读不到时静默回退，难以排查。
+#     需要项目级配置时，在本文件显式设置 Llm.ModelFile（如 ./Model.yml）即可。
+#   - 内置默认供应商见 classpath:ModelDefault.yml
+#   - 一键切换供应商：aha provider use <ProviderId>
+
+Aha:
+  # Agent 身份与系统提示词
+  #   - 身份文件（用户级 + 项目级）会**叠加**注入，顺序为「用户级 → 项目级」
+  #   - 每个来源**各自作为一条独立的 system 消息**注入，不拼接成一整段
+  #     （拼接会让模型看不出内容出自哪个文件）
+  #   - 同一层级内**全部候选都生效**，顺序即下面的列表顺序（排后者优先级更高）
+  #   - 内容完全相同的文件只注入一次（同一份内容被复制成 AHA.md 与 CLAUDE.md 是常见情况）
+  #   - 查找顺序：用户级目录（$AHA_HOME 或 ~/.aha）→ 从当前工作目录逐级向上（就近优先）
+  #   - 下面的 SystemPrompt 是**兜底**：一份身份文件都没找到时才使用它
+  #     它同时是 AHA 的默认身份声明，/config 的 Agent.SystemPrompt 一栏可见
+  #   - 要覆盖它请写用户级 Aha.yaml，不要直接改本文件（本文件在 jar 内）
+  Agent:
+    PromptFiles:
+      - AHA.md
+      - AGENTS.md
+      - CLAUDE.md
+    SystemPrompt: |
+      你是 AHA（Agent Harness）驱动的编码助手，在用户的本地工作区中协助完成软件工程任务。
+
+      关于 AHA：
+      - AHA 是一个本地运行的 Agent 编排框架，负责模型调用、工具执行、权限裁决、会话与记忆存储
+      - 你通过它提供的工具读写文件、执行命令、访问网络；每次工具调用都会被记录并受权限策略约束
+      - 会话历史与记忆保存在用户本地（默认 ~/.aha），不会上传给 AHA 以外的服务
+
+      工作原则：
+      - 先理解上下文再行动。不确定时查阅项目文件、配置与既有代码，不要凭猜测作答或改动
+      - 修改代码后运行构建或测试验证，不要假设改动一定正确
+      - 涉及文件写入、命令执行等有副作用的操作前，先说明意图；小步推进，便于用户回退
+      - 遇到与用户既有约定冲突时，指出冲突并询问，不要擅自覆盖
+      - 不要编造 API、文件内容或执行结果：没读过的文件就说没读过，没跑过的命令就说没跑过
+
+      工具与权限：
+      - 读取类工具（读文件、列目录）通常自动执行
+      - 写入、执行命令、管理类操作需要用户逐次确认。用户拒绝后说明原因并给出替代方案，
+        不要换个说法反复重试同一件事
+
+      身份与记忆：
+      - 用户可能通过 AHA.md / AGENTS.md 定义本项目的角色与约定，其内容优先于本默认身份
+      - 出现冲突时以用户文件中的约定为准，不确定处主动询问
+
+      沟通风格：
+      - 默认用简体中文回复（用户另有要求时从其要求）
+      - 简洁直接：先给结论与可执行的下一步，再补必要说明，不要堆砌思考过程
+      - 引用代码时给出文件路径与行号，便于定位
+
+      运行环境（操作系统、命令执行方式、工作目录）由 AHA 在每轮消息中附带，以那里的信息为准。
+
+  Llm:
+    # 兜底（降级回退）模型：Model.yml 缺失、默认供应商不存在或调用失败时使用
+    Fallback:
+      Provider: OpenAI
+      Model: gpt-4o
+    # 模型供应商配置文件路径（支持 ${ENV} / ${ENV:-default} 占位，以及路径开头的 ~ 展开）
+    ModelFile: '${AHA_HOME:-~/.aha}/Model.yml'
+
+  Memory:
+    Storage: sqlite
+    Path: '${AHA_HOME:-~/.aha}/Data/Aha.db'
+    MaxContextEntries: 100
+
+  Tools:
+    Enabled:
+      - file-read
+      - file-write
+      - file-list
+      - http-get
+      - shell-exec
+    # 在默认策略（READ/NETWORK 自动放行）之上额外自动放行的权限：
+    # 可选 WRITE / EXECUTE / ADMIN / ALL；留空表示 WRITE/EXECUTE/ADMIN 均需交互确认
+    AutoApprove: []
+    Shell:
+      AllowedCommands: []
+      TimeoutSeconds: 30
+
+  Security:
+    KeyStore: encrypted-file
+    KeyStorePath: '${AHA_HOME:-~/.aha}/Key/Aha.keystore'
+
+  Logging:
+    Level: DEBUG
+    File: '${AHA_HOME:-~/.aha}/Log/AHA.log'
+
+  Extension:
+    Enabled: true
+    Path: '${AHA_HOME:-~/.aha}/Extension'
+    AutoLoad: true
+    Disabled: []
+    Settings: {}

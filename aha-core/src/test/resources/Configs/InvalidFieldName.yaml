@@ -1,0 +1,9 @@
+Aha:
+  Llm:
+    default-provider: OpenAI
+    providers:
+      OpenAI:
+        Adapter: openai-compatible
+        BaseUrl: https://api.openai.com/v1
+        ApiKey: test-key
+        Model: gpt-4o
