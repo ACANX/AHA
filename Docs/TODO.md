@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.23.0
+**文档版本**：v0.24.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -357,6 +357,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已落地（pom 已声明） | `aha-desktop/pom.xml`、`DesktopDesign.md` |
 | D-10 | 桌面端包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-common`、`aha-core` |
 | D-11 | 桌面端不读 `Aha.yaml`（只用默认日志配置） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-core/boot`、`aha-desktop` |
+| D-12 | 桌面端界面仍是 0.1 占位（无三栏） | 设计缺口 | ✅ | P1 | ✅ 已完成 | `aha-desktop/view` |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
@@ -523,6 +524,7 @@ desktop 亦未列 tool 依赖。
 | v0.21.0 | 2026-10-08 | 新增 `D-10`：桌面端便携包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`，而 `cli` 与 `desktop` 不得互相依赖），含实测证据、影响与建议动作 | @ACANX |
 | v0.22.0 | 2026-10-08 | `D-07` 结项（线程模型小节 + 桥接契约 + 静态扫描 + 6 例单测）、`D-10` 结项（版本号下移 `aha-common`、日志装配下移 `aha-core`，并更正早期「缺 `log4j2.xml`」的误判）、`D-04` 记为「门禁方式已定」（冒烟默认跳过）、新增 `D-11`（桌面端不读 `Aha.yaml`） | @ACANX |
 | v0.23.0 | 2026-10-08 | `D-11` 结项：抽出 `AhaBootstrap`（CLI 与桌面端共用读配置/装配日志/装密钥库），桌面端窗口显示配置摘要；含单测与 CLI 端到端实测证据 | @ACANX |
+| v0.24.0 | 2026-10-08 | 新增并结项 `D-12`（桌面端三栏骨架 + 折叠三条路径 + 纯逻辑 `FoldState`），遗留项记明（工具卡片 / Agent 接线 / `ToolKind` 下移） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -537,6 +539,29 @@ desktop 亦未列 tool 依赖。
 > **更正一则早期误判**：本条目先前写作「桌面端包缺 `log4j2.xml`」。实际上**全仓原本就没有**该文件
 > ——日志装配一直是程序化的（理由见 `LoggingDesign.md`：JPMS 下 `getResources` 不搜模块路径）。
 > 真正缺的是**类**，现已下移。
+
+### D-12 ✅ 已完成（2026-10-08）：桌面端三栏骨架
+
+**落地内容**：`DesktopShell`（菜单栏 + 左 220 / 中弹性 / 右 280 + 底 24px 状态栏）、
+`ShellLayout`（尺寸与可见性规则）、`Palette`（语义色值）、`FoldState`（折叠状态机）；
+`AhaDesktopApp.start` 改为装配该骨架，底栏承载状态桥接与配置摘要。
+
+**折叠**：菜单（视图 → 折叠左栏 / 折叠右栏）、快捷键（`Ctrl+B` / `Ctrl+J`）、
+栏边**常驻窄条按钮**三条路径等价；折叠后窄条仍在，鼠标用户随时能展回来
+（只留快捷键会让鼠标用户折叠后无法展开）。
+
+**测试**：`FoldStateTest`（4，含折叠→展开往返与提示文案）、`ShellLayoutTest`（4）、
+`PaletteTest`（2）默认运行；冒烟测试扩展为**走真实按钮**，覆盖折叠→展开、右栏默认收起、
+Enter 发送 / Shift+Enter 换行（默认跳过，需图形环境）。
+
+**遗留**：
+
+1. 对话流与工具卡片的真实数据、授权弹窗、`/` `@` 补全、暗/亮主题、设置 —— 0.2 内继续；
+2. **尚未接入 Agent**：发消息只落到本地消息流，并显示明确提示，不假装已发给模型；
+3. 工具卡片的语义判定要与 CLI 共用：`aha-cli` 的 `ToolKind` 目前是包私有，
+   做工具卡片时应下移到 `aha-common`，免得两侧各写一套「哪个工具算写入」的判定。
+
+---
 
 ### F-16 ☐ 新增（2026-10-08）：Maven 4 下 verify 日志出现 10 行 `[stderr]`
 

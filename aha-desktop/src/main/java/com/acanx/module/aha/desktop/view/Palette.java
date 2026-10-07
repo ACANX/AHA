@@ -1,0 +1,51 @@
+package com.acanx.module.aha.desktop.view;
+
+/**
+ * 语义配色（十六进制）。
+ *
+ * <p>{@code GUIDesign.md} 第 3.1 节：CLI（256 色）与 GUI（十六进制）使用**同一套语义**，
+ * 用户在两端看到同一种含义。这里只放 GUI 侧的字面量；语义本身（哪个工具属于哪类）
+ * 与 CLI 共用同一套判定，落在后续的工具卡片实现里。</p>
+ *
+ * <p>颜色值有测试钉住，改设计必须同时改测试——否则「文档说一套、界面做一套」会悄悄发生。</p>
+ *
+ * @since 0.2.0
+ */
+public final class Palette {
+
+    /** 读取：查看文件、列目录。 */
+    public static final String READ = "#87AFD7";
+
+    /** 写入：修改 / 新建文件。 */
+    public static final String WRITE = "#D7AF5F";
+
+    /** 执行：运行命令 / 脚本。 */
+    public static final String EXEC = "#FF875F";
+
+    /** 网络：发起请求。 */
+    public static final String NETWORK = "#5FD7D7";
+
+    /** 其它：未识别工具。 */
+    public static final String OTHER = "#BCBCBC";
+
+    /** 成功：完成。 */
+    public static final String SUCCESS = "#7FD37F";
+
+    /** 失败：错误、拒绝。 */
+    public static final String FAILURE = "#FF5F5F";
+
+    /** 区块底：工具卡片底。 */
+    public static final String BLOCK_BACKGROUND = "#303030";
+
+    /** 正文前景（暗色优先主题）。 */
+    public static final String FOREGROUND = "#E4E4E4";
+
+    /** 弱化的元信息色。 */
+    public static final String MUTED = "#9A9A9A";
+
+    /** 输入框边框（与 CLI 的高亮紫一致）。 */
+    public static final String FOCUS_BORDER = "#AF87FF";
+
+    private Palette() {
+    }
+}

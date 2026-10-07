@@ -6,13 +6,11 @@ import com.acanx.module.aha.core.config.ConfigLoader;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
+import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
-import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,24 +34,6 @@ import java.nio.file.Path;
 public final class AhaDesktopApp extends Application {
 
     private static final Logger LOG = LoggerFactory.getLogger(AhaDesktopApp.class);
-
-    /** 状态标签的 id，供测试定位（{@code #aha.status}）。 */
-    static final String STATUS_ID = "aha.status";
-
-    /** 配置摘要标签的 id，供测试定位（{@code #aha.config}）。 */
-    static final String CONFIG_ID = "aha.config";
-
-    /** 状态标签的初始文案。 */
-    static final String STATUS_INITIAL = "正在启动…";
-
-    /** 窗口初始宽度。 */
-    private static final int WIDTH = 900;
-
-    /** 窗口初始高度。 */
-    private static final int HEIGHT = 600;
-
-    /** 内边距。 */
-    private static final int PADDING = 24;
 
     /** 引导结果，供界面显示配置来源与生效日志级别（{@code D-11}）。 */
     private AhaBootstrap.Result boot;
@@ -103,51 +83,21 @@ public final class AhaDesktopApp extends Application {
     public void start(Stage stage) {
         FxDispatcher dispatcher = new PlatformFxDispatcher();
 
-        // 先建控件、再建桥接：渲染动作就是把值写进状态标签（在 UI 线程执行）
-        Label status = new Label(STATUS_INITIAL);
-        status.setId(STATUS_ID);
-        FxBridge<String> bridge = new FxBridge<>(dispatcher, status::setText);
+        // 骨架：菜单栏 + 三栏 + 底部状态栏（形态见 GUIDesign.md 第 2 节）
+        DesktopShell shell = new DesktopShell(stage::close, this::configSummary);
+        shell.setConfigSummary(configSummary());
 
-        Label config = new Label(configSummary());
-        config.setId(CONFIG_ID);
+        // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
+        FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
-        Parent root = buildRoot(status, config);
+        Parent root = shell.buildRoot();
         stage.setTitle(AppVersion.DISPLAY + " 桌面端（0.2 开发中）");
-        stage.setScene(new Scene(root, WIDTH, HEIGHT));
+        stage.setScene(new Scene(root, ShellLayout.WINDOW_WIDTH, ShellLayout.WINDOW_HEIGHT));
         // 关窗联动：关闭桥接，之后到达的后台更新一律丢弃
         stage.setOnCloseRequest(event -> bridge.close());
         stage.show();
 
         startStatusProbe(bridge);
-    }
-
-    /**
-     * 构建窗口根节点。
-     *
-     * @param status 状态标签（由桥接在 UI 线程更新）
-     * @param config 配置摘要标签
-     * @return 根节点
-     */
-    Parent buildRoot(Label status, Label config) {
-        Label heading = new Label(AppVersion.DISPLAY + " 桌面端");
-        heading.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
-
-        Label note = new Label("""
-                当前为 0.2 第一步：窗口骨架 + 线程桥接契约。
-                后续按 GUIDesign.md 落地：会话列表、对话流、工具卡片、授权弹窗、输入区。""");
-        note.setWrapText(true);
-
-        VBox center = new VBox(12, heading, config, status, note);
-        center.setPadding(new Insets(PADDING));
-
-        Label footer = new Label("系统 " + System.getProperty("os.name")
-                + " / " + System.getProperty("os.arch")
-                + " · Java " + Runtime.version());
-        footer.setPadding(new Insets(8, PADDING, 12, PADDING));
-
-        BorderPane root = new BorderPane(center);
-        root.setBottom(footer);
-        return root;
     }
 
     /**

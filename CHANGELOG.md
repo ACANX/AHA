@@ -24,6 +24,11 @@
   `ubuntu` / `windows` / `macos` 矩阵出包，由产物名 + 依赖树**双向自证**平台分类器后上传到
   release 页面。桌面端启动脚本 `bin/AhaDesktop.{sh,bat}` 随包分发；`aha-desktop` 另声明
   `aha-tool`，桌面端由此具备内置工具
+- **桌面端三栏骨架**：`DesktopShell` 搭出菜单栏 + 左 220 / 中弹性 / 右 280 + 底部 24px 状态栏；
+  左右两栏可折叠，菜单（视图）、快捷键（`Ctrl+B` / `Ctrl+J`）与栏边**常驻窄条按钮**三条路径等价
+  ——折叠后窄条仍在，鼠标用户随时能把栏展回来；折叠状态抽成不依赖 JavaFX 的 `FoldState`，
+  使「折叠→展开」的往返在无图形环境下也能被测试钉住；输入区支持 Enter 发送 /
+  Shift+Enter 换行，发送只落到本地消息流并明确提示「尚未接入 Agent」
 - **桌面端窗口骨架与线程桥接契约**（0.2 的第一步）：`AhaDesktopApp` 改为 `Application` 子类，
   开窗并显示版本号；新增 `desktop/fx` 桥接契约（`FxDispatcher` / `PlatformFxDispatcher` /
   `FxBridge`），把高频后台回调合并成每帧至多一次界面更新；`FxThreadContractTest` 扫描主源码
