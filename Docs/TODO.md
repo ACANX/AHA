@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.11.2
+**文档版本**：v0.11.3
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -544,6 +544,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.11.0 | 2026-10-07 | 新增 `F-13`（✅ 已修：CI 插件依赖「当次要不到」的定性过程与修法，含两条 Maven 消息的判别）与 `F-14`（⏸ 待决策：`.github/**/*.yml` 无本地检查） | @ACANX |
 | v0.11.1 | 2026-10-07 | `D-06` 修正失效断言：`Build.yml` 矩阵已含 macOS 腿（`F-06`，定位为演示与可选），而 `DesktopDesign.md` §2 缺平台清单一节经再次实查仍成立 | @ACANX |
 | v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
+| v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -733,6 +734,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-12 | PR #6 被以**单父提交**重新落地（内容重放、不是真合并），使 `dependa` 与 `dev` 成为内容重叠的两条平行线，PR #8 永久 `mergeable_state=dirty` | 工程效能 | ✅ | P1 | ✅ 已修 | `dependa` 合并提交 `06c6121`、`ReleaseProcess.md` §4、`DevLog/DevLog-20261007-22.md` |
 | F-13 | CI 在 JaCoCo 插件依赖解析上失败（`Could not find artifact ... in central`），而三个 artifact 在 Central 实测 200——当次就没要下来；`Gate` 是必需检查，网络抖动即把 PR 卡红 | 工程效能 | ✅ | P1 | ✅ 已修 | `.github/actions/maven-run/action.yml`、四个工作流、`BuildSpec.md` §8.1、`DevLog-20261007-23.md` |
 | F-14 | `.github/**/*.yml` 没有任何本地检查：`bin/CheckScripts.py` 只覆盖 `.bat`/`.cmd`/`.sh`/`.py`，工作流语法写错只能等 GitHub 判，反馈环路长 | 工程效能 | ⏸ | P2 | ⏸ 待决策 | `bin/CheckScripts.py` |
+| F-15 | 文档标题/表行**编号重复**只能靠人工看：本轮 `PLAN.md` `A-09`/`A-10` 与两份 `Design/` 文档的重号都是事后肉眼发现 | 工程效能 | ⏸ | P3 | ⏸ 待决策 | `bin/CheckDocs.py` |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
