@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.8.0
+**文档版本**：v1.9.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -23,6 +23,7 @@
 | v1.6.0 | 2026-10-07 | §4.1 补实测后果：源分支落后上游时，首次整合会在两侧都改过的文件上冲突（本次实测 6 个文档文件），取上游版本可解，但属纯人工重复劳动，正解是关闭 squash（`G-05`） | @ACANX |
 | v1.7.0 | 2026-10-07 | §2 发布步骤改为「合入 main 后 tag 由 CI 自动打」（`Build.yml` 的 tag 作业，按父 POM 版本创建 `V<版本号>`，幂等）；新增 §4.1（tag 命名与手工补打）与 §4.2（用 `GITHUB_TOKEN` 推的 tag 不触发下游工作流，附两条补救路径） | @ACANX |
 | v1.8.0 | 2026-10-08 | 第 2 节更正版本号清单（8 处：根 POM + 六子 POM 的 `<parent>` + `AppVersion.FALLBACK`），补 `versions:set` 命令与「只改根 POM 静默产出旧版本」的实测教训；§4.1 示例改 `V0.1.1` 并标注 0.1.0 的裸 tag 例外 | @ACANX |
+| v1.9.0 | 2026-10-08 | §3 制品表改为「CLI 平台无关 / 桌面端按平台」；新增 §3.2「桌面端按平台出包」（命名、包布局、自证规则、如何新增平台）；CLI 资产改名 `aha-<版本>-cli.zip` | @ACANX |
 
 ---
 
@@ -71,7 +72,7 @@
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
    按父 POM 的 `<version>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
-5. 触发 `Release.yml`（构建发行包并发布 `dist.zip`）——注意 4.2 的限制
+5. 触发 `Release.yml`（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）——注意 4.2 的限制
 6. 合回 `dev`，删除 `release/*` 分支
 
 ### 4.1 tag 命名与手工补打
@@ -102,11 +103,36 @@
 
 ## 3. 制品
 
-| 版本 | CLI | 桌面端 |
+| 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | `dist/` 目录（`bin/` + `lib/`），发布为 `aha-vX.Y.Z-dist.zip` | — |
-| 0.2 | 同上 | jpackage (MSI/DEB) |
-| 1.x | native-image | jpackage (MSI/DEB) |
+| 0.1 | `dist/` 目录（`bin/` + `lib/`），发布为 `aha-<版本>-cli.zip` | — |
+| 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2）；jpackage 安装包待评估 |
+| 1.x | native-image | jpackage (MSI/DEB/DMG) |
+
+### 3.2 桌面端按平台出包（0.2 起）
+
+**为什么必须分平台**：OpenJFX 的原生库按平台分类器发布，且 `jpackage` 不能交叉编译
+（见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节）。所以**每个平台的包由该平台的 runner 产出**。
+
+`Release.yml` 的 `desktop` 作业按矩阵出包，用户按自己的系统与架构下载对应文件：
+
+| 平台 | 下载文件 |
+|---|---|
+| Windows x86_64 | `aha-desktop-<版本>-windows-x64.zip` |
+| Linux x86_64 | `aha-desktop-<版本>-linux-x64.zip` |
+| macOS Apple Silicon | `aha-desktop-<版本>-macos-arm64.zip` |
+
+包内布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
+**本平台**三个 OpenJFX jar）+ `README.md` / `CHANGELOG.md` / `LICENSE`。
+解包后只需机器上有 JDK 25，运行 `bin/AhaDesktop.sh` 或 `bin/AhaDesktop.bat` 即可。
+
+**自证（强制）**：矩阵每条腿声明本腿**应当**解析出的平台分类器；构建后脚本从**产物名**
+（`finalName` 由 profile 决定，含版本与分类器）解析实际值并断言两者一致，同时打印依赖树里
+的 OpenJFX 工件。不一致即失败——GitHub 若改了 runner 架构（如 `macos-latest` 换架构），
+会立刻报错，而不是把错平台的包静静挂上 release 页面。
+
+**新增平台**：加一条矩阵腿，并确认 Maven Central 有对应分类器。当前 Central 上 OpenJFX 只有
+`win` / `linux` / `linux-aarch64` / `mac` / `mac-aarch64`——**没有 `win-aarch64`**，故 Windows ARM 不在范围。
 
 ### 3.1 发行包验证（发布前必做）
 
@@ -117,7 +143,8 @@
 ```
 
 `dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
-发布流程将其打包为 `aha-<tag>-dist.zip` 并上传到 GitHub Release；`dist/` 不入库。
+发布流程将其打包为 `aha-<版本>-cli.zip` 并上传到 GitHub Release；`dist/` 不入库。
+桌面端另有按平台命名的便携包，见 3.2。
 
 > **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。
 > **桌面端 WebView 不支持 native-image**，1.x 的 native-image 流水线仅覆盖 CLI + Core + Tools。

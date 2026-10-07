@@ -21,7 +21,11 @@ jobs:
   compat:
     uses: ./.github/workflows/Compat.yml
 
+  # ── CLI 发行包（平台无关） ────────────────────────────────────────────────
+  # 纯 JAR 组合，sqlite-jdbc 的多平台原生库随它自己的 jar 走，因此一份包通吃所有平台，
+  # 不需要按平台出包。
   release:
+    name: CLI 发行包
     needs: [gate, compat]
     runs-on: ubuntu-latest
     steps:
@@ -36,13 +40,110 @@ jobs:
         uses: ./.github/actions/maven-run
         with:
           command: ./mvnw clean verify
-      - name: Package distribution
+      - name: Package CLI distribution
+        shell: bash
         run: |
+          set -euo pipefail
           test -f dist/bin/Aha.sh
           test -d dist/lib
-          cd dist && zip -qr "../aha-${GITHUB_REF_NAME}-dist.zip" . && cd ..
-          ls -lh "aha-${GITHUB_REF_NAME}-dist.zip"
+          # 版本从产物名读，作为唯一来源（不复制版本字面量）
+          cli_jar=$(ls dist/lib/aha-cli-*.jar)
+          version=$(basename "$cli_jar" .jar)
+          version=${version#aha-cli-}
+          target="aha-${version}-cli.zip"
+          (cd dist && zip -qr "../${target}" .)
+          ls -lh "$target"
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: aha-${{ github.ref_name }}-dist.zip
+          files: aha-*-cli.zip
+
+  # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
+  desktop:
+    name: 桌面端包（${{ matrix.label }}）
+    needs: [gate, compat]
+    strategy:
+      # 一条腿失败不要取消其余：三个平台的包是并列的交付物，缺哪一个都要看得见。
+      fail-fast: false
+      matrix:
+        # jpackage 不能交叉编译，JavaFX 原生库也按平台分类器发布
+        # （见 DesktopDesign.md 第 5 节），所以每个平台只能由自己的 runner 产出。
+        #
+        # `label` 同时是作业名与下载文件名的组成部分，供用户辨认
+        # 「操作系统 + 架构」；`expected` 是本腿**应当**解析出的平台分类器，
+        # 构建后由包名与依赖树双向自证——若 GitHub 改了 runner 的架构
+        # （例如 macos-latest 换架构），这里会直接失败，而不是把错平台的包
+        # 静静挂到 release 页面。
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            expected: linux
+          - os: windows-latest
+            label: windows-x64
+            expected: win
+          - os: macos-latest
+            label: macos-arm64
+            expected: mac-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Build and verify
+        # 同 CLI 作业：发行包必须由自身跑过门禁的构建产出。
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw clean verify
+
+      - name: 自证平台分类器（包名 → 下载文件名）
+        shell: bash
+        env:
+          EXPECTED: ${{ matrix.expected }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(aha-desktop-*.zip)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
+            exit 1
+          fi
+          # 文件名形如 aha-desktop-<版本>-<平台分类器>.zip
+          rest="${files[0]#aha-desktop-}"; rest="${rest%.zip}"
+
+          # 分类器名里可能含 '-'（mac-aarch64 / linux-aarch64），
+          # 故先匹配更具体的，再匹配短的。
+          classifier=""
+          for c in linux-aarch64 mac-aarch64 win linux mac; do
+            case "$rest" in
+              *-"$c") classifier="$c"; version="${rest%-$c}"; break ;;
+            esac
+          done
+          if [ -z "$classifier" ]; then
+            echo "::error::无法从包名解析平台分类器：$rest"
+            exit 1
+          fi
+
+          echo "包名解析：版本=$version 分类器=$classifier"
+          if [ "$classifier" != "$EXPECTED" ]; then
+            echo "::error::平台不匹配：本腿（$LABEL）期望 $EXPECTED，实际解析到 $classifier。"
+            echo "::error::runner 架构可能已变更，请核对本文件的 matrix。"
+            exit 1
+          fi
+
+          target="aha-desktop-${version}-${LABEL}.zip"
+          mv -- "${files[0]}" "$target"
+          size=$(du -h "$target" | cut -f1)
+          jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c '^lib/javafx' || true)
+          echo "发布产物：$target（$size，含本平台 OpenJFX jar $jars 个）"
+
+      - name: 打印本平台解析到的 OpenJFX 工件（自证）
+        shell: bash
+        run: ./mvnw -B -pl aha-desktop dependency:tree -Dincludes=org.openjfx
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          files: aha-desktop-*.zip

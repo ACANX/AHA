@@ -10,14 +10,20 @@
 
 ## [0.1.1] - 2026-10-08
 
-**仅版本号切换与发布流程修正**，无功能变更：版本号由 0.1.0 切到 0.1.1，并把「改版本号」的
-完整清单与自动打 tag 的约束写进规范。
+**无用户可见的功能变更**：版本号由 0.1.0 切到 0.1.1；本版集中修正版本号清单、发布流程与
+**按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
 - **自动打 tag**：`Build.yml` 新增 `tag` 作业——`dev` → `main` 的 PR 合并、且构建成功后，
   按根 `pom.xml` 的 `<version>` 创建 `V<版本号>` 附注 tag 并推送（同名已存在则跳过）；
   版本号只从 POM 读，工作流与文档不复制。注意：`GITHUB_TOKEN` 推的 tag 不会触发下游工作流，
   故 `Release.yml` 需手工触发或改用 PAT（见 [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) §4.2）
+- **桌面端按平台出包**：新增 `aha-desktop/src/assembly/dist-desktop.xml`，产出便携包
+  `aha-desktop-<版本>-<系统>-<架构>.zip`（`bin/` 启动脚本 + `lib/` 本项目模块与本平台 OpenJFX
+  原生库），文件名由构建期真实解析结果决定；`Release.yml` 新增 `desktop` 作业按
+  `ubuntu` / `windows` / `macos` 矩阵出包，由产物名 + 依赖树**双向自证**平台分类器后上传到
+  release 页面。桌面端启动脚本 `bin/AhaDesktop.{sh,bat}` 随包分发；`aha-desktop` 另声明
+  `aha-tool`，桌面端由此具备内置工具
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
@@ -390,6 +396,11 @@
   PR 先合入 `dependa` 分支再人工合并；minor 与 patch 分组，major 单独成单
 
 [0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
+
+### 变更
+- **release 资产改名**：CLI 发行包由 `aha-<tag>-dist.zip` 改为 `aha-<版本>-cli.zip`
+  （版本从产物名读，不再用含 `V` 前缀的 tag 名），与桌面端的
+  `aha-desktop-<版本>-<系统>-<架构>.zip` 命名保持一致
 
 ### 修复
 - **版本号清单不完整（静默错版本）**：`ReleaseProcess.md` 原文称「版本号只需改根 `pom.xml`」，

@@ -20,6 +20,17 @@
             <groupId>com.acanx.module.aha</groupId>
             <artifactId>aha-core</artifactId>
         </dependency>
+        <!--
+            内置工具（file / http / shell）：D-09 决策——桌面端需要工具能力，
+            依赖矩阵已在 Constitution.md 第 4 条与 ModuleConvention.md 第 2 节补上
+            core <- tool <- desktop 这条边。工具由 ServiceLoader 发现，故必须进本模块的
+            运行时依赖，否则打包出的桌面端不带任何工具。
+        -->
+        <dependency>
+            <groupId>com.acanx.module.aha</groupId>
+            <artifactId>aha-tool</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!--
             OpenJFX：只写 groupId/artifactId，版本与平台分类器由父 POM 的
@@ -65,4 +76,38 @@
             <classifier>${javafx.platform}</classifier>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dist-desktop</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/dist-desktop.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <!--
+                                产物直接落到项目根，文件名带版本与平台分类器：
+                                    aha-desktop-<version>-<javafx.platform>.zip
+                                版本取父 POM，分类器由父 POM 的 javafx-* profile 按当前 OS/架构解析
+                                —— 文件名里的平台信息来自构建期真实解析结果，不是手写常量。
+                                发布工作流据此把各平台包挂到 release 页面（见 Release.yml）。
+                            -->
+                            <outputDirectory>${maven.multiModuleProjectDirectory}</outputDirectory>
+                            <finalName>aha-desktop-${project.version}-${javafx.platform}</finalName>
+                            <!-- zip 产物不参与部署，关闭 attach 以消除警告 -->
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

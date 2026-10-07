@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.19.0
+**文档版本**：v0.20.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -346,17 +346,17 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
-| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ◐ 机制已落地 | `dist.xml`、`BuildSpec.md` §7      |
-| D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ☐ 未完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
+| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ✅ 已解决 | `dist.xml`、`BuildSpec.md` §7      |
+| D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ✅ 已完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
 | D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ☐ 未完成（平台 jar 已就位） | `TestingSpec.md` §1                |
 | D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ✅ 已决策 | `TestingSpec.md` §3.2              |
 | D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
 | D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 选型已定 | `DesktopDesign.md`、`GUIDesign.md` §8 |
-| D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ☐ 未完成 | `Build.yml`、`DesktopDesign.md` §3 |
-| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已决策 | `aha-desktop/pom.xml`、`DesktopDesign.md` |
+| D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ◐ 流水线已就位 | `Build.yml`、`DesktopDesign.md` §3 |
+| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已落地（pom 已声明） | `aha-desktop/pom.xml`、`DesktopDesign.md` |
 
-### D-01 ◐ 机制已落地（2026-10-08），桌面端打包描述符待做
+### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
 **已落地**：父 POM 的 `javafx-*` per-OS profile（设 `javafx.platform`）+
 `dependencyManagement`（三个工件带分类器）+ `aha-desktop` 显式声明与空壳排除。
@@ -364,8 +364,11 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 `linux` 分类器），模块名均无 `[auto]`；`dist/lib` 的 18 个 jar 中 javafx 相关为 0（CLI 不受影响）。
 详见 `DesktopDesign.md` 第 5 节。
 
-**残留动作**：桌面端自己的 assembly 描述符 / `jpackage` 输入（`D-08`），
-并在各平台 runner 的打包 job 里打印生效的 `javafx.platform` 与解析出的 openjfx 工件（CI 自证）。
+**描述符已加**：`aha-desktop/src/assembly/dist-desktop.xml` 产出便携包
+`aha-desktop-<版本>-<平台分类器>.zip`，文件名由构建期解析结果决定（实测 Linux 产出 24 MB 包，
+内含且仅含 `linux` 分类器的 3 个 OpenJFX jar）。
+
+**残留动作**：自包含安装包（`jpackage`，内置运行时）仍待评估，见 `D-08`。
 
 **复核（✅ / ⚠️）**：`aha-cli/src/assembly/dist.xml` 的 `<dependencySet>` **仍无 classifier 过滤**
 （✅ 已核实）；JavaFX 的平台 classifier 机制属外部知识（⚠️），需在引入 JavaFX 后实测。
@@ -373,13 +376,14 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **残留动作**：为桌面端另建 assembly 描述符（如 `dist-desktop.xml`），用 `<classifier>` 或
 profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再依赖 `dist/lib` 布局。
 
-### D-02 ☐ 未完成
+### D-02 ✅ 已完成（2026-10-08）：桌面端独立启动脚本
 
 **复核（✅ 已核实）**：`bin/Aha.sh` 仍为单一 CLI 启动路径（`--module com...AhaCli`）；
 `bin/` 下**无** `AhaDesktop.sh` / `.bat`。
 
-**残留动作**：新增独立桌面端启动脚本，而非在现有脚本中加分支。
-`.bat` 必须**纯 ASCII + CRLF**，并由 `bin/CheckScripts.py` 校验。
+**已实现**：新增 `bin/AhaDesktop.sh`（LF）与 `bin/AhaDesktop.bat`（纯 ASCII + CRLF，经
+`bin/CheckScripts.py` 校验），**未改动** `bin/Aha.sh` / `bin/Aha.bat`（不在现有脚本里加分支）。
+两者以 JPMS 模块路径启动 `com.acanx.module.aha.desktop.AhaDesktopApp`，并随桌面端便携包一起分发。
 
 ### D-03 ☐ 未完成
 
@@ -439,7 +443,7 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：在 `DesktopDesign.md` 新增「线程模型」小节（或由 `GUIDesign.md` §8 升格），
 明确单一桥接点与上述三条。
 
-### D-08 ☐ 未完成
+### D-08 ◐ 打包流水线已就位（2026-10-08），jpackage 安装包待评估
 
 **复核（✅ 已核实）**：`Build.yml` 仍无打包 job；`Release.yml` 仍只上传 `dist.zip`。
 
@@ -448,6 +452,15 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 
 **补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；
 必需检查仍是 Windows + Linux。
+
+**已落地（2026-10-08）**：`Release.yml` 新增 `desktop` 作业（矩阵 `ubuntu` / `windows` / `macos`，
+`fail-fast: false`），每条腿跑 `./mvnw clean verify` 后由产物名 + 依赖树**双向自证**平台分类器，
+再把 `aha-desktop-<版本>-<系统>-<架构>.zip` 上传到 release 页面；CLI 资产同步改名
+`aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住
+且不动物件）。
+
+**残留动作**：`jpackage` 自包含安装包（内置运行时，用户无需自备 JDK）仍需评估——
+`jlink` 受 `sqlite-jdbc`（自动模块）限制，可行路径是非模块化 app image。
 
 ### D-09 ✅ 已决策（2026-10-08）：桌面端需要内置工具
 
@@ -541,7 +554,8 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 | 发行形态                        | 目标用户       | 产物            | 状态      |
 | ------------------------------- | -------------- | --------------- | --------- |
-| JPMS 模块路径目录（`dist/`）    | 需 JVM、可调优 | `dist.zip`      | ✅ 已实现 |
+| JPMS 模块路径目录（`dist/`）    | 需 JVM、可调优 | `aha-<版本>-cli.zip` | ✅ 已实现 |
+| 桌面端便携包（按平台）          | 需 JDK 25      | `aha-desktop-<版本>-<系统>-<架构>.zip` | ✅ 流水线已就位 |
 | native-image 单文件             | 免 JVM、启动快 | 平台可执行文件  | ☐ 未开工  |
 | `jpackage` 安装包（0.2 桌面端） | 普通用户       | MSI / DEB / DMG | ☐ 未开工  |
 
@@ -596,6 +610,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.17.0 | 2026-10-08 | `G-01` 结项（两条文档提交已随 PR #9/#10 进入 `origin/dev`）；新增 `G-06` 处置 0.1.0 的裸 tag 与 `V*` 约定的不一致 | @ACANX |
 | v0.18.0 | 2026-10-08 | 五项决策拍板并落地：`C-01`（JPMS 非强制，OpenJFX 优先）、`D-05`（桌面端纳入门禁 + 单独阈值 0.30→0.70）、`D-06`（Win+Linux 为承诺，macOS 只打包不测）、`D-07`（进程内直调优先）、`D-09`（需要内置工具，依赖矩阵已改） | @ACANX |
 | v0.19.0 | 2026-10-08 | `D-01` 机制落地并实测（父 POM 的 javafx-* per-OS profile + 分类器依赖 + 空壳排除），状态改为 ◐ 机制已落地；§4 现状陈述同步（JavaFX 依赖已实装） | @ACANX |
+| v0.20.0 | 2026-10-08 | `D-01` 结项（机制 + 描述符落地）、`D-02` 完成（桌面端启动脚本）、`D-09` 落地（`aha-tool` 已声明）、`D-08` 改为「流水线已就位」（`Release.yml` 矩阵化 + 双向自证 + 上传）；§5 制品表补桌面端便携包 | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -734,10 +749,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 条目                    | 目标文档                                                | 变更性质                     | 状态     |
 | ----------------------- | ------------------------------------------------------- | ---------------------------- | -------- |
 | B-01 / B-02             | `AgentEngine.java`、`AgentServiceDesign.md`             | 明确契约 + 补测试            | ☐ 未完成 |
-| D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ☐ 未完成 |
+| D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ◐ 打包已就位 |
 | D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ◐ 已决策，待回填 |
 | D-07                    | `DesktopDesign.md`（或 `GUIDesign.md` §8 升格）         | 线程模型小节                 | ◐ 选型已定，待补小节 |
-| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ✅ 已落地（矩阵已改） |
+| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ✅ 已落地（矩阵 + pom 均已改） |
 | E-02 ~ E-09             | `BuildSpec.md`（新增 native 章节）                      | 待验证后登记                 | ☐ 未完成 |
 | E-11                    | `BuildSpec.md` §7                                       | 发行矩阵                     | ☐ 未完成（待决策） |
 | 6.1 序 1、3、4、5       | `MemoryStorageDesign.md`、`aha-core`、`aha-cli`         | 记忆写入与命令落地           | ☐ 未完成 |

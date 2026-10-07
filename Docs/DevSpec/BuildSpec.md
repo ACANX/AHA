@@ -1,7 +1,7 @@
 # 构建规范
 
 <<<<<<< HEAD
-**文档版本**：v1.19.0
+**文档版本**：v1.20.0
 =======
 **文档版本**：v1.15.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -37,6 +37,7 @@
 | v1.17.0 | 2026-10-08 | 自动打 tag 小节的版本标注更正为「0.1.1 起」（该作业实际在 0.1.0 发布之后才合入） | @ACANX |
 | v1.18.0 | 2026-10-08 | §7 技术栈 JPMS 改为「优先启用（非强制）」并补 classpath 例外的记录要求；fat JAR 禁用理由改述（不再依赖 JPMS 强制）；§4.1 补 macOS 打包决策（要打包、不加测试，`D-06`） | @ACANX |
 | v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
+| v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -138,6 +139,12 @@ CI 必须同时执行两条流水线，且结果一致：
 `jpackage` / `jlink` 直接失败）」，详见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节。
 未被 profile 覆盖的平台会以 `javafx-*-25-unsupported.jar` 明确失败，可用 `-Djavafx.platform=`
 应急覆盖。
+
+**发布时的平台出包（0.2 起）**：`Release.yml` 的 `desktop` 作业按矩阵在**各平台自己的 runner** 上跑
+`./mvnw clean verify`，产出本平台便携包 `aha-desktop-<版本>-<系统>-<架构>.zip`，并挂到 release 页面。
+矩阵每条腿声明 `expected`（本腿应当解析出的 `javafx.platform`），构建后由**产物名 + 依赖树**双向自证，
+不一致即失败——runner 架构变更时不至于把错平台的包发出去。新增平台 = 加一条矩阵腿（先确认
+Central 有对应分类器）。命名与包布局见 [ReleaseProcess.md](ReleaseProcess.md) §3.2。
 
 这样安排的用意：提前暴露明显的跨平台退化（例如路径分隔符、大小写敏感的文件系统、
 shell 语义），并留一个现成的落点，将来真要支持 macOS 时不必从零搭。同时明确边界——

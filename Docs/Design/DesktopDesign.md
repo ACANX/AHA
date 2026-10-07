@@ -1,6 +1,6 @@
 # 桌面端设计
 
-**文档版本**：v1.3.0
+**文档版本**：v1.4.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -17,6 +17,7 @@
 | v1.1.0 | 2026-10-07 | 第 2 节指向 GUIDesign.md；标明 WebView / FXML 的技术表述待评审 | @ACANX |
 | v1.2.0 | 2026-10-08 | §2 记录界面路线与目标平台决策（`D-07` 进程内直调优先、`D-06` Win+Linux 为承诺 / macOS 只打包不测）；§3 补 JPMS 让路约束；§4 落地清单改为表格并标注依据 | @ACANX |
 | v1.3.0 | 2026-10-08 | 新增第 5 节「平台依赖与打包」：JavaFX 分类器清单、per-OS profile 机制、三个实测坑（`unix` 禁用、`os.arch=amd64`、空壳 jar 的自动模块）、与 D-01/jpackage 的关系、CI 自证要求 | @ACANX |
+| v1.4.0 | 2026-10-08 | 新增 §5.6「发布产物（便携包）」：描述符产出布局、文件名由构建期解析结果决定、用户下载与运行方式、jpackage 自包含包待评估 | @ACANX |
 
 ---
 
@@ -128,4 +129,19 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 第一步应打印生效值（`help:evaluate -Dexpression=javafx.platform`；`dependency:list
 -DincludeGroupIds=org.openjfx`），把「解析到了哪个平台的原生库」写进日志——与 `BuildSpec.md`
 第 8.1 节「门禁必须自证」同一原则。
+
+### 5.6 发布产物（便携包）
+
+`aha-desktop` 的 assembly 描述符 `src/assembly/dist-desktop.xml` 产出便携包：
+
+- 布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
+  本平台三个 OpenJFX jar）+ `README.md` / `CHANGELOG.md` / `LICENSE`；
+- 文件名由构建期**真实解析结果**决定：`finalName = aha-desktop-${project.version}-${javafx.platform}`
+  ——版本来自父 POM、平台来自 profile，没有手写常量；
+- 用户在 release 页面按「系统 + 架构」下载对应包，解包后只需 JDK 25 即可运行
+  `bin/AhaDesktop.sh`（Linux / macOS）或 `bin/AhaDesktop.bat`（Windows）；
+- **自包含安装包（jpackage，内置运行时）仍待评估**——见 `TODO.md` `D-08`。
+
+> 0.1 阶段这里的产物是「机制已就绪」：`AhaDesktopApp.main` 仍是占位实现，
+> 正式版（0.2）落地后同一条流水线直接产出可用包。
 
