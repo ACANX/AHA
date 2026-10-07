@@ -13,6 +13,10 @@
 首个可用版本：Core + CLI 可运行。
 
 ### 新增
+- **自动打 tag**：`Build.yml` 新增 `tag` 作业——`dev` → `main` 的 PR 合并、且构建成功后，
+  按根 `pom.xml` 的 `<version>` 创建 `V<版本号>` 附注 tag 并推送（同名已存在则跳过）；
+  版本号只从 POM 读，工作流与文档不复制。注意：`GITHUB_TOKEN` 推的 tag 不会触发下游工作流，
+  故 `Release.yml` 需手工触发或改用 PAT（见 [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) §4.2）
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
@@ -34,10 +38,13 @@
   每次 push 的 `Build.yml` 只做编译与单元测试，反馈环路显著缩短
 - **重复代码率检查**：新增 PMD CPD 报告（`./mvnw pmd:cpd`）与 `bin/CheckDuplication.py`
   阈值判定（默认 2.0%，0.1.0 实测 0.40%）
+<<<<<<< HEAD
+=======
 - **CodeQL 工作流上线实测与升级**：`init`（`build-mode: manual`）与 `compile` 三步运行全过，
   失败集中在 `analyze`（上传结果）；已把 `github/codeql-action` 升到 `v4`（v3 将于 2026-12 弃用），
   并注明 `build-mode` 那条提示为良性。`main` 规则集要求 CodeQL，而默认设置与高级设置互斥——
   处置与验收标准见 `TODO.md` `G-04`
+>>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 - **代码扫描（CodeQL）**：新增 `.github/workflows/CodeQL.yml`——`main` 的规则集要求 CodeQL 结果，
   而仓库此前没有任何 code scanning 配置，PR #7 因此永久停在「Waiting for Code Scanning results」。
   工作流显式覆盖 `pull_request → main`（默认设置只扫默认分支，覆盖不到），不参与必需检查
@@ -382,4 +389,4 @@
 - **依赖自动升级**：`.github/dependabot.yml` 每日检测 Maven 与 GitHub Actions 依赖，
   PR 先合入 `dependa` 分支再人工合并；minor 与 patch 分组，major 单独成单
 
-[0.1.0]: https://github.com/ACANX/AHA/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
