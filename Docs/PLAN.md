@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.15.0
+**文档版本**：v1.16.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -29,6 +29,7 @@
 | v1.13.0 | 2026-10-07 | §8.1.4 标记完成：根因是 IDEA 的 Maven server 占用 `dist`，完整 `clean verify` 已通过 | @ACANX |
 | v1.14.0 | 2026-10-07 | 设计文档路径更新到 `Docs/AHA/`；「未勾验收项」的行号引用改为小节引用（行号已失效） | @ACANX |
 | v1.15.0 | 2026-10-07 | §6.1 改写为「首次提交已完成（本地）」：14 个提交 / 371 个文件的批次表与排除项核对；§8.1.1 改为「本地已完成、待推送」 | @ACANX |
+| v1.16.0 | 2026-10-07 | §8.2.7 标记已修（并指出它正是 PR #6 Windows 失败的主因）；新增 §8.2.8 记录 Windows 腿的 15 个失败与四类修法，以及 CI 矩阵改 `fail-fast: false` | @ACANX |
 
 ---
 
@@ -354,7 +355,24 @@ git switch -c dependa && git push -u origin dependa
 | 8.2.3 | CLI 文案残留「插件」 | ✅ 已修（代码 23 处 + 文档 2 处，全部改为「扩展」） |
 | 8.2.4 | `CliDesign.md` 未按命名约定改名 | ✅ 已修（→ `CLIDesign.md`，7 处引用同步） |
 | 8.2.5 | 真实供应商 API Key 端到端验收 | ⬜ 待做（需外部环境） |
-| 8.2.7 | **`SystemPromptLoaderTest` 不具环境无关性**：7 个用例假设用户级身份文件不存在，一旦用户真跑过一次 `aha chat`（会自动创建 `~/.aha/AHA.md`）便全部失败，`mvn verify` 在开发者本机与 CI 均变红 | ⬜ 待修（测试内隔离 `AHA_HOME` / `user.home`，约 10 行） |
+| 8.2.7 | `SystemPromptLoaderTest` 不具环境无关性（用户级身份文件一存在就 7 个用例全红） | ✅ 已修（2026-10-07）：测试类在 `@BeforeEach` 隔离 `AHA_HOME` / `user.home`；**该缺陷正是 PR #6 在 Windows 上失败的主因**，详见 8.2.8 |
+| 8.2.8 | **Windows 腿的真实失败（PR #6 之前在 wrapper 处就断了，从未暴露）**：`build (windows-latest, wrapper)` 退出码 1，实为 15 个用例失败 | ✅ 已修（2026-10-07）：见下 |
+
+在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
+共 15 个失败 / 错误，归为四类：
+
+| 类别 | 现象 | 修法 |
+|---|---|---|
+| 生产缺陷 | `--help` 混入 ANSI 转义序列（picocli 的 `Ansi.AUTO` 把 Windows 一律当支持 ANSI，重定向到文件也会写转义） | `AhaCli.commandLine()` 统一按 `System.console()` 决定 `Help.Ansi`，非交互一律关闭 |
+| 生产缺陷 | `ConfigLoader.resolveModelPath` 把未展开的 `${AHA_HOME:-~/.aha}/Model.yml` 直接交给 `Path.of`，Windows 上 `Illegal char <:>`；Linux 上则静默变成名为 `${AHA_HOME:-~/.aha}` 的相对路径 | 先展开占位符；仍含 `${` 或含平台非法字符时回退默认位置 |
+| 生产缺陷 | 项目级向上查找**没有边界**，会一路走到用户主目录，把 `~/AHA.md` 当成项目级身份（Windows 临时目录位于主目录之下，故只在 Windows 暴露） | 查找止步于用户主目录（`user.home`，并参考 `USERPROFILE` / `HOME`）；`resolve` 与 `findProjectRoot` 同用此边界 |
+| 测试写法 | 断言硬编码 `/` 分隔符、路径里用 `<` `>`（Windows 非法）、假定「环境里没有任何身份文件」 | 用平台自身路径构造期望值；特殊字符改用纯字符串断言；前提自己造 |
+
+**顺带修复（CI 配置）**：`Build.yml` 的矩阵加 `fail-fast: false`。此前 Windows 腿一失败，
+GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖了「两个平台到底是什么结果」——
+这次排查为此多绕了很久。
+
+**验收**：Windows（Git Bash + `./mvnw clean verify`）与 Linux（`./mvnw clean verify`）均 BUILD SUCCESS。
 | 8.2.6 | Windows 真机走查（整体观感、旧 CMD 降级、滚动复制、`/memory` 分支） | 🟡 部分：日志落盘 / `Aha.bat` / `dist` 冒烟已验证；观感与降级待走查 |
 | 8.2.7 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
 

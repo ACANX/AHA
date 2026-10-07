@@ -15,6 +15,11 @@
 ### 新增
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
+- **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
+  `Llm.ModelFile` 的未展开占位符被直接当作路径（`Illegal char <:>`）；项目级身份查找没有边界，
+  会一路走到用户主目录把 `~/AHA.md` 当成项目级身份（临时目录位于主目录之下，故仅在 Windows 触发）
+- **测试与 CI**：测试类隔离 `AHA_HOME` / `user.home` 并不再假定「环境里没有身份文件」；
+  断言改用平台自身路径；构建矩阵改为 `fail-fast: false`，避免一条腿失败即取消其余腿而掩盖平台差异
 - **文档**：选型清单改为只写主版本线（README / 设计文档 / Constitution），`BuildSpec.md` §7 新增
   「版本单一来源」规则，消除文档与父 POM 之间的依赖版本漂移
 
