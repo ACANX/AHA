@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="200" viewBox="0 0 640 200">
+  <rect width="640" height="200" fill="#fafafa" stroke="#cccccc"/>
+  <text x="320" y="95" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#333333">AgentFlow</text>
+  <text x="320" y="125" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#888888">待补充（见 Docs/AHA/AHA-Design-V1.md）</text>
+</svg>
