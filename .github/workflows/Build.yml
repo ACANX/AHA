@@ -5,6 +5,9 @@ on: [push, pull_request]
 jobs:
   build:
     strategy:
+      # 不要让一条腿失败就取消其余：Windows 与 Linux 的失败原因常常不同，
+      # 早退回会把可用的信息（其余腿的日志）一起丢掉。
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
