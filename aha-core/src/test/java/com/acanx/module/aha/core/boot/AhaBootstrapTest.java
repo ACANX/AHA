@@ -4,6 +4,7 @@ import com.acanx.module.aha.core.config.ConfigLoader;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,13 +30,20 @@ class AhaBootstrapTest {
     Path tempDir;
 
     /**
-     * 唯一允许调用 {@code boot} 的用例：断言配置里的级别**真的**成了 log4j2 的生效级别。
+     * 唯一允许调用 {@code boot} 的用例：断言配置里的级别**真的**成了 log4j2 的生效级别，
+     * 并且**真的写到了配置指定的文件**。
      *
      * <p>这正是 {@code D-11} 的验收标准在无图形环境下的可执行版本。</p>
+     *
+     * <p>日志文件刻意不放 {@code @TempDir}：log4j2 会把文件句柄留到 JVM 结束，
+     * 而 Windows 不允许删除仍被打开的文件——测试通过后 JUnit 清理临时目录会失败。
+     * 这正是本用例第一次在 Windows CI 上挂掉的原因（Linux / macOS 允许删除打开的
+     * 文件，所以本机看不出来）。改为写进模块的 {@code target/test-logs/}：
+     * {@code mvn clean} 会清理，JUnit 不会去删。</p>
      */
     @Test
     void appliesLoggingLevelFromConfig() throws IOException {
-        Path logDir = Files.createDirectories(tempDir.resolve("Log"));
+        Path logFile = logFileInTarget("AhaBootstrapTest-AHA.log");
         Path config = writeConfig("""
                 Aha:
                   Logging:
@@ -43,7 +51,7 @@ class AhaBootstrapTest {
                     File: '%s'
                   Agent:
                     SystemPrompt: 来自测试配置
-                """.formatted(path(logDir.resolve("AHA.log"))));
+                """.formatted(path(logFile)));
 
         AhaBootstrap.Result result = AhaBootstrap.boot(config);
 
@@ -55,6 +63,11 @@ class AhaBootstrapTest {
         assertThat(result.warnings()).isEmpty();
         // 真的装进去了，而不只是「解析出来了」
         assertThat(appliedRootLevel()).isEqualTo(Level.WARN);
+
+        // 级别生效的旁证：WARN 会写、INFO 不会——只有配置真的生效才会出现这一行
+        LoggerFactory.getLogger(AhaBootstrapTest.class).warn("引导生效探针");
+        assertThat(logFile).exists();
+        assertThat(Files.readString(logFile, StandardCharsets.UTF_8)).contains("引导生效探针");
     }
 
     @Test
@@ -90,6 +103,22 @@ class AhaBootstrapTest {
         assertThat(result.fromFile()).isFalse();
         assertThat(result.warnings()).hasSize(1);
         assertThat(result.warnings().get(0)).contains("退回内置默认");
+    }
+
+    /**
+     * 取模块 {@code target} 下的日志文件路径。
+     *
+     * <p>不放系统临时目录：log4j2 会一直持有文件句柄，Windows 上会因此让
+     * {@code @TempDir} 的清理失败（见 {@link #appliesLoggingLevelFromConfig}）。</p>
+     *
+     * @param name 文件名
+     * @return 绝对路径
+     */
+    private static Path logFileInTarget(String name) throws IOException {
+        Path dir = Path.of(System.getProperty("basedir", System.getProperty("user.dir")),
+                "target", "test-logs");
+        Files.createDirectories(dir);
+        return dir.resolve(name);
     }
 
     private static Level appliedRootLevel() {

@@ -29,14 +29,13 @@ class AhaDesktopAppConfigTest {
 
     @Test
     void bootReadsConfigAndSummaryShowsLevel() throws IOException {
-        Files.createDirectories(tempDir.resolve("Log"));
         Path config = tempDir.resolve("Aha.yaml");
         Files.writeString(config, """
                 Aha:
                   Logging:
                     Level: WARN
                     File: '%s'
-                """.formatted(tempDir.resolve("Log/AHA.log").toString().replace('\\', '/')),
+                """.formatted(logFileInTarget("AhaDesktopAppConfigTest-AHA.log")),
                 StandardCharsets.UTF_8);
 
         AhaDesktopApp app = new AhaDesktopApp();
@@ -58,5 +57,23 @@ class AhaDesktopAppConfigTest {
 
         assertThat(result.fromFile()).isFalse();
         assertThat(app.configSummary()).contains("内置默认").contains("DEBUG");
+    }
+
+    /**
+     * 取模块 {@code target} 下的日志文件路径（正斜杠，YAML 里免转义）。
+     *
+     * <p>刻意不放 {@code @TempDir}：log4j2 会把文件句柄留到 JVM 结束，而 Windows 不允许
+     * 删除仍被打开的文件——测试通过后 JUnit 清理临时目录会失败。这正是本用例第一次在
+     * Windows CI 上挂掉的原因（Linux / macOS 允许删除已打开的文件，本机看不出来）。
+     * 改为写进模块的 {@code target/test-logs/}：{@code mvn clean} 会清理，JUnit 不会去删。</p>
+     *
+     * @param name 文件名
+     * @return 正斜杠形式的绝对路径
+     */
+    private static String logFileInTarget(String name) throws IOException {
+        Path dir = Path.of(System.getProperty("basedir", System.getProperty("user.dir")),
+                "target", "test-logs");
+        Files.createDirectories(dir);
+        return dir.resolve(name).toString().replace('\\', '/');
     }
 }

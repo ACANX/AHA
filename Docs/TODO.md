@@ -568,11 +568,25 @@ Enter 发送 / Shift+Enter 换行（默认跳过，需图形环境）。
 **现象**：一次 `./mvnw clean verify`（Maven 4.0.0-rc-7）中共出现 10 行 `[stderr]`，
 而同一提交在 Maven 3.9.11 下为 0 行——与 `F-11` 治好的「测试输出污染构建日志」同类。
 
-**推断**（未证实）：`AhaBootstrapTest` 会按设计**替换进程级 log4j2 配置**（换成
-console(ERROR) + 文件），此后同 JVM 内的其它 core 测试若记录 ERROR，就会打到 stderr。
+**已查明来源**（2026-10-08，据 Windows CI 日志）：这些 `[stderr]` 是 **JDK 的 native-access 警告**，
+由 `sqlite-jdbc` 触发，出现在 `EndToEndTest` 等真正加载 SQLite 的用例里：
 
-**验收标准**：在 CI 的 `Gate` 日志中确认来源并消除（可为 `aha-core` 加 `reuseForks=false`，
-或让该用例不替换共享 context）；修复后 CI 日志 `[stderr]` 行数应为 0。
+```
+[stderr] WARNING: java.lang.System::load has been called by org.sqlite.SQLiteJDBCLoader
+                  in module org.xerial.sqlitejdbc
+[stderr] WARNING: Use --enable-native-access=org.xerial.sqlitejdbc to avoid a warning ...
+```
+
+不是测试输出污染，而是 JVM 提示缺 `--enable-native-access`。
+
+**修法（待评估）**：给 surefire 加该参数。注意不能简单写死 `argLine`——JaCoCo 的
+`prepare-agent` 也通过 `argLine` 注入探针，覆盖它会让覆盖率失效；正确写法是
+`<argLine>@{argLine} --enable-native-access=org.xerial.sqlitejdbc</argLine>`，
+但 `-Djacoco.skip=true`（`Build.yml` 的快检查）下该属性不存在，`@{argLine}` 会原样传入而报错。
+需要先验证这两种情形都能跑通再改。**CLI 的启动脚本 `bin/Aha.sh` 早已带这个参数**，
+所以最终应当一致。
+
+**验收标准**：CI 日志（`Build` 与 `Gate`）中 `[stderr]` 行数为 0。
 **不要为了复现它而在本地重跑 verify**（慢检查只在 CI 跑）。
 
 ---
