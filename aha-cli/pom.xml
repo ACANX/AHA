@@ -71,29 +71,6 @@
     </dependencies>
 
     <build>
-        <resources>
-            <!--
-                版本号只保留一个来源：pom.xml。
-
-                注解属性要求编译期常量，无法从文件取值，因此 picocli 侧改用
-                AhaCli 的 versionProvider 在运行时求值。此处仅对版本文件开启资源过滤，
-                其余资源原样复制，避免误替换其他文件中的 ${...}。
-            -->
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-                <includes>
-                    <include>**/version.properties</include>
-                </includes>
-            </resource>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>false</filtering>
-                <excludes>
-                    <exclude>**/version.properties</exclude>
-                </excludes>
-            </resource>
-        </resources>
         <plugins>
             <!--
                 让 `mvn clean` 清掉 dist/ 里由构建产生的文件。

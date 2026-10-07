@@ -1,6 +1,7 @@
 package com.acanx.module.aha.cli;
 
 import picocli.CommandLine.Command;
+import com.acanx.module.aha.common.AppVersion;
 
 /**
  * 版本信息命令。

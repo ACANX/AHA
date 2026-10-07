@@ -1,4 +1,4 @@
-package com.acanx.module.aha.cli;
+package com.acanx.module.aha.core.logging;
 
 import com.acanx.module.aha.core.config.LoggingConfig;
 import org.junit.jupiter.api.Test;

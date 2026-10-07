@@ -3,6 +3,7 @@ package com.acanx.module.aha.cli;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.ConfigLoader;
+import com.acanx.module.aha.core.logging.LoggingSetup;
 import com.acanx.module.aha.core.security.SecretStore;
 import com.acanx.module.aha.core.security.SecretStores;
 import picocli.CommandLine;
@@ -20,7 +21,7 @@ import java.nio.file.Path;
 @Command(
         name = "aha",
         mixinStandardHelpOptions = true,
-        versionProvider = AppVersion.VersionProvider.class,
+        versionProvider = CliVersionProvider.class,
         description = "AHA - Agent Harness（无参数时进入交互式对话）",
         subcommands = {
                 InitCommand.class,

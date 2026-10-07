@@ -13,7 +13,7 @@
     <groupId>com.acanx.module.aha</groupId>
     <artifactId>aha-desktop</artifactId>
     <name>AHA-Desktop</name>
-    <description>桌面端（OpenJFX，0.1 占位，0.2 实现）</description>
+    <description>桌面端（OpenJFX）：0.2 起实装，0.1 为占位</description>
 
     <dependencies>
         <dependency>
@@ -74,6 +74,17 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-base</artifactId>
             <classifier>${javafx.platform}</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

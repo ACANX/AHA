@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.27.0
+**文档版本**：v1.28.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -41,6 +41,7 @@
 | v1.25.0 | 2026-10-07 | §6.3 的 tag 写法统一为 `V0.1.0`（与 `Build.yml` 自动打 tag 的约定一致） | @ACANX |
 | v1.26.0 | 2026-10-08 | §6.3 改为「0.1.0 已发布 / 0.1.1 待执行」并记录实际 tag 为裸 `0.1.0`；§8.2.2 发布日结项 | @ACANX |
 | v1.27.0 | 2026-10-08 | §6.3 的发布产物说明改为「CLI 包 + 各平台桌面端包」 | @ACANX |
+| v1.28.0 | 2026-10-08 | §8.7 复核表：`version.properties` 注明所在模块（`aha-common`） | @ACANX |
 
 ---
 
@@ -498,7 +499,7 @@ static void install(LoggerContext context, String xml) throws IOException {
 | 核心模块 `System.out/err` | 0 处（CLI 除外） | ✓ 验收项可判 |
 | `TODO` 标记 | 5 处，全部 `TODO(0.3)`（扩展系统） | ✓ 非发布阻塞 |
 | `Docs/` 四棵目录树 | Design 16 / DevSpec 11 / Guide 8 / Diagrams 7，与磁盘**逐一比对一致** | ✓（此前 Design 缺 3 份，已修） |
-| `version.properties` | `version=${project.version}` + 资源过滤 | ✓ |
+| `version.properties` | `version=${project.version}` + 资源过滤（位于 `aha-common`，CLI 与桌面端共用） | ✓ |
 
 **本次因此改动的文档**：`LoggingDesign.md`（新建）、`ConfigurationGuide` / `ReferenceGuide`（`Logging.Level` 默认值 `INFO` → `DEBUG`，与 `AhaDefault.yaml` 一致）、`TroubleshootingGuide`、`Constitution`（第 10 条第 8 项）、`AHA-Design-V1`（目录树 + 清单表 + 日志小节指针）、`CHANGELOG`（滚动口径更正）。
 

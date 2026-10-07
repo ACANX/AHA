@@ -1,4 +1,4 @@
-package com.acanx.module.aha.cli;
+package com.acanx.module.aha.core.logging;
 
 import com.acanx.module.aha.core.config.ConfigLoader;
 import com.acanx.module.aha.core.config.LoggingConfig;
@@ -14,7 +14,13 @@ import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 日志系统初始化。
+ * 日志系统初始化：按 {@code Aha.Logging.*} 程序化配置 Log4j2。
+ *
+ * <p>放在 {@code aha-core} 而不是入口模块：CLI 与桌面端都要配置日志，而两者
+ * <strong>不得互相依赖</strong>。Log4j2 的实现（{@code log4j-core}）在本模块为
+ * {@code compile} scope——本类要用它的 API；绑定实现（{@code log4j-slf4j2-impl}）
+ * 仍由各入口模块以 {@code runtime} scope 提供。</p>
+ *
  *
  * <p>{@code Aha.Logging.Level} 与 {@code Aha.Logging.File} 此前只是被读取展示，
  * 从未真正配置日志系统：项目内没有 log4j2 配置文件，log4j2 退回默认配置
@@ -29,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @since 0.1.0
  */
-final class LoggingSetup {
+public final class LoggingSetup {
 
     /**
      * 日志行格式。
@@ -80,7 +86,7 @@ final class LoggingSetup {
      *
      * @param logging 日志配置，可为 {@code null}
      */
-    static void apply(LoggingConfig logging) {
+    public static void apply(LoggingConfig logging) {
         if (!APPLIED.compareAndSet(false, true)) {
             return;
         }
@@ -89,7 +95,7 @@ final class LoggingSetup {
         try {
             install((LoggerContext) LogManager.getContext(false), xml(level, file));
         } catch (RuntimeException | java.io.IOException e) {
-            // 日志初始化失败不应阻断 CLI 启动。
+            // 日志初始化失败不应阻断应用启动。
             // 此处刻意不用 slf4j：那会触发 log4j2 自举，正是本方法要解决的前提。
             System.err.println("[warn] 日志系统初始化失败，退回默认配置: " + e.getMessage());
         }

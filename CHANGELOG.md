@@ -24,6 +24,11 @@
   `ubuntu` / `windows` / `macos` 矩阵出包，由产物名 + 依赖树**双向自证**平台分类器后上传到
   release 页面。桌面端启动脚本 `bin/AhaDesktop.{sh,bat}` 随包分发；`aha-desktop` 另声明
   `aha-tool`，桌面端由此具备内置工具
+- **桌面端窗口骨架与线程桥接契约**（0.2 的第一步）：`AhaDesktopApp` 改为 `Application` 子类，
+  开窗并显示版本号；新增 `desktop/fx` 桥接契约（`FxDispatcher` / `PlatformFxDispatcher` /
+  `FxBridge`），把高频后台回调合并成每帧至多一次界面更新；`FxThreadContractTest` 扫描主源码
+  钉住「只有 `PlatformFxDispatcher` 可触碰 JavaFX 线程 API」；窗口冒烟测试默认跳过
+  （需图形环境），用 `-Daha.ui.tests=true` 显式开启
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
@@ -398,6 +403,10 @@
 [0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
 
 ### 变更
+- **版本号与日志装配下移到公共模块**：`version.properties` 与 `AppVersion` 迁到 `aha-common`
+  （picocli 适配留在 `aha-cli` 的 `CliVersionProvider`，避免把 picocli 带进零依赖模块）；
+  `LoggingSetup` 迁到 `aha-core`（该模块的 `log4j-core` 改 `compile`）。桌面端因此能取到版本号、
+  配置日志，且无需依赖 `aha-cli`
 - **release 资产改名**：CLI 发行包由 `aha-<tag>-dist.zip` 改为 `aha-<版本>-cli.zip`
   （版本从产物名读，不再用含 `V` 前缀的 tag 名），与桌面端的
   `aha-desktop-<版本>-<系统>-<架构>.zip` 命名保持一致

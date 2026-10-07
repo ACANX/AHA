@@ -1,6 +1,6 @@
 # 桌面端设计
 
-**文档版本**：v1.5.0
+**文档版本**：v1.6.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -19,6 +19,7 @@
 | v1.3.0 | 2026-10-08 | 新增第 5 节「平台依赖与打包」：JavaFX 分类器清单、per-OS profile 机制、三个实测坑（`unix` 禁用、`os.arch=amd64`、空壳 jar 的自动模块）、与 D-01/jpackage 的关系、CI 自证要求 | @ACANX |
 | v1.4.0 | 2026-10-08 | 新增 §5.6「发布产物（便携包）」：描述符产出布局、文件名由构建期解析结果决定、用户下载与运行方式、jpackage 自包含包待评估 | @ACANX |
 | v1.5.0 | 2026-10-08 | §5.6 补包内依赖构成（18 个 jar）、不含项，以及两处已知缺口（`log4j2.xml` 与 `version.properties` 在 `aha-cli`，不在桌面端包内 → `D-10`） | @ACANX |
+| v1.6.0 | 2026-10-08 | 重写 §4 实现现状（依赖/打包、桥接代码、测试默认运行与冒烟默认跳过）；新增 §6 线程模型（唯一桥接、合并、关窗联动、虚拟线程约束）；§5.6 记资源缺口已解决并更正早期「缺 `log4j2.xml`」的误判 | @ACANX |
 
 ---
 
@@ -52,25 +53,18 @@
 
 ## 4. 实现现状
 
-| 项 | 状态 |
-|---|---|
-| `aha-desktop` 模块与 JPMS 声明 | ✅ 占位（`AhaDesktopApp`） |
-| JavaFX 依赖 | ⛔ 0.1 不引入（`javafx.version = 25` 已在父 POM 声明） |
-| 构建产物 | ✅ 空 JAR，不参与覆盖率门禁 |
-
-0.2 落地时需补充：
-
-| 待补内容 | 依据 |
-|---|---|
-| **线程模型小节**：单一桥接点 + 高频 `ContentEvent` 的 `runLater` 节流、取消与关窗联动、虚拟线程禁直触 FX 线程 | `D-07` 剩余项 |
-| 目标平台清单与 §3、`Build.yml` matrix 三者对齐 | `D-06` 剩余项 |
-| 打包小节（`jpackage` 分平台 + macOS 只打包不测） | `D-08` |
-| 工具依赖：`aha-desktop` 声明 `aha-tool`（内置工具） | `D-09` 已决策 |
-| TestFX 测试环境要求 | `D-04` |
-
-界面细节以 [GUIDesign.md](GUIDesign.md) 为准（技术选型已于 2026-10-08 定稿）。
-
----
+- **依赖与打包**（0.1.1 起）：per-OS profile 解析 JavaFX 分类器（§5）；`aha-desktop` 声明
+  `aha-tool` 运行时依赖（`D-09`）；assembly 描述符产出便携包（§5.6）。
+- **代码**（0.1.1 起，0.2 的第一步）：
+  - `AhaDesktopApp`：`Application` 子类，开一个窗口，标题与正文显示版本号，底部显示系统 / Java 版本。
+    窗口本身**只是骨架**，三栏布局、会话列表等按 §6 的契约逐步接入；
+  - `desktop/fx`：线程桥接契约（§6）——单元测试**无需图形环境**即可运行；
+  - 启动时调用 `aha-core` 的 `LoggingSetup`（`D-10` 的成果：日志装配已下移，桌面端可直接复用）。
+- **测试**：`FxBridgeTest` 与线程契约扫描（`FxThreadContractTest`）**默认运行**；
+  **窗口冒烟测试默认跳过**（需图形环境 + GTK，CI 与无显示的 WSL 都没有），
+  用 `-Daha.ui.tests=true` 显式开启。
+- **未做**：真实界面、`Aha.yaml` 配置加载（现用默认日志配置，见 `TODO.md` `D-11`）、
+  TestFX 选型与 CI 启用（`TODO.md` `D-04`）。
 
 ## 5. 平台依赖与打包：JavaFX 分类器 + per-OS profile（2026-10-08 实测）
 
@@ -150,8 +144,60 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 3 个本平台 OpenJFX 分类器工件、10 个第三方 jar（Jackson / Log4j2 / SLF4J / snakeyaml-engine /
 sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
-**两处已知缺口（资源类，已登记 `TODO.md` `D-10`）**：`log4j2.xml` 与 `version.properties`
-都在 `aha-cli` 模块里，因此**不在桌面端包内**——分别是「日志配置」与「版本号来源」，
-0.2 需要把这两个资源下移到公共位置，或由桌面端自带等价实现。
+**资源缺口已解决（0.1.1）**：`version.properties` 与 `AppVersion` 已下移到 `aha-common`，
+日志装配 `LoggingSetup` 已下移到 `aha-core`（`log4j-core` 在 core 为 `compile` scope）。
+桌面端因此既能拿到构建期注入的版本号，也能配置日志，且**不必依赖 `aha-cli`**——依赖矩阵仍然成立。
 （`AhaDefault.yaml` / `ModelDefault.yml` 在 `aha-core`、工具的 `META-INF/services` 在 `aha-tool`，
-这两项随包分发，已在包内实测确认。）
+这两项随包分发，已实测确认。）
+
+> 更正一则早期的误判：先前记为「桌面端缺 `log4j2.xml`」。实际上**全仓原本就没有**
+> 该文件——装配一直是程序化的（理由见 `LoggingDesign.md`：JPMS 下 `getResources` 不搜模块路径）。
+> 真正缺的是**类**（`LoggingSetup` 在 `aha-cli`），现已下移。
+
+## 6. 线程模型（0.2 实装，2026-10-08）
+
+界面只在 **JavaFX Application Thread**（下称 UI 线程）上改动；Agent 推理、LLM 流式读取、工具执行
+全部跑在**虚拟线程**上。两者之间只有一条通道，而这条通道在代码里是一个**可测的契约**。
+
+### 6.1 唯一桥接：`FxDispatcher`
+
+| 元素 | 职责 |
+|---|---|
+| `FxDispatcher` | 接口：`onUiThread()` / `dispatch(Runnable)` |
+| `PlatformFxDispatcher` | 唯一允许调用 `Platform.runLater` 的实现 |
+| `FxBridge<T>` | 合流器：只保留最新值，至多一次在途 UI 任务 |
+
+**规则（强制）**：主源码中除 `PlatformFxDispatcher` 外，**不得**出现
+`Platform.runLater(` / `Platform.startup(` / `Platform.isFxApplicationThread(`。
+该规则由 `FxThreadContractTest` 扫描主源码钉住——不靠约定，而是让违规变成一次失败。
+把 `FxDispatcher` 抽成接口的收益正在这里：单测注入同步执行的替身，就能在**没有图形环境**的机器
+（CI、无显示的 WSL）上验证线程模型，无需启动 JavaFX 运行时。
+
+### 6.2 高频流式输出的合并（coalescing）
+
+流式响应每个 token 都会触发一次回调；若每次都投递 UI 任务，队列会被塞满、界面反而更卡。
+`FxBridge` 的策略是：`submit(v)` 只写 `pending` 并置「已排程」标记，**只有第一个到达者**真正投递一次
+任务；渲染时取走最新值并清标记。因此每帧至多一次界面更新，且**最后一个值一定会被渲染**。
+
+被合并掉的是**中间态**而非数据：累积正文由渲染侧自己的缓冲负责（与 CLI 侧同一思路）。
+渲染过程中到达的新值会被**重新排程**而不丢失
+（`FxBridgeTest#valueArrivingDuringRenderIsNotLost` 钉住这一点）。
+
+### 6.3 取消与关窗联动
+
+- 关窗（`Stage.setOnCloseRequest`）时调用 `FxBridge.close()`：之后的后台更新**一律丢弃**，
+  连「已排程但尚未渲染」的值也一并丢弃——正在关窗，渲染已无意义。
+- 后台任务持有 `CancellationToken`：关窗时取消在途会话，避免任务在工具箱停止后继续投递。
+  JavaFX 工具箱停止后再调 `runLater` 会抛异常，这条规则就是它的护栏。
+
+### 6.4 虚拟线程不得直接触碰界面
+
+- 编译期：`desktop/fx` 不对外导出——模块外拿不到 `PlatformFxDispatcher`；主源码扫描见 6.1。
+- 运行期：渲染动作只在 UI 线程执行；**同样禁止在 UI 线程做阻塞工作**（会冻结界面），
+  需要阻塞时用虚拟线程 + 桥接。
+
+### 6.5 现状与后续
+
+已实装：窗口骨架 + 桥接契约 + 一条状态探针虚拟线程（`AhaDesktopApp.startStatusProbe`）。
+后续（0.2 内）：会话管理、流式正文渲染、工具卡片、授权弹窗、输入区——全部按本节契约接入。
+

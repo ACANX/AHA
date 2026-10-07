@@ -1,5 +1,6 @@
 package com.acanx.module.aha.cli;
 
+import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.core.config.ModelConfig;
 import com.acanx.module.aha.core.config.ProviderPresets;
 import org.junit.jupiter.api.AfterAll;

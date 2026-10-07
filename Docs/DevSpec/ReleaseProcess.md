@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.10.0
+**文档版本**：v1.11.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -25,6 +25,7 @@
 | v1.8.0 | 2026-10-08 | 第 2 节更正版本号清单（8 处：根 POM + 六子 POM 的 `<parent>` + `AppVersion.FALLBACK`），补 `versions:set` 命令与「只改根 POM 静默产出旧版本」的实测教训；§4.1 示例改 `V0.1.1` 并标注 0.1.0 的裸 tag 例外 | @ACANX |
 | v1.9.0 | 2026-10-08 | §3 制品表改为「CLI 平台无关 / 桌面端按平台」；新增 §3.2「桌面端按平台出包」（命名、包布局、自证规则、如何新增平台）；CLI 资产改名 `aha-<版本>-cli.zip` | @ACANX |
 | v1.10.0 | 2026-10-08 | §3.2 补包内依赖清单（18 个 jar 的分类构成）、不含项（JDK / 测试依赖）与「模块图完整性自证」（并记录 `--validate-modules` 不能当判据的实测） | @ACANX |
+| v1.11.0 | 2026-10-08 | 第 2 节版本号清单更正枚举名与位置：`AppVersion.FALLBACK` → `AppVersion.FALLBACK_VERSION`（`aha-common`，D-10 下移） | @ACANX |
 
 ---
 
@@ -58,7 +59,7 @@
 2. 更新版本号与 `CHANGELOG.md`
    - 版本号要改 **8 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
      根部 `pom.xml` 的 `<version>` + **六个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
-     `<version>` + `AppVersion.FALLBACK`（只在 IDE 直接运行、资源未过滤时出现）
+     `<version>` + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
    - 可用一条命令统一改（需联网取 maven-versions-plugin）：
 
      ```

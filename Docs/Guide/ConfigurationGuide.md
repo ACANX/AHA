@@ -1,6 +1,6 @@
 # 配置指南
 
-**文档版本**：v1.15.0
+**文档版本**：v1.16.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -29,6 +29,7 @@
 | v1.13.0 | 2026-10-07 | 身份注入口径统一为「每个来源各自作为一条独立的 system 消息，不拼接」 | @ACANX |
 | v1.14.0 | 2026-10-07 | §11 日志：Console 固定级别更正为 `ERROR`；补切分规则（`<基名>-yyyy-MM-dd-NN.log`、补零序号、不压缩、不自动清理）；指向 LoggingDesign.md | @ACANX |
 | v1.15.0 | 2026-10-07 | `Logging.Level` 默认值更正为 `DEBUG`（与 `AhaDefault.yaml` 一致），并说明开发阶段有意保留全量；区分「内置默认值」与「非法值兜底」 | @ACANX |
+| v1.16.0 | 2026-10-08 | 第 11 节：日志装配说明改为「入口（CLI / 桌面端）」，并指明 `LoggingSetup` 在 `aha-core` | @ACANX |
 
 ---
 
@@ -321,7 +322,7 @@ Model.yml
 
 ## 11. 日志
 
-日志由 CLI 启动时按 `Aha.Logging` **程序化配置**（`LoggingSetup`）：
+日志由入口（CLI / 桌面端）启动时按 `Aha.Logging` **程序化配置**（`aha-core` 的 `LoggingSetup`）：
 
 > 设计与取舍（为什么不用 `log4j2.xml`、为什么 Console 是 `ERROR`、序号与保留上限为何不可兼得）见 [LoggingDesign.md](../Design/LoggingDesign.md)。
 

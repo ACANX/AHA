@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.59.0
+**文档版本**：v3.62.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -345,7 +345,8 @@ aha/
         ├── DevLog-20261007-22.md
         ├── DevLog-20261007-23.md
         ├── DevLog-20261007-24.md
-        └── DevLog-20261008-00.md
+        ├── DevLog-20261008-00.md
+        └── DevLog-20261008-01.md
 ```
 
 ## 2. 命名规范
@@ -456,6 +457,9 @@ aha/
 | v3.57.0 | 2026-10-08 | 版本号切到 0.1.1：目标版本、当前版本与两处 POM 示例同步；补记「只改根 POM 会静默产出旧版本」的实测结论（见 ReleaseProcess.md 第 2 节与 DevLog-20261008-00）；目录树与附录 A 的 DevLog 索引补齐至 6 篇 | @ACANX |
 | v3.58.0 | 2026-10-08 | 五项决策落地：JPMS 改为「优先启用（非强制）」并新增定位说明（`C-01`）；fat JAR 禁用理由改述；路线图 0.2 行与第 5 条 GUI 选型改为「原生控件 + 进程内直调」（`D-07`） | @ACANX |
 | v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
+| v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
+| v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（615 用例 / 合计行覆盖 80.3%（4049/5040）），补 `aha-desktop` 用例数 | @ACANX |
+| v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
 
 ---
 ```
@@ -549,7 +553,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | aha-core | 推理引擎、LLM 适配、存储、配置、扩展运行时 | common, extension-api |
 | aha-tool | 工具实现（ServiceLoader） | common, core |
 | aha-cli | 命令行入口（picocli + JLine） | core, tool |
-| aha-desktop | 桌面端（OpenJFX，0.1 占位） | core |
+| aha-desktop | 桌面端（OpenJFX；0.2 起实装） | core, common, tool（runtime）, JavaFX |
 
 ## 核心约定
 
@@ -883,7 +887,15 @@ aha/
 │       │   └── com/acanx/module/aha/cli/
 │       └── test/java/
 └── aha-desktop/
-    └── pom.xml
+    ├── pom.xml
+    ├── src/
+    │   ├── assembly/dist-desktop.xml          # 便携包描述符（bin/ + lib/）
+    │   ├── main/java/
+    │   │   ├── module-info.java
+    │   │   └── com/acanx/module/aha/desktop/
+    │   │       ├── AhaDesktopApp.java         # Application：窗口骨架
+    │   │       └── fx/                        # 线程桥接契约（FxDispatcher / FxBridge）
+    │   └── test/java/                         # 桥接单测 + 冒烟（默认跳过）
 ```
 
 ## 2. 父 POM
@@ -1434,11 +1446,16 @@ aha
 └── version                   版本信息
 ```
 
-## 6. aha-desktop（0.1 仅占位）
+## 6. aha-desktop（0.2 实装）
 
-0.1 版本不实现桌面端。0.2 版本实现 OpenJFX WebView + 本地 HTTP 服务器 + FXML Controller。
+桌面端为**进程内直调** `AgentService` + JavaFX 原生控件（`D-07`），不是 WebView 套壳。
+0.1 只有占位；0.1.1 起落地窗口骨架与线程桥接契约（实现细节见
+[DesktopDesign.md](../Design/DesktopDesign.md) §4 与 §6）：
 
----
+- 启动：`AhaDesktopApp extends Application`，装配日志（`aha-core` 的 `LoggingSetup`）后开窗；
+- 线程：界面改动一律经 `FxDispatcher` / `FxBridge` 投递到 UI 线程，主源码扫描钉住该约束；
+- 打包：per-OS profile 解析 JavaFX 分类器，assembly 产出
+  `aha-desktop-<版本>-<系统>-<架构>.zip` 便携包（`ReleaseProcess.md` §3.2）。
 
 # 第六部分：LLM 供应商适配体系
 
@@ -3123,18 +3140,19 @@ aha-core/src/test/resources/
 - CLI 模块 ≥ 60%
 - Tool 模块 ≥ 70%
 
-### 3.1 实测覆盖率（0.1.0）
+### 3.1 实测覆盖率（0.1.1）
 
 | 模块 | 行覆盖 | 达标 |
 |---|---|---|
 | `aha-extension-api` | 100.0%（23/23） | ✅ |
-| `aha-common` | 90.2%（165/183） | ✅ |
-| `aha-cli` | 83.8%（2246/2681） | ✅ |
+| `aha-common` | 88.8%（175/197） | ✅ |
+| `aha-cli` | 83.9%（2190/2609） | ✅ |
 | `aha-tool` | 79.6%（148/186） | ✅ |
-| `aha-core` | 74.6%（1449/1943） | ✅ |
+| `aha-core` | 74.7%（1513/2025） | ✅ |
 
-合计行覆盖 **80.3%**（4045/5038 行），共 **605** 个测试用例
-（`aha-common` 57 / `aha-extension-api` 6 / `aha-core` 193 / `aha-tool` 25 / `aha-cli` 323）。
+合计行覆盖 **80.3%**（4049/5040 行），共 **615** 个测试用例
+（`aha-common` 60 / `aha-extension-api` 6 / `aha-core` 207 / `aha-tool` 25 /
+`aha-cli` 309 / `aha-desktop` 8）。
 
 > **口径与复现**：数据取自 `./mvnw clean verify`（Maven 4 wrapper；JaCoCo 0.8.15；
 > 门禁 `BUNDLE` 行覆盖 ≥ 0.70）。合计 = 各模块 `LINE_COVERED / (LINE_COVERED + LINE_MISSED)`
@@ -3710,6 +3728,7 @@ Closes #123
 | `DevLog-20261007-23.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
 | `DevLog-20261007-24.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
 | `DevLog-20261008-00.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
+| `DevLog-20261008-01.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
 
 ### .agents/skills/
 
