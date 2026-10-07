@@ -1,5 +1,10 @@
 name: Build
 
+# 快速反馈：每次 push / PR 都跑。
+#
+# 这里**只做快的**——编译 + 单元测试，不采集覆盖率、不打包、不做文档检查。
+# 覆盖率门禁、完整 `clean verify`、文档检查与重复率属于慢检查，统一放在
+# Gate.yml，只在合入 main 前与发布前跑（见 BuildSpec.md 第 9 节）。
 on: [push, pull_request]
 
 jobs:
@@ -33,29 +38,16 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - name: Build (Wrapper / Maven 4)
+      - name: Test (Wrapper / Maven 4)
         if: matrix.maven == 'wrapper'
-        run: ./mvnw clean verify
+        run: ./mvnw -B clean test -Djacoco.skip=true
         shell: bash
-      - name: Build (System / Maven 3.9.x)
+      - name: Test (System / Maven 3.9.x)
         if: matrix.maven == 'system'
-        run: mvn clean verify
+        run: mvn -B clean test -Djacoco.skip=true
       - name: Compile skill templates
         if: matrix.maven == 'wrapper' && runner.os == 'Linux'
         run: |
           JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
           javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
             -d /tmp/skill-templates $(find .agents/skills -name '*.java')
-
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Check Markdown fences and links
-        run: python3 bin/CheckDocs.py
-      - name: Check skills against Agent Skills spec
-        run: python3 bin/CheckSkills.py
-      - name: Check script encoding and line endings
-        run: python3 bin/CheckScripts.py
-      - name: Check pixel logo against its generator
-        run: python3 bin/GenPixelLogo.py --verify
