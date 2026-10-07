@@ -1,10 +1,10 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.56.0
+**文档版本**：v3.57.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
-**目标版本**：AHA 0.1.0
+**目标版本**：AHA 0.1.1
 **文档命名规范**：Markdown、SVG、图片统一大驼峰（PascalCase）；`.agents/skills/` 下技能目录及 `SKILL.md` 的 `name` 采用 kebab-case
 **YAML 字段命名规范**：AHA 自有字段统一大驼峰（PascalCase）
 **SQL 字段命名规范**：SQLite 表名（单数）与字段名统一 snake_case
@@ -338,7 +338,8 @@ aha/
         ├── DevLog-20261007-21.md
         ├── DevLog-20261007-22.md
         ├── DevLog-20261007-23.md
-        └── DevLog-20261007-24.md
+        ├── DevLog-20261007-24.md
+        └── DevLog-20261008-00.md
 ```
 
 ## 2. 命名规范
@@ -446,6 +447,7 @@ aha/
 | v3.54.0 | 2026-10-07 | §3.1 实测值刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
 | v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
 | v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
+| v3.57.0 | 2026-10-08 | 版本号切到 0.1.1：目标版本、当前版本与两处 POM 示例同步；补记「只改根 POM 会静默产出旧版本」的实测结论（见 ReleaseProcess.md 第 2 节与 DevLog-20261008-00）；目录树与附录 A 的 DevLog 索引补齐至 6 篇 | @ACANX |
 
 ---
 ```
@@ -493,7 +495,7 @@ aha/
 # AHA - Agent Harness
 
 **项目代号**：AHA
-**当前版本**：0.1.0
+**当前版本**：0.1.1
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
 **模块化**：JPMS 强制启用
@@ -886,7 +888,7 @@ aha/
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -1050,7 +1052,7 @@ aha/
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -3694,6 +3696,10 @@ Closes #123
 |---|---|
 | `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
 | `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
+| `DevLog-20261007-22.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
+| `DevLog-20261007-23.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
+| `DevLog-20261007-24.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
+| `DevLog-20261008-00.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
 
 ### .agents/skills/
 

@@ -23,8 +23,14 @@ final class AppVersion {
     /** 资源文件名，与本类同包。 */
     private static final String RESOURCE = "version.properties";
 
-    /** 取不到注入值时的兜底显示（如在 IDE 中直接运行、资源未过滤）。 */
-    private static final String FALLBACK = "AHA 0.1.0-dev";
+    /**
+     * 取不到注入值时的兜底显示（如在 IDE 中直接运行、资源未过滤）。
+     *
+     * <p>这是全仓**唯一**一个写死的版本字面量：正常构建走资源过滤，取 POM 的
+     * {@code <version>}（见 ReleaseProcess.md 第 2 节），故改版本号时除根 POM 与六
+     * 个子 POM 的 {@code <parent>} 外，只此一处需要同步。</p>
+     */
+    private static final String FALLBACK = "AHA 0.1.1-dev";
 
     /** 注入失败时的标记，用于识别未过滤的占位符。 */
     private static final String PLACEHOLDER = "${";

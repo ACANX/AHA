@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.7.0
+**文档版本**：v1.8.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -22,6 +22,7 @@
 | v1.5.0 | 2026-10-07 | §4.1 补两条：长期集成分支被误用 squash 后必须立刻用 `-s ours` 接回血缘（附本次实际复发）；更根本的预防是仓库设置关闭 squash/rebase、只留 merge commit（登记为 `G-05`） | @ACANX |
 | v1.6.0 | 2026-10-07 | §4.1 补实测后果：源分支落后上游时，首次整合会在两侧都改过的文件上冲突（本次实测 6 个文档文件），取上游版本可解，但属纯人工重复劳动，正解是关闭 squash（`G-05`） | @ACANX |
 | v1.7.0 | 2026-10-07 | §2 发布步骤改为「合入 main 后 tag 由 CI 自动打」（`Build.yml` 的 tag 作业，按父 POM 版本创建 `V<版本号>`，幂等）；新增 §4.1（tag 命名与手工补打）与 §4.2（用 `GITHUB_TOKEN` 推的 tag 不触发下游工作流，附两条补救路径） | @ACANX |
+| v1.8.0 | 2026-10-08 | 第 2 节更正版本号清单（8 处：根 POM + 六子 POM 的 `<parent>` + `AppVersion.FALLBACK`），补 `versions:set` 命令与「只改根 POM 静默产出旧版本」的实测教训；§4.1 示例改 `V0.1.1` 并标注 0.1.0 的裸 tag 例外 | @ACANX |
 
 ---
 
@@ -53,8 +54,19 @@
 
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
-   - 版本号**只需改根 `pom.xml`**：CLI 的 `aha version` / `aha -V` 由资源过滤注入
-     （`version.properties`），此前硬编码在两处、改 pom 不生效
+   - 版本号要改 **8 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
+     根部 `pom.xml` 的 `<version>` + **六个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
+     `<version>` + `AppVersion.FALLBACK`（只在 IDE 直接运行、资源未过滤时出现）
+   - 可用一条命令统一改（需联网取 maven-versions-plugin）：
+
+     ```
+     ./mvnw versions:set -DnewVersion=0.1.1 -DgenerateBackupPoms=false
+     ```
+
+     **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
+     反应堆显示 `Building AHA-Common 0.1.0`、产物名为 `aha-common-0.1.0.jar`、
+     `aha --version` 仍报旧版本，而构建**不报错**——静默发出错版本的包。
+   - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
 3. 执行完整构建与验收
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
    按父 POM 的 `<version>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
@@ -64,7 +76,9 @@
 
 ### 4.1 tag 命名与手工补打
 
-- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<version>`，如 `V0.1.0`）。
+- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<version>`，如 `V0.1.1`）。
+  ⚠ 历史例外：0.1.0 那次发布的 tag 是 **`0.1.0`**（无 `V` 前缀），与约定不一致；
+  处置见 [TODO.md](../TODO.md) `G-06`。
   版本号的**唯一来源是根 POM**，工作流与文档都不复制它。
 - 自动打 tag 的触发条件：**push 到 `main`**（`dev` → `main` 的 PR 合并之后）且 `Build.yml` 的
   `build` 作业成功。
@@ -73,7 +87,7 @@
 
   ```
   git fetch origin main && git switch --detach origin/main
-  git tag -a V0.1.0 -m "AHA V0.1.0" && git push origin V0.1.0
+  git tag -a V0.1.1 -m "AHA V0.1.1" && git push origin V0.1.1
   ```
 
 ### 4.2 自动打 tag 不触发发布（务必知晓）
