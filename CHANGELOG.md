@@ -21,6 +21,10 @@
 - **协作留痕**：需要人工或平台权限才能完成的事项（推送提交、分支保护设为必需检查、
   定期扫描生效验证）登记进 `TODO.md` 第 11 节并写明**验收标准**，`PLAN.md` 交叉引用；
   约定此类事项不得只写在对话里
+- **修复 CI 必需检查失配**：给必需腿补的 `optional` 矩阵键会改变作业名
+  （`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，
+  PR 永久停在 `Expected — Waiting for status to be reported`；改为按 `matrix.os` 判定
+  可选腿，不额外增删矩阵键
 - **CI 卡点组合**：`Gate.yml` 增加每周**定期扫描**（`schedule`），并新增
   `Compat.yml` 做 Maven 3.9.x 兼容性验证（固定补丁版本，不用 runner 预装 `mvn`）；
   门禁第一步显式断言 `./mvnw` 实际使用的 Maven 版本与 Wrapper 配置一致，

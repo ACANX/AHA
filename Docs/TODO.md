@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.6.0
+**文档版本**：v0.7.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -529,6 +529,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.4.0 | 2026-10-07 | B-03 版本漂移结项 | @ACANX |
 | v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
 | v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
+| v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -622,6 +623,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | A-05 | `ExtensionSystemDesign.md` | 章节重编号 | ✅ 已完成 |
 | A-06 | `ExtensionSystemDesign.md`、`TestingSpec.md`、`ExtensionManager.java` | 统一阶段编号 | ✅ 已完成 |
 | A-07 | `BuildSpec.md` §6       | 核对引用链 | ◐ 进行中 |
+| F-08 | `Build.yml`、`BuildSpec.md` §8.1 | 恢复矩阵作业名；立「作业名是分支保护的契约」 | ✅ 已修 |
 
 ### 阶段二：规范补充（需评审）
 
@@ -710,6 +712,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-05 | CI 矩阵 `fail-fast` 在一条腿失败时取消其余腿，掩盖平台差异 | 缺陷 | ✅ | P1 | ✅ 已完成 | `Build.yml`、`TestingSpec.md` §5.1 |
 | F-06 | macOS 无支持边界声明，容易被误读为「已支持」 | 风险 | ✅ | P3 | ✅ 已完成（已拍板） | `BuildSpec.md` §4.1、`Build.yml` |
 | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
+| F-08 | 给必需腿补 `optional` 矩阵键改变了作业名（`build (windows-latest, wrapper)` → `…, false)`），分支保护的必需检查再也匹配不上，PR 永久停在 `Expected — Waiting for status to be reported` | 缺陷 | ✅ | P1 | ✅ 已修 | `Build.yml`、`BuildSpec.md` §8.1 |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -784,6 +787,32 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 ---
 
+### F-08 ✅ 已修（2026-10-07）
+
+**现象（✅ 已核实）**：PR 的合并框里三条必需检查显示
+`Expected — Waiting for status to be reported`，看起来像 CI 卡住，实际是**名字对不上**。
+
+**取证**：抓取 Actions 运行页的作业标签，与分支保护要求的名字逐条比对：
+
+| 分支保护要求 | 实际上报 |
+| --- | --- |
+| `build (windows-latest, wrapper)` | `build (windows-latest, wrapper, false)` |
+| `build (ubuntu-latest, wrapper)` | `build (ubuntu-latest, wrapper, false)` |
+| `build (ubuntu-latest, system)` | `build (ubuntu-latest, system, false)` |
+
+**根因**：为消除「未定义矩阵键」的歧义，给每条腿都补了 `optional: false`。GitHub 会把矩阵的
+**全部键值**拼进作业名，于是名字多出 `, false`；而必需检查严格按名字匹配，匹配不上就永远
+处于 Expected。
+
+**处理**：删掉 `optional` 键，可选腿改为按 `matrix.os == 'macos-latest'` 判定
+（不新增矩阵键），作业名恢复原样。**无需改动分支保护**。
+
+**教训**：作业名是**对外契约**，不是内部细节。已写入 `BuildSpec.md` §8.1：
+必需腿不得增删矩阵键；`Gate.yml` / `Compat.yml` 的 job 级 `name:` 同样是检查名，
+改名必须同步更新分支保护与本文件 `G-02`。
+
+---
+
 ### F-07 ⏸ 待决策
 
 **现象（✅ 已核实）**：`Script/PowerShell/CountJavaLoc.ps1` 是一段统计 Java 代码行数的
@@ -831,15 +860,28 @@ Linux system）不变。规范写明两条边界：**不能用它的通过宣称
 
 ### G-02 ☐ 未完成
 
-**内容**：在 `Settings → Branches → Branch protection rules` 中把下面两项设为 `main` 的必需检查：
+**现状（2026-10-07 观察）**：分支保护里**已配置**三条必需检查，但都是 `Build.yml` 的快速腿：
 
-- `Gate / 门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）`
-- `Compat / 兼容性（Maven 3.9.x 完整 verify）`
+- `build (windows-latest, wrapper)`
+- `build (ubuntu-latest, wrapper)`
+- `build (ubuntu-latest, system)`
+
+这三条**建议保留**——它们跑得快，做合入门槛正合适。PR 上一度出现的
+「Expected — Waiting for status to be reported」与它们无关，是作业名被矩阵键改掉所致，
+见 `F-08`；修好作业名后它们会正常上报，**不需要**为此改分支保护。
+
+**还需补配**两条慢检查。字符串必须与作业的 job 级 `name:` **完全一致**（含全角括号与冒号）：
+
+- `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）`
+- `兼容性（Maven 3.9.x 完整 verify）`
 
 **为什么必须人工**：分支保护是仓库设置，工作流文件里写不了（`Gate.yml` 注释已注明）。
 
-**验收标准**：两项在分支保护里已勾选，**并且**用一个预期失败的 PR 验证确实无法合并——
-只勾选不验证，可能因检查名不完全匹配而形同虚设。
+**验收标准**：上述五项都出现在 `main` 的必需检查列表里，**并且**用一个预期失败的 PR
+验证确实无法合并——只勾选不验证，可能因名称不完全匹配而形同虚设。
+
+**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）。
+改 `Build.yml` / `Gate.yml` / `Compat.yml` 时，必须同步刷新本条。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
 
