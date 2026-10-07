@@ -1,10 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-<<<<<<< HEAD
-**文档版本**：v0.26.0
-=======
-**文档版本**：v0.16.0
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
+**文档版本**：v0.27.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -358,7 +354,9 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-10 | 桌面端包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-common`、`aha-core` |
 | D-11 | 桌面端不读 `Aha.yaml`（只用默认日志配置） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-core/boot`、`aha-desktop` |
 | D-12 | 桌面端界面仍是 0.1 占位（无三栏） | 设计缺口 | ✅ | P1 | ✅ 已完成 | `aha-desktop/view` |
+| D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线 / `jpackage`） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
+| F-18 | 三个文件里残留合并冲突标记且已入库（`CodeQL.yml` / `BuildSpec.md` / `TODO.md`，共 11 处） | 缺陷 | ✅ | P1 | ✅ 已修复 | `.github/workflows/CodeQL.yml`、`bin/CheckDocs.py` |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -527,6 +525,7 @@ desktop 亦未列 tool 依赖。
 | v0.24.0 | 2026-10-08 | 新增并结项 `D-12`（桌面端三栏骨架 + 折叠三条路径 + 纯逻辑 `FoldState`），遗留项记明（工具卡片 / Agent 接线 / `ToolKind` 下移） | @ACANX |
 | v0.25.0 | 2026-10-08 | 新增 `F-17`（`-Djavafx.platform` 触发 `recursive variable reference` 的构建日志噪音） | @ACANX |
 | v0.26.0 | 2026-10-08 | `D-12` 遗留更新：Agent 接入与 `ToolKind` 下移、供应商配置已完成；列明尚未做项（工具卡片展开/输出预览、会话列表、记忆/扩展/日志面板、`/` `@`、主题、设置、授权弹窗样式） | @ACANX |
+| v0.27.0 | 2026-10-08 | 0.2 六项功能完成（工具卡片 / 会话列表 / 日志面板 / 输入区增强 / 授权弹窗 / 主题与设置）；新增 `D-13`（剩余项）与 `F-18`（已入库的合并冲突标记，已修复并加守卫） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -741,9 +740,6 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 | 序 | 条目 | 说明 | 状态 |
 |---|---|---|---|
-<<<<<<< HEAD
-=======
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -1352,8 +1348,6 @@ Waiting for Code Scanning results. Code Scanning may not be configured for the t
 **备选（若你不想要代码扫描）**：删掉 `main` 规则集的 `code_scanning` 规则，并删除本工作流。
 规则与产出必须成对——**要么都留，要么都去**。
 
-<<<<<<< HEAD
-=======
 **上线实测（2026-10-07）**：工作流**能跑**——`init`（含 `build-mode: manual`，被接受）与
 走仓库 Maven 的 `compile` 两步在三次运行里**全部成功**；三次运行里 **1 次成功、2 次失败**，
 失败**只在 `analyze`（上传 SARIF）**这一步：
@@ -1381,17 +1375,13 @@ processed when the default setup is enabled.`）。**待你在 run #3 第 6 步�
 运行日志里那条 `Cannot build an overlay-base database because build-mode is set to "manual"…`
 是**良性**提示（回退为建立完整数据库，分析更完整），已在工作流里注明「不要为消掉它改成 `none`」。
 
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 **验收标准**：Security → Code scanning 出现 java-kotlin 的分析结果；
 PR #7 上「Code Scanning」由等待变为**给出结论**（按阈值：高危以上或存在错误才拦）。
 
 **闭环后**：本条改 ✅。
 
-<<<<<<< HEAD
-=======
 **闭环后**：本条改 ✅。
 
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 ### G-05 ☐ 未完成
 
 **内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，

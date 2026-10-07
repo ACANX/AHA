@@ -1,10 +1,6 @@
 # 构建规范
 
-<<<<<<< HEAD
 **文档版本**：v1.20.0
-=======
-**文档版本**：v1.15.0
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -38,9 +34,6 @@
 | v1.18.0 | 2026-10-08 | §7 技术栈 JPMS 改为「优先启用（非强制）」并补 classpath 例外的记录要求；fat JAR 禁用理由改述（不再依赖 JPMS 强制）；§4.1 补 macOS 打包决策（要打包、不加测试，`D-06`） | @ACANX |
 | v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
 | v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
-<<<<<<< HEAD
-=======
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 
 ---
 
@@ -335,14 +328,11 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   「有人生产」还不够——若扫描器的范围只覆盖默认分支（如 GitHub CodeQL 的默认设置只扫默认分支
   及指向它的 PR），而规则作用在另一个分支上，PR 依然会永久停在「Waiting for code scanning results」。
   因此配置扫描时必须**显式声明分支范围**（本仓库用工作流方式，写死 `pull_request: branches: [main, dev]`）；
-<<<<<<< HEAD
-=======
 - **同一种扫描只能配一次**：GitHub 的代码扫描「默认设置」与「高级设置（工作流）」**互斥**——
   两者同时存在时，工作流上传的结果会被拒收（`CodeQL analyses from advanced configurations
   cannot be processed when the default setup is enabled.`），表现为「检查一直等待」。
   本仓库 2026-10-07 实测到这一现象：同一份代码，工作流先成功一次、开启默认设置后连续失败两次。
   取舍时以**能否覆盖目标分支**为准（本例选工作流，因为默认设置覆盖不到 `main`）；
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
   覆盖率同理——本项目已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关，
   是否再把覆盖率上传给外部服务属于**待拍板**事项；
 - **必需检查与审批要求一律写进 `TODO.md` 的 `G-02`**（现状 + 目标规格两张表），
