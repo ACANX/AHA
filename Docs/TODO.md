@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.20.0
+**文档版本**：v0.21.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -355,6 +355,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 选型已定 | `DesktopDesign.md`、`GUIDesign.md` §8 |
 | D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ◐ 流水线已就位 | `Build.yml`、`DesktopDesign.md` §3 |
 | D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已落地（pom 已声明） | `aha-desktop/pom.xml`、`DesktopDesign.md` |
+| D-10 | 桌面端包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`） | 设计缺口 | ✅ | P2 | ☐ 未完成 | `aha-desktop`、`aha-cli/src/main/resources` |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -477,6 +478,27 @@ desktop 亦未列 tool 依赖。
 
 **建议动作**：0.2 明确桌面端是否需要内置工具；若需要，修订 `Constitution.md` 第 4 条
 依赖矩阵（新增 `core ← tool → desktop` 边）并同步 `ModuleConvention.md` §2。
+
+### D-10 ☐ 未完成（新增条目，2026-10-08）
+
+**现象**：桌面端便携包解包后，`lib/` 的 18 个 jar 里**没有** `log4j2.xml`，也**没有**
+`version.properties`——这两个资源都在 `aha-cli/src/main/resources`，而 `cli` 不是桌面端的依赖
+（`Constitution.md` 第 4 条：`cli` 与 `desktop` 不得互相依赖）。
+
+**证据（✅ 实测，2026-10-08）**：对包内全部 jar 逐个 `jar tf` 扫描，结果：
+`AhaDefault.yaml` / `ModelDefault.yml` 在 `aha-core`、工具 `META-INF/services/ToolProvider`
+在 `aha-tool`（这两项随包分发，正常）；`log4j2.xml`、`version.properties` **包内没有**。
+
+**影响**：
+
+- 无 `log4j2.xml` → 桌面端启动时 Log4j2 退回内置默认（console、`ERROR` 级），
+  `Aha.Logging.*` 配置与文件落盘形同虚设；
+- 无 `version.properties` → 桌面端没有构建期注入的版本号来源（`AppVersion` 也在 `aha-cli`），
+  「关于」页/日志头拿不到版本。
+
+**建议动作**：0.2 把日志配置与版本资源**下移到公共位置**（`aha-core` 或新增公共资源模块），
+或由桌面端自带等价实现（自建 `LoggingSetup` 等价物 + 自读父 POM 版本）。不建议让 `desktop`
+依赖 `cli`——那会破坏依赖矩阵。
 
 ---
 
@@ -611,6 +633,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.18.0 | 2026-10-08 | 五项决策拍板并落地：`C-01`（JPMS 非强制，OpenJFX 优先）、`D-05`（桌面端纳入门禁 + 单独阈值 0.30→0.70）、`D-06`（Win+Linux 为承诺，macOS 只打包不测）、`D-07`（进程内直调优先）、`D-09`（需要内置工具，依赖矩阵已改） | @ACANX |
 | v0.19.0 | 2026-10-08 | `D-01` 机制落地并实测（父 POM 的 javafx-* per-OS profile + 分类器依赖 + 空壳排除），状态改为 ◐ 机制已落地；§4 现状陈述同步（JavaFX 依赖已实装） | @ACANX |
 | v0.20.0 | 2026-10-08 | `D-01` 结项（机制 + 描述符落地）、`D-02` 完成（桌面端启动脚本）、`D-09` 落地（`aha-tool` 已声明）、`D-08` 改为「流水线已就位」（`Release.yml` 矩阵化 + 双向自证 + 上传）；§5 制品表补桌面端便携包 | @ACANX |
+| v0.21.0 | 2026-10-08 | 新增 `D-10`：桌面端便携包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`，而 `cli` 与 `desktop` 不得互相依赖），含实测证据、影响与建议动作 | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7

@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.9.0
+**文档版本**：v1.10.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -24,6 +24,7 @@
 | v1.7.0 | 2026-10-07 | §2 发布步骤改为「合入 main 后 tag 由 CI 自动打」（`Build.yml` 的 tag 作业，按父 POM 版本创建 `V<版本号>`，幂等）；新增 §4.1（tag 命名与手工补打）与 §4.2（用 `GITHUB_TOKEN` 推的 tag 不触发下游工作流，附两条补救路径） | @ACANX |
 | v1.8.0 | 2026-10-08 | 第 2 节更正版本号清单（8 处：根 POM + 六子 POM 的 `<parent>` + `AppVersion.FALLBACK`），补 `versions:set` 命令与「只改根 POM 静默产出旧版本」的实测教训；§4.1 示例改 `V0.1.1` 并标注 0.1.0 的裸 tag 例外 | @ACANX |
 | v1.9.0 | 2026-10-08 | §3 制品表改为「CLI 平台无关 / 桌面端按平台」；新增 §3.2「桌面端按平台出包」（命名、包布局、自证规则、如何新增平台）；CLI 资产改名 `aha-<版本>-cli.zip` | @ACANX |
+| v1.10.0 | 2026-10-08 | §3.2 补包内依赖清单（18 个 jar 的分类构成）、不含项（JDK / 测试依赖）与「模块图完整性自证」（并记录 `--validate-modules` 不能当判据的实测） | @ACANX |
 
 ---
 
@@ -130,6 +131,23 @@
 （`finalName` 由 profile 决定，含版本与分类器）解析实际值并断言两者一致，同时打印依赖树里
 的 OpenJFX 工件。不一致即失败——GitHub 若改了 runner 架构（如 `macos-latest` 换架构），
 会立刻报错，而不是把错平台的包静静挂上 release 页面。
+
+**包内含的依赖（实测 Linux 包，`lib/` 共 18 个 jar）**：
+
+| 类别 | 数量 | 内容 |
+|---|---|---|
+| 本项目模块 | 5 | `aha-desktop` / `aha-core` / `aha-common` / `aha-extension-api` / `aha-tool` |
+| 本平台 OpenJFX | 3 | `javafx-base` / `javafx-graphics` / `javafx-controls`（带平台分类器，且**只有本平台**） |
+| 第三方 | 10 | Jackson 4 件、Log4j2 3 件 + SLF4J、snakeyaml-engine、sqlite-jdbc |
+
+**不含**：JDK 运行时（用户需自备 JDK 25；自包含安装包见 `TODO.md` `D-08`）、
+测试与构建期依赖（`test` / `provided` scope）。
+
+**完整性自证（强制）**：打包后解包，用「一个不存在的主类」触发 JVM 的模块图解析——
+依赖齐全时只会报 `Could not find or load main class …__CompletenessProbe__`，
+缺依赖则启动阶段报 `FindException`，后者即失败。另核对本平台 OpenJFX 恰为 3 个、
+启动脚本与主工件存在。
+> 注意：**不能**用 `java --validate-modules` 当这个判据——实测抽掉 `aha-core` 后它照样退出 0、一字不说。
 
 **新增平台**：加一条矩阵腿，并确认 Maven Central 有对应分类器。当前 Central 上 OpenJFX 只有
 `win` / `linux` / `linux-aarch64` / `mac` / `mac-aarch64`——**没有 `win-aarch64`**，故 Windows ARM 不在范围。
