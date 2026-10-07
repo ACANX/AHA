@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.9.0
+**文档版本**：v0.10.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -79,6 +79,7 @@
 | A-07 | `BuildSpec.md` §6 的覆盖率排除项引用失准    | 文档缺陷 | ⚠️    | P2     | ◐ 进行中  | `BuildSpec.md` §6                             |
 | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
 | A-09 | `PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引 | 文档缺陷 | ✅ | P2 | ☐ 未完成 | `PLAN.md` §8.2 |
+| A-10 | `PLAN.md` 有两个 `## 8.` 标题（第 331 行「相关文档」与第 341 行「0.1.0 发布前问题清单」），后者才是正文；与 `A-09`（两个 `8.2.7`）同属编号失序 | 文档 | ⏸ | P2 | ⏸ 待处理 | `Docs/PLAN.md` |
 
 ### A-01 ✅ 已完成
 
@@ -532,6 +533,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
 | v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
 | v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
+| v0.10.0 | 2026-10-07 | 新增 `A-10`（`PLAN.md` 有两个 `## 8.` 标题）。新增 `F-12`（✅ 已修：PR #6 以单父提交重新落地，使 PR #8 永久 `dirty`；已用 `-s ours` 补血缘并逐项验证）与对应的教训、规范落点；`G-01` 按实况更新（前半已完成，现待推送合并提交 `06c6121`，补 `mergeable_state` 验收标准） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -718,6 +720,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-09 | 覆盖率门禁**静默**：`jacoco:check` 通过时不打印任何百分比，日志上与「没配门禁」无法区分，被质疑「何来的门禁」 | 缺陷 | ✅ | P2 | ✅ 已修 | `Gate.yml`、`bin/ReportCoverage.py`、`TestingSpec.md` §3.1、[DevLog-20261007-21.md](DevLog/DevLog-20261007-21.md) |
 | F-10 | 工具层的**已知拒绝**（`UNKNOWN_TOOL` / `TOOL_DISABLED` / `PERMISSION_DENIED`）被记成 `ERROR` 并附完整堆栈，违反 `LoggingDesign` §4「预期业务结果记 INFO」；Console 阈值是 ERROR，于是模型偶尔叫错工具名就会在终端刷出堆栈 | 规范偏差 | ✅ | P1 | ✅ 已修 | `AgentEngine.executeTool`、`LoggingDesign.md` §4、`ToolSystemDesign.md` |
 | F-11 | 测试自身产生的输出把构建日志打满（CI 上 80 余行 `[stdout] ... at com.acanx...` 堆栈 + 50 行授权提示），真正的失败被淹没 | 缺陷 | ✅ | P2 | ✅ 已修 | `aha-core/src/test/resources/log4j2-test.xml`、`ConsoleToolApproverTest`、`TestingSpec.md` §5.1 |
+| F-12 | PR #6 被以**单父提交**重新落地（内容重放、不是真合并），使 `dependa` 与 `dev` 成为内容重叠的两条平行线，PR #8 永久 `mergeable_state=dirty` | 工程效能 | ✅ | P1 | ✅ 已修 | `dependa` 合并提交 `06c6121`、`ReleaseProcess.md` §4、`DevLog/DevLog-20261007-21-2.md` |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -876,6 +879,35 @@ console 关闭、日志写 `target/test-logs/AHA-test.log`。这是**出口**的
 
 ---
 
+### F-12 ✅ 已修（2026-10-07）
+
+**现象**：PR #8（`dependa` → `dev`）始终 `mergeable=false`、`mergeable_state=dirty`，
+28 个提交、40 文件却合不进去；本地看两边都没动过。
+
+**根因**：`origin/dev` 的 `5d938f3` 消息写着 "Merge pull request #6 from ACANX/dependa"，
+但**只有一个父提交**——它是把 `dependa @ cea8cce` 的内容**重新落了一遍**，
+不是真合并。于是 `dev` 与 `dependa` 成了两条平行线、改同一批文件的不同版本：
+`dev` 的树与 `dependa` 的祖先提交 `cea8cce` 的树**逐字节相同**，而 `dev` 不是祖先，
+Git 无法自动合并（实测 9 个冲突，含 `add/add`）。
+
+**修法**：既然 `dev` 的内容是 `dependa` 的真子集，修复的不是内容而是**血缘**——
+在 `dependa` 上 `git merge -s ours origin/dev`，把 `dev` 记为父提交、树保持不变
+（合并提交 `06c6121`，树 `92e697b…` 前后逐字节一致）。
+
+**验证（实测）**：`git diff HEAD~1 HEAD` 为空；`git merge-base --is-ancestor origin/dev HEAD`
+退出码 0；在 `origin/dev` 上模拟合并 `dependa` 得到 `Automatic merge went well`、0 冲突
+（修复前 9 个）；PR 净 diff 收敛为 17 文件 +553/−23。
+
+**排障中的教训**：第一次用**本地** `dev`（`4f12cef`，已过期）做合并试探，得到
+「Already up to date」，差点把结论带偏——远端行为必须用 `origin/<branch>` 引用。
+
+**立的规矩**：[ReleaseProcess.md](DevSpec/ReleaseProcess.md) §4「分支流向与合并方式（强制）」
+——`dependa` 这类长期集成分支**只能真合并**；禁止 `git merge --squash` 加手工提交这类
+「重新落地」；用了 squash/rebase 就必须删源分支；`-s ours` 只允许在能证明
+「对方内容已被包含」时使用。
+
+---
+
 ### F-07 ⏸ 待决策
 
 **现象（✅ 已核实）**：`Script/PowerShell/CountJavaLoc.ps1` 是一段统计 Java 代码行数的
@@ -905,19 +937,25 @@ console 关闭、日志写 `target/test-logs/AHA-test.log`。这是**出口**的
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送本地提交到远端 `dependa` | PR #6 无法重跑 CI，改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；PR #6 出现新一轮 CI 运行 | ☐ 未完成 |
+| G-01 | 推送 `dependa`（含 PR #8 冲突修复的合并提交 `06c6121`） | PR #8 会一直卡在 `dirty` 合不进去；改动在上游无痕 | `git ls-remote origin refs/heads/dependa` 的 SHA == 本地 `dependa`；PR #8 的 `mergeable_state` 由 `dirty` 变为 `clean` | ☐ 未完成 |
 | G-02 | `main` 分支保护：把 `Gate` 与 `Compat` 设为**必需检查** | 门禁不拦人，等价于没配 | 两项均已勾选，**且**用一个预期失败的 PR 验证确实无法合并 | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 
-### G-01 ☐ 未完成
+### G-01 ☐ 未完成（前半已完成）
 
-**内容**：把本地 `dependa` 上尚未推送的提交推送到远端（`git push origin dependa`）。
+**内容**：把本地 `dependa` 上尚未推送的提交推送到远端。
 
-**为什么必须人工**：本环境没有远端推送凭据，`git push` 无法鉴权。
+**进展（2026-10-07）**：此前那批提交**已推送**（`origin/dependa` 与本地一致，
+PR #6 已合入 `dev`）。**当前待推送 1 个**：PR #8 的冲突修复合并提交 `06c6121`
+（`-s ours origin/dev`，不改变任何文件内容，见 `F-12`）——推上去 PR #8 才会从
+`dirty` 转为可合并。
 
-**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致；
-`PR #6` 触发新一轮 CI——`Gate`（Maven 4 门禁）与 `Compat`（Maven 3.9.x）应通过，
-`macOS` 腿按设计允许失败。
+**为什么必须人工**：本环境没有远端推送凭据，实测 `GIT_TERMINAL_PROMPT=0 git push`
+返回 `fatal: could not read Username for 'https://github.com'`（exit 128）。
+
+**验收标准**：`git ls-remote origin refs/heads/dependa` 的 SHA 与本地 `dependa` 一致
+（即出现 `06c6121`）；PR #8 的 `mergeable_state` 变为 `clean`，`Gate` 与 `Compat`
+在新一轮 CI 中通过（`macOS` 腿按设计允许失败）。
 
 **闭环后**：本条改 ✅，并在 `PLAN.md` §8.1.1 收口。
 

@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.3.0
+**文档版本**：v1.4.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-06
@@ -17,6 +17,7 @@
 | v1.1.0 | 2026-10-06 | 新增 1.0 发布的自举验收附加检查 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增发行包构建与验证；制品改为 `dist.zip` | @ACANX |
 | v1.3.0 | 2026-10-07 | 发布步骤明确「版本号只需改根 `pom.xml`」（CLI 版本由资源过滤注入） | @ACANX |
+| v1.4.0 | 2026-10-07 | 新增 §4「分支流向与合并方式（强制）」：长期集成分支只能真合并、禁止把内容重新落地、squash/rebase 后必须删源分支，并给出已冲突时的比对步骤与 `-s ours` 的使用前提 | @ACANX |
 
 ---
 
@@ -76,3 +77,47 @@
 
 > **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。
 > **桌面端 WebView 不支持 native-image**，1.x 的 native-image 流水线仅覆盖 CLI + Core + Tools。
+
+---
+
+## 4. 分支流向与合并方式（强制）
+
+`dependa` 是 Dependabot 的 `target-branch`，也是长期存在的集成分支：它**持续**被合入、
+又**持续**往 `dev` / `main` 合。这个双重身份决定了它的合并方式不能随便选。
+
+### 4.1 规则
+
+1. **长期集成分支只能真合并**。`dependa` 合入上游、以及上游合回 `dependa` 时，
+   必须留下**真正的合并关系**——`git merge`（双父提交）或 GitHub 的
+   `Create a merge commit`。
+2. **禁止「把内容重新落一遍」**。例如 `git merge --squash` 后再手工提交、
+   把分支上全部提交 cherry-pick 到目标分支等。这类做法会让上游收下内容却没有
+   把源分支变成祖先，源分支之后的**每一个** PR 都会永久冲突
+   （`mergeable_state=dirty`）。详见 [DevLog-20261007-21-2.md](../DevLog/DevLog-20261007-21-2.md)。
+3. **用了 squash / rebase 就必须删源分支**。这两种合并的代价就是失去血缘、补不回来；
+   若源分支还要继续用，就只能真合并。
+4. **合并前后用树的逐字节比对确认没丢内容**：
+
+   ```
+   git rev-parse origin/<base>^{tree}
+   git rev-list <head> | while read c; do \
+     [ "$(git rev-parse $c^{tree})" = "$(git rev-parse origin/<base>^{tree})" ] && echo "等于 $c"; done
+   ```
+
+   若在 head 的历史里能找到 base 的树（说明 base 的内容已被包含），才可以用
+   `git merge -s ours` 补血缘；**找不到就不能用**——那属于正常内容合并，
+   必须逐条读懂冲突再取舍，绝不能一律选一边。
+
+### 4.2 已经冲突了怎么办
+
+先别猜，按顺序比对两边的提交与**树**：
+
+```
+git fetch --all --prune
+git log --oneline origin/<base> --not origin/<head>
+git log --oneline origin/<head> --not origin/<base>
+git log -1 --format='%h %p %s' origin/<base>     # 只有一个父提交却写着 Merge 就是「假合并」
+```
+
+> 调试远端行为时一律用 `origin/<branch>` 显式引用。本地分支引用可能过期，
+> 会给出「Already up to date」这种把人带偏的结论。
