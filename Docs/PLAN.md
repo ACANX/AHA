@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.14.0
+**文档版本**：v1.15.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -28,6 +28,7 @@
 | v1.12.0 | 2026-10-07 | §6.2 改为「Maven 3.9.x 已复验」（3.9.11 与 Maven 4 结果一致）；§8.1.3 标记完成；新增 §8.1.4 记录 `dist` 打包因文件被占用而跳过 | @ACANX |
 | v1.13.0 | 2026-10-07 | §8.1.4 标记完成：根因是 IDEA 的 Maven server 占用 `dist`，完整 `clean verify` 已通过 | @ACANX |
 | v1.14.0 | 2026-10-07 | 设计文档路径更新到 `Docs/AHA/`；「未勾验收项」的行号引用改为小节引用（行号已失效） | @ACANX |
+| v1.15.0 | 2026-10-07 | §6.1 改写为「首次提交已完成（本地）」：14 个提交 / 371 个文件的批次表与排除项核对；§8.1.1 改为「本地已完成、待推送」 | @ACANX |
 
 ---
 
@@ -208,24 +209,37 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 
 这些不是“做不到”，而是**该做、也知道怎么做，但被前置条件卡住**。列在这里是为了不必反复口头提醒。
 
-### 6.1 首次提交（阻塞面最大）
+### 6.1 首次提交已完成（本地），推送待做
 
-**现状**：仓库零提交。`git rev-parse HEAD` 报 `fatal: Needed a single revision`；`main` / `dev` 分支不存在；
-`origin` 已配为 `https://github.com/ACANX/AHA.git`。
+**已做（2026-10-07）**：0.1.0 基线按子系统拆成 **14 个提交**落在 `main` 上，
+入库 **371 个文件**，工作区干净；提交信息全部符合 [CommitMessageSpec.md](DevSpec/CommitMessageSpec.md)
+（`git log --format=%s` 校验不合规数为 0）。
 
-**被它卡住的**：CI 从未触发、Dependabot 无法启用、无法打 tag、因此**无法执行正式发布**。
+| 批次 | 内容 | 文件数 |
+|---|---|---|
+| 1 | 仓库骨架与公共层 | 49 |
+| 2 | 构建与发布工作流 | 3 |
+| 3 | 扩展契约 | 19 |
+| 4 | 推理核心、LLM 适配器、配置与存储 | 115 |
+| 5 | 内置工具 | 12 |
+| 6 | 交互式 CLI 与终端渲染 | 94 |
+| 7 | 桌面端占位模块 | 3 |
+| 8 | 启动脚本与自检脚本 | 8 |
+| 9~13 | 开发规范 / 设计文档 / 用户指南 / 图资源 / 项目说明 | 51 |
+| 14 | AGENT 技能 | 17 |
 
-**要做的**：
+**提交前已核对**：`dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
+`pom.xml.upgraded` **均未入库**（逐项在索引层面验证过）。
+
+**仍待做（需要远端凭据）**：
 
 ```bash
-git add -A && git commit && git push -u origin main
+git push -u origin main
 git switch -c dev && git push -u origin dev
 git switch -c dependa && git push -u origin dependa
 ```
 
-**提交前已核对**：`git add -An` 纳入 342 个文件，无 `__pycache__` / `*.db` / `Model.yml` / `data/` 等垃圾
-（`.gitignore` 已补齐 `Data/`、`Key/`、`Log/`、`Model.yml`、`__pycache__/`、`*.pyc` ——
-原先只忽略小写 `data/`、`logs/`，在 Linux 上匹配不到大驼峰目录）。
+被它卡住的是：CI 从未触发、Dependabot 无法启用、无法打 tag，因此**正式发布仍不能执行**。
 
 ### 6.2 Maven 3.9.x 兼容基线已复验（2026-10-07）
 
@@ -326,7 +340,7 @@ git switch -c dependa && git push -u origin dependa
 
 | # | 问题 | 状态 |
 |---|---|---|
-| 8.1.1 | **仓库零提交** —— `git ls-files` 为 0，无 `main` / `dev` / `dependa`，无 tag | ⬜ 待做（`origin` 已配置，见 §6.1） |
+| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 本地已完成：`main` 上 14 个提交、371 个文件；**待推送**并建 `dev` / `dependa`（见 §6.1） |
 | 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
 | 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
 | 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `dist/`」 |
