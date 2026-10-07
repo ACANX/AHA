@@ -1,0 +1,23 @@
+# 行尾与文本属性
+#
+# 默认：仓库内统一存 LF，检出时按平台自动转换。
+* text=auto eol=lf
+
+# Windows 批处理：必须 CRLF。
+# CMD 对 LF-only 批处理的 if(...) 块解析不可靠。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell / Python 脚本：必须 LF，否则 shebang 会因 \r 失效。
+*.sh  text eol=lf
+*.py  text eol=lf
+
+# 二进制
+*.jar   binary
+*.zip   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.db    binary

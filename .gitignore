@@ -1,0 +1,56 @@
+# Maven
+target/
+dist/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+pom.xml.upgraded
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# 本地工具的项目索引（由工具自行生成，含本机自动探测结果，不入库）
+.xcodemap/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志与运行时数据
+*.log
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
+*.keystore
+
+# ── 运行期数据 ──────────────────────────────────────────────
+# AHA_HOME 未设置时，AHA 会把 Data/ Key/ Log/ 落在项目目录下。
+# 目录名按项目约定用大驼峰，因此必须按同样的大小写忽略：
+# 在 Linux（大小写敏感）上，小写的 data/ 匹配不到 Data/。
+Data/
+Key/
+Log/
+Model.yml
+
+# 用户级目录整体（若被软链进仓库）
+AHA_HOME/
+
+# ── Python 检查脚本的缓存 ───────────────────────────────────
+__pycache__/
+*.pyc
