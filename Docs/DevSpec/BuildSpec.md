@@ -1,7 +1,7 @@
 # 构建规范
 
 <<<<<<< HEAD
-**文档版本**：v1.18.0
+**文档版本**：v1.19.0
 =======
 **文档版本**：v1.15.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -36,6 +36,7 @@
 | v1.16.0 | 2026-10-07 | 新增「main 上的构建成功后自动打 tag」小节：`Build.yml` 的 tag 作业、版本号唯一来源为根 POM、幂等语义、`contents: write` 权限前提，以及 `GITHUB_TOKEN` 不触发下游工作流这一事实 | @ACANX |
 | v1.17.0 | 2026-10-08 | 自动打 tag 小节的版本标注更正为「0.1.1 起」（该作业实际在 0.1.0 发布之后才合入） | @ACANX |
 | v1.18.0 | 2026-10-08 | §7 技术栈 JPMS 改为「优先启用（非强制）」并补 classpath 例外的记录要求；fat JAR 禁用理由改述（不再依赖 JPMS 强制）；§4.1 补 macOS 打包决策（要打包、不加测试，`D-06`） | @ACANX |
+| v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -128,6 +129,15 @@ CI 必须同时执行两条流水线，且结果一致：
 **0.2 起（`D-06` 决策，2026-10-08）**：CI **要能产出 macOS 平台的包**（`jpackage` 分平台构建），
 但**不在 macOS 上加测试**——支持承诺仍只有 **Windows + Linux** 双平台，macOS 只到「能打包」为止。
 打包 job 的落地见 `TODO.md` `D-08`。
+
+**JavaFX 平台分类器（0.2 桌面端）**：JavaFX 的原生库按平台拆成分类器工件，由父 POM 的
+`javafx-*` profile 按当前 OS / 架构设定 `javafx.platform` 属性，模块只引用属性、不写平台字面量。
+激活条件的两条硬规则——Linux 用 `<name>Linux</name>`（**不用** `<family>unix</family>`）、
+架构用 `<arch>!aarch64</arch>`（**不写** `x86_64`，Maven 的 `os.arch` 是 `amd64`）——以及
+「必须显式声明三个工件并排掉 0 KB 空壳 jar（否则 module path 上出现自动模块，
+`jpackage` / `jlink` 直接失败）」，详见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节。
+未被 profile 覆盖的平台会以 `javafx-*-25-unsupported.jar` 明确失败，可用 `-Djavafx.platform=`
+应急覆盖。
 
 这样安排的用意：提前暴露明显的跨平台退化（例如路径分隔符、大小写敏感的文件系统、
 shell 语义），并留一个现成的落点，将来真要支持 macOS 时不必从零搭。同时明确边界——

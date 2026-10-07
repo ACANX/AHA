@@ -1,7 +1,7 @@
 # AHA 待办与调整项（暂存区）
 
 <<<<<<< HEAD
-**文档版本**：v0.18.0
+**文档版本**：v0.19.0
 =======
 **文档版本**：v0.16.0
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
@@ -340,22 +340,32 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 
 ## 4. 桌面端（OpenJFX，规划 0.2）
 
-> 现状：`aha-desktop` 为占位模块（`module-info` + 空 JAR）。
-> 父 POM 已声明 `javafx.version = 25`，但仍**未引入任何 JavaFX 依赖**。✅ 已核实
+> 现状：`aha-desktop` 仍为占位模块（`module-info` + 空 JAR），但**平台依赖机制已就位**——
+> 父 POM 的 5 个 `javafx-*` profile + `dependencyManagement` 已能解析本平台的 JavaFX 分类器工件，
+> `aha-desktop` 已声明 `javafx-base` / `javafx-graphics` / `javafx-controls`（2026-10-08 实装并实测）。
 
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
-| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ☐ 未完成 | `dist.xml`、`BuildSpec.md` §7      |
+| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ◐ 机制已落地 | `dist.xml`、`BuildSpec.md` §7      |
 | D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ☐ 未完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
-| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ☐ 未完成 | `TestingSpec.md` §1                |
+| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ☐ 未完成（平台 jar 已就位） | `TestingSpec.md` §1                |
 | D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ✅ 已决策 | `TestingSpec.md` §3.2              |
 | D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
 | D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 选型已定 | `DesktopDesign.md`、`GUIDesign.md` §8 |
 | D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ☐ 未完成 | `Build.yml`、`DesktopDesign.md` §3 |
 | D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已决策 | `aha-desktop/pom.xml`、`DesktopDesign.md` |
 
-### D-01 ☐ 未完成（0.2 前置）
+### D-01 ◐ 机制已落地（2026-10-08），桌面端打包描述符待做
+
+**已落地**：父 POM 的 `javafx-*` per-OS profile（设 `javafx.platform`）+
+`dependencyManagement`（三个工件带分类器）+ `aha-desktop` 显式声明与空壳排除。
+实测依赖树只剩本平台三个真 jar（`javafx-base` / `javafx-graphics` / `javafx-controls` 的
+`linux` 分类器），模块名均无 `[auto]`；`dist/lib` 的 18 个 jar 中 javafx 相关为 0（CLI 不受影响）。
+详见 `DesktopDesign.md` 第 5 节。
+
+**残留动作**：桌面端自己的 assembly 描述符 / `jpackage` 输入（`D-08`），
+并在各平台 runner 的打包 job 里打印生效的 `javafx.platform` 与解析出的 openjfx 工件（CI 自证）。
 
 **复核（✅ / ⚠️）**：`aha-cli/src/assembly/dist.xml` 的 `<dependencySet>` **仍无 classifier 过滤**
 （✅ 已核实）；JavaFX 的平台 classifier 机制属外部知识（⚠️），需在引入 JavaFX 后实测。
@@ -585,6 +595,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.16.0 | 2026-10-07 | `G-04` 补上线实测：工作流 init/compile 三次全过、失败仅在 `analyze`；因两份分支树零差异判定为配置冲突，指向「默认设置与高级设置互斥」并给出二选一处置；顺手把 codeql-action 升到 v4，并注明 build-mode 那条提示为良性 | @ACANX |
 | v0.17.0 | 2026-10-08 | `G-01` 结项（两条文档提交已随 PR #9/#10 进入 `origin/dev`）；新增 `G-06` 处置 0.1.0 的裸 tag 与 `V*` 约定的不一致 | @ACANX |
 | v0.18.0 | 2026-10-08 | 五项决策拍板并落地：`C-01`（JPMS 非强制，OpenJFX 优先）、`D-05`（桌面端纳入门禁 + 单独阈值 0.30→0.70）、`D-06`（Win+Linux 为承诺，macOS 只打包不测）、`D-07`（进程内直调优先）、`D-09`（需要内置工具，依赖矩阵已改） | @ACANX |
+| v0.19.0 | 2026-10-08 | `D-01` 机制落地并实测（父 POM 的 javafx-* per-OS profile + 分类器依赖 + 空壳排除），状态改为 ◐ 机制已落地；§4 现状陈述同步（JavaFX 依赖已实装） | @ACANX |
 <<<<<<< HEAD
 =======
 >>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7

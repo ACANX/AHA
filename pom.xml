@@ -50,6 +50,18 @@
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
         <javafx.version>25</javafx.version>
+        <!--
+            OpenJFX 平台分类器。取值由下方 javafx-* profile 按当前操作系统/架构设定，模块里
+            只写 <classifier>${javafx.platform}</classifier>，不出现平台字面量。
+
+            默认值故意填一个**不存在的分类器**：未被任何 profile 覆盖的平台（如 Windows ARM，
+            Central 上根本没有 win-aarch64）会以「找不到 javafx-*-25-unsupported.jar」明确失败，
+            而不是静默拿到错平台的原生库。
+
+            应急覆盖：-Djavafx.platform=<win|linux|mac|linux-aarch64|mac-aarch64>
+            （命令行属性优先级高于 profile 属性）。
+        -->
+        <javafx.platform>unsupported</javafx.platform>
         <jackson.version>3.2.3</jackson.version>
         <picocli.version>4.7.7</picocli.version>
         <jline.version>4.4.6</jline.version>
@@ -102,6 +114,31 @@
             </dependency>
 
             <!-- 第三方 -->
+
+            <!--
+                OpenJFX：原生库随分类器发布，因此**每个需要的工件都要显式带分类器**——
+                带分类器的工件在依赖树里拉进来的传递依赖是「无分类器」版本（即没有原生库的
+                空壳），只声明 javafx-controls 会得到一个跑不起来的组合。实测见
+                Docs/Design/DesktopDesign.md。
+            -->
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-base</artifactId>
+                <version>${javafx.version}</version>
+                <classifier>${javafx.platform}</classifier>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-graphics</artifactId>
+                <version>${javafx.version}</version>
+                <classifier>${javafx.platform}</classifier>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-controls</artifactId>
+                <version>${javafx.version}</version>
+                <classifier>${javafx.platform}</classifier>
+            </dependency>
             <dependency>
                 <groupId>info.picocli</groupId>
                 <artifactId>picocli</artifactId>
@@ -280,4 +317,85 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+        OpenJFX 平台分类器（0.2 桌面端）
+
+        为什么用 profile 而不是在模块里写死分类器：JavaFX 的原生库按平台发布成不同的
+        分类器工件（Central 上 javafx-controls:25 只有 linux / linux-aarch64 / mac /
+        mac-aarch64 / win 五种），构建时必须解析到「当前平台」那一份；而 jpackage
+        不能交叉编译，每个平台的包只能由该平台的 runner 产出（见 BuildSpec.md 第 4.1 节）。
+
+        激活条件的写法（均已在 Maven 4.0.0-rc-7 与 3.9.11 上实测）：
+
+        - Windows 用 <family>windows</family>；macOS 用 <family>mac</family>。
+        - Linux **不用** <family>unix</family>——实测在本机 Linux 上它命中，而 unix 在部分
+          Maven/JDK 组合下对 macOS 同样成立，用它会让两个平台撞车；改判 <name>Linux</name>。
+        - 架构判据用 aarch64，**不要写 x86_64**：Maven 的 os.arch 在本机是 amd64（实测
+          x86_64 条件不命中、amd64 命中），因此 x86 侧一律用取反 <arch>!aarch64</arch>，
+          既覆盖所有非 ARM 变体，也不与 JDK 的命名差异耦合。取反写法实测有效。
+        - Central 上没有 win-aarch64，Windows ARM 不在支持范围（会用上面的 unsupported 兜底值失败）。
+    -->
+    <profiles>
+        <profile>
+            <id>javafx-windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <javafx.platform>win</javafx.platform>
+            </properties>
+        </profile>
+        <profile>
+            <id>javafx-mac</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>!aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <javafx.platform>mac</javafx.platform>
+            </properties>
+        </profile>
+        <profile>
+            <id>javafx-mac-aarch64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <javafx.platform>mac-aarch64</javafx.platform>
+            </properties>
+        </profile>
+        <profile>
+            <id>javafx-linux</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>!aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <javafx.platform>linux</javafx.platform>
+            </properties>
+        </profile>
+        <profile>
+            <id>javafx-linux-aarch64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <javafx.platform>linux-aarch64</javafx.platform>
+            </properties>
+        </profile>
+    </profiles>
+
 </project>

@@ -20,5 +20,49 @@
             <groupId>com.acanx.module.aha</groupId>
             <artifactId>aha-core</artifactId>
         </dependency>
+
+        <!--
+            OpenJFX：只写 groupId/artifactId，版本与平台分类器由父 POM 的
+            dependencyManagement + javafx-* profile 提供（见父 POM 的说明）。
+        -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <classifier>${javafx.platform}</classifier>
+            <!--
+                排除同名 GA 的「无分类器」传递依赖：那是一堆 0 KB 的空壳 jar（无类、无
+                module-info），留在 classpath 上无害，但在 module path 上会被当成自动模块
+                javafx.graphics / javafx.base，与带分类器的真模块重名。排除后依赖树里
+                只剩本平台的三个真 jar（实测见 Docs/Design/DesktopDesign.md）。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <classifier>${javafx.platform}</classifier>
+            <!-- 同理排除它带进来的 javafx-base 空壳（模块名 javafx.baseEmpty [auto]，
+                 自动模块会让 jpackage/jlink 直接失败） -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-base</artifactId>
+            <classifier>${javafx.platform}</classifier>
+        </dependency>
     </dependencies>
 </project>
