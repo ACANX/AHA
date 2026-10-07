@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0
+                              https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>dist</id>
+    <formats>
+        <format>dir</format>
+    </formats>
+    <!-- 内容直接铺到 dist/，与 bin/Aha.sh 的 $DIR/../lib 布局一致 -->
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <dependencySets>
+        <!--
+            0.1 分发方式：JPMS 模块路径目录。
+            使用本项目 artifact 自身（aha-cli）与全部 runtime 依赖，
+            包括 aha-common / aha-extension-api / aha-core / aha-tool 与第三方 JAR。
+        -->
+        <dependencySet>
+            <outputDirectory>lib</outputDirectory>
+            <useProjectArtifact>true</useProjectArtifact>
+            <unpack>false</unpack>
+            <scope>runtime</scope>
+        </dependencySet>
+    </dependencySets>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.parent.basedir}/bin</directory>
+            <outputDirectory>bin</outputDirectory>
+            <includes>
+                <include>Aha.sh</include>
+                <include>Aha.bat</include>
+            </includes>
+            <fileMode>0755</fileMode>
+        </fileSet>
+        <fileSet>
+            <directory>${project.parent.basedir}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>README.md</include>
+                <include>LICENSE</include>
+                <include>CHANGELOG.md</include>
+            </includes>
+        </fileSet>
+    </fileSets>
+</assembly>
