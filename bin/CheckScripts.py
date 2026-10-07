@@ -31,6 +31,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import os
 import sys
 from pathlib import Path
@@ -106,6 +107,47 @@ def check_sh(path: Path) -> list[str]:
     return problems
 
 
+def check_ignored_sources() -> list[str]:
+    """检查有没有源码文件被 .gitignore 吃掉。
+
+    这个检查是有来历的：`.gitignore` 里曾经写着不带前导斜杠的 `Log/`（本意是仓库根的
+    运行期日志目录），于是它在**任意层级**匹配，在 Windows / macOS（大小写不敏感）上
+    把 `aha-desktop/src/main/java/.../desktop/log/` 整个吃掉了——
+
+      * git 不报错；
+      * `git add -A` 静默跳过；
+      * `git status` 显示"干净"；
+      * 本地测试照样全绿（文件在磁盘上）；
+      * 只有 CI 会告诉你 `cannot find symbol: class LogLevel`。
+
+    因此这里直接问 git：有哪些被忽略的文件落在源码目录里（或本身就是 .java）。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:  # pragma: no cover - 环境问题
+        return [f"调用 git 失败，无法检查被忽略的源码文件：{error}"]
+
+    if result.returncode != 0:
+        return [f"调用 git 失败（exit={result.returncode}）：{result.stderr.strip()}"]
+
+    offenders: list[str] = []
+    for line in result.stdout.splitlines():
+        entry = line.strip()
+        if not entry:
+            continue
+        if "/src/" in entry or entry.endswith(".java"):
+            offenders.append(entry)
+    return [f"源码文件被 .gitignore 忽略了（git 不会报错，只有 CI 会发现）：{path}"
+            for path in offenders]
+
+
 def check_py(path: Path) -> list[str]:
     """Python：shebang + LF。"""
     problems: list[str] = []
@@ -136,7 +178,11 @@ def main() -> int:
             if args.verbose:
                 print(f"  {'❌' if found else '✅'} {path.relative_to(ROOT)}")
 
+    ignored = check_ignored_sources()
+    problems.extend(ignored)
+
     print(f"\n检查 {checked} 个脚本文件")
+    print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     if problems:
         print("\n[问题]")
         for problem in problems:
