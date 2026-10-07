@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.10.1
+**文档版本**：v0.11.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -535,6 +535,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
 | v0.10.0 | 2026-10-07 | 新增 `A-10`（`PLAN.md` 有两个 `## 8.` 标题）。新增 `F-12`（✅ 已修：PR #6 以单父提交重新落地，使 PR #8 永久 `dirty`；已用 `-s ours` 补血缘并逐项验证）与对应的教训、规范落点；`G-01` 按实况更新（前半已完成，现待推送合并提交 `06c6121`，补 `mergeable_state` 验收标准） | @ACANX |
 | v0.10.1 | 2026-10-07 | `F-12` 引用同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`） | @ACANX |
+| v0.11.0 | 2026-10-07 | 新增 `F-13`（✅ 已修：CI 插件依赖「当次要不到」的定性过程与修法，含两条 Maven 消息的判别）与 `F-14`（⏸ 待决策：`.github/**/*.yml` 无本地检查） | @ACANX |
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -722,6 +723,8 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | F-10 | 工具层的**已知拒绝**（`UNKNOWN_TOOL` / `TOOL_DISABLED` / `PERMISSION_DENIED`）被记成 `ERROR` 并附完整堆栈，违反 `LoggingDesign` §4「预期业务结果记 INFO」；Console 阈值是 ERROR，于是模型偶尔叫错工具名就会在终端刷出堆栈 | 规范偏差 | ✅ | P1 | ✅ 已修 | `AgentEngine.executeTool`、`LoggingDesign.md` §4、`ToolSystemDesign.md` |
 | F-11 | 测试自身产生的输出把构建日志打满（CI 上 80 余行 `[stdout] ... at com.acanx...` 堆栈 + 50 行授权提示），真正的失败被淹没 | 缺陷 | ✅ | P2 | ✅ 已修 | `aha-core/src/test/resources/log4j2-test.xml`、`ConsoleToolApproverTest`、`TestingSpec.md` §5.1 |
 | F-12 | PR #6 被以**单父提交**重新落地（内容重放、不是真合并），使 `dependa` 与 `dev` 成为内容重叠的两条平行线，PR #8 永久 `mergeable_state=dirty` | 工程效能 | ✅ | P1 | ✅ 已修 | `dependa` 合并提交 `06c6121`、`ReleaseProcess.md` §4、`DevLog/DevLog-20261007-22.md` |
+| F-13 | CI 在 JaCoCo 插件依赖解析上失败（`Could not find artifact ... in central`），而三个 artifact 在 Central 实测 200——当次就没要下来；`Gate` 是必需检查，网络抖动即把 PR 卡红 | 工程效能 | ✅ | P1 | ✅ 已修 | `.github/actions/maven-run/action.yml`、四个工作流、`BuildSpec.md` §8.1、`DevLog-20261007-23.md` |
+| F-14 | `.github/**/*.yml` 没有任何本地检查：`bin/CheckScripts.py` 只覆盖 `.bat`/`.cmd`/`.sh`/`.py`，工作流语法写错只能等 GitHub 判，反馈环路长 | 工程效能 | ⏸ | P2 | ⏸ 待决策 | `bin/CheckScripts.py` |
 
 ### F-01 ✅ 已完成（2026-10-07）：检查分层 + 定期扫描
 
@@ -906,6 +909,37 @@ Git 无法自动合并（实测 9 个冲突，含 `add/add`）。
 ——`dependa` 这类长期集成分支**只能真合并**；禁止 `git merge --squash` 加手工提交这类
 「重新落地」；用了 squash/rebase 就必须删源分支；`-s ours` 只允许在能证明
 「对方内容已被包含」时使用。
+
+---
+
+### F-13 ✅ 已修（2026-10-07）
+
+**现象**：CI 在 `jacoco:0.8.15:prepare-agent` 上失败——`Could not find artifact
+org.slf4j:slf4j-api:jar:1.7.36 / org.ow2.asm:asm-commons:jar:9.10.1 / org.ow2.asm:asm-tree:jar:9.10.1
+in central (https://repo.maven.apache.org/maven2)`。本地 `clean verify` 却正常。
+
+**定性（两处实验）**：①三个 artifact 在 Central `curl` 实测 **200**（且 9.10.1 是 asm-commons
+最新版），排除「版本写错」；项目无 `<repositories>` / `.mvn/settings.xml` / 镜像，工作流也未启用
+`cache:`，排除「解析源被改」；②在本地分别造出「负缓存」与「真拿不到」两种状态，
+前者报 `... this failure was cached in the local repository ...`，后者报 `Could not find artifact ...
+in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没要下来，属仓库侧 / 网络侧瞬时故障。
+
+**事后取证**：同一提交 `9900e55` 的两轮运行里，`build (ubuntu-latest, system)` 在 push 运行
+成功、在 PR 运行失败，且失败那条腿只跑了 0.2 分钟（成功的 0.7–1.1 分钟）——**瞬时故障确证**。
+（该 PR 目标是 `dev`，`Gate`/`Compat` 只在 → `main`/`release/**` 时触发，故本次只跑了 Build。）
+
+**修法**：新增复合 action `.github/actions/maven-run/action.yml`（单一来源），
+四处工作流的依赖解析类调用改走它：先清 `*.lastUpdated`（覆盖负缓存）；失败时**先判断性质**，
+只有命中「依赖解析不到 / 传输中断 / 远端 5xx / 负缓存」等与代码无关的特征才重试
+（最多 3 次、间隔 20 秒），**其余立刻失败**——不做无差别重试，避免把真失败的时间乘以三。
+实现上用 `env:` 传参 + `bash -c "${MVN_COMMAND}"`——最初把 `${{ inputs.command }}`
+直接拼进脚本，命令含引号会被词分割拆坏。
+
+**验证（实测）**：重试脚本 5 种情形（成功→1 次 / 瞬时故障×2 后成功→3 次 / 一直瞬时故障→3 次后失败 /
+**真失败（编译错）→只跑 1 次** / `attempts=1`→不重试）全部符合预期；端到端用真实命令走该脚本得 `BUILD SUCCESS` 并把本地 4 个失败标记清为 0；
+`.github/**/*.yml` 解析与 composite 结构校验通过。
+
+**规范落点**：[BuildSpec.md](DevSpec/BuildSpec.md) §8.1「CI 必须容忍仓库侧瞬时失败（强制）」。
 
 ---
 

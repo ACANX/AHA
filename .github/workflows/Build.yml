@@ -41,11 +41,14 @@ jobs:
           java-version: 25
       - name: Test (Wrapper / Maven 4)
         if: matrix.maven == 'wrapper'
-        run: ./mvnw -B clean test -Djacoco.skip=true
-        shell: bash
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw -B clean test -Djacoco.skip=true
       - name: Test (System / Maven 3.9.x)
         if: matrix.maven == 'system'
-        run: mvn -B clean test -Djacoco.skip=true
+        uses: ./.github/actions/maven-run
+        with:
+          command: mvn -B clean test -Djacoco.skip=true
       - name: Compile skill templates
         if: matrix.maven == 'wrapper' && runner.os == 'Linux'
         run: |

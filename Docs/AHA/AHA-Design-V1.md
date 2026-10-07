@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.55.0
+**文档版本**：v3.56.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -443,6 +443,7 @@ aha/
 | v3.53.0 | 2026-10-07 | 目录树与附录 A 补第二篇 DevLog（覆盖率门禁自证） | @ACANX |
 | v3.54.0 | 2026-10-07 | §3.1 实测值刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
 | v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
+| v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
 
 ---
 ```
@@ -787,8 +788,13 @@ aha/
 │       ├── extension-authoring/
 │       └── release/
 ├── .github/
+│   ├── actions/
+│   │   └── maven-run/          ← Maven 调用统一入口：清失败标记 + 重试
+│   │       └── action.yml
 │   └── workflows/
-│       ├── Build.yml
+│       ├── Build.yml           ← 快检查（每次 push / PR）
+│       ├── Gate.yml            ← 门禁 + 每周定期扫描
+│       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml
 ├── Docs/
 │   ├── AHA/
