@@ -123,6 +123,16 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
+  但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
+  com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：
+  `Renderer.getPeerInstance` 用**动态拼接的类名**反射加载效果 peer
+  （`Class.forName(rootPkg + ".impl.prism.ps.PPS" + name + "Peer")`，另含 `prism.Pr*` 与软件回退
+  `sw.java.JSW*` / `sw.sse.SSE*`），closed-world 静态分析看不到，而之前只登记了渲染器工厂与 stock shader，
+  **未登记 peer 本身**。修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
+  过滤 abstract 后把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`（340 → 439 条）。
+  守卫 `NativeImageMetadataTest` 11 → 12 条（已反向验证），产物自证第 ⑧ 条补 peer 检查。
+  详见 `Docs/DevLog/DevLog-20261009-06.md`。
 - **原生桌面镜像 Windows 启动即崩：平台子类的 JNI 成员查找未登记（issue #39）**：修完 #37（JNI 可达**类**）后，
   真机在 `WinWindow.<clinit>` 报 `NoSuchMethodError:
   com.sun.glass.ui.win.WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。根因：`WinWindow._initIDs` 用
