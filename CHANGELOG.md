@@ -123,6 +123,12 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生桌面镜像启动即 segfault：JNI 可达类未注册（issue #37）**：修完 #35（JavaFX 启动链路反射）后，
+  真机在 Glass 初始化处报 `NoClassDefFoundError: java/lang/Runnable`，随后段错误。
+  根因是 native-image 只允许「JNI accessible」的类被 `FindClass` 查到——反射元数据解决「类可达」，
+  不解决「JNI 可达」。修法：新增 `jni-config.json`（62 个类，来自对 openjfx 三平台 native 源码
+  506 个文件里所有 `FindClass` 的静态扫描），并在单测与产物自证里加守卫。
+  详见 `Docs/DevLog/DevLog-20261008-15.md`。
 - **原生镜像管线两个跨平台缺陷（run 37744912968）**：
   ① macOS 腿的产物自证里 `$bin（` 被 bash 当成变量名 → `set -u` 下
   `bin（: unbound variable` 退出，步骤 outputs 丢失，下游改名/上传被静默跳过——

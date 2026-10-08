@@ -372,6 +372,23 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 agent 只覆盖**跑到的路径**，且 Windows / macOS 平台尚未采集。这是 R2 的常态——
 **构建成功不是验收标准**，真机走查（`N-16`）仍要做。
 
+**反射之外还有 JNI：两套清单（issue #37，2026-10-08）**。修完 #35 后，真机又在 Glass 初始化处报
+`NoClassDefFoundError: java/lang/Runnable`（栈顶 `JNIFunctions$Support.findClassInClassRegistries`），
+随后 segfault。原因不是「类不在镜像里」，而是 **反射元数据只解决「类可达」，不解决「JNI 可达」**：
+JavaFX 的 native 库（glass / font / prism 的 .dll / .so / .dylib）用 `JNIEnv->FindClass` 按名字查类，
+而 native-image 只允许「JNI accessible」的类被查到，否则抛 `NoClassDefFoundError`；
+native 层拿到空引用继续跑就是段错误。
+
+修法是新增一份**独立**的 `jni-config.json`（与 `reachability-metadata.json` 同目录，随 jar 进 classpath
+自动被读取）。为什么单独一个文件：`reachability-metadata.json` 的官方 schema（v1.2.0）**不含 `jni` 段**，
+而 `jni-config.json` 有官方 schema v1.1.0——不产出「能跑但不合规」的元数据。
+
+清单不是猜的：对 **openjfx 三平台全部 native 源码**（`native-*/` 下 506 个 C / C++ / ObjC 文件）
+里的 `FindClass` 做静态扫描，得 **62 个类**——JDK 基础类、Glass 公共类与三平台实现类、
+字体（DirectWrite / FreeType / CoreText / FontConfig，含两个动态名）与几何。
+成员统一用 `allDeclared*` 全量（native 按名字查成员，签名跨版本不稳）。平台专属类共用一份清单，
+缺席平台只产生无害 warning。详见 [DevLog-20261008-15.md](../DevLog/DevLog-20261008-15.md)。
+
 ### 6.2 迭代时改哪里（只改一处）
 
 ```

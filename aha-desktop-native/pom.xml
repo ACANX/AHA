@@ -271,11 +271,15 @@
                                         进 classpath，native-image 会自动读取，无需任何参数）。
                                         这里只是复制一份到 workdir，好让它随 zip 一起交付——
                                         「这个二进制是靠哪些可达性元数据编出来的」要能事后对账。
+                                        两份都要复制：
+                                          * reachability-metadata.json：反射 / 资源（schema v1.2.0）
+                                          * jni-config.json：JNI 可达类（schema v1.1.0，见 issue #37）
                                     -->
                                     <directory>${project.parent.basedir}/aha-desktop/src/main/resources/META-INF/native-image/com.acanx.module.aha/aha-desktop</directory>
                                     <filtering>false</filtering>
                                     <includes>
                                         <include>reachability-metadata.json</include>
+                                        <include>jni-config.json</include>
                                     </includes>
                                 </resource>
                             </resources>
