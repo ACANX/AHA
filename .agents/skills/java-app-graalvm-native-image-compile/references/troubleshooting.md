@@ -78,7 +78,8 @@
 | `lib/` 里的 jar 比依赖树多 | 拷贝步骤**不删**已不在依赖集里的旧文件 | 在拷贝前清该目录（只清该目录，别删整个 `target/`） |
 | macOS/Linux 上下载后不能双击运行 | 包内二进制权限不是 0755 | 打包时给二进制 `fileMode 0755`（文档保持 0644） |
 | 版本号变成空的（无报错） | XML 解析器标签**带命名空间**，`findtext('version')` 静默返回 None | 用「第一个以 `version` 结尾的直接子节点」这类写法 |
-| Maven 解析 POM 报 `String '--' not allowed in comment` | XML 注释里出现了 `--`（例如写了 `native-image --version`） | 改写措辞；`--gc=` 等同理 |
+| Maven 解析 POM 报 `String '--' not allowed in comment` | XML 注释里出现了双短横（例如写了 `native-image --version`，或在注释里写 `--gc=G1`） | 改写措辞（别在注释里直接写双短横选项）；`bin/CheckScripts.py` 已有守卫，扫 `<!--(.*?)-->` 体内是否含 `--` |
+| XML 报错位置指向注释之后的一大段 | 注释里**嵌套**了 `<!--`：外层被内层的 `-->` 提前闭合 | 内层去掉注释标记，改成普通文字；同上守卫也会拦 |
 
 ### 「静默跳过」为什么最恶劣，怎么根除
 

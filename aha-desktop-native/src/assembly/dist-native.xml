@@ -37,6 +37,14 @@
             <outputDirectory>.</outputDirectory>
             <includes>
                 <include>README.txt</include>
+                <!--
+                    构建报告（native-image 的「emit build report」参数产出）：
+                    它是「下一步该加什么参数」的依据，
+                    也是「这个二进制是在什么配置下编出来的」的机器可读证据。
+                -->
+                <include>build-report*</include>
+                <!-- 可达性元数据（真实来源在 aha-desktop，构建时复制过来一份） -->
+                <include>reachability-metadata.json</include>
             </includes>
             <fileMode>0644</fileMode>
         </fileSet>

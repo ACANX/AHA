@@ -51,7 +51,7 @@
             聚合 POM 需要这样写：
 
                 <properties>
-                    <native.skip>true</native.skip>      <!-- 默认关闭，唯一来源 -->
+                    <native.skip>true</native.skip>      (默认关闭，唯一来源)
                 </properties>
                 <profiles>
                     <profile>

@@ -55,6 +55,14 @@
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
 ### 变更
+- **按首次真编日志调优 native-image 参数**：删除已弃用且无效的 `no fallback` 开关；
+  解锁实验性选项；输出由 `-H:Path` + `-H:Name` 改为 `-o`；
+  采纳日志建议的 `--gc=G1`、`--future-defaults=all`、`-R:MaxHeapSize=1g`；
+  新增 `emit build report`（随包交付，作为后续调参依据）；
+  两份参数文件（JDK 25 / JDK 27）逐条同步且保持行序一致。
+  `--enable-url-protocols` 属「静默坏掉」风险项，保留但写明退出路径（`TODO.md` N-14）。
+- **XML 注释守卫**：`bin/CheckScripts.py` 新增 `check_xml`——注释体禁 `--`、禁嵌套注释
+  （本轮两次踩到，且守卫当场抓出技能模板里的嵌套注释）。
 - **修复原生镜像「静默跳过」**：`native.skip` 的默认值原先写在模块自身的 `<properties>` 里，
   会**赢过**父 POM 中 profile 的覆盖，导致 `native-image` 被静默跳过——
   构建成功、零产物、零报错、CI 全绿。现改为：默认值唯一来源放聚合 POM 的 `<properties>`，

@@ -390,6 +390,16 @@ jobs:
           fi
           echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个"
 
+          # ⑥ 构建报告（native-image 的 emit build report 参数产出）：
+          #    有它才谈得上「按报告调参数」，所以它缺了就告警。
+          report=$(ls "$work"/build-report* 2>/dev/null | head -n1 || true)
+          if [ -n "$report" ]; then
+            rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
+            echo "构建报告：$(basename "$report")（$((rsize / 1024)) KB）"
+          else
+            echo "::warning::没有找到构建报告（$work/build-report*）——检查参数清单里的「emit build report」是否被删掉了"
+          fi
+
           # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）
           echo "produced=${produced}" >> "$GITHUB_OUTPUT"
           {
@@ -403,6 +413,7 @@ jobs:
             fi
             echo "- 工具链：${{ steps.graal.outcome }}；构建：${{ steps.native.outcome }}"
             echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个）"
+            echo "- 构建报告：$([ -n "${report}" ] && basename "${report}" || echo '**缺失**')"
             if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
             echo ""
             echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"

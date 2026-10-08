@@ -1206,6 +1206,16 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 - [ ] **N-10**：下一次 `DesktopNative` 运行确认「四条腿都绿、且摘要逐腿写清结论」；
       windows-x64 的工具链自证是否已因 `cmd //c` 修复；
       产物自证的诊断输出会揭示「构建成功但自证失败」的真正原因（此前不可见）。
+- [ ] **N-13**：把资源清单从「宽通配」收窄成 `resource-config.json` 精确清单。
+      背景：首次真编的镜像里 **27.69 MiB 是内嵌资源**（`byte[]`），
+      来自 `.*\.(png|…|dll)$` 这种宽通配——把大量无关文件也吃了进去，
+      是目前最大的一处体积优化余地（见 `DesktopNativeDesign.md` §5.4）。
+      **前置条件**：先完成真机走查（N-05），否则漏一项资源的后果是「运行期缺文件」而不是构建失败。
+- [ ] **N-14**：删除弃用的 `--enable-url-protocols`（改用 reachability metadata）。
+      元数据已就位（`aha-desktop/src/main/resources/META-INF/native-image/...`），
+      删除前必须满足：① 原生二进制完成一次真实对话（HTTPS 成功）；
+      ② 构建报告里没有 http / https 协议处理器的未决条目。
+      这是「静默坏掉」风险项——删掉不会构建失败，只会让产物发不出请求。
 - [ ] **N-12**：确认「静默跳过」已根除。判据三条：① 各腿的「确认 native-image 真的执行过」
       步骤输出「执行证据：aha-desktop-native.build_artifacts.txt」；
       ② 三条 jdk25 腿的 `上传制品` 不再是 `skipped`；

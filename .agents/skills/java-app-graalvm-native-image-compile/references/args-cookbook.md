@@ -3,6 +3,52 @@
 按「必须有 / 建议有 / 实验位」三档排列，并标注**本项目是否已验证**。
 参数清单请放在**一份文本文件**里，用 `native-image @argfile` 传入 —— 集中一处才谈得上迭代。
 
+## 零、先读日志：一次真编能告诉你九成该改什么
+
+2026-10-08 在 AHA 上首次真编（GraalVM 25 + Windows），构建成功，但输出里有
+**9 条警告 + 5 条 Recommendations + 1 条 Security 报告**——它们几乎就是
+「参数清单该怎么改」的待办列表。**别忽略它们，逐条处置，并把「不采纳的理由」也写下来**，
+否则半年后没人敢动这份清单。
+
+### 0.1 弃用与实验性的处置（照这个顺序做）
+
+| 日志里的说法 | 正确处置 | 说明 |
+|---|---|---|
+| 某选项 "deprecated ... **No effect**, no replacement available" | **删除**（如 `- -no-fallback`） | 它没有作用，还常常牵出别的弃用警告（`FallbackThreshold`） |
+| 某选项 "is experimental and must be enabled via `-H:+UnlockExperimentalVMOptions`" | 加 `-H:+UnlockExperimentalVMOptions`，**且必须排在实验性选项之前** | 不解锁，将来版本直接失败 |
+| "Use the `-o` option instead"（针对 `-H:Path` / `-H:Name`） | 输出改用 `-o <路径>` | 官方给的替代品；POM 侧传参即可 |
+| "deprecated ... Use reachability metadata instead"（如 `- -enable-url-protocols`） | **先别删**，先落元数据并真机验证，再删 | 见下条：这类删除是「静默坏掉」风险 |
+
+> ⚠ **「静默坏掉」优先于「警告清零」**：`- -enable-url-protocols` 是 HTTPS 的开关。
+> 删了它，构建照样成功、进程照样启动，只是**发不出网络请求**——比一条警告严重得多。
+> 正确顺序：① 把元数据放进 `src/main/resources/META-INF/native-image/<groupId>/<artifactId>/`
+> （随 jar 进 classpath，native-image 自动读取，不需要任何参数）；
+> ② 真机跑一次真实请求；③ 确认建报告里没有相关未决条目；④ 才删弃用项。
+
+### 0.2 Recommendations 的处置（哪些该采纳、哪些不该）
+
+| 建议 | 处置 | 理由 |
+|---|---|---|
+| `- -gc=G1` | **采纳**（长驻 GUI / 服务） | serial 是默认值、epsilon 无回收；G1 换延迟，代价是体积与构建时间 |
+| `- -future-defaults=all` | **采纳**（打算长期跟进的库） | 提前用上未来默认值，等于给升级做早期预警：编不过就是信号 |
+| 设置最大堆（`-R:MaxHeapSize=`） | **采纳** | 默认堆按机器内存百分比算，同一二进制在不同机器行为不同 |
+| `- -pgo` | **先别加** | 日志里 builder configuration 若已写 `PGO: ML-inferred`，说明推测式 PGO 已在生效；手工 PGO 需要两阶段（插桩编译 → 跑典型负载 → 用 profile 重编） |
+| `-march=native` | **对外分发的产物不要用** | 绑死构建机 CPU 特性，别人可能非法指令崩溃；要提性能写可预期目标（如 `-march=x86-64-v3`） |
+| `-H:AdvancedObfuscation=""` | **默认不加** | 会污染栈与诊断信息；与「可诊断优先」冲突，只作数据点 |
+| Security: "Binary includes Java deserialization" | **不要猜选项名** | 这是可达性结论而非开关：先确认业务不对不可信数据反序列化，再按 build report 定位可达路径 |
+
+### 0.3 让报告与工作目录配合起来
+
+- 加 `emit build report`（native-image 的参数）：产出机器可读报告，**它是「下一步加什么参数」的唯一依据**；
+- 把 exec 的**工作目录设成产物目录**（如 `target/native/`），报告就与可执行文件同处一地，
+  既能被打进 zip、也能被 CI 的自证步骤直接检查。安全性前提：参数文件、`-cp`、`-o` 都用绝对路径。
+
+### 0.4 本机怎么「不装 GraalVM 也能验证命令行」
+
+把可执行文件换成 `echo`（例如 Maven 的 `-Dnative.image.executable=/bin/echo`），
+构建就会把**完整的 native-image 命令行**打印出来。用于验证：
+参数文件路径、`-o` 的形式、classpath 是否含预期依赖。零成本，不需要工具链。
+
 ## 一、必须有（缺了通常直接失败或明显不对）
 
 | 参数 | 作用 | 说明 |
@@ -77,6 +123,19 @@
 - 减少反射注册范围；
 - 换 GC（epsilon 最小最快，但语义要能接受）；
 - 优化等级（`-O2` 与更激进的优化换构建时长）。
+
+## 四点五、XML 里写参数时的一个硬坑
+
+用 Maven 时难免要在 `pom.xml` / assembly 描述符的**注释**里写选项。注意：
+
+- XML 注释体**禁止出现 `--`**，否则解析器直接报
+  `String '--' not allowed in comment`。写双短横选项（`--gc=G1`、`--no-fallback`、
+  `emit build report` 之类）时极易踩到；
+- XML 注释**不能嵌套**：外层会被内层的 `-->` 提前闭合，剩下的文字变成正文，
+  报错位置离真正的原因很远（实测踩过：模板里嵌了一层 `<!-- ... -->`，谁抄谁坏）。
+
+**两个都可以用一条正则检查掉**（AHA 的 `bin/CheckScripts.py` 里已固化）：
+扫 `<!--(.*?)-->`，体内含 `--` 或 `<!--` 即失败。
 
 ## 五、把参数当资产
 
