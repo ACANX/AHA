@@ -303,6 +303,80 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: 上传构建报告（单独制品，便于下载分析）
+        # 为什么单独上传：报告只有几十 KB，镜像包却有几十 MB。
+        # 「为什么编得这么大 / 这么慢」这类分析不该逼人先下一个 70 MB 的包。
+        # 报告是后续调优的**唯一依据**（见 Docs/Design/DesktopNativeDesign.md §5.4），
+        # 因此给更长的保留期（90 天），并连参数文件一起带上——它们是一组对账材料。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-report-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: |
+            aha-desktop-native/target/native/build-report*
+            aha-desktop-native/target/native/reachability-metadata.json
+            aha-desktop-native/src/native/native-image-args*.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: 从构建报告里摘关键数字（写进摘要）
+        # 目的：不下载也能看到「这次编出来多大 / 资源占多少」。
+        # 报告的具体字段名随 GraalVM 版本变，因此这里**只做尽力而为**的提取：
+        # 解析失败、没有 python、字段名不认识，都只是少几行摘要，绝不阻塞。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          report=$(ls "$work"/build-report.json 2>/dev/null | head -n1 || true)
+          if [ -z "$report" ]; then
+            echo "（没有 build-report.json，跳过摘要提取）"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 构建报告缺失——检查参数清单里的「emit build report」是否还在。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          py=$(command -v python3 || command -v python || true)
+          if [ -z "$py" ]; then
+            echo "（runner 上没有 python，跳过摘要提取；报告本身已随制品上传）"
+            exit 0
+          fi
+          "$py" - "$report" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          try:
+              data = json.loads(p.read_text(encoding="utf-8"))
+          except Exception as exc:
+              print(f"\n\n> 构建报告解析失败（{exc}）——原始文件已随制品上传。")
+              raise SystemExit(0)
+          hits = []
+          def walk(node, path, depth):
+              if depth > 3:
+                  return
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      walk(v, f"{path}.{k}" if path else k, depth + 1)
+              elif isinstance(node, (int, float)) and not isinstance(node, bool):
+                  leaf = path.rsplit(".", 1)[-1].lower()
+                  if any(t in leaf for t in ("size", "bytes", "count", "time", "ms", "seconds")):
+                      hits.append((path, node))
+          walk(data, "", 0)
+          print("")
+          print(f"### 构建报告摘要（{p.name}）")
+          print("")
+          print(f"- 顶层字段：{', '.join(list(data)[:12])}{' …' if len(data) > 12 else ''}")
+          for path, value in hits[:12]:
+              if isinstance(value, float):
+                  print(f"- {path} = {value:,.2f}")
+              elif value > 1024 * 256:
+                  print(f"- {path} = {value:,}（约 {value / 1024 / 1024:,.2f} MiB）")
+              else:
+                  print(f"- {path} = {value:,}")
+          print("")
+          print("> 完整报告见制品 `native-report-${{ matrix.label }}-jdk${{ matrix.jdk }}`"
+                "（也可解压镜像包查看 build-report.*）。")
+          PY
+
       - name: 产物自证（诊断式；判不出来也不阻塞）
         # 为什么是「诊断式」而不是硬门禁：
         #   这条管线是**可选**的（见文件头），硬门禁会把「试验产物没编出来」变成红叉；
