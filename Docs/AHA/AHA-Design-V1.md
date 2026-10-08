@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.64.0
+**文档版本**：v3.65.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -320,6 +320,7 @@ aha/
     │   ├── GUIDesign.md
     │   ├── DesktopDesign.md
     │   ├── DesktopNativeDesign.md
+    │   ├── DesktopNativeUpdateDesign.md
     │   ├── RemoteAndProtocolDesign.md
     │   ├── ExtensionSystemDesign.md
     │   ├── SelfHostingDesign.md
@@ -467,6 +468,7 @@ aha/
 | v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
 | v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 | v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
+| v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
 
 ---
 ```
@@ -3701,6 +3703,7 @@ Closes #123
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
 | `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
+| `DesktopNativeUpdateDesign.md` | 桌面端原生镜像的**版本更新脚本**（试验性）：`Script/Python/DesktopNativeVersionUpdate.py` 的三条发现路径（api → atom → page）、「最新 tag ≠ 可下载」回退、续传与 sha256 校验、原子替换与状态文件 |
 | `CliNativeDesign.md` | CLI **原生镜像**（试验性）：`aha-cli-native` 模块与 `CliNative.yml` 工作流；与桌面端共享隔离 / 版本 / 自证方法论，差异在 picocli 注解处理器生成元数据、JLine Signals 缺口与无 JavaFX |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
