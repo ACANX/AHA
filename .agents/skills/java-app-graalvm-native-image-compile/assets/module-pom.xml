@@ -39,8 +39,26 @@
         <!-- native-image 可执行文件；Windows 上由 CI 传 native-image.cmd -->
         <native.image.executable>native-image</native.image.executable>
 
-        <!-- 只验证管线、不真编（本机快速自检用） -->
-        <native.skip>false</native.skip>
+        <!--
+            默认 **不做** 原生编译（安全默认值）。
+
+            约定：原生编译只在专用 profile 下进行；默认构建的验收标准只有一条
+            —— **能编译、能打 jar、不报错**（能不能运行不属于默认构建的职责）。
+
+            所以这里的默认值是 true；由聚合 POM 的原生 profile 在激活时置为 false：
+
+                <profile>
+                    <id>my-native</id>
+                    <modules><module>my-native</module></modules>
+                    <properties><native.skip>false</native.skip></properties>
+                </profile>
+
+            这样两层保障齐了：① 默认反应堆里根本没有这个模块；
+            ② 即使模块误入反应堆，也不会去要求环境具备 GraalVM。
+            顺带一个本机自检技巧：想只验证「依赖拷贝 → classpath → 参数文件 → 打包」
+            这条管线而不真编，就显式传 -Dnative.skip=true。
+        -->
+        <native.skip>true</native.skip>
 
         <!-- 工作目录：依赖、产物、说明都落在这里，便于 CI 取件 -->
         <native.image.workdir>${project.build.directory}/native</native.image.workdir>

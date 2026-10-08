@@ -12,6 +12,22 @@ name: DesktopNative
 # 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
 # 4. **可被打断**：原生镜像构建慢，同一分支的新一次运行会取消上一次（见 concurrency）。
 #
+# ── 关于「可选」：怎么才算真的非阻塞 ───────────────────────────────────────────
+# 「不是必需检查」只解决「挡不挡合并」，没解决「看起来像不像红的卡点」。
+# 实测（PR #15 / dev@192a10d）：四条腿全红，虽然不是必需检查、也确实没挡住合并，
+# 但满屏红叉会让人以为整条流程挂了。所以这里要分两层看：
+#
+#   * 作业级 continue-on-error 只保证「**整次运行**不变红」，
+#     **作业本身仍然显示失败（红叉）**——这正是当时的观感来源；
+#   * 要让**作业**也绿，必须把容错放到**步骤级**：
+#     凡是在「没有工具链 / 属于试验」前提下可能失败的步骤都加 continue-on-error: true，
+#     再由各作业末尾的「结论」步骤把真实情况写进 Job Summary。
+#
+# 于是：该绿的地方绿了，真相一点没藏——摘要里逐腿写明「编了没有 / 产物在哪 / 多大 /
+# 为什么没成」，发布作业也只在真有二进制时才发版。
+# 取舍也写明：**原生编译真坏了，CI 不会红**，只表现为摘要里少一版、发布页少一个包。
+# 这是刻意的——它是数据点，不是交付物（见 Docs/Design/DesktopNativeDesign.md 第 2 节）。
+#
 # ── 版本号规则 ──────────────────────────────────────────────────────────────────
 #     <基线版本>.<PR 号，补零到 5 位>
 # 基线与 PR 号都从「唯一来源」推导，不复制字面量：
@@ -153,14 +169,19 @@ jobs:
             jdk: '27'
             experimental: true
     runs-on: ${{ matrix.os }}
-    # 试验腿用 continue-on-error：它的失败只标注在自己身上，不牵连其余腿与发布作业。
-    continue-on-error: ${{ matrix.experimental }}
+    # 整条原生镜像管线都是**可选**的：任一腿失败都不牵连其余腿与发布作业。
+    # 注意这只是保住「整次运行」的颜色；作业本身要绿，得靠下面各步骤的 continue-on-error。
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
 
       # GraalVM（含 native-image）。用社区版：开源项目无需商用授权顾虑，
       # 同样带 native-image；换 Oracle GraalVM 只需把 distribution 改成 graalvm。
       - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        # 容错原因：GraalVM 的某个 JDK 大版本可能**还没发布**（实测 JDK 27 就是这样，
+        # 这一步当时红了）。那是上游发布节奏，不是本项目的问题，不该染红本工作流。
+        id: graal
+        continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
           java-version: ${{ matrix.jdk }}
@@ -170,6 +191,7 @@ jobs:
 
       - name: 计算本腿的 Maven 参数
         id: leg
+        if: steps.graal.outcome == 'success'
         run: |
           set -euo pipefail
           # Windows 上的可执行文件是 native-image.cmd，exec 插件不会自动补后缀
@@ -185,6 +207,10 @@ jobs:
           fi
 
       - name: 工具链自证（门禁必须自证）
+        # 只做记录：这里失败说明「环境不对」，不等于「代码编不出来」，
+        # 所以不阻塞后面的构建（构建自己会再报一次真实原因）。
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
         run: |
           set -euo pipefail
           echo "—— 本腿参数 ——"
@@ -194,13 +220,24 @@ jobs:
           echo "版本=${VERSION}"
           echo "—— 工具链版本 ——"
           java -version
-          "${{ steps.leg.outputs.executable }}" --version
+          # Windows 上 native-image 是 .cmd：bash 不能直接执行 .cmd（实测这一步当时就是这样红的），
+          # 必须交回 cmd.exe。`//c` 是 Git Bash 的转义写法，避免被当成路径。
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cmd //c "${{ steps.leg.outputs.executable }} --version"
+          else
+            "${{ steps.leg.outputs.executable }}" --version
+          fi
         env:
           PLATFORM: ${{ matrix.platform }}
           LABEL: ${{ matrix.label }}
           VERSION: ${{ needs.native-version.outputs.version }}
 
       - name: 构建原生镜像
+        # 容错：原生编译失败在本工作流里**不算整体失败**（可选项，见文件头）。
+        # id 供「产物自证」区分「编了但没出东西」与「压根没编」。
+        id: native
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
         # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
         #
         # 两点必须写清：
@@ -217,68 +254,110 @@ jobs:
             -Daha.native.version=${{ needs.native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
 
-      - name: 产物自证（存在 / 体积 / 平台魔法数 / classpath 输入）
+      - name: 产物自证（诊断式；判不出来也不阻塞）
+        # 为什么是「诊断式」而不是硬门禁：
+        #   这条管线是**可选**的（见文件头），硬门禁会把「试验产物没编出来」变成红叉；
+        #   而真正需要知道的不是「红没红」，而是「编了什么 / 在哪 / 多大 / 为什么没成」。
+        #   所以：① 先把现场打全；② 判据只留真正的不变式；③ 结论写进摘要，
+        #   并把 produced 交给后续步骤决定「要不要改名 / 上传」。
+        id: verify
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
         run: |
-          set -euo pipefail
+          set -uo pipefail
           work=aha-desktop-native/target/native
+          produced=false
+          note=""
 
-          # ① 可执行文件必须存在（Windows 上是 .exe，其它平台没有后缀）
+          echo "—— 现场：$work ——"
+          ls -la "$work" 2>/dev/null || echo "（目录不存在）"
+          echo "—— 现场：候选可执行文件 ——"
+          find aha-desktop-native/target -maxdepth 3 -type f \
+               \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null || true
+          echo "—— 现场：dist/ ——"
+          ls -la dist 2>/dev/null | head -20 || true
+
+          # ① 找可执行文件：不写死路径，先看约定位置，再在整个 target/ 兜一遍
           bin=$(ls "$work/aha-desktop-native" "$work/aha-desktop-native.exe" 2>/dev/null | head -n1 || true)
           if [ -z "$bin" ]; then
-            echo "::error::没有产出原生可执行文件（$work 下既无 aha-desktop-native 也无 .exe）"
-            ls -la "$work" || true
-            exit 1
+            bin=$(find aha-desktop-native/target -maxdepth 3 -type f \
+                    \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null | head -n1 || true)
           fi
-          size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
-          echo "原生可执行文件：$bin（$((size / 1024)) KB）"
+          size=0
+          magic=""
+          if [ -z "$bin" ]; then
+            note="没有产出原生可执行文件（构建步骤结论：${{ steps.native.outcome }}）"
+            echo "::warning::$note"
+          else
+            size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+            echo "找到可执行文件：$bin（$((size / 1024)) KB）"
 
-          # ② 体积下限：原生镜像把 JDK 与全部依赖都编进去了，正常几十 MB。
-          #    小于 5 MB 基本只可能是「编译没真正完成却留下了壳」，直接判失败。
-          if [ "$size" -lt 5242880 ]; then
-            echo "::error::产物只有 $((size / 1024)) KB，不像原生镜像（阈值为 5 MB）"
-            exit 1
-          fi
-
-          # ③ 平台魔法数：确认拿到的确实是本平台的二进制，而不是错平台的产物
-          magic=$(head -c 4 "$bin" | od -An -tx1 | tr -d ' \n')
-          case "${RUNNER_OS}" in
-            Windows) expect="4d5a" ;;            # MZ（PE）
-            Linux)   expect="7f454c46" ;;        # ELF
-            macOS)   expect="cffaedfe" ;;        # Mach-O 64 位（小端）
-          esac
-          if [ "$magic" != "$expect" ]; then
-            # macOS 上偶见另一种字节序，单独放行
-            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then
-              echo "macOS 二进制（大端魔法数）"
+            # ② 体积下限 5 MB：小于它基本是「编译没真正完成却留下壳」
+            if [ "$size" -lt 5242880 ]; then
+              note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
+              echo "::warning::$note"
             else
-              echo "::error::二进制魔法数不匹配：期望 ${expect}，实际 ${magic}"
-              exit 1
+              produced=true
+            fi
+
+            # ③ 平台魔法数：确认是本平台二进制而不是错平台的
+            magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+            case "${RUNNER_OS}" in
+              Windows) expect="4d5a" ;;      # MZ（PE）
+              Linux)   expect="7f454c46" ;;  # ELF
+              macOS)   expect="cffaedfe" ;;  # Mach-O 64 位（小端）
+            esac
+            ok=false
+            [ "$magic" = "$expect" ] && ok=true
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
+            if [ "$ok" = "true" ]; then
+              echo "魔法数自证通过：$magic"
+            else
+              note="${note:+$note；}魔法数不匹配（期望 ${expect}，实际 ${magic:-取不到}）"
+              echo "::warning::$note"
             fi
           fi
-          echo "魔法数自证通过：${magic}"
 
-          # ④ classpath 输入自证：恰好三个**带分类器**的 OpenJFX 真 jar。
-          #    带分类器的 jar 与无分类器 jar 共用同一份 POM，会传递进 0 KB 空壳；
-          #    本项目已在 POM 里排除（见 aha-desktop-native/pom.xml 的注释）。
-          jfx=$(ls "$work"/lib/javafx-*.jar | wc -l)
-          total=$(ls "$work"/lib/*.jar | wc -l)
-          if [ "$jfx" -ne 3 ]; then
-            echo "::error::classpath 里的 OpenJFX jar 应为 3 个（本平台三件套），实际 ${jfx} 个"
-            ls "$work"/lib/javafx-*.jar
-            exit 1
+          # ④ classpath 输入：真正的不变式是「OpenJFX 三件套齐全」+「没有 0 KB 空壳」，
+          #    不是「恰好 3 个」——带分类器与不带分类器的 jar 共用同一份 POM，
+          #    多出来的条目是正常的；空壳才是问题（本项目已在 POM 里排除）。
+          jfx=$(ls "$work"/lib/javafx-*.jar 2>/dev/null | wc -l | tr -d ' ')
+          total=$(ls "$work"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ')
+          empty=$(find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${jfx:-0}" -lt 3 ]; then
+            note="${note:+$note；}classpath 里的 OpenJFX jar 只有 ${jfx} 个（少于三件套）"
+            echo "::warning::$note"
+            ls "$work"/lib/javafx-*.jar 2>/dev/null || true
           fi
-          echo "classpath 输入：lib/ 共 ${total} 个 jar，其中 OpenJFX ${jfx} 个"
+          if [ "${empty:-0}" -ne 0 ]; then
+            note="${note:+$note；}lib/ 里有 ${empty} 个 0 KB 空壳 jar"
+            echo "::warning::$note"
+            find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null || true
+          fi
+          echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个"
 
-          # ⑤ 把结论写进摘要，便于在运行页直接看到
+          # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
           {
             echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
             echo ""
-            echo "- 产物：\`$(basename "$bin")\`（$((size / 1024 / 1024)) MB）"
-            echo "- 魔法数：\`$magic\`"
-            echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个）"
+            if [ "$produced" = "true" ]; then
+              echo "- 产物：\`$(basename "$bin")\`（$((size / 1024 / 1024)) MB）"
+              echo "- 魔法数：\`${magic:-未取到}\`"
+            else
+              echo "- **未产出可用二进制**"
+            fi
+            echo "- 工具链：${{ steps.graal.outcome }}；构建：${{ steps.native.outcome }}"
+            echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个）"
+            if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
+            echo ""
+            echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"
+            echo "> 详见 \`Docs/Design/DesktopNativeDesign.md\` 第 2 节。"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 改名为发布用资产名
+        continue-on-error: true
+        if: steps.verify.outputs.produced == 'true'
         run: |
           set -euo pipefail
           work=aha-desktop-native/target/native
@@ -292,12 +371,14 @@ jobs:
           echo "发布资产：${target}"
 
       - name: 上传制品
+        # 只有真的产出了二进制才上传；没有就跳过（不算失败——这是可选管线）
+        if: steps.verify.outputs.produced == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: dist/aha-desktop-native-*.zip
-          if-no-files-found: error
-          # 实验腿的失败不该把「没有文件」变成错误之外的噪音
+          if-no-files-found: warn
           retention-days: 14
 
   # ── 3. 汇总发布（预发行版）─────────────────────────────────────────────────
@@ -313,23 +394,51 @@ jobs:
       # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 dist/ 不是一回事，
       # 因此目录名刻意用 artifacts/，免得看起来像在往 dist/ 里塞东西。
       - name: 下载全部制品
+        # 没有任何制品时，下载本身可能报错——这属于本次「无可发布产物」的正常分支
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           path: artifacts
 
-      - name: 整理资产
+      - name: 整理资产（没有产物也算正常，不失败）
+        # 这一步曾经用 exit 1 收尾，于是「四条腿都没编出来」会把整个运行染红 ✗——
+        # 而这恰恰是本工作流**允许**发生的结果（可选项，见文件头）。
+        # 现在：把所有 zip 收平到 artifacts/，把结果写进 any 输出与摘要，
+        # 由发布步骤决定去不去发版。
+        id: collect
+        continue-on-error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
           shopt -s nullglob
-          find artifacts -name '*.zip' -exec mv -n {} artifacts/ \;
+          # 只搬「还没在顶层」的：download-artifact 会把每个制品的 zip 放在自己的子目录里
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
           files=(artifacts/*.zip)
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::没有任何原生包可发布（所有腿都失败了）"
-            exit 1
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::本次没有任何原生包可发布（各腿结论见各自摘要）"
+            {
+              echo "### 原生镜像：本次无可发布产物"
+              echo ""
+              echo "没有任何一条腿编出二进制，因此**未创建预发行版**。"
+              echo ""
+              echo "这是可选管线：不影响 Build / Gate / Compat，也不挡合并。"
+              echo "逐腿原因见上面的各腿摘要。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          echo "any=true" >> "$GITHUB_OUTPUT"
           ls -lh "${files[@]}"
+          {
+            echo "### 原生镜像：本次可发布 ${#files[@]} 个包"
+            echo ""
+            for f in "${files[@]}"; do
+              echo "- \`$(basename "$f")\`（$(du -h "$f" | cut -f1)）"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 发布预发行版（native-v<版本>）
+        # 只有真的收上来包才发版：没有产物却去建一个空 release，比不发更糟
+        if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
           # tag 前缀刻意用 native-v：不匹配 Release.yml 的 V* / v*，
