@@ -98,14 +98,29 @@
 -R:MaxHeapSize=1g
 
 # ── 资源清单 ────────────────────────────────────────────────────────────────
-# 三类资源必须有：
-#   1. 图标与界面资源（logo.png、css 等）
+# 五类资源必须有：
+#   1. 图标与界面资源（logo.png、css、编译样式 .bss 等）
 #   2. 版本号与消息资源（version.properties 等）
 #   3. META-INF/services（扩展与 LLM 适配器走 ServiceLoader 发现）
 #   4. JavaFX 的平台原生库（.so / .dylib / .dll）——它们在 JavaFX 的 jar 里，
 #      运行时由 NativeLibLoader 解压加载，因此必须作为资源打进镜像
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+#   5. **内置配置与预设**：AhaDefault.yaml、ModelDefault.yml——ConfigLoader /
+#      ProviderPresets 用 getResourceAsStream 读，**漏掉的症状是启动即报
+#      CONFIG_NOT_FOUND**，不是构建失败。早期版本的正则漏了 yaml / yml，
+#      是 2026-10-08 建立 CLI 原生镜像时同批发现的（见 CliNativeDesign.md）。
+#   6. **着色器**：D3D 的内建 shader 是 .obj（HLSL 预编译字节码，
+#      D3DShaderSource 用 getResourceAsStream 读）；ES2 的是 .frag / .vert。
+#      漏掉 .obj 的症状不是构建失败，而是**首次绘制时 shader 加载不到**——
+#      「静默坏掉」，所以一开真机就先把它补上（issue #35 同批处理）。
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
+# tracing agent 采集发现的资源盲区（2026-10-08）：
+#   * JDK 的文本断行 / 双向文本数据：无扩展名（LineBreakIteratorData）或 .icu（ubidi.icu），
+#     按扩展名的正则匹不上，缺了会导致换行 / 双向文本行为异常；
+#   * JavaFX 的 NativeLibLoader 会以 .class 形式读自己。
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class
 
 # ── 必须运行期初始化的类 ────────────────────────────────────────────────────
 # 判据很简单：**构建期初始化就会去碰「运行时才存在的东西」**（屏幕、窗口、原生库、系统主题）。

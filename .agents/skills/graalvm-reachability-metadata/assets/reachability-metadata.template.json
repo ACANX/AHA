@@ -1,0 +1,78 @@
+{
+  "comment": "原生镜像可达性元数据模板：把示例类名替换成本项目的真实类名。来源优先级是「依赖自带 > 框架生成 > 手写」，本模板对应最末一级（手写）。放位置：src/main/resources/META-INF/native-image/<groupId>/<artifactId>/reachability-metadata.json。三段按需保留，用不到的段直接删掉。写完务必用官方 schema 校验并配守卫（见 references/verification.md）。",
+  "reflection": [
+    {
+      "type": "com.example.MainClass",
+      "allDeclaredConstructors": true,
+      "allPublicConstructors": true
+    },
+    {
+      "type": "com.example.FrameworkToolkit",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.example.platform.Pipeline",
+      "methods": [
+        {
+          "name": "getInstance",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.example.ShaderLoader",
+      "methods": [
+        {
+          "name": "loadShader",
+          "parameterTypes": [
+            "com.example.Factory",
+            "java.lang.String",
+            "java.io.InputStream"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.example.config.AppConfig",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.example.SpiImplementation",
+      "allDeclaredConstructors": true
+    }
+  ],
+  "jni": [
+    {
+      "type": "com.example.NativeCallback",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "com.example.nativebinding.NativeStruct",
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/.*"
+    },
+    {
+      "glob": "com/example/messages.properties"
+    },
+    {
+      "glob": "com/example/default-config.yaml"
+    },
+    {
+      "pattern": ".*\\.(png|jpg|svg|css|bss|properties|yaml|yml|json|txt|so|dylib|dll)$"
+    }
+  ]
+}

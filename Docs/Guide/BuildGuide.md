@@ -60,9 +60,13 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 `package` 阶段会自动组装发行包到项目根 `dist/`：
 
-> 桌面端便携包（`aha-desktop-<版本>-<平台>.zip`）与原生镜像包
-> （`aha-desktop-native-<版本>-<jdk>.zip`）同样落在 `dist/`——
-> **仓库根不放构建物**，所有 `.zip` 产物统一进 `dist/`。
+> 桌面端便携包（`aha-desktop-<版本>-<平台>.zip`）与两套原生镜像包
+> （`aha-desktop-native-<版本>-<jdk>.zip`、`aha-cli-native-<版本>-<jdk>.zip`）
+> 同样落在 `dist/`——**仓库根不放构建物**，所有 `.zip` 产物统一进 `dist/`。
+>
+> 原生镜像包**不在默认构建里**：它们分别需要 `-Pdesktop-native` / `-Pcli-native`
+> 与 GraalVM 的 `native-image`，详见 [DesktopNativeDesign.md](../Design/DesktopNativeDesign.md)
+> 与 [CliNativeDesign.md](../Design/CliNativeDesign.md)。
 
 ```bash
 ./mvnw clean package

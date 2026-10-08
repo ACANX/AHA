@@ -41,6 +41,7 @@
 |---|---|---|
 | `ClassNotFoundException` / `NoSuchMethodException`（**创建某对象时**） | 反射目标未注册 | 补反射配置或运行期初始化 |
 | `ClassNotFoundException: <你的 Application 子类>`（**启动即报**，栈顶是 `javafx.application.Application.launch`） | JavaFX 入口的两处反射未注册：`launch(String...)` 用 `Class.forName(调用类名)` 加载主类，`LauncherImpl` 用 `getConstructor().newInstance()` 实例化它 | 在 `reachability-metadata.json` 注册主类构造器（`allDeclaredConstructors` / `allPublicConstructors`）；`main` 改用 `launch(YourApp.class, args)` 去掉前一处；再用单测钉住注册（构建成功不等于启动得起来） |
+| `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`（栈顶是 `com.sun.javafx.tk.Toolkit.getToolkit`，随后 `RuntimeException: No toolkit found`） | **JavaFX 的启动反射是链式的**：工具包 → Glass 平台工厂 → Prism 管线 → 渲染器 → 字体 / 日志 / 反射辅助，全靠 `Class.forName` + 反射构造 | 按「启动链路」一次补齐，不要只补报错里那一个类：`QuantumToolkit`、三平台 `*PlatformFactory`、四条 `*Pipeline`（含 `getInstance`）、`PPSRenderer` / `PSWRenderer` / `JSWRendererDelegate` / `SSERendererDelegate`、`PrintLogger` / `JFRPulseLogger` / `Trampoline` / `control.skin.Utils`。且**反射 ≠ JNI**：Glass / 字体还要 `jniAccessible` + 方法 / 字段注册（用 `allDeclaredMethods` / `allDeclaredFields` 更稳） |
 | `ServiceConfigurationError` / 「找不到实现」 | `META-INF/services` 没进镜像 | `-H:IncludeResources=META-INF/services/.*` |
 | 缺图标/模板/字体/`properties` | 资源未包含 | 扩展 `-H:IncludeResources` |
 | 界面文字变乱码 / `UnsupportedCharsetException` | 字符集不全 | `-H:+AddAllCharsets` |
@@ -108,3 +109,25 @@
 3. **构建成功不等于能跑**：CI 只管住「编出来了」，真机点开是另一件事，必须有人做；
 4. **未验证的条目要标出来**：把「我猜这样能行」和「我试过这样能行」分开写，
    否则下一个人会把猜测当结论。
+
+## 5. 「完整」的边界：手工清单 vs tracing agent
+
+有人问「补这么多，还会不会再报别的类找不到」——诚实的回答是：
+
+> **手工清单只能做到「已知缺口已闭」，不能证明完整。**
+
+原因很简单：反射是**运行期**行为，手工枚举只能覆盖你想到的路径（启动、渲染、配置）。
+真正会漏的往往是：业务层序列化（Jackson / ORM）、条件分支才走的代码、
+你自己后续新增的反射点。AHA issue #35 就是靠审计才发现 **Jackson 3 不带 native-image 元数据**——
+不查这一层，会变成「窗口开得起来、一存配置就炸」。
+
+要「抄底」只有两条路：
+
+1. **tracing agent**（推荐）：在目标平台用 JVM 跑一遍，让 agent 采集真实反射。
+   注意：GUI 程序需要显示环境（Linux 用 `xvfb-run`），且要能**跑完自动退出**
+   （否则关机钩子写不出元数据）—— 最好同时给程序加一个「启动后自检 N 秒退出」的开关，
+   这个开关对「真机验收」也同样有用；
+2. **真机逐功能跑**：开窗 → 读配置 → 存配置 → 一轮对话 → 退出，每个功能都踩一遍。
+
+交付话术也要跟上：**不要把「补了清单」说成「一定不再报 ClassNotFound」**。
+把它说成「已知缺口已闭，真机验收待做」——这才是能被检验的结论。

@@ -27,6 +27,20 @@
     启动速度 / 内存占用的影响，为明年适配 JDK 29 铺路。
   - **产物自证**：工作流检查产物存在、体积下限、平台魔法数（PE / ELF / Mach-O）、
     classpath 恰好含 3 个带分类器的 OpenJFX jar；包内附带两份构建参数文件便于事后对账。
+- **CLI 原生镜像（试验性）**：新增 `aha-cli-native` 模块与 `.github/workflows/CliNative.yml`，
+  把 `aha-cli` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，终端直接可跑）。
+  与桌面端是**平行**关系：同一套隔离 / 版本 / 自证方法论，独立模块、独立工作流、独立参数文件，
+  两者互不牵连。差异在：无 JavaFX、主类为 `AhaCli`、GC 默认用 serial（短命进程）。
+  - **picocli 反射元数据用注解处理器生成**：picocli 不自带 native-image 元数据，本项目在 `aha-cli`
+    编译期用 `picocli-codegen` 生成 `META-INF/native-image/picocli-generated/reflect-config.json`
+    （实测 30 个类型），比手写清单可靠——子命令 / 选项一变，生成结果跟着源码走；
+    `NativeImageMetadataTest` 直接断言生成结果，处理器失效时 Build 阶段即红。
+  - **补 JLine 的元数据缺口**：JLine 4 自带元数据，但未覆盖 `org.jline.utils.Signals` 的
+    `Class.forName("sun.misc.Signal")`，由本项目元数据补齐（另含 AHA 自身被 Jackson 读写的记录）。
+  - **同批修复桌面端参数的一个潜在缺陷**：资源正则漏了 `yaml` / `yml` / `svg`，
+    会导致原生镜像启动即报 `CONFIG_NOT_FOUND`（内置 `AhaDefault.yaml` / `ModelDefault.yml` 缺失）；
+    两份桌面参数文件已一并修正。
+  - 试验性 / 非交付物：真机验证见 `TODO.md` `N-19`。
 - **可复用技能 `java-app-graalvm-native-image-compile`**（`.agents/skills/`）：把本项目在
   「JavaFX + JPMS + JNI + 反射 + 多平台分类器」这一复杂场景下编译原生镜像的经验沉淀成技能 ——
   隔离四条、四类清单（初始化时机 / 反射 / 资源 / JNI）、按症状排错、产物自证四项、测量口径，
@@ -34,6 +48,17 @@
   技能按「开工前建骨架、边做边改、达成目标才成熟」的方式维护：条目带**状态**（推断 / 已踩坑 /
   已验证 / 已定稿）与**来源**，未验证部分显式标注；当前 `0.1.0`（试验中），
   成熟判据见技能内「用法」一节（含「在别的项目复用过一次」）。
+- **可复用技能 `graalvm-reachability-metadata`**（`.agents/skills/`）：把原生镜像的**元数据登记**
+  （反射 / JNI / 文件资源 / 运行期初始化）从桌面端与 CLI 两轮实践里抽成**独立的纵向专精技能**：
+  三条互补的发现路径（字节码静态审计 / tracing agent / 经验库对照）、来源优先级
+  （依赖自带 > 框架生成 > 手写）、精确到方法签名的登记写法，以及四层守卫
+  （单测断言 / 产物自证 / 反向验证 / 真机走查 → tracing agent 终局），
+  并附常见框架经验库（JavaFX / picocli / JLine / Jackson / sqlite / log4j 等，区分「自带元数据 / 不带」）
+  与可复制的元数据模板。与 `java-app-graalvm-native-image-compile`（工程化全流程）互补、互相引用，
+  当前 `0.1.0`（试验中）。
+  - **tracing agent 采集已制度化**：新增 `references/agent-collection.md`（何时必须跑、自检模式契约、
+    多平台合并、过滤规则、CI 接入）与 `scripts/collect-metadata.sh`（`run` / `summarize` / `filter`）；
+    并用它对 CLI 与桌面端各采一轮——桌面端据此补进 47 条应用栈元数据（293 → 340）。
 - **桌面端 0.2 六项功能**（按用户指定顺序）：
   1. **工具卡片**：默认折叠；展开显示参数与带行号输出（前 200 行并写明总行数）；复制 / 查看全部；
      失败卡片红边、正文摊开并给「重试 / 改参数后重试」——重试交给模型判断，不在本地偷偷重放命令。
@@ -110,6 +135,20 @@
   去掉 `find -maxdepth`（macOS BSD find 不支持），并把 `Release.yml` 同写法一并修正。
 - **跨平台 shell 守卫**：`bin/CheckScripts.py` 新增 YAML 检查——`$VAR` 后紧跟非 ASCII
   且未用 `${}` 就报错（已反向验证）；同一条规则不再靠人盯。
+- **原生镜像桌面端启动链路反射 / JNI 缺失（issue #35）**：修完 #26 后，二进制下一处报
+  `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`——JavaFX 的工具包、
+  Glass 平台工厂、Prism 渲染管线都用 `Class.forName` + `getDeclaredConstructor().newInstance()`
+  这类反射加载，native-image 的 closed-world 看不到。经对 4878 个 JavaFX 类逐个反编译审计后，
+  把反射与 JNI 清单一次性补进 `reachability-metadata.json`（后经 tracing agent 采集补齐至 **340 条**）：工具包与日志 / 反射辅助类、
+  三平台 Glass 工厂、四条 Prism 管线、效果渲染器、ShaderSource 与**全部 212 个** stock shader 加载器、
+  Glass 原生回调（`jniAccessible`）、图片解码、字体（DirectWrite / CoreText / FreeType）；
+  审计同时发现 **Jackson 3 不随附 native-image 元数据**，而配置与会话记录靠它反射读写，
+  因此一并注册了 13 个配置记录与 `TaskRequest` / `TaskResult` / `ToolCall`。
+  另把 `-H:IncludeResources` 补上 D3D 的 `.obj` 与 ES2 的 `.frag` / `.vert` 着色器资源
+  （漏掉不会构建失败，而是首次绘制时静默坏掉）。
+  `NativeImageMetadataTest` 扩到 7 条断言（已反向验证），DesktopNative 产物自证第 ⑧ 条改为
+  逐类检查启动链路。**诚实说明**：这是手工推导的「已知缺口已闭」，不等于「证明完整」——
+  真机逐功能验证仍待 `N-05` / `N-16`，抄底方案（tracing agent）登记为 `N-17`。
 - **原生镜像桌面端启动即崩（issue #26）**：`aha-desktop-native.exe` 一启动就报
   `ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp`——JavaFX 入口有两处反射：
   `Application.launch(String...)` 用 `Class.forName` 加载主类，`LauncherImpl` 又用

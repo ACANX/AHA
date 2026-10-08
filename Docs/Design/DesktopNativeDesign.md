@@ -275,6 +275,12 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 （`TODO.md` N-13）。不现在做，是因为资源清单漏一项的后果是**运行期缺文件**，
 必须先有真机走查（`N-05`）兜住，再收窄。
 
+**2026-10-08 同批修正（建 CLI 原生镜像时发现）**：上面那份资源通配**漏了 `yaml` / `yml` / `svg`**。
+而 `ConfigLoader` 用 `getResourceAsStream("/AhaDefault.yaml")` 读内置配置、
+`ProviderPresets` 读 `/ModelDefault.yml`，**漏掉的症状是启动即报 `CONFIG_NOT_FOUND`**
+（不是构建失败）。已把两份参数文件的正则补上 `svg|yaml|yml`——这是「不查资源清单就必踩」的坑，
+与 `N-13` 的「先别急着收窄」并不矛盾：收窄的前提是**先把该有的都列全**。
+
 ### 5.5 给 JDK 29 铺路（观察项）
 
 - 原生镜像对**预览特性**的支持窗口（原始类型、结构化并发等）：哪些能编、哪些要开关；
@@ -289,7 +295,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | # | 风险 | 现状 | 应对 |
 |---|---|---|---|
 | R1 | JavaFX + native-image 需要一长串「运行期初始化」清单，首次跑很可能在某个类上失败 | 参数文件里已放了一批已知点（来自 Gluon Substrate 的同款处理方式），但**未验证到位** | 按失败信息把类名加进 `--initialize-at-run-time`；只改参数文件 |
-| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26）**：JavaFX `Application.launch` 用 `Class.forName` 加载主类、`LauncherImpl` 用 `getConstructor().newInstance()` 实例化它，未注册时启动即 `ClassNotFoundException` | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 的构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；`NativeImageMetadataTest` 与工作流产物自证双层守卫 |
+| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException` | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；`NativeImageMetadataTest` 与工作流产物自证双层守卫 |
 | R3 | JavaFX 平台原生库未打进镜像 | 已把 `.so/.dylib/.dll` 纳入资源清单 | 首次真机运行若是 `UnsatisfiedLinkError`，据此调整 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 工作流用 `graalvm-community` 的对应版本号 | 该腿失败即是答案（隔离，不影响其余）；可先降到 JDK 26 或等发布 |
 | R5 | 产物体积大（把 JDK 与全部依赖编进去了） | 预期几十 MB | 后续再谈瘦身（`-H:-IncludeAllTimeZones` 等），先保证能跑 |
@@ -311,6 +317,60 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 守卫分两层：`aha-desktop/src/test/.../NativeImageMetadataTest` 在 **Build / Gate** 阶段
 拦住「元数据被删 / 改坏」（已做反向验证），`DesktopNative.yml` 的产物自证再查一次
 **构建产物**里的元数据——「构建成功」不等于「启动得起来」。
+
+**已踩的反射坑：JavaFX 启动链路（issue #35，2026-10-08）**：
+
+修完 #26 后，下一处报到 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`。
+查 JavaFX 25 字节码，发现**工具包这一层的反射是链式的**，只注册一个类没有意义：
+
+| 位置 | 反射点 | 目标类 |
+|---|---|---|
+| `Toolkit.getToolkit()` | `Class.forName` + `getDeclaredConstructor().newInstance()` | `com.sun.javafx.tk.quantum.QuantumToolkit` |
+| `PlatformFactory.getPlatformFactory()` | 同上 | `com.sun.glass.ui.<平台>.<平台>PlatformFactory`（`win` / `gtk` / `mac`） |
+| `GraphicsPipeline.createPipeline()` | `Class.forName` + `getMethod("getInstance")` | `com.sun.prism.<d3d|es2|sw|j2d>.<X>Pipeline` |
+| `PrRenderer.getRenderer()` | `Class.forName` | `PPSRenderer` / `PSWRenderer` |
+| `RendererFactory` | `Class.forName` | `JSWRendererDelegate` / `SSERendererDelegate` |
+| `PrismFontLoader` | 反射调 `GraphicsPipeline.getPipeline()` / `getFontFactory()` | 字体工厂 |
+| `PulseLogger` | `Class.forName` | `PrintLogger` / `JFRPulseLogger` |
+| `MethodUtil` | `Class.forName` | `com.sun.javafx.reflect.Trampoline` |
+
+此外 Glass / Prism / 字体把**一批类暴露给 JNI 原生代码**（原生库回调 Java、读写结构体字段），
+这些要在 `reachability-metadata.json` 里用 `jniAccessible` + `allDeclaredMethods` / `allDeclaredFields`
+声明，否则运行期抛 `MissingReflectionRegistrationError`。清单见
+`aha-desktop/src/main/resources/META-INF/native-image/.../reachability-metadata.json`
+（按「启动链路」分组；后续又用 tracing agent 采集补充，当前总计 **340 条**），逐条理由见
+[DevLog-20261008-13.md](../DevLog/DevLog-20261008-13.md)。
+
+**反射不只 JavaFX（同一 issue 审计出来的第二类缺口）**：把运行时依赖也查了一遍，
+`sqlite-jdbc` 与 `log4j-core` 都**自带** native-image 元数据（无需本项目处理），
+但 **Jackson 3 不随附任何元数据**——而 AHA 的 `Aha.yaml` / `Model.yml` 与会话记录
+正是 Jackson 反射读写。因此同一批还注册了 13 个配置记录与 `TaskRequest` / `TaskResult` / `ToolCall`。
+不查这一层，会变成「窗口开得起来、一存配置就炸」。
+
+**tracing agent 采集补齐（2026-10-08）**：上面这份清单最初是**静态分析 + 同类工程对照**推导的
+（当初本机没有 GraalVM）。后来在 WSL + GraalVM 25.0.2 上对 GUI 真实跑了一轮 agent，
+采集到 **422 个反射类型 + 69 条资源**；按「依赖自带 / JDK 内部 / 应用栈」分组过滤后，
+补进了 **47 条**此前遗漏的应用栈条目：
+
+- **JavaFX 运行期反射**（约 30 条）：`javafx.scene.Node` / `Parent` / `Scene` / `Stage` /
+  `Region` / `Control` / `Labeled` / `Shape` / `Path` / `Effect` / `Font` / `Interpolator` / `Rule` …
+  —— 来自 CSS / 属性 / 动画系统，「启动链路」清单**不包含**它们；
+- **平台实现类**：Linux 侧 `com.sun.glass.ui.gtk.GtkView` / `GtkWindow` / `GtkPixels`、
+  `com.sun.prism.es2.X11GLFactory`、`FontConfigManager$*` —— 手写清单只写了三平台
+  `*PlatformFactory`，没写这些实现类；**Windows / macOS 的对应类只能各自平台采集**（见 `TODO` `N-22`）；
+- **ServiceLoader provider**：3 个 LLM 适配器 + 3 个工具 Provider（GraalVM 对
+  `META-INF/services` 有内建支持，登记属保险）；
+- **资源盲区**：`sun/text/resources/LineBreakIteratorData`（**无扩展名**）、`*.icu`、
+  `com/sun/glass/utils/NativeLibLoader.class`（JavaFX 以 `.class` 形式读自己）——
+  已补进两份参数文件的 `-H:IncludeResources`。
+
+方法与工具已沉淀成可跨项目复用的技能
+[`graalvm-reachability-metadata`](../../.agents/skills/graalvm-reachability-metadata/SKILL.md)
+（发现 → 登记 → 验证 → 守卫；其中 agent 采集制度见其 `references/agent-collection.md`）。
+
+**诚实说明**：以上是**agent 采集 + 静态审计的组合结果**，仍不构成「证明完整」：
+agent 只覆盖**跑到的路径**，且 Windows / macOS 平台尚未采集。这是 R2 的常态——
+**构建成功不是验收标准**，真机走查（`N-16`）仍要做。
 
 ### 6.2 迭代时改哪里（只改一处）
 
@@ -354,8 +414,10 @@ CLI 发行 zip）一律输出到 `dist/`：
 
 ## 6.4 技能边做边改（本项目约定的工作方式）
 
-本项目同时产出一份可复用的技能：`.agents/skills/java-app-graalvm-native-image-compile/`。
-它的用法被刻意定成**活文档**，而不是做完之后的总结：
+本项目同时产出可复用的技能：工程化全流程的
+`.agents/skills/java-app-graalvm-native-image-compile/`，以及从桌面端 / CLI 两轮实践里抽出的
+元数据专精 `.agents/skills/graalvm-reachability-metadata/`（反射 / JNI / 资源 / 运行期初始化的
+发现 → 登记 → 验证 → 守卫）。前者（本设计所属）的用法被刻意定成**活文档**，而不是做完之后的总结：
 
 - **开工前建骨架**：目标、非目标、四类清单的种子（允许大量「推断待验证」条目）；
 - **每次失败立刻补一条**：格式固定「症状 → 根因 → 修法」，并记来源（哪次运行、哪条报错）；

@@ -147,15 +147,22 @@ metadata:
 
 ## 四类清单（原生镜像的全部难点都在这四类）
 
+> **本节只给入口。** 元数据的**发现 → 登记 → 验证 → 守卫**这条纵向链路已单独抽成技能：
+> [**graalvm-reachability-metadata**](../graalvm-reachability-metadata/SKILL.md)
+> （三条发现路径、来源优先级、精确签名、JNI、资源、四层守卫）。
+> 本节只给与你项目最相关的方向，具体做那一步时看那份技能。
+
 | 类别 | 症状 | 处理方向 |
 |---|---|---|
 | **初始化时机** | 构建期报错「构建时初始化失败 / 触碰了运行期才有的东西」 | `--initialize-at-run-time=<类或包>`（GUI、驱动、日志框架是重灾区） |
-| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reflect-config.json` / `--initialize-at-run-time` / 改用显式注册 |
-| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `-H:IncludeResources=<正则>` |
-| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError` | 让原生库作为资源进镜像 + `--enable-native-access` + 运行期初始化本地加载器类 |
+| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reachability-metadata.json` / `reflect-config.json` / 改用显式注册 |
+| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `resource-config.json` 精确清单 / `-H:IncludeResources=<正则>` |
+| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError`、原生回调失败 | 让原生库作为资源进镜像 + `--enable-native-access` + `jniAccessible` + 运行期初始化加载器类 |
 
 逐条的症状到修法对照，见 [troubleshooting](references/troubleshooting.md)；
-参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)。
+参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)；
+元数据的发现 / 登记 / 验证与常见框架经验库，见
+[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)。
 
 ## 产物自证（不要只看「构建成功」）
 
@@ -202,6 +209,13 @@ metadata:
 | 2026-10-08 | native 二进制启动即 `ClassNotFoundException: <主类>`（issue #26） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 入口的两处反射必须注册**（`launch(String...)` 的 `Class.forName` 与 `LauncherImpl` 的 `getConstructor().newInstance()`）；`main` 改用 `launch(Class, args)`，并用单测 + 产物自证双层守卫 | 实测（AHA：注册 `AhaDesktopApp` 构造器；`NativeImageMetadataTest` 反向验证过） |
 | 2026-10-08 | macOS 腿「构建成功却没上传镜像包」（run 37744912968） | `isolation-and-ci` §3：**`$VAR` 后跟全角字符会被 bash 并进变量名**（`$bin（` → unbound），`set -u` 下退出并**丢掉 outputs**；修法：`${VAR}` + 命中产物立刻写 outputs + `trap 'exit 0' EXIT` | 实测（AHA：macos 镜像包丢失；`CheckScripts.py` 加 YAML 守卫并反向验证） |
 | 2026-10-08 | Windows 腿工具链自证 `PLATFORM: unbound variable` | `isolation-and-ci` §3：runner 自带 VS 环境变量与注入名冲突 → 注入名加前缀 + `${VAR:-}` + 只做记录的步骤对失败加 `|| echo` | 实测（run 37744912968） |
+| 2026-10-08 | native 二进制下一处 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`（issue #35） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 启动反射是链式的，要按「启动链路」一次补齐**（工具包 → Glass 工厂 → Prism 管线 → 渲染器 / 着色器 → 字体 / 日志 / 辅助）；且**反射 ≠ JNI**，Glass / 字体还需 `jniAccessible` + 全量方法 / 字段 | 推导 + 同类工程对照（AHA：76 条元数据、单测已反向验证；**真机待验证**→`N-05`） |
+| 2026-10-08 | 同类工程的公开配置直接照抄会错（issue #35） | `args-cookbook` §3.3：注册的是**方法签名**不是类名，跨版本后者稳、前者不一定（实测：`loadShader` 实为三参，参考配置写的是两参） | 实测（AHA：JavaFX 25 字节码 `javap` 比对） |
+| 2026-10-08 | D3D shader 资源漏进镜像（issue #35 同批发现） | `args-cookbook` §3.1：**着色器扩展名**要进 `-H:IncludeResources`（D3D `.obj`、ES2 `.frag`/`.vert`）；漏掉不是构建失败，是首次绘制静默坏掉 | 推导 + JavaFX jar 扫描（AHA：262 个 `.obj` + 224 个 `.png`） |
+| 2026-10-08 | 手写反射清单「看起来补完了」但实际不完整（issue #35） | `args-cookbook` §3.5：**审计要覆盖整个运行时依赖，不只框架**——`sqlite-jdbc` / `log4j-core` 自带 native-image 元数据，而 **Jackson 3 不带**，业务层的配置 / 会话记录会反射读写失败；「启动链路」只是反射的一部分 | 实测（AHA：293 条元数据；Jackson 缺口靠依赖 jar 扫描发现） |
+| 2026-10-08 | 想回答「还会不会再报别的类找不到」 | `troubleshooting` §5：**手工清单只能做到「已知缺口已闭」，不能证明完整**；要抄底只能 tracing agent 或真机逐功能跑——把这句话写进交付说明，不要过度承诺 | 自述（据本次用户追问） |
+| 2026-10-08 | 同一仓库要编第二个原生目标（CLI，`aha-cli-native`） | `isolation-and-ci` §6：**逐项复制并改名**（模块 / profile / 参数 / 工作流 / tag / 产物），不要合并成一个工作流；**元数据来源会变**——picocli 用 `picocli-codegen` 注解处理器生成（比手写可靠）、JLine 自带但 `Signals` 的 `sun.misc.Signal` 要补 | 实测（AHA：CLI 管线跑通 `native.skip=true`，picocli 生成 30 个类型，单测守卫生成结果） |
+| 2026-10-08 | 建第二个目标时反查发现第一个目标漏了资源（yaml/yml） | `args-cookbook` §3.1：资源正则要**逐项对源码里的 `getResourceAsStream` 路径**，别只凭扩展名直觉；桌面端漏了 `yaml`/`yml` → 启动即 `CONFIG_NOT_FOUND` | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`；两份桌面参数已修） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
 | 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
 
@@ -217,7 +231,7 @@ metadata:
 | **native-image 能编出二进制**（编译期） | **已踩坑→已验证（部分平台）**：2026-10-08 在 AHA 首次真跑，**linux-x64 与 macos-arm64 编译成功**（win-x64 卡在工具链/`.cmd`，见 `references/troubleshooting.md`）。 |
 | Windows 腿的工具链自证（`native-image.cmd`） | **已踩坑**：bash 不能直接执行 `.cmd`，要 `cmd //c`。修法已合入，**待下一次运行确认** |
 | 容器/依赖清单的「真不变式」 | **已踩坑**：`恰好 N 个` 会随传递依赖漂移（不代表坏）；真正的不变式是「三件套齐全 + 无 0 KB 空壳」 |
-| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论 |
+| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论；已知启动链路的反射 / JNI 清单已按静态分析补齐（issue #26/#35），但**未真机确认** |
 | 首次真编 → 三平台真机可运行 → 在别的项目复用一次 | **部分完成**：首次真编已在 Linux/macOS 达成；剩「三平台真机可运行」与「在别的项目复用一次」（见 metadata.maturity） |
 
 这条「验证状态」是技能的一部分，不是免责声明：原生镜像的参数清单与平台行为随
@@ -247,6 +261,9 @@ GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上�
 - [isolation-and-ci](references/isolation-and-ci.md)：四隔离的落地骨架与 CI 编排
 - [measurement-and-experiments](references/measurement-and-experiments.md)：启动速度与内存的测量口径与实验设计
 - [skill-lifecycle](references/skill-lifecycle.md)：这份技能自身的迭代方法、状态标记与迁移清单
+- **[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)**（姊妹技能）：
+  元数据的**发现 / 登记 / 验证 / 守卫**专精（反射 / JNI / 资源 / 初始化），
+  含三路发现法、来源优先级与常见框架经验库 —— 本技能只管「从 jar 到原生二进制」的工程化
 
 ## 模板资产
 

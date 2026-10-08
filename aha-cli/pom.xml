@@ -73,6 +73,32 @@
     <build>
         <plugins>
             <!--
+                picocli 的 native-image 反射元数据（构建期生成）。
+
+                为什么用注记处理器而不是手写清单：picocli 的反射面不小，且**跟着注解变**——
+                子命令靠 `@Command(subcommands=…)` 反射实例化、`@Option` / `@Parameters`
+                字段靠反射注入、类型转换器也要靠反射找。手写一份清单，一旦新增 / 重命名
+                子命令或选项就漏一条，而症状是**运行期**才有的（构建成功、一执行就崩）。
+                `picocli-codegen` 直接扫编译单元，生成的
+                `META-INF/native-image/picocli-generated/reflect-config.json` 随 aha-cli.jar
+                进 classpath，native-image 自动读取——单一来源、与源码同步。
+
+                只作用于编译期：处理器不生成任何业务字节码，只写一份 JSON。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>info.picocli</groupId>
+                            <artifactId>picocli-codegen</artifactId>
+                            <version>${picocli.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!--
                 让 `mvn clean` 清掉 dist/ 里由构建产生的文件。
 
                 必要性：assembly 只覆盖同名文件，旧版本的依赖 jar 会一直留在

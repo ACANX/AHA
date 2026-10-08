@@ -1,0 +1,110 @@
+# AHA CLI · GraalVM native-image 参数清单（JDK 25 基线）
+#
+# 用法（由 aha-cli-native/pom.xml 的 exec 执行）：
+#     native-image @native-image-args.txt -cp <classpath> -o <输出目录>/<可执行名> \
+#                  com.acanx.module.aha.cli.AhaCli
+#
+# ── 与桌面端那份的关系 ────────────────────────────────────────────────────────
+# 本文件是 `aha-desktop-native/src/native/native-image-args.txt` 的姊妹篇。相同的
+# 「为什么这份清单要能自证」的取向，差异只在输入与依赖：
+#
+#   桌面端：Windows/macOS/Linux GUI，依赖 OpenJFX —— 大量的 JavaFX 反射与原生库；
+#   CLI   ：纯终端程序，依赖 picocli + JLine + sqlite + log4j + Jackson —— 没有 JavaFX，
+#           但有终端的原生处理（JLine 自带 native-image 元数据）与 picocli 的反射。
+#
+# 因此本文件**不包含**任何 JavaFX 的 `--initialize-at-run-time`；同时也不像桌面端那样
+# 需要为 SHADER / 字体 / 渲染管线准备元数据。
+#
+# ── 现状（诚实的说明）────────────────────────────────────────────────────────
+# 这是一份**起点**，不是一份已验证到位的清单。第一次跑可能会在某个类上失败——
+# 把失败信息里的类名补进下面的清单即可。这正是本模块定位为「试验性」的原因
+# （见 Docs/Design/CliNativeDesign.md）。
+
+# 实验性选项的解锁开关：**必须排在所有实验性选项之前**（如 -H:IncludeResources）
+-H:+UnlockExperimentalVMOptions
+
+# 优化等级 2（构建慢一些，产物快一些）
+-O2
+
+# 构建期异常带栈，便于定位
+-H:+ReportExceptionStackTraces
+
+# 宿主 JVM 的堆上限：GitHub runner 上 native-image 默认可能吃太多内存
+-J-Xmx4g
+
+# JLine 的 FFM / JNI 终端后端要在运行期访问原生内存（--enable-native-access）
+--enable-native-access=ALL-UNNAMED
+
+# 供应商调用走 HTTPS（含 SSE 流式），另外 http 用于本地调试。
+# ⚠ 已弃用（建议改用 reachability metadata），**暂时保留**：
+#    删掉它会让原生镜像**发不出 HTTPS 请求**——这是「静默坏掉」，不是「构建失败」。
+#    退出路径：真机验证能完成一次真实对话 + build-report 里没有协议处理器的未决条目。
+--enable-url-protocols=http,https
+
+# 非 UTF-8 字符集也要带上：终端编码探测（GBK / Big5 等）依赖它
+-H:+AddAllCharsets
+
+# 产出机器可读的构建报告：它是「下一步该加什么参数」的唯一依据
+--emit build-report
+
+# 提前用上未来版本的默认行为：编不过就是升级信号（与桌面端保持一致）
+--future-defaults=all
+
+# 运行期最大堆上限：native-image 默认按机器内存百分比算，显式烧一个上限更可预期
+# （CLI 可以比桌面端更省，后续按实测把这里调小；先与桌面端对齐，少一个变量）
+-R:MaxHeapSize=1g
+
+# GC：**刻意不指定**，用 native-image 默认的 serial。
+# 桌面端用 G1 是因为 GUI 长驻、关心停顿；CLI 是「启动 → 干活 → 退出」的短命进程，
+# serial 的启动更快、静态体积更小，正是 CLI 想要的。两者取舍不同，所以这里不同。
+
+# ── 资源清单 ────────────────────────────────────────────────────────────────
+# 必须有：
+#   1. 内置配置与预设：AhaDefault.yaml、ModelDefault.yml（ConfigLoader /
+#      ProviderPresets 用 getResourceAsStream 读，**漏掉的症状是启动即报
+#      CONFIG_NOT_FOUND**，不是构建失败）；
+#   2. 版本号资源：com/acanx/module/aha/common/version.properties（AppVersion）；
+#   3. META-INF/services：工具（ToolProvider）与 LLM 适配器走 ServiceLoader 发现；
+#   4. 终端 / 日志配置类资源（properties 等）。
+# 所以扩展名里**必须**有 yaml / yml / properties —— 桌面端那份早期漏了 yaml/yml，
+# 同批一并修正（见 CliNativeDesign.md 与 DevLog）。
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin)$
+-H:IncludeResources=META-INF/services/.*
+
+# ── 必须运行期初始化的类 ────────────────────────────────────────────────────
+# 判据：**构建期初始化就会去碰「运行时才存在的东西」**（数据库文件、终端、文件系统路径）。
+# sqlite-jdbc：静态初始化时会去解压 / 加载本地库
+--initialize-at-run-time=org.sqlite
+# log4j2 的配置装配在运行期按文件系统解析，构建期只会读到构建机的路径
+--initialize-at-run-time=org.apache.logging.log4j.core.config
+--initialize-at-run-time=org.apache.logging.log4j.core.util
+
+# ── 反射 / JNI 元数据的来源（不在本文件里，说明在此便于对账）──────────────────
+# * picocli：**没有**自带 native-image 元数据。本项目在 aha-cli 的编译期用
+#   `picocli-codegen` 注解处理器生成 META-INF/native-image/picocli-generated/reflect-config.json
+#   （见 aha-cli/pom.xml），随 aha-cli.jar 进 classpath，native-image 自动读取。
+#   这比手写命令清单可靠：picocli 的反射面（子命令实例化、@Option 字段注入、
+#   类型转换器）会随注解变化，处理器跟着源码走。
+# * JLine 4：**自带**完整的 native-image 元数据（reflection-config.json /
+#   jni-config.json / resource-config.json / native-image.properties），无需本项目处理。
+# * AHA 自身被 Jackson 反射读写的配置记录：在
+#   aha-cli/src/main/resources/META-INF/native-image/com.acanx.module.aha/aha-cli/reachability-metadata.json。
+# * log4j-core / sqlite-jdbc：**自带**元数据。
+
+# ── 实验位（默认注释掉；一次只开一个，跑完把实测数字写进 CliNativeDesign.md）──
+#
+# ① GC 对比：CLI 默认 serial（启动快）；G1 在长驻大内存场景更稳
+#    --gc=G1
+#
+# ② 体积 / 启动：只带用到的时区与区域设置（各自约 -1~2 MB）
+#    -H:-IncludeAllTimeZones
+#    -H:-IncludeAllLocales
+#
+# ③ 堆参数（当前 1g；CLI 可对比更小的上限）
+#    -R:MaxHeapSize=512m
+#
+# ④ CPU 特性：对外分发的产物不要用 native
+#    -march=x86-64-v3
+#
+# ⑤ 手工 PGO（两阶段，先有典型负载样本）
+#    --pgo=default.iprof

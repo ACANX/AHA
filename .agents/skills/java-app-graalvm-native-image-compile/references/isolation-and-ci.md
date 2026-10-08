@@ -63,6 +63,9 @@
 - 作业名**不要复用** `build` / `gate` 这类名字 —— 分支保护的必需检查按作业名匹配，
   复用会把实验性失败变成「PR 卡住」；
 - 不把它加进必需检查列表。
+- **同一仓库有多个原生目标时，作业名之间也要错开**：桌面端 `native-image-*`、
+  CLI `cli-native-image-*`。两者都不是必需检查，但同名会让日志 / 摘要分不清是哪条管线，
+  也让日后改成必需检查时无法单独选中（实测：AHA 的 DesktopNative 与 CliNative）。
 
 ### 1.3 Tag 隔离：独立前缀，且**不要命中正式发版的过滤**
 
@@ -334,3 +337,34 @@ version=$(printf '%s.%05d' "$base" "${pr:-0}")   # 0.1.1 + 21 → 0.1.1.00021
 
 本项目选第一种：**只有「合并即产出」才谈得上可预期**。
 另加 `concurrency`（同一分支只保留最新一次运行）避免旧运行堆积。
+
+## 6. 第二 / 第 N 个原生目标：怎么复用这一套
+
+同一仓库往多个产物（GUI 应用、CLI、服务）编原生镜像时，**不要再发明一套**，
+也不要硬塞进同一个工作流。做法是逐项复制并改名，每个目标各有一份：
+
+| 项 | 命名法 | AHA 实例 |
+|---|---|---|
+| 模块 | `<app>-native`，`packaging=pom` | `aha-desktop-native` / `aha-cli-native` |
+| Profile | `<app>-native`（各自 `<modules>`，共享 `native.skip` 开关） | `desktop-native` / `cli-native` |
+| 参数文件 | 各模块 `src/native/native-image-args*.txt` | 两份，互不影响 |
+| 工作流 | `<App>Native.yml`，作业名带前缀 | `DesktopNative.yml` / `CliNative.yml` |
+| Tag | `V<版本>-<app>-native` 预发行版 | `V<版本>-aha-desktop-native` / `…-aha-cli-native` |
+| 产物名 | `AHA-<App>-Native-…zip` | `AHA-Desktop-Native-…` / `AHA-Cli-Native-…` |
+
+**为什么不要合并成一个工作流**：两个目标的工具链依赖、失败原因、迭代节奏都不同，
+合并后「一条腿失败」会牵连另一条；分开则各自失败各自隔离，还能单独重跑。
+代价只是两份长得像的 YAML —— 可接受，因为**隔离比 DRY 重要**。
+
+**踩过的差异点（第二目标才会暴露）**：
+
+- **元数据的来源会变**：桌面端是 JavaFX 的一长串 `Class.forName`，要手写；
+  CLI 是 picocli（**用注解处理器生成**，比手写可靠）+ JLine（自带元数据，但
+  `org.jline.utils.Signals` 的 `sun.misc.Signal` 反射要自己补）。
+  → 换目标时**先查每个依赖是否自带 native-image 元数据**，再决定手写什么。
+- **产物自证的不变式会变**：桌面端查「OpenJFX 三件套齐全」；
+  CLI 查「关键依赖齐全 + 没有误入的 JavaFX + 没有 0KB 空壳」。判据要跟着目标换。
+- **资源清单会变**：新增一个资源读取点（如内置 yaml 配置）就要补正则；
+  AHA 建 CLI 时就反查发现客户端（桌面端）的正则漏了 `yaml` / `yml` ——
+  **同仓库复用一次，常能发现第一个目标遗漏的项**。
+

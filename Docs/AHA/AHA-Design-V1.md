@@ -613,6 +613,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
 | `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
+| `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 文件资源 / 运行期初始化）：三路发现法、来源优先级、精确签名、四层守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 
 ## 常用命令
 
@@ -3539,7 +3540,7 @@ Closes #123
 | 1.3 | 云原生 | `aha-cloudfn`（Lambda / 阿里云 FC / 腾讯云 SCF）+ 容器镜像 + K8s Job |
 | 1.4 | 分布式运行时 | 任务编排（DAG）+ 多实例调度 + 结果持久化 |
 | 2.0 | 可观测与生态 | OpenTelemetry + 官方扩展仓库 + 跨厂商 Agent 协作（A2A） |
-| 1.x | native-image | CLI native binary |
+| 1.x | native-image | CLI native binary（0.1.x 已先以试验模块 `aha-cli-native` + `CliNative.yml` 落地） |
 
 ### 1.1 1.0 前必须补齐的能力缺口
 
@@ -3700,6 +3701,7 @@ Closes #123
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
 | `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
+| `CliNativeDesign.md` | CLI **原生镜像**（试验性）：`aha-cli-native` 模块与 `CliNative.yml` 工作流；与桌面端共享隔离 / 版本 / 自证方法论，差异在 picocli 注解处理器生成元数据、JLine Signals 缺口与无 JavaFX |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
 | `SelfHostingDesign.md` | AHA 自举里程碑（1.0 硬门槛：从依赖其他 Harness 切换到独立自举） |
