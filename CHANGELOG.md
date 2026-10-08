@@ -55,6 +55,11 @@
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
 ### 变更
+- **构建契约明确化**：默认构建（不带 profile）只保证「能编译、能打 jar、不报错」；
+  工具链 / 平台相关的产物（原生镜像）**只在专用 profile 下**构建，
+  且内层开关默认关闭（`native.skip` 默认 `true`，由 `-Pdesktop-native` 置为 `false`）。
+  实测默认 `clean package`：反应堆 7 个模块、native 相关日志 0 行、原生模块 `target/` 未被触碰。
+  规则写进 `BuildSpec.md` §7 与 `DesktopNativeDesign.md` §2.0。
 - **构建产物统一落 `dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
   与 CLI 发行包一起放进 `dist/`（已在 `.gitignore` 里）；
   CLI 的 zip 改由工作流在临时目录打好后移入，避免把正在写入的归档自身收进去。

@@ -42,14 +42,25 @@ runs:
       run: |
         set -uo pipefail
 
-        # 1) 清掉失败标记：被标记过的 artifact，Maven 在更新间隔内不会重新尝试。
-        find "${HOME}/.m2/repository" -name '*.lastUpdated' -delete 2>/dev/null || true
+        # 清掉失败标记：被标记过的 artifact，Maven 在「更新间隔」内不会重新尝试，
+        # 报出的是 "... this failure was cached in the local repository ..."。
+        #
+        # **每轮都要清**（见下面的循环），不能只在循环前清一次：
+        # 首轮失败本身就会写下 *.lastUpdated，于是后续重试会立刻从缓存失败——
+        # 表现为「重试了 3 次，日志一模一样」，等于没有重试。
+        # 2026-10-08 的 Build 里真实撞到：org.jacoco:jacoco-maven-plugin:0.8.15
+        # 在 Central 上存在（HTTP 200）却连续 3 次报 "Could not find artifact"。
+        clear_failure_cache() {
+          find "${HOME}/.m2/repository" -name '*.lastUpdated' -delete 2>/dev/null || true
+        }
 
         # 2) 判定「这个失败值不值得重试」。
         #    只认与代码无关的那几类：依赖解析不到、传输中断、远端 5xx、本地负缓存。
         TRANSIENT_PATTERN='Could not find artifact|could not be resolved|Could not transfer artifact|Could not resolve dependencies|was cached in the local repository|Connection reset|Read timed out|status: 5[0-9][0-9]|Bad Gateway|Service Unavailable'
 
         for i in $(seq 1 "${MVN_ATTEMPTS}"); do
+          # 每轮开跑前清一次：否则首轮写下的失败标记会让后续重试「秒失败」
+          clear_failure_cache
           LOG="$(mktemp)"
           echo "::group::Maven 第 ${i}/${MVN_ATTEMPTS} 次：${MVN_COMMAND}"
           # 用 bash -c 执行整条命令串：不加引号的 `${MVN_COMMAND}` 会被词分割，
@@ -77,5 +88,9 @@ runs:
           rm -f "${LOG}"
         done
 
-        echo "Maven 连续 ${MVN_ATTEMPTS} 次都因瞬时故障失败——请先看仓库/网络状况，再看依赖坐标"
+        echo "Maven 连续 ${MVN_ATTEMPTS} 次都因瞬时故障失败。排查顺序："
+        echo "  1) 该 artifact 在 Central 上是否存在（curl -sI <url> 看状态码）——"
+        echo "     每轮已清过负缓存，所以「存在却取不到」基本就是仓库侧问题；"
+        echo "  2) runner 的网络与代理；"
+        echo "  3) 最后才怀疑依赖坐标：坐标写错时反应堆匹配不上，也会报「中央仓库找不到」"
         exit 1

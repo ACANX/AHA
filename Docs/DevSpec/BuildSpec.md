@@ -198,6 +198,19 @@ POM 语法必须兼容 Maven 3.9.x：
   - **例外**：CLI 的 assembly 输出的是 `dist/` 内的**解包目录**（`bin/` + `lib/`），
     因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
     CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
+- **工具链 / 平台相关的东西一律进专用 profile（强制）**：
+  - 默认构建（不带 `-P…`）的验收标准**只有一条**：**能编译、能打 jar、不报错**；
+    程序能不能跑起来不属于默认构建的职责
+  - 需要额外工具链（如 GraalVM `native-image`）或平台原生依赖（如某平台的 GUI 原生库）
+    而产出的东西，必须**只在专用 profile 里**构建：
+    模块本身也在 profile 的 `<modules>` 里，默认反应堆里根本没有它
+  - 同时对内层开关设「安全默认值」：例如 `aha-desktop-native` 的 `native.skip` 默认为 `true`，
+    由 profile 激活时置为 `false`。这样「模块误入反应堆」与「真的去编原生镜像」是两件事，
+    误入也不会要求环境具备工具链
+  - 理由：一旦默认路径依赖平台工具链，构建失败的原因会从「代码问题」变成「环境问题」，
+    而后者极难在别人的机器上复现——这是把一个可诊断的失败换成不可诊断的失败
+  - 已有实现：`aha-desktop-native`（原生镜像，`-Pdesktop-native[,native-jdk27]`）；
+    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节
 - 跨平台脚本编码与行尾约束（由 `bin/CheckScripts.py` 在 CI 中校验）：
   - `*.bat` / `*.cmd`：**纯 ASCII + CRLF + 无 BOM**——CMD 按 ANSI 代码页解析批处理，
     非 ASCII 字节会产生 `&`、`|` 等元字符并导致注释 / echo 行被当作命令执行

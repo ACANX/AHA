@@ -74,6 +74,15 @@ metadata:
 | Tag | 独立前缀（如 `native-v…`），**不匹配**正式发版的 tag 过滤（如 `V*`/`v*`） | 复用 `V<版本>`：一合并就触发正式发版 |
 | 失败传播 | `fail-fast: false` + 实验腿 `continue-on-error` + 发布作业 `if: always()` | 默认行为：一条腿失败，其余产物一起丢 |
 
+**总约定一句话**：默认构建只保证「能编译、能打 jar、不报错」，
+原生编译只在专用 profile 下发生。两层都要设：
+① 模块进 profile 的 `<modules>`（默认反应堆里没有它）；
+② 内层开关给安全默认值（如 `native.skip=true`，由 profile 置 `false`）——
+这样「模块误入反应堆」也不会要求环境装好 GraalVM。
+
+理由是可诊断性：默认路径一旦依赖平台工具链，构建失败就从「代码问题」变成「环境问题」，
+而后者极难在别人的机器上复现。
+
 细节与可拷贝的骨架见 [isolation-and-ci](references/isolation-and-ci.md)。
 
 ## 落地步骤

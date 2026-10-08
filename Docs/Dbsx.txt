@@ -268,6 +268,26 @@ FileReadTool 误导描述。
   注意 -pl 要显式带上 aha-desktop：profile 加入的模块不会被 -am 带上游
   （症状是「在中央仓库找不到 aha-desktop」）
 
+构建契约（用户明确要求，2026-10-08）
+------------------------------------
+
+[已完成] 原生编译**只在专用 profile 下**定义与执行；默认 profile 只需保证
+         「能编译、能打 jar、不报错」（可不可以运行不在默认构建的职责内）
+[已完成] 两层保障：① 模块只在 profile 的 <modules> 里（默认反应堆没有它）
+         ② 内层开关安全默认（native.skip 默认 true，由 -Pdesktop-native 置 false）
+[已完成] 理由写进规范：默认路径一旦依赖平台工具链，失败原因会从「代码问题」
+         变成「环境问题」，后者在别人机器上极难复现
+[已完成] 实测：默认 ./mvnw clean package → BUILD SUCCESS、反应堆 7 个模块、
+         native 相关日志 0 行、原生模块 target/ 完全未被触碰、6 个模块 jar 全产出
+[已完成] 顺带修 CI 抖动的真因：maven-run action 原来只在重试循环**之前**清一次
+         *.lastUpdated → 首轮失败写下负缓存后，后两次重试会「秒失败」（等于没重试）。
+         已改为每轮开跑前清理，并把失败提示按「先查 Central 是否有该 artifact →
+         再查网络 → 最后才怀疑坐标」的顺序重写
+[已完成] 核对：CI 报错的 org.jacoco:jacoco-maven-plugin:0.8.15 **在 Central 上存在**
+         （HTTP 200、maven-metadata 里也有）→ 属于瞬时/负缓存，不是版本问题
+[已完成] Release.yml 的桌面端 glob 收紧为 dist/aha-desktop-[0-9]*.zip，
+         避免把 aha-desktop-native-*.zip 误当成桌面端 jar 包
+
 构建产物落点（用户明确要求，2026-10-08）
 ----------------------------------------
 

@@ -433,6 +433,14 @@
             <modules>
                 <module>aha-desktop-native</module>
             </modules>
+            <properties>
+                <!--
+                    只有本 profile 激活时才允许调用 native-image。
+                    这样「模块被带进反应堆」与「真的去编原生镜像」是两件事，
+                    误入反应堆也不会要求环境具备 GraalVM。
+                -->
+                <native.skip>false</native.skip>
+            </properties>
         </profile>
     </profiles>
 

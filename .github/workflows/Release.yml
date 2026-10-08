@@ -110,7 +110,9 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(dist/aha-desktop-*.zip)
+          # 用 [0-9] 而不是 *：这样不会把 dist/ 里可能存在的
+          # aha-desktop-native-<版本>-<jdk>.zip（原生镜像包）误当成桌面端 jar 包。
+          files=(dist/aha-desktop-[0-9]*.zip)
           if [ "${#files[@]}" -ne 1 ]; then
             echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
             exit 1
@@ -155,7 +157,7 @@ jobs:
           #   - 缺依赖   → 启动阶段就报 FindException（模块未找到）
           # 实测 `java --validate-modules` **不能**当这个判据：抽掉 aha-core 后它照样退出 0、
           # 一字不说（已在本地做过反向对照）。
-          zip_path="$(pwd)/$(ls dist/aha-desktop-*.zip)"
+          zip_path="$(pwd)/$(ls dist/aha-desktop-[0-9]*.zip)"
           tmp=$(mktemp -d)
           (cd "$tmp" && "$JAVA_HOME/bin/jar" xf "$zip_path")
 
@@ -184,4 +186,4 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/aha-desktop-*.zip
+          files: dist/aha-desktop-[0-9]*.zip
