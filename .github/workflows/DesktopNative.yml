@@ -284,8 +284,9 @@ jobs:
           work=aha-desktop-native/target/native
           # POM 产出的是 aha-desktop-native-<版本>-<jdk>.zip，
           # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
-          src=$(ls aha-desktop-native-*.zip)
-          target="aha-desktop-native-${{ needs.native-version.outputs.version }}-jdk${{ matrix.jdk }}-${{ matrix.label }}.zip"
+          # 产物统一落 dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
+          src=$(ls dist/aha-desktop-native-*.zip)
+          target="dist/aha-desktop-native-${{ needs.native-version.outputs.version }}-jdk${{ matrix.jdk }}-${{ matrix.label }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
@@ -294,7 +295,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
-          path: aha-desktop-native-*.zip
+          path: dist/aha-desktop-native-*.zip
           if-no-files-found: error
           # 实验腿的失败不该把「没有文件」变成错误之外的噪音
           retention-days: 14
@@ -309,17 +310,19 @@ jobs:
     if: always() && needs.native-version.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 dist/ 不是一回事，
+      # 因此目录名刻意用 artifacts/，免得看起来像在往 dist/ 里塞东西。
       - name: 下载全部制品
         uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: artifacts
 
       - name: 整理资产
         run: |
           set -euo pipefail
           shopt -s nullglob
-          find dist -name '*.zip' -exec mv -n {} dist/ \;
-          files=(dist/*.zip)
+          find artifacts -name '*.zip' -exec mv -n {} artifacts/ \;
+          files=(artifacts/*.zip)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "::error::没有任何原生包可发布（所有腿都失败了）"
             exit 1
@@ -335,7 +338,7 @@ jobs:
           name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
           # 预发行版：不出现在 releases/latest，不会被误当成正式版本
           prerelease: true
-          files: dist/*.zip
+          files: artifacts/*.zip
           body: |
             ## 这是什么
 

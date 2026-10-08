@@ -157,7 +157,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
-          path: <原生模块>-*.zip
+          path: dist/<原生模块>-*.zip
           if-no-files-found: error
 
   native-publish:
@@ -173,8 +173,9 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          find dist -name '*.zip' -exec mv -n {} dist/ \;
-          files=(dist/*.zip)
+          # 制品（artifact）与「构建产物目录 dist/」不是一回事，因此用 artifacts/ 承接
+          find artifacts -name '*.zip' -exec mv -n {} artifacts/ \;
+          files=(artifacts/*.zip)
           [ "${#files[@]}" -gt 0 ] || { echo "::error::没有任何包可发布"; exit 1; }
           ls -lh "${files[@]}"
       - name: 发布预发行版
@@ -184,4 +185,4 @@ jobs:
           tag_name: native-v${{ needs.native-version.outputs.version }}
           name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
           prerelease: true
-          files: dist/*.zip
+          files: artifacts/*.zip

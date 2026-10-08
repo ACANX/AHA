@@ -268,6 +268,21 @@ FileReadTool 误导描述。
   注意 -pl 要显式带上 aha-desktop：profile 加入的模块不会被 -am 带上游
   （症状是「在中央仓库找不到 aha-desktop」）
 
+构建产物落点（用户明确要求，2026-10-08）
+----------------------------------------
+
+[已完成] 编译出来的 .zip 程序文件统一输出/保存到 dist/ 目录，
+         不再放到仓库根目录下保存或暂存
+         - 桌面端便携包：aha-desktop/pom.xml 的 assembly outputDirectory → dist/
+         - 原生镜像包：aha-desktop-native/pom.xml 的 assembly outputDirectory → dist/
+         - CLI 发行 zip：工作流先在临时目录打好再移入 dist/
+           （直接在 dist/ 里写会把正在写入的归档自身收进去）
+         - 注意：CLI 的 assembly 输出的是 dist/ 内的**解包目录**（bin/ + lib/），
+           它的 outputDirectory 必须保持仓库根，否则会变成 dist/dist/…
+         - 规则已写进 Docs/DevSpec/BuildSpec.md §7；技能模板资产同步
+         - 实测：./mvnw package（桌面端）与 -Pdesktop-native package（原生端）
+           两个 zip 均落到 dist/，仓库根无残留
+
 工作方式（用户明确要求，2026-10-08）
 ------------------------------------
 

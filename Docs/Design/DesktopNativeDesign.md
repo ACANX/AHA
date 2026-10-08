@@ -68,7 +68,7 @@ target/native/lib/*.jar（实测 18 个：5 个本项目模块 + 3 个 OpenJFX +
 target/native/aha-desktop-native[.exe]
         │  打包（二进制 + README + 两份参数文件 + LICENSE/CHANGELOG）
         ▼
-aha-desktop-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  native-v<版本> 预发行版
+dist/aha-desktop-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  native-v<版本> 预发行版
 ```
 
 ### 3.1 为什么走 classpath 而不是 module-path
@@ -212,7 +212,17 @@ POM 与工作流都**不需要动**：参数文件是单一来源，且会原样
 新增一类平台的差异（比如某平台要额外的 `--initialize-at-run-time`）时，
 也可以按同样思路再加一份参数文件 + 一个 profile，而不是在 POM 里堆条件。
 
-### 6.3 本机怎么试（Windows 为例）
+#### 3.4 产物落点：统一在 `dist/`
+
+仓库根**只放源码与文档**，不放构建物。所有打包产物（桌面端便携包、原生镜像包、
+CLI 发行 zip）一律输出到 `dist/`：
+
+- `dist/` 已在 `.gitignore` 里，不会被误提交；
+- 它同时是 **CLI 发行目录的解包位置**（`dist/bin`、`dist/lib`，见 `ReleaseProcess.md` §3），
+  因此 CLI 的 assembly **不能**再套一层 `dist/`（否则会变成 `dist/dist/…`）；
+  CLI 的 zip 由工作流在临时目录打好后移入 `dist/`，避免「把正在写入的自己收进归档」。
+
+## 6.3 本机怎么试（Windows 为例）
 
 ```powershell
 # 1) 装 GraalVM（含 native-image），或指定已有的：

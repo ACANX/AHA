@@ -191,6 +191,13 @@ POM 语法必须兼容 Maven 3.9.x：
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
   - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `dist/` 布局保持一致（`$DIR/../lib`）
   - `dist/` 不入库，须在 `.gitignore` 中保持忽略
+- **构建产物一律输出到 `dist/`（仓库根只放源码与文档）**：
+  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `dist/`，**不得**在仓库根
+    生成或暂存任何 `.zip`（根目录被构建物污染后，`git status` 与「找产物」都变得不可靠）
+  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/dist</outputDirectory>`
+  - **例外**：CLI 的 assembly 输出的是 `dist/` 内的**解包目录**（`bin/` + `lib/`），
+    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
+    CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
 - 跨平台脚本编码与行尾约束（由 `bin/CheckScripts.py` 在 CI 中校验）：
   - `*.bat` / `*.cmd`：**纯 ASCII + CRLF + 无 BOM**——CMD 按 ANSI 代码页解析批处理，
     非 ASCII 字节会产生 `&`、`|` 等元字符并导致注释 / echo 行被当作命令执行

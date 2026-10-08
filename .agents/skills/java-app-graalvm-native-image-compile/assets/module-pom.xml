@@ -226,7 +226,8 @@
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
                             <finalName>${native.name}-${native.version}</finalName>
-                            <outputDirectory>${project.parent.basedir}</outputDirectory>
+                            <!-- 产物统一落 dist/：仓库根只放源码与文档 -->
+                            <outputDirectory>${project.parent.basedir}/dist</outputDirectory>
                             <attach>false</attach>
                         </configuration>
                     </execution>

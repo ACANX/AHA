@@ -125,7 +125,11 @@
                                 —— 文件名里的平台信息来自构建期真实解析结果，不是手写常量。
                                 发布工作流据此把各平台包挂到 release 页面（见 Release.yml）。
                             -->
-                            <outputDirectory>${maven.multiModuleProjectDirectory}</outputDirectory>
+                            <!--
+                                产物统一落 dist/：仓库根只放源码与文档，不放构建物。
+                                （dist/ 已在 .gitignore 里，且它同时是 CLI 发行目录的解包位置。）
+                            -->
+                            <outputDirectory>${maven.multiModuleProjectDirectory}/dist</outputDirectory>
                             <finalName>aha-desktop-${project.version}-${javafx.platform}</finalName>
                             <!-- zip 产物不参与部署，关闭 attach 以消除警告 -->
                             <attach>false</attach>

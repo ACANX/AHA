@@ -54,6 +54,12 @@
 - **检查守卫两项**：`bin/CheckScripts.py` 新增「源码文件不得被 `.gitignore` 吃掉」；
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
+### 变更
+- **构建产物统一落 `dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
+  与 CLI 发行包一起放进 `dist/`（已在 `.gitignore` 里）；
+  CLI 的 zip 改由工作流在临时目录打好后移入，避免把正在写入的归档自身收进去。
+  规则写进 `BuildSpec.md` §7。
+
 ### 修复
 - **`.gitignore` 静默吃掉源码**：不带前导斜杠的 `Log/` 在任意层级匹配，且在 Windows / macOS
   大小写不敏感，于是 `aha-desktop/.../desktop/log/` 的 8 个源文件从未进入版本控制——
