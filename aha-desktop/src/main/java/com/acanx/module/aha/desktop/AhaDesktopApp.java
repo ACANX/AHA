@@ -425,9 +425,15 @@ public final class AhaDesktopApp extends Application {
     /**
      * 桌面端入口。
      *
+     * <p>用 {@code launch(AhaDesktopApp.class, args)} 而不是 {@code launch(args)}：
+     * 后者靠栈帧推断调用类名、再用 {@code Class.forName} 反射加载——原生镜像下
+     * 这是 closed-world 看不到的路径（issue #26）。显式传 {@code Class} 去掉这一跳，
+     * 但它内部仍用 {@code getConstructor().newInstance()} 实例化应用类，
+     * 因此 {@code reachability-metadata.json} 里的构造器注册仍不可少。</p>
+     *
      * @param args 参数
      */
     public static void main(String[] args) {
-        launch(args);
+        launch(AhaDesktopApp.class, args);
     }
 }

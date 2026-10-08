@@ -289,12 +289,27 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | # | 风险 | 现状 | 应对 |
 |---|---|---|---|
 | R1 | JavaFX + native-image 需要一长串「运行期初始化」清单，首次跑很可能在某个类上失败 | 参数文件里已放了一批已知点（来自 Gluon Substrate 的同款处理方式），但**未验证到位** | 按失败信息把类名加进 `--initialize-at-run-time`；只改参数文件 |
-| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | `-H:IncludeResources` 已覆盖常见资源类型 | 真机双击验证；必要时上 `-H:ReflectionConfigurationFiles` |
+| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26）**：JavaFX `Application.launch` 用 `Class.forName` 加载主类、`LauncherImpl` 用 `getConstructor().newInstance()` 实例化它，未注册时启动即 `ClassNotFoundException` | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 的构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；`NativeImageMetadataTest` 与工作流产物自证双层守卫 |
 | R3 | JavaFX 平台原生库未打进镜像 | 已把 `.so/.dylib/.dll` 纳入资源清单 | 首次真机运行若是 `UnsatisfiedLinkError`，据此调整 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 工作流用 `graalvm-community` 的对应版本号 | 该腿失败即是答案（隔离，不影响其余）；可先降到 JDK 26 或等发布 |
 | R5 | 产物体积大（把 JDK 与全部依赖编进去了） | 预期几十 MB | 后续再谈瘦身（`-H:-IncludeAllTimeZones` 等），先保证能跑 |
 | R6 | 未签名 → macOS Gatekeeper 拦截、Windows SmartScreen 提示 | 已知 | `README.txt` 里写明放行方式；签名是另一件事 |
 | R7 | 三个平台的关键差异被「只在 Windows 试」掩盖 | 已知 | 每次改参数后,至少在本机（Windows）+ 一条 Linux 腿上看结论 |
+
+**已踩的反射坑：JavaFX 入口（issue #26，2026-10-08）**：
+
+JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-world 看不到：
+
+1. `Application.launch(String... args)` 用栈帧推断出调用类名，再
+   `Class.forName(callingClassName, false, loader)` 加载它；
+2. `LauncherImpl.launchApplication` 用 `appClass.getConstructor().newInstance()`
+   实例化 `Application` 子类——这条在两种 `launch` 写法下都存在。
+
+因此 `reachability-metadata.json` 必须注册 `com.acanx.module.aha.desktop.AhaDesktopApp`
+（至少构造器）；`main` 也改为显式 `launch(AhaDesktopApp.class, args)`，去掉第 1 条反射。
+守卫分两层：`aha-desktop/src/test/.../NativeImageMetadataTest` 在 **Build / Gate** 阶段
+拦住「元数据被删 / 改坏」（已做反向验证），`DesktopNative.yml` 的产物自证再查一次
+**构建产物**里的元数据——「构建成功」不等于「启动得起来」。
 
 ### 6.2 迭代时改哪里（只改一处）
 

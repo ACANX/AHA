@@ -537,6 +537,19 @@ jobs:
             echo "::warning::$rpt_note——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
           fi
 
+          # ⑧ 可达性元数据必须注册 JavaFX 应用主类（issue #26 的回归守卫）。
+          #    缺了它：native-image 构建**成功**，二进制一启动就
+          #    ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp。
+          #    正是「构建成功不是验收标准」——所以要查元数据，不能只看编译通过。
+          meta="$work/reachability-metadata.json"
+          if [ -f "$meta" ] && grep -q "com.acanx.module.aha.desktop.AhaDesktopApp" "$meta"; then
+            meta_note="已注册主类 AhaDesktopApp"
+            echo "可达性元数据：$meta_note"
+          else
+            meta_note="**未注册主类 AhaDesktopApp**（$meta）"
+            echo "::warning::$meta_note——原生镜像启动会报 ClassNotFoundException（issue #26）"
+          fi
+
           # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）
           echo "produced=${produced}" >> "$GITHUB_OUTPUT"
           {
@@ -552,6 +565,7 @@ jobs:
             echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个）"
             echo "- 构建报告：$([ -n "${report}" ] && basename "${report}" || echo '**缺失**')"
             echo "- 独立报告包：${rpt_note}"
+            echo "- 主类反射注册：${meta_note}"
             if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
             echo ""
             echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"

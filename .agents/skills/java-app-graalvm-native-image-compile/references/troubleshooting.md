@@ -40,6 +40,7 @@
 | 症状 | 根因 | 修法 |
 |---|---|---|
 | `ClassNotFoundException` / `NoSuchMethodException`（**创建某对象时**） | 反射目标未注册 | 补反射配置或运行期初始化 |
+| `ClassNotFoundException: <你的 Application 子类>`（**启动即报**，栈顶是 `javafx.application.Application.launch`） | JavaFX 入口的两处反射未注册：`launch(String...)` 用 `Class.forName(调用类名)` 加载主类，`LauncherImpl` 用 `getConstructor().newInstance()` 实例化它 | 在 `reachability-metadata.json` 注册主类构造器（`allDeclaredConstructors` / `allPublicConstructors`）；`main` 改用 `launch(YourApp.class, args)` 去掉前一处；再用单测钉住注册（构建成功不等于启动得起来） |
 | `ServiceConfigurationError` / 「找不到实现」 | `META-INF/services` 没进镜像 | `-H:IncludeResources=META-INF/services/.*` |
 | 缺图标/模板/字体/`properties` | 资源未包含 | 扩展 `-H:IncludeResources` |
 | 界面文字变乱码 / `UnsupportedCharsetException` | 字符集不全 | `-H:+AddAllCharsets` |

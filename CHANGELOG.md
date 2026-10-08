@@ -98,6 +98,13 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生镜像桌面端启动即崩（issue #26）**：`aha-desktop-native.exe` 一启动就报
+  `ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp`——JavaFX 入口有两处反射：
+  `Application.launch(String...)` 用 `Class.forName` 加载主类，`LauncherImpl` 又用
+  `getConstructor().newInstance()` 实例化它，而 native-image 的 closed-world 看不到。
+  现补上 `reachability-metadata.json` 的主类构造器注册，`main` 改为显式
+  `launch(AhaDesktopApp.class, args)`；新增 `NativeImageMetadataTest` 在 Build / Gate 阶段守住
+  注册，DesktopNative 产物自证再查一次构建产物里的元数据。
 - **原生镜像缺独立构建报告（issue #29）**：`dist-native.xml` 原先排除
   `<可执行名>-build-report.html`，而文档已把它记为「已随包交付」，两边对不上——
   发布页上既看不到包内报告，也没有独立的报告发布物。现定案：报告**不进镜像包**，
