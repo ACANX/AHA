@@ -98,6 +98,18 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生镜像管线两个跨平台缺陷（run 37744912968）**：
+  ① macOS 腿的产物自证里 `$bin（` 被 bash 当成变量名 → `set -u` 下
+  `bin（: unbound variable` 退出，步骤 outputs 丢失，下游改名/上传被静默跳过——
+  **macos 镜像包因此没传上发布页**。修法：变量后跟全角字符一律写 `${VAR}`；
+  命中产物后**立刻**写 `produced=true`，并加 `trap 'exit 0' EXIT` 兜底。
+  ② Windows 腿的工具链自证里 `PLATFORM` 与 runner 自带的 VS 环境变量冲突 →
+  `unbound variable` 退出。修法：注入名改 `LEG_PLATFORM` / `LEG_LABEL` / `LEG_VERSION`，
+  一律用 `${VAR:-}` 读取，只做记录的命令失败不判死。
+  顺带修：魔法数只比前 2 字节（原先 Windows 期望 `4d5a`、实际 `4d5a9000`，永远不匹配）、
+  去掉 `find -maxdepth`（macOS BSD find 不支持），并把 `Release.yml` 同写法一并修正。
+- **跨平台 shell 守卫**：`bin/CheckScripts.py` 新增 YAML 检查——`$VAR` 后紧跟非 ASCII
+  且未用 `${}` 就报错（已反向验证）；同一条规则不再靠人盯。
 - **原生镜像桌面端启动即崩（issue #26）**：`aha-desktop-native.exe` 一启动就报
   `ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp`——JavaFX 入口有两处反射：
   `Application.launch(String...)` 用 `Class.forName` 加载主类，`LauncherImpl` 又用

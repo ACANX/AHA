@@ -227,28 +227,32 @@ jobs:
       - name: 工具链自证（门禁必须自证）
         # 只做记录：这里失败说明「环境不对」，不等于「代码编不出来」，
         # 所以不阻塞后面的构建（构建自己会再报一次真实原因）。
+        #
+        # 变量名一律带 LEG_ 前缀并用 `${VAR:-}` 读取：Windows runner 的 shell 还带着
+        # VS 开发者命令提示的环境，里面本就有 `PLATFORM` 之类变量，与我们的注入互相打架
+        # （实测本步因 `PLATFORM: unbound variable` 直接退出）。命令失败也只记一行、不判死。
         continue-on-error: true
         if: steps.graal.outcome == 'success'
         run: |
-          set -euo pipefail
+          set -uo pipefail
           echo "—— 本腿参数 ——"
-          echo "OS=${RUNNER_OS} 平台=${PLATFORM} 标签=${LABEL} JDK=${{ matrix.jdk }}"
+          echo "OS=${RUNNER_OS:-未知} 平台=${LEG_PLATFORM:-未知} 标签=${LEG_LABEL:-未知} JDK=${{ matrix.jdk }}"
           echo "原生镜像可执行文件=${{ steps.leg.outputs.executable }}"
           echo "Maven profile=${{ steps.leg.outputs.profiles }}"
-          echo "版本=${VERSION}"
+          echo "版本=${LEG_VERSION:-未知}"
           echo "—— 工具链版本 ——"
-          java -version
+          java -version || echo "（java -version 非零退出，仅记录）"
           # Windows 上 native-image 是 .cmd：bash 不能直接执行 .cmd（实测这一步当时就是这样红的），
           # 必须交回 cmd.exe。`//c` 是 Git Bash 的转义写法，避免被当成路径。
-          if [ "${RUNNER_OS}" = "Windows" ]; then
-            cmd //c "${{ steps.leg.outputs.executable }} --version"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+            cmd //c "${{ steps.leg.outputs.executable }} --version" || echo "（native-image --version 非零退出，仅记录）"
           else
-            "${{ steps.leg.outputs.executable }}" --version
+            "${{ steps.leg.outputs.executable }}" --version || echo "（native-image --version 非零退出，仅记录）"
           fi
         env:
-          PLATFORM: ${{ matrix.platform }}
-          LABEL: ${{ matrix.label }}
-          VERSION: ${{ needs.native-version.outputs.version }}
+          LEG_PLATFORM: ${{ matrix.platform }}
+          LEG_LABEL: ${{ matrix.label }}
+          LEG_VERSION: ${{ needs.native-version.outputs.version }}
 
       - name: 构建原生镜像
         # 容错：原生编译失败在本工作流里**不算整体失败**（可选项，见文件头）。
@@ -439,6 +443,10 @@ jobs:
           # 「改名」「上传制品」被跳过——表现成「构建成功、什么都没上传」。
           # 所以：① 先写一次 false 兜底；② 脚本最后强制 exit 0（本步只做诊断，从不判死）。
           echo "produced=false" >> "$GITHUB_OUTPUT"
+          # 再加一道保险：EXIT trap 无条件以 0 退出。`set -u` 被非 ASCII 变量名带崩、
+          # 平台差异命令失败……都不该让本步「红 + 丢 outputs」（2026-10-08 macOS 腿
+          # 就是因为「变量后紧跟全角括号」被 bash 当成变量名的一部分而 unbound，镜像包没传上去）。
+          trap 'exit 0' EXIT
 
           echo "—— 现场：$work ——"
           ls -la "$work" 2>/dev/null || echo "（目录不存在）"
@@ -451,7 +459,8 @@ jobs:
           # ① 找可执行文件：不写死路径，先看约定位置，再在整个 target/ 兜一遍
           bin=$(ls "$work/aha-desktop-native" "$work/aha-desktop-native.exe" 2>/dev/null | head -n1 || true)
           if [ -z "$bin" ]; then
-            bin=$(find aha-desktop-native/target -maxdepth 3 -type f \
+            # 不用 find -maxdepth：macOS 的 BSD find 不支持它（会报 unknown primary）
+            bin=$(find aha-desktop-native/target -type f \
                     \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null | head -n1 || true)
           fi
           size=0
@@ -461,12 +470,12 @@ jobs:
             # 构建「成功」却没有产物，只可能是「被跳过」或「早退」，把两种可能都点名，
             # 免得看的人以为只是「这次运气不好」。
             if [ "${{ steps.native.outcome }}" = "success" ]; then
-              note="$note；最可能是 native.skip 未生效（静默跳过）或 native-image 早退"
+              note="${note}；最可能是 native.skip 未生效（静默跳过）或 native-image 早退"
             fi
             echo "::warning::$note"
           else
             size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
-            echo "找到可执行文件：$bin（$((size / 1024)) KB）"
+            echo "找到可执行文件：${bin}（$((size / 1024)) KB）"
 
             # ② 体积下限 5 MB：小于它基本是「编译没真正完成却留下壳」
             if [ "$size" -lt 5242880 ]; then
@@ -474,22 +483,28 @@ jobs:
               echo "::warning::$note"
             else
               produced=true
+              # 命中有效产物就**立刻**写 outputs：本步后面还有一串诊断，
+              # 任何一处意外退出都不能把 produced 吞掉（2026-10-08 macOS 腿就因此丢了镜像包）。
+              echo "produced=true" >> "$GITHUB_OUTPUT"
             fi
 
-            # ③ 平台魔法数：确认是本平台二进制而不是错平台的
-            magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+            # ③ 平台魔法数：确认是本平台二进制而不是错平台的。
+            #    只比前 2 字节：PE 的 DOS stub 后两字节随 linker 变，4 字节比较会误报
+            #    （实测 Windows 期望 4d5a、实际 4d5a9000，一直「不匹配」）。
+            magic=$(head -c 2 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
             case "${RUNNER_OS}" in
-              Windows) expect="4d5a" ;;      # MZ（PE）
-              Linux)   expect="7f454c46" ;;  # ELF
-              macOS)   expect="cffaedfe" ;;  # Mach-O 64 位（小端）
+              Windows) expect="4d5a" ;;  # PE：MZ
+              Linux)   expect="7f45" ;;  # ELF：0x7f 'E'
+              macOS)   expect="cffe" ;;  # Mach-O 64 位（小端）
             esac
             ok=false
             [ "$magic" = "$expect" ] && ok=true
-            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
+            # macOS 还可能是大端头（feedfacf）：只比前 2 字节时对应 'feed'
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feed" ]; then ok=true; fi
             if [ "$ok" = "true" ]; then
               echo "魔法数自证通过：$magic"
             else
-              note="${note:+$note；}魔法数不匹配（期望 ${expect}，实际 ${magic:-取不到}）"
+              note="${note:+${note}；}魔法数不匹配（期望 ${expect}，实际 ${magic:-取不到}）"
               echo "::warning::$note"
             fi
           fi
@@ -499,16 +514,17 @@ jobs:
           #    多出来的条目是正常的；空壳才是问题（本项目已在 POM 里排除）。
           jfx=$(ls "$work"/lib/javafx-*.jar 2>/dev/null | wc -l | tr -d ' ')
           total=$(ls "$work"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ')
-          empty=$(find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
+          # 同①：不用 find -maxdepth（macOS BSD find 不支持）
+          empty=$(find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
           if [ "${jfx:-0}" -lt 3 ]; then
-            note="${note:+$note；}classpath 里的 OpenJFX jar 只有 ${jfx} 个（少于三件套）"
+            note="${note:+${note}；}classpath 里的 OpenJFX jar 只有 ${jfx} 个（少于三件套）"
             echo "::warning::$note"
             ls "$work"/lib/javafx-*.jar 2>/dev/null || true
           fi
           if [ "${empty:-0}" -ne 0 ]; then
-            note="${note:+$note；}lib/ 里有 ${empty} 个 0 KB 空壳 jar"
+            note="${note:+${note}；}lib/ 里有 ${empty} 个 0 KB 空壳 jar"
             echo "::warning::$note"
-            find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null || true
+            find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null || true
           fi
           echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个"
 
@@ -534,7 +550,7 @@ jobs:
             echo "独立报告包：$rpt_note"
           else
             rpt_note="**缺失**（dist/ 下没有 AHA-Desktop-Native-Report-*.zip）"
-            echo "::warning::$rpt_note——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
+            echo "::warning::${rpt_note}——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
           fi
 
           # ⑧ 可达性元数据必须注册 JavaFX 应用主类（issue #26 的回归守卫）。
@@ -546,8 +562,8 @@ jobs:
             meta_note="已注册主类 AhaDesktopApp"
             echo "可达性元数据：$meta_note"
           else
-            meta_note="**未注册主类 AhaDesktopApp**（$meta）"
-            echo "::warning::$meta_note——原生镜像启动会报 ClassNotFoundException（issue #26）"
+            meta_note="**未注册主类 AhaDesktopApp**（${meta}）"
+            echo "::warning::${meta_note}——原生镜像启动会报 ClassNotFoundException（issue #26）"
           fi
 
           # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）

@@ -213,20 +213,25 @@ if: always() && needs.<版本作业>.result == 'success'   # 部分平台成功�
 ```bash
 set -uo pipefail          # 注意：**不要**用 set -e
 work=my-native/target/native
+# 任何意外（unbound / 平台差异命令失败）都不该让本步「红 + 丢 outputs」：
+# 丢了 outputs，下游「改名 / 上传」会被静默跳过。
+trap 'exit 0' EXIT
 produced=false
 note=""
+echo "produced=false" >> "$GITHUB_OUTPUT"   # 先兜底
 
 # ① 先打现场：失败时最需要的是「到底有什么」，而不是一句 error
 echo "—— 现场 ——"
 ls -la "$work" 2>/dev/null || echo "（目录不存在）"
-find my-native/target -maxdepth 3 -type f \
+# 不要用 -maxdepth：macOS 的 BSD find 不支持它（unknown primary）
+find my-native/target -type f \
      \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null || true
 ls -la dist 2>/dev/null | head -20 || true
 
 # ② 可执行文件（Windows 带 .exe；先看约定位置，再整个 target/ 兜一遍）
 bin=$(ls "$work/my-native" "$work/my-native.exe" 2>/dev/null | head -n1 || true)
 if [ -z "$bin" ]; then
-  bin=$(find my-native/target -maxdepth 3 -type f \
+  bin=$(find my-native/target -type f \
           \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null | head -n1 || true)
 fi
 
@@ -242,28 +247,32 @@ else
     echo "::warning::$note"
   else
     produced=true
+    # 命中有效产物就**立刻**写 outputs：本步后面还有一串诊断，
+    # 任何一处意外退出都不能把 produced 吞掉（丢了它，改名/上传会被静默跳过）
+    echo "produced=true" >> "$GITHUB_OUTPUT"
   fi
 
-  # 平台魔法数
-  magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+  # 平台魔法数：只比前 2 字节（PE 的 DOS stub 后两字节随 linker 变，
+  # 4 字节比较会一直「不匹配」）
+  magic=$(head -c 2 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
   case "${RUNNER_OS}" in
-    Windows) expect="4d5a" ;;      # PE
-    Linux)   expect="7f454c46" ;;  # ELF
-    macOS)   expect="cffaedfe" ;;  # Mach-O 64 位小端
+    Windows) expect="4d5a" ;;  # PE：MZ
+    Linux)   expect="7f45" ;;  # ELF：0x7f 'E'
+    macOS)   expect="cffe" ;;  # Mach-O 64 位小端
   esac
   ok=false
   [ "$magic" = "$expect" ] && ok=true
-  if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
-  [ "$ok" = "true" ] || { note="${note:+$note；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
+  if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feed" ]; then ok=true; fi
+  [ "$ok" = "true" ] || { note="${note:+${note}；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
                           echo "::warning::$note"; }
 fi
 
 # 关键依赖：真正的不变式是「三件套齐全 + 没有 0 KB 空壳」，
 # **不是**「恰好 3 个」——带分类器与不带分类器的 jar 共用同一份 POM，多出来的条目很正常。
 jfx=$(ls "$work"/lib/*gui*-*.jar 2>/dev/null | wc -l | tr -d ' ')
-empty=$(find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
-if [ "${jfx:-0}" -lt 3 ]; then note="${note:+$note；}本平台 GUI jar 只有 ${jfx} 个"; fi
-if [ "${empty:-0}" -ne 0 ]; then note="${note:+$note；}有 ${empty} 个 0 KB 空壳 jar"; fi
+empty=$(find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')   # 不用 -maxdepth
+if [ "${jfx:-0}" -lt 3 ]; then note="${note:+${note}；}本平台 GUI jar 只有 ${jfx} 个"; fi
+if [ "${empty:-0}" -ne 0 ]; then note="${note:+${note}；}有 ${empty} 个 0 KB 空壳 jar"; fi
 [ -z "$note" ] || echo "::warning::$note"
 
 # 交给后续步骤 + 结论进摘要（成与不成都写，避免「没消息」被误读成「没跑」）
@@ -276,12 +285,22 @@ echo "produced=${produced}" >> "$GITHUB_OUTPUT"
 } >> "$GITHUB_STEP_SUMMARY"
 ```
 
-**三个已经踩过的坑**（写进脚本前先看一遍）：
+**已经踩过的坑**（写进脚本前先看一遍）：
 
-1. `jfx=$(ls dir/*.jar | wc -l)` 放在 `set -e` 下：glob 不匹配时 `ls` 退 2，
+1. `$VAR` 后紧跟中文 / 全角字符（如 `$bin（`）：**部分平台（macOS 的 bash 3.2）会把全角字符
+   并进变量名**，`set -u` 下直接 `bin（: unbound variable` 退出；该步 outputs 随之丢失，
+   下游「改名 / 上传」被静默跳过——AHA 的 macos 镜像包就是这样丢的。→ 一律写 `${VAR}`；
+   `bin/CheckScripts.py` 已加 YAML shell 变量守卫（已反向验证）。
+2. 命中有效产物就**立刻**写 `produced=true`，并用 `trap 'exit 0' EXIT` 兜底：
+   别把 outputs 的生死押在「后面那一长串诊断都不出错」上。
+3. `find -maxdepth` 在 macOS 上不存在（BSD find），会报 unknown primary。→ 去掉 `-maxdepth`。
+4. Windows runner 的 shell 还带着 VS 开发者命令提示的环境，里面本就有 `PLATFORM` 这类变量，
+   与 step 注入互相打架（实测 `PLATFORM: unbound variable`）。→ 注入名加前缀
+   （如 `LEG_PLATFORM`）并用 `${VAR:-}` 读取；只做记录的自证步骤对命令失败加 `|| echo`。
+5. `jfx=$(ls dir/*.jar | wc -l)` 放在 `set -e` 下：glob 不匹配时 `ls` 退 2，
    **赋值语句直接让整步失败**，报错只有一行 `No such file or directory`。→ 用 `set -uo pipefail`。
-2. 「恰好 N 个」这类判据几乎一定会漂：多一个传递依赖就红，而它并不代表坏了。→ 只留不变式。
-3. Windows 上 `native-image` 是 `.cmd`，bash 不能直接执行。→ 交回 `cmd //c`。
+6. 「恰好 N 个」这类判据几乎一定会漂：多一个传递依赖就红，而它并不代表坏了。→ 只留不变式。
+7. Windows 上 `native-image` 是 `.cmd`，bash 不能直接执行。→ 交回 `cmd //c`。
 
 ## 4. 版本号：可追溯到 PR
 

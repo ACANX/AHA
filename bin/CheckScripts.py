@@ -61,7 +61,7 @@ def collect() -> dict[str, list[Path]]:
     在慢文件系统（如 WSL 下的 /mnt/e）上遍历代价很高：既要避免同一棵树
     扫多遍，也要对 SKIP_DIRS 直接剪枝而不要走进去了再逐条判定。
     """
-    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": [], "xml": []}
+    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": [], "xml": [], "yml": []}
     for dirpath, dirnames, filenames in os.walk(ROOT):
         # 就地改写 dirnames 实现剪枝，os.walk 不会进入被移除的子目录
         dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
@@ -74,6 +74,10 @@ def collect() -> dict[str, list[Path]]:
                 found["sh"].append(base / name)
             elif suffix in PY_SUFFIXES:
                 found["py"].append(base / name)
+            elif suffix in (".yml", ".yaml"):
+                # GitHub Actions 的 shell 片段藏在这里：它们由各平台的 bash 执行，
+                # 跨平台差异（macOS bash 3.2 的变量名规则）就靠这一组守住。
+                found["yml"].append(base / name)
             elif suffix == ".xml":
                 # 只关心仓库自己的 XML（pom.xml、assembly 描述符等）。
                 # target/ 与 dist/ 已在 SKIP_DIRS 里剪掉，不会扫到生成物。
@@ -220,6 +224,41 @@ def check_py(path: Path) -> list[str]:
     return problems
 
 
+SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def check_yaml_shell_vars(path: Path) -> list[str]:
+    """YAML（主要是 GitHub Actions 的 shell 片段）：`$VAR` 后不得紧跟非 ASCII。
+
+    来历（2026-10-08 实测，同一条规则踩了两次）：
+
+      * macOS runner 的 bash 把 `$bin（` 解析成变量名 `bin（`，`set -u` 下直接
+        `bin（: unbound variable` 退出——步骤的 outputs 随之丢失，macos 镜像包没上传；
+      * `Release.yml` 里 `$LABEL）、$target（` 等同一写法。
+
+    规避方式只有一个：变量后跟中文 / 全角字符时写 `${VAR}`。
+    GitHub 的 `${{ ... }}` 表达式与 `\\$` 转义不会命中本规则。
+    """
+    problems: list[str] = []
+    rel = path.relative_to(ROOT)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return [f"{rel} 不是 UTF-8，无法检查 shell 变量写法"]
+
+    for number, line in enumerate(text.splitlines(), 1):
+        for match in SHELL_VAR.finditer(line):
+            end = match.end()
+            if end < len(line) and ord(line[end]) > 127:
+                name = match.group(1)
+                problems.append(
+                    f"{rel}:{number} 变量 `{name}` 后紧跟非 ASCII 字符 `{line[end]}`；"
+                    f"部分平台（macOS bash 3.2）会把它并进变量名 → unbound variable。"
+                    f"请写成 `${{{name}}}`"
+                )
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 脚本文件规约检查")
     parser.add_argument("--verbose", action="store_true", help="输出每个文件的检查结果")
@@ -234,6 +273,7 @@ def main() -> int:
         ("sh", check_sh),
         ("py", check_py),
         ("xml", check_xml),
+        ("yml", check_yaml_shell_vars),
     ):
         for path in groups[group]:
             checked += 1
@@ -245,7 +285,7 @@ def main() -> int:
     ignored = check_ignored_sources()
     problems.extend(ignored)
 
-    print(f"\n检查 {checked} 个脚本文件（含 {len(groups['xml'])} 个 XML）")
+    print(f"\n检查 {checked} 个脚本文件（含 {len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     if problems:
         print("\n[问题]")
