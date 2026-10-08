@@ -490,15 +490,15 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 发布预发行版（native-v<版本>）
+      - name: PreRelease-AHA-Desktop-Native-VPR
         # 只有真的收上来包才发版：没有产物却去建一个空 release，比不发更糟
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
           # tag 前缀刻意用 native-v：不匹配 Release.yml 的 V* / v*，
           # 因此这一条不会触发正式发版流程。
-          tag_name: native-v${{ needs.native-version.outputs.version }}
-          name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
+          tag_name: aha-desktop-native-v${{ needs.native-version.outputs.version }}
+          name: AHA-Desktop-Native-Image-${{ needs.native-version.outputs.version }}
           # 预发行版：不出现在 releases/latest，不会被误当成正式版本
           prerelease: true
           files: artifacts/*.zip
