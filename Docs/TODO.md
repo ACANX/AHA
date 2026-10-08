@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.38.0
+**文档版本**：v0.40.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -403,7 +403,7 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 `\bin\AhaDesktop.bat` 会报「找不到 lib」，而提示的 `clean package` 并不会产出 `lib/`
 （只产出 `Dist/aha-desktop-*.zip`）。现已让脚本识别两种布局：没有 `lib/` 时按平台选
 `Dist/aha-desktop-*.zip`，解压到带时间戳的目录后启动，详见
-[DevLog-20261009-06.md](DevLog/DevLog-20261009-06.md)。
+[DevLog-20261009-07.md](DevLog/DevLog-20261009-07.md)。
 
 ### D-03 ☐ 未完成
 
@@ -552,9 +552,11 @@ desktop 亦未列 tool 依赖。
 | v0.33.0 | 2026-10-08 | `N-21` 推进：在 WSL + GraalVM 25.0.2 上首次真跑 tracing agent（CLI 端），采集 400 类型 / 55 资源，与手写清单完成交叉验证；结论回写技能（`discovery` §2.4、`catalog` §A.2） | @ACANX |
 | v0.34.0 | 2026-10-08 | 把 agent 采集**制度化**进技能（新增 `references/agent-collection.md` + `scripts/collect-metadata.sh`）；GUI 端也跑了一轮，补进客户端原生镜像元数据 47 条（293→340）；新增 `N-22`（Win/mac 平台采集） | @ACANX |
 | v0.35.0 | 2026-10-08 | 真机暴露 issue #37（Glass 初始化处 JNI `FindClass` 失败 → segfault）；新增 `jni-config.json`（62 类，扫描 openjfx 三平台 native 源码得到）；`N-16` 进入第二轮待验证 | @ACANX |
-| v0.36.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `DevLog-20261009-06.md` | @ACANX |
-| v0.37.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
-| v0.38.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-10`（推送本分支并提 PR） | @ACANX |
+| v0.36.0 | 2026-10-09 | 真机（#37 修复后）暴露 issue #39（`WinWindow._initIDs` 查自己声明的 `notifyMoving` → `NoSuchMethodError`）；改扫 `Get*ID` 目标类，`jni-config.json` 由 62 → **85** 条（Win* / Mac* 平台实现类 + `EventLoop`）；新增 `G-10`；`N-16` 进入第三轮 | @ACANX / CNXNC |
+| v0.37.0 | 2026-10-09 | 真机（#39 修复后）首次进到 GUI，但暴露 issue #41（效果 peer 动态类名未登记 → `Could not create peer`，控件画不出）；扫描 javafx-graphics 25 jar 登记 **99** 个具体 peer，`reachability-metadata.json` 由 340 → **439** 条；新增 `N-23`、`G-11` | @ACANX / CNXNC |
+| v0.38.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `DevLog-20261009-07.md` | @ACANX |
+| v0.39.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
+| v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1260,6 +1262,11 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       Glass 初始化处 `NoClassDefFoundError: java/lang/Runnable`（issue #37，JNI 可达类未注册）。
       已补 `jni-config.json`（62 条，静态扫描 openjfx 三平台 native 源码的 `FindClass`），
       待 CI 重出包后复跑；见 [DevLog-20261008-15.md](DevLog/DevLog-20261008-15.md)。
+      **第二轮真机结果（2026-10-09）**：JNI 可达类修好后，暴露下一层——
+      `WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`（issue #39）：
+      平台实现类**自己声明**的成员没登记（#37 只扫了 `FindClass` 字面量，平台子类不经 `FindClass`）。
+      已改扫 `Get*ID` 的目标类，`jni-config.json` 由 62 条补到 **85 条**（Win* / Mac* 平台实现类 +
+      `EventLoop`），待 CI 重出包后复跑；见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)。
       验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
       `MissingReflectionRegistrationError` / `NoClassDefFoundError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
@@ -1295,6 +1302,18 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       §3.3 在各自平台跑同一套命令清单，`config-merge-dir` 合并后补进元数据。
       验收标准：三平台元数据分别覆盖各自的 Glass / Prism 实现类；产物自证与
       `NativeImageMetadataTest` 仍绿。
+      **部分闭环（2026-10-09）**：issue #39 的静态扫描（`Get*ID` 目标类）已把
+      Win* / Mac* 平台实现类补进 `jni-config.json`（见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)）；
+      但那是「已知缺口已闭」，agent 在两个平台上的实采仍待做，Prism 侧实现类同样待采。
+- [ ] **N-23**：真机验证原生桌面端**渲染期**元数据（效果 peer）。
+      背景：issue #41——修完 #35/#37/#39 后原生桌面端首次进到 GUI，但渲染到第一个用阴影效果的
+      控件时报 `Could not create peer LinearConvolveShadow`，控件画不出。已对 javafx-graphics 25 的 jar
+      扫描 `com/sun/scenario/effect/impl/**/*Peer`，把 99 个具体 peer 全部登记进
+      `reachability-metadata.json`（见 [DevLog-20261009-06.md](DevLog/DevLog-20261009-06.md)）。
+      验收标准：① 下载 Windows 原生包，双击能开窗、**控件正常绘制**（无 `Could not create peer`）
+      ；② 走一遍窗口/控件/主题相关效果路径（阴影 / 颜色调整 / 混合等）；③ 若仍缺类，
+      按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与对应 `DevLog`。
+      依赖：`G-11`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1340,7 +1359,9 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 | G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
 | G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
-| G-10 | 推送本次变更分支并提 PR（`fix/issue-37-update-script` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/fix/issue-37-update-script` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
+| G-10 | 推送 issue #39 的修复分支并提 PR（`fix/issue-39-native-winwindow-jni` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 第三轮无法开工 | ① `git ls-remote origin refs/heads/fix/issue-39-native-winwindow-jni` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧b 条输出「已注册 JNI 可达类」 | ☐ 未完成 |
+| G-11 | 推送 issue #41 的修复分支并提 PR（`fix/issue-41-native-effect-peers` → `dev`） | 不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-23` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-41-native-effect-peers` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧ 条能看到 `PPSLinearConvolveShadowPeer` | ☐ 未完成 |
+| G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 
