@@ -1211,6 +1211,27 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
+- [ ] **G-07**：完成 PR #15（`dev → main`，`Release:V0.1.1`）的合并。
+      现状（2026-10-08 实测）：**没有文件冲突**（`mergeable_state=clean`），
+      dev head `214611f` 上 `Build`/`Gate`/`Compat`/`CodeQL`/5 条原生腿**全绿**，
+      三个 approve 均落在 `214611ff` 且晚于最后一次 push → GitHub 侧**可以合并**。
+      **两条路，任选一条**：
+      1. 在 PR 页面点绿色 **Merge pull request**（推荐，PR 会被记为 merged）；
+      2. 推送已备好的本地合并提交（无凭据时由人工执行）：
+         ```
+         cd E:\GitRepo\GitHub\ACANX\.aha-merge-tmp
+         git log --oneline -1     # 221ccee Merge branch 'dev' into main（发布 V0.1.1）
+         git push origin HEAD:main
+         ```
+         推完可用 `git worktree remove --force E:\GitRepo\GitHub\ACANX\.aha-merge-tmp` 清理。
+      **若按钮是灰的**，按这个顺序查（详情见 `ReleaseProcess.md` §4.2）：
+      ① `Settings → Branches → main` 里是否存在**没有任何东西会上报**的必需项
+      （如 `code_scanning` / `code_coverage`）——那会造成永久阻塞，需删掉或补上产出；
+      ② 是否开启了「Require approval of the most recent reviewable push」且最后一次 push
+      之后**没有**新审批。
+      合并后链路：推 `main` → `Build` 的 `tag（V<版本号>）` 作业打 `V0.1.1`
+      → `Release.yml` 出 CLI 包 + 桌面端三平台包。
+
 > **为什么单独成节**：这类动作需要有人在仓库或平台上执行（推送凭据、分支保护设置、
 > 平台侧配置、外部环境验收），自动化流程做不到。它们此前**只出现在对话里**——
 > 对话会滚走，一旦漏掉就没有闭环，事后连「有没有做过」都无从判断。
