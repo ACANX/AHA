@@ -208,7 +208,38 @@
    `git merge -s ours` 补血缘；**找不到就不能用**——那属于正常内容合并，
    必须逐条读懂冲突再取舍，绝不能一律选一边。
 
-### 4.2 已经冲突了怎么办
+### 4.2 合并发版 PR 前的三分钟核对（强制）
+
+> **判断「能不能合」看 `mergeable_state`，不看「有没有红叉」。**
+> `clean` = 可以合；`blocked` = 缺审批或缺必需检查；`dirty` = 有冲突。
+> 红叉可能来自**旧提交**上已被重跑覆盖的作业，肉眼会误判。
+
+合并 `dev → main` 之类的发版 PR 前，逐条走完（每条都是一条命令）：
+
+```bash
+# ① 有没有冲突、能不能合（不看页面上的红叉）
+curl -s https://api.github.com/repos/<owner>/<repo>/pulls/<n> \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['mergeable'], d['mergeable_state'])"
+
+# ② 基线上有没有 head 缺的提交 —— 有就必须逐个看，尤其会不会「带内容回退」
+git fetch --all --prune
+git log --oneline origin/<head>..origin/<base>     # 例如 origin/dev..origin/main
+#   典型陷阱：main 上那个 "Release:V0.1.0" 提交把根 POM 带成 0.1.0，
+#   若合并结果取到它，就会「发布回退版本」——而这不产生任何冲突，很容易漏
+
+# ③ 真正合并一次，然后**证明合并结果就是待发布分支的内容**
+git worktree add --detach /tmp/merge-check origin/<base>
+cd /tmp/merge-check && git merge --no-ff origin/<head>
+git diff --stat origin/<head> HEAD      # 输出为空 = 复议面为零（最有力的结论）
+git diff --quiet origin/<head> HEAD || echo '⚠ 合并结果与 head 不一致，逐条看过再推'
+
+# ④ 版本号 8 处逐一核对（根 POM + 六个模块 <parent><version> + AppVersion 回退值）
+```
+
+**复议面为零**（③ 输出为空）是发布前最强的自证：它同时排除了「冲突解错」、「旧内容覆盖新内容」、
+「CI 配置被回退」这三类最难事后发现的合并事故。
+
+### 4.3 已经冲突了怎么办
 
 先别猜，按顺序比对两边的提交与**树**：
 
