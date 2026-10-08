@@ -289,7 +289,7 @@ aha/
 │       ├── tool-authoring/
 │       ├── extension-authoring/
 │       ├── release/
-│       └── graalvm-native-image/
+│       └── java-app-graalvm-native-image-compile/
 └── Docs/
     ├── AHA/
     │   └── AHA-Design-V1.md
@@ -612,7 +612,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `tool-authoring` | 新增工具 | [SKILL.md](.agents/skills/tool-authoring/SKILL.md) |
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
-| `graalvm-native-image` | 把 jar 模式程序编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/graalvm-native-image/SKILL.md) |
+| `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
 
 ## 常用命令
 

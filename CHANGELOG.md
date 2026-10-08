@@ -27,7 +27,7 @@
     启动速度 / 内存占用的影响，为明年适配 JDK 29 铺路。
   - **产物自证**：工作流检查产物存在、体积下限、平台魔法数（PE / ELF / Mach-O）、
     classpath 恰好含 3 个带分类器的 OpenJFX jar；包内附带两份构建参数文件便于事后对账。
-- **可复用技能 `graalvm-native-image`**（`.agents/skills/`）：把本项目在
+- **可复用技能 `java-app-graalvm-native-image-compile`**（`.agents/skills/`）：把本项目在
   「JavaFX + JPMS + JNI + 反射 + 多平台分类器」这一复杂场景下编译原生镜像的经验沉淀成技能 ——
   隔离四条、四类清单（初始化时机 / 反射 / 资源 / JNI）、按症状排错、产物自证四项、测量口径，
   外加可拷贝的 POM 骨架、参数起点与工作流骨架。

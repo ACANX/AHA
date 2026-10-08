@@ -1,5 +1,5 @@
 ---
-name: graalvm-native-image
+name: java-app-graalvm-native-image-compile
 description: 把已能跑的 Java jar 模式程序编译成多操作系统、多架构的 GraalVM Native Image 原生可执行文件。覆盖隔离式落地（profile + 独立工作流 + 独立 tag 命名空间）、依赖与 classpath 准备、反射/资源/JNI/初始化四类清单、JPMS 与 classpath 的取舍、平台分类器与空壳 jar 陷阱、产物自证、按 PR 号的可追溯版本号，以及启动速度与内存占用的对比实验方法。当需要为含 GUI、JPMS、JNI、反射的复杂项目引入原生镜像构建，或排查 native-image 构建与运行期失败时使用。
 license: Apache-2.0
 compatibility: 需要 GraalVM（含 native-image）；构建必须在目标平台上执行（native-image 不能交叉编译）；JavaFX 等带原生库的 GUI 框架需要对应平台的分类器工件；若项目启用 JPMS，classpath 模式可绕开模块约束。
@@ -7,10 +7,10 @@ metadata:
   version: "0.1.0"
   owner: ACANX
   source-project: AHA（复杂场景试验场：JavaFX + JPMS + JNI + 反射 + 多平台分类器）
-  maturity: 试验中（含「推断待验证」条目；达标判据见「成熟度」一节）
+  maturity: 试验中（含「推断待验证」条目；达标判据见「用法：开工前就建，边做边改」一节）
 ---
 
-# 把 jar 模式程序编成多平台原生镜像
+# 把 Java 应用编成多平台原生镜像（jar 模式 → GraalVM Native Image）
 
 这份技能来自一个「四难俱全」的真实验证场：**OpenJFX GUI + JPMS 模块化 + SQLite JDBC（JNI）
 + 大量反射与启动期不安全反射 API + Windows/Linux/macOS 三平台多分类器**。
