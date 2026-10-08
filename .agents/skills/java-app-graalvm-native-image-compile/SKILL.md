@@ -200,6 +200,8 @@ metadata:
 | 2026-10-08 | XML 注释里写选项把 POM 改坏（两次） | `troubleshooting` §3 + `args-cookbook` §4.5：注释禁 `--`、禁嵌套；`bin/CheckScripts.py` 加正则守卫（反向验证过） | 实测（守卫当场抓出技能模板里的嵌套注释） |
 | 2026-10-08 | 无法判断 native-image 跑没跑 | 用 `<name>.build_artifacts.txt` 作执行痕迹自证；「构建成功」不算验收 | 实测（本次工作流加了「确认 native-image 真的执行过」一步） |
 | 2026-10-08 | native 二进制启动即 `ClassNotFoundException: <主类>`（issue #26） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 入口的两处反射必须注册**（`launch(String...)` 的 `Class.forName` 与 `LauncherImpl` 的 `getConstructor().newInstance()`）；`main` 改用 `launch(Class, args)`，并用单测 + 产物自证双层守卫 | 实测（AHA：注册 `AhaDesktopApp` 构造器；`NativeImageMetadataTest` 反向验证过） |
+| 2026-10-08 | macOS 腿「构建成功却没上传镜像包」（run 37744912968） | `isolation-and-ci` §3：**`$VAR` 后跟全角字符会被 bash 并进变量名**（`$bin（` → unbound），`set -u` 下退出并**丢掉 outputs**；修法：`${VAR}` + 命中产物立刻写 outputs + `trap 'exit 0' EXIT` | 实测（AHA：macos 镜像包丢失；`CheckScripts.py` 加 YAML 守卫并反向验证） |
+| 2026-10-08 | Windows 腿工具链自证 `PLATFORM: unbound variable` | `isolation-and-ci` §3：runner 自带 VS 环境变量与注入名冲突 → 注入名加前缀 + `${VAR:-}` + 只做记录的步骤对失败加 `|| echo` | 实测（run 37744912968） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
 | 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
 

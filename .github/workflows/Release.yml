@@ -136,7 +136,7 @@ jobs:
 
           echo "包名解析：版本=$version 分类器=$classifier"
           if [ "$classifier" != "$EXPECTED" ]; then
-            echo "::error::平台不匹配：本腿（$LABEL）期望 $EXPECTED，实际解析到 $classifier。"
+            echo "::error::平台不匹配：本腿（${LABEL}）期望 ${EXPECTED}，实际解析到 ${classifier}。"
             echo "::error::runner 架构可能已变更，请核对本文件的 matrix。"
             exit 1
           fi
@@ -145,7 +145,7 @@ jobs:
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c '^lib/javafx' || true)
-          echo "发布产物：$target（$size，含本平台 OpenJFX jar $jars 个）"
+          echo "发布产物：${target}（${size}，含本平台 OpenJFX jar $jars 个）"
 
       - name: 便携包完整性自证（模块图 + 关键文件）
         shell: bash
@@ -176,7 +176,7 @@ jobs:
             echo "::error::便携包模块图不完整（缺依赖）：$out"
             exit 1
           fi
-          echo "模块图完整（$out）"
+          echo "模块图完整（${out}）"
           echo "包内：本平台 OpenJFX $n_jfx 个，lib/ 共 $(ls "$tmp"/lib/*.jar | wc -l) 个 jar"
 
       - name: 打印本平台解析到的 OpenJFX 工件（自证）
