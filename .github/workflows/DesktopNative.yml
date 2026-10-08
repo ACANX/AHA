@@ -144,12 +144,12 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            label: ubuntu-x64
+            label: ubuntu-amd64
             platform: ubuntu
             jdk: '25'
             experimental: false
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             platform: win
             jdk: '25'
             experimental: false
@@ -164,12 +164,12 @@ jobs:
           # 关注 Project Leyden 的 AOT（类装载 / 链接 / 方法剖析）、原始类型预览与 GC 策略。
           # 试验腿失败**不算整体失败**：它是数据点，不是交付物。
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             platform: win
             jdk: '27'
             experimental: true
           - os: ubuntu-latest
-            label: ubuntu-x64
+            label: ubuntu-amd64
             platform: ubuntu
             jdk: '27'
             experimental: true  
