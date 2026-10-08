@@ -55,6 +55,12 @@
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
 ### 变更
+- **修复原生镜像「静默跳过」**：`native.skip` 的默认值原先写在模块自身的 `<properties>` 里，
+  会**赢过**父 POM 中 profile 的覆盖，导致 `native-image` 被静默跳过——
+  构建成功、零产物、零报错、CI 全绿。现改为：默认值唯一来源放聚合 POM 的 `<properties>`，
+  同一 POM 的 profile 覆盖为 `false`，CI 再显式传 `-Dnative.skip=false` 兜底，
+  并新增「确认 `native-image` 真的执行过」（用 `<name>.build_artifacts.txt` 作执行痕迹）
+  与产物缺失时的点名告警。规则写进 `BuildSpec.md`（「构建成功不是验收标准」）与技能。
 - **原生镜像管线改为真「可选」**：容错从作业级下沉到**步骤级**
   （作业级 `continue-on-error` 只保证整次运行不变红，作业本身仍显示失败），
   产物自证改为**诊断式**（先打现场、判据只留真不变式、结论进 Job Summary），

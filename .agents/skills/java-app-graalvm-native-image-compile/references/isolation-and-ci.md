@@ -29,13 +29,23 @@
 | ② **内层开关给安全默认值** | 模块 POM 里 `<native.skip>true</native.skip>`，由 profile 置 `false` | 误入反应堆也不会去调用 `native-image` |
 
 ```xml
-<!-- 聚合 POM：profile 同时给出模块与开关 -->
-<profile>
-    <id>my-native</id>
-    <modules><module>my-native</module></modules>
-    <properties><native.skip>false</native.skip></properties>   <!-- 唯一放开点 -->
-</profile>
+<!-- 聚合 POM -->
+<properties>
+    <native.skip>true</native.skip>       <!-- 默认关闭：默认值的**唯一来源** -->
+</properties>
+<profiles>
+    <profile>
+        <id>my-native</id>
+        <modules><module>my-native</module></modules>
+        <properties><native.skip>false</native.skip></properties>   <!-- 唯一放开点 -->
+    </profile>
+</profiles>
 ```
+
+> ⚠ **默认值不要写进子模块的 `<properties>`**：模块自身的属性会**赢过**父 POM 里
+> profile 注入的属性，于是上面的 `false` 不生效、`native-image` 被**静默跳过**
+> ——症状是「构建成功、零产物、零报错」（2026-10-08 实测）。
+> CI 里再显式传一次 `-Dnative.skip=false` 兜底（命令行 `-D` 优先级最高）。
 
 **为什么值得这么做**：默认路径一旦依赖平台工具链，构建失败就从「代码问题」变成
 「环境问题」，而后者极难在别人的机器上复现——等于把一个可诊断的失败换成不可诊断的失败。

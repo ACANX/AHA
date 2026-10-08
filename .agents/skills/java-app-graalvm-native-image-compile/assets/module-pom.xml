@@ -40,25 +40,31 @@
         <native.image.executable>native-image</native.image.executable>
 
         <!--
-            默认 **不做** 原生编译（安全默认值）。
+            `native.skip` **刻意不在这里定义**：默认值属于聚合 POM 的 <properties>，
+            由原生 profile 在**同一个 POM** 内覆盖为 false。
 
-            约定：原生编译只在专用 profile 下进行；默认构建的验收标准只有一条
-            —— **能编译、能打 jar、不报错**（能不能运行不属于默认构建的职责）。
+            ⚠ 千万不要在模块里重复定义它：模块自身的 <properties> 会**赢过**
+            父 POM 里 profile 注入的属性，于是 profile 的 false 不生效、
+            native-image 被**静默跳过**——症状是「构建成功、零产物、零报错」，
+            叠加「失败不阻塞」的可选管线后会变成没人发现的空转（实测事故）。
 
-            所以这里的默认值是 true；由聚合 POM 的原生 profile 在激活时置为 false：
+            聚合 POM 需要这样写：
 
-                <profile>
-                    <id>my-native</id>
-                    <modules><module>my-native</module></modules>
-                    <properties><native.skip>false</native.skip></properties>
-                </profile>
+                <properties>
+                    <native.skip>true</native.skip>      <!-- 默认关闭，唯一来源 -->
+                </properties>
+                <profiles>
+                    <profile>
+                        <id>my-native</id>
+                        <modules><module>my-native</module></modules>
+                        <properties><native.skip>false</native.skip></properties>
+                    </profile>
+                </profiles>
 
-            这样两层保障齐了：① 默认反应堆里根本没有这个模块；
-            ② 即使模块误入反应堆，也不会去要求环境具备 GraalVM。
-            顺带一个本机自检技巧：想只验证「依赖拷贝 → classpath → 参数文件 → 打包」
-            这条管线而不真编，就显式传 -Dnative.skip=true。
+            CI 再显式传 -Dnative.skip=false 兜底（命令行 -D 优先级最高）。
+            本机只想验证「依赖拷贝 → classpath → 参数文件 → 打包」而不真编时，
+            显式传 -Dnative.skip=true 即可。
         -->
-        <native.skip>true</native.skip>
 
         <!-- 工作目录：依赖、产物、说明都落在这里，便于 CI 取件 -->
         <native.image.workdir>${project.build.directory}/native</native.image.workdir>
