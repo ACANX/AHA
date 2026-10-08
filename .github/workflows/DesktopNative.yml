@@ -144,8 +144,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            label: linux-x64
-            platform: linux
+            label: ubuntu-x64
+            platform: ubuntu
             jdk: '25'
             experimental: false
           - os: windows-latest
@@ -168,6 +168,11 @@ jobs:
             platform: win
             jdk: '27'
             experimental: true
+          - os: ubuntu-latest
+            label: ubuntu-x64
+            platform: ubuntu
+            jdk: '27'
+            experimental: true  
     runs-on: ${{ matrix.os }}
     # 整条原生镜像管线都是**可选**的：任一腿失败都不牵连其余腿与发布作业。
     # 注意这只是保住「整次运行」的颜色；作业本身要绿，得靠下面各步骤的 continue-on-error。
