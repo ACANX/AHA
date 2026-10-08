@@ -681,8 +681,8 @@ jobs:
         with:
           # tag 前缀刻意用 native-v：不匹配 Release.yml 的 V* / v*，
           # 因此这一条不会触发正式发版流程。
-          tag_name: aha-desktop-native-v${{ needs.native-version.outputs.version }}
-          name: AHA-Desktop-Native-Image-${{ needs.native-version.outputs.version }}
+          tag_name: V${{ needs.native-version.outputs.version }}-aha-desktop-native
+          name: V${{ needs.native-version.outputs.version }}-AHA-Desktop-Native-Image
           # 预发行版：不出现在 releases/latest，不会被误当成正式版本
           prerelease: true
           files: artifacts/*.zip
