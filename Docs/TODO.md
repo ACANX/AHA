@@ -546,6 +546,7 @@ desktop 亦未列 tool 依赖。
 | v0.33.0 | 2026-10-08 | `N-21` 推进：在 WSL + GraalVM 25.0.2 上首次真跑 tracing agent（CLI 端），采集 400 类型 / 55 资源，与手写清单完成交叉验证；结论回写技能（`discovery` §2.4、`catalog` §A.2） | @ACANX |
 | v0.34.0 | 2026-10-08 | 把 agent 采集**制度化**进技能（新增 `references/agent-collection.md` + `scripts/collect-metadata.sh`）；GUI 端也跑了一轮，补进客户端原生镜像元数据 47 条（293→340）；新增 `N-22`（Win/mac 平台采集） | @ACANX |
 | v0.35.0 | 2026-10-08 | 真机暴露 issue #37（Glass 初始化处 JNI `FindClass` 失败 → segfault）；新增 `jni-config.json`（62 类，扫描 openjfx 三平台 native 源码得到）；`N-16` 进入第二轮待验证 | @ACANX |
+| v0.36.0 | 2026-10-09 | 真机（#37 修复后）暴露 issue #39（`WinWindow._initIDs` 查自己声明的 `notifyMoving` → `NoSuchMethodError`）；改扫 `Get*ID` 目标类，`jni-config.json` 由 62 → **85** 条（Win* / Mac* 平台实现类 + `EventLoop`）；新增 `G-10`；`N-16` 进入第三轮 | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1251,6 +1252,11 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       Glass 初始化处 `NoClassDefFoundError: java/lang/Runnable`（issue #37，JNI 可达类未注册）。
       已补 `jni-config.json`（62 条，静态扫描 openjfx 三平台 native 源码的 `FindClass`），
       待 CI 重出包后复跑；见 [DevLog-20261008-15.md](DevLog/DevLog-20261008-15.md)。
+      **第二轮真机结果（2026-10-09）**：JNI 可达类修好后，暴露下一层——
+      `WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`（issue #39）：
+      平台实现类**自己声明**的成员没登记（#37 只扫了 `FindClass` 字面量，平台子类不经 `FindClass`）。
+      已改扫 `Get*ID` 的目标类，`jni-config.json` 由 62 条补到 **85 条**（Win* / Mac* 平台实现类 +
+      `EventLoop`），待 CI 重出包后复跑；见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)。
       验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
       `MissingReflectionRegistrationError` / `NoClassDefFoundError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
@@ -1286,6 +1292,9 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       §3.3 在各自平台跑同一套命令清单，`config-merge-dir` 合并后补进元数据。
       验收标准：三平台元数据分别覆盖各自的 Glass / Prism 实现类；产物自证与
       `NativeImageMetadataTest` 仍绿。
+      **部分闭环（2026-10-09）**：issue #39 的静态扫描（`Get*ID` 目标类）已把
+      Win* / Mac* 平台实现类补进 `jni-config.json`（见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)）；
+      但那是「已知缺口已闭」，agent 在两个平台上的实采仍待做，Prism 侧实现类同样待采。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1331,6 +1340,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 | G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
 | G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
+| G-10 | 推送 issue #39 的修复分支并提 PR（`fix/issue-39-native-winwindow-jni` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 第三轮无法开工 | ① `git ls-remote origin refs/heads/fix/issue-39-native-winwindow-jni` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧b 条输出「已注册 JNI 可达类」 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 

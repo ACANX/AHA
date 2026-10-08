@@ -596,6 +596,13 @@ jobs:
           require_jni "java.lang.Runnable" "java.lang.Runnable（Glass 启动链路）"
           require_jni "java.lang.Object" "java.lang.Object（PlatformSupport）"
           require_jni "com.sun.glass.ui.win.WinVariant" "WinVariant（Windows 无障碍）"
+          # issue #39：平台实现类自己的 _initIDs 用 GetMethodID 查它自己声明的方法
+          # （notifyMoving / nonClientHitTest …）。基础类 Window 已登记不等于子类已登记，
+          # 未登记时 WinWindow.<clinit> 直接 NoSuchMethodError，启动即崩。
+          require_jni "com.sun.glass.ui.win.WinWindow" "WinWindow（Windows 窗口 JNI 回调，issue #39）"
+          require_jni "com.sun.glass.ui.win.WinView" "WinView（Windows 视图 JNI 回调）"
+          require_jni "com.sun.glass.ui.mac.MacWindow" "MacWindow（macOS 窗口 JNI 回调）"
+          require_jni "com.sun.glass.ui.EventLoop" "EventLoop（三平台嵌套事件循环）"
           require_jni "com.sun.javafx.font.directwrite.DWRITE_MATRIX" "DirectWrite 字体结构体"
           require_jni "com.sun.javafx.font.FontConfigManager\$FcCompFont" "FontConfigManager（Linux 字体）"
           if [ "$jni_ok" = "true" ]; then

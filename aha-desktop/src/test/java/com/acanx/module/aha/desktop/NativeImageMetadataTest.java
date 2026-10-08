@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 原生镜像可达性元数据守卫（issue #26、issue #35）。
+ * 原生镜像可达性元数据守卫（issue #26、issue #35、issue #37、issue #39）。
  *
  * <p>JavaFX 的启动路径全在 native-image 的 closed-world 静态分析之外，
  * 必须在 {@code reachability-metadata.json} 里显式注册，否则运行期直接抛
@@ -74,6 +74,50 @@ class NativeImageMetadataTest {
             System.getProperty("basedir", System.getProperty("user.dir")),
             "src", "main", "resources", "META-INF", "native-image",
             "com.acanx.module.aha", "aha-desktop", "jni-config.json");
+
+    /**
+     * 平台实现类的 JNI 成员查找（issue #39）。
+     *
+     * <p>与 issue #37 不同：#37 是 native 用 {@code FindClass} 按名字查**类**；
+     * 这一类是 native 拿到 Java 侧传入的 {@code jclass}（平台子类本身），
+     * 再用 {@code GetMethodID} / {@code GetFieldID} 查它**自己声明**的成员。
+     * 基础类（{@code Window} / {@code View} / {@code Pixels} …）早就在册，
+     * 但平台子类（{@code WinWindow} …）从未登记——于是
+     * {@code WinWindow._initIDs} 在
+     * {@code GetMethodID(cls, "notifyMoving", "(IIIIFFIIIIIII)[I")} 处抛
+     * {@code NoSuchMethodError}，启动即崩。</p>
+     *
+     * <p>清单来自对 openjfx 三平台 native 源码里所有 {@code GetMethodID} /
+     * {@code GetFieldID} 的静态扫描：凡是 native 以「本类 jclass」为参数查成员的类型，
+     * 逐个登记；三平台共用一份清单，缺席平台只产生无害 warning。</p>
+     */
+    private static final List<String> PLATFORM_JNI_INIT_CLASSES = List.of(
+            // Windows（issue #39 的直接报错点：WinWindow.notifyMoving）
+            "com.sun.glass.ui.win.WinWindow",
+            "com.sun.glass.ui.win.WinView",
+            "com.sun.glass.ui.win.WinPixels",
+            "com.sun.glass.ui.win.WinCursor",
+            "com.sun.glass.ui.win.WinSystemClipboard",
+            "com.sun.glass.ui.win.WinDnDClipboard",
+            "com.sun.glass.ui.win.WinMenuImpl",
+            "com.sun.glass.ui.win.WinGestureSupport",
+            "com.sun.glass.ui.win.WinCommonDialogs",
+            "com.sun.glass.ui.win.WinAccessible",
+            "com.sun.glass.ui.win.WinTextRangeProvider",
+            // macOS
+            "com.sun.glass.ui.mac.MacWindow",
+            "com.sun.glass.ui.mac.MacView",
+            "com.sun.glass.ui.mac.MacPixels",
+            "com.sun.glass.ui.mac.MacCursor",
+            "com.sun.glass.ui.mac.MacCommonDialogs",
+            "com.sun.glass.ui.mac.MacFileNSURL",
+            "com.sun.glass.ui.mac.MacGestureSupport",
+            "com.sun.glass.ui.mac.MacMenuDelegate",
+            "com.sun.glass.ui.mac.MacPasteboard",
+            "com.sun.glass.ui.mac.MacTimer",
+            "com.sun.glass.ui.mac.MacAccessible",
+            // 三平台共用的嵌套事件循环（native 用 Class.forName + GetMethodID 查）
+            "com.sun.glass.ui.EventLoop");
 
     @Test
     void reachabilityMetadataRegistersTheJavafxApplicationClass() throws IOException {
@@ -191,6 +235,20 @@ class NativeImageMetadataTest {
                     .as("%s 由 JavaFX native 代码用 FindClass 查找；未注册时原生镜像报"
                             + " NoClassDefFoundError 并随后 segfault（issue #37）", type)
                     .contains("\"" + type + "\"");
+        }
+    }
+
+    @Test
+    void jniConfigRegistersPlatformInitClasses() throws IOException {
+        String json = Files.readString(JNI_CONFIG);
+        for (String type : PLATFORM_JNI_INIT_CLASSES) {
+            assertThat(json)
+                    .as("%s 的 native _initIDs 用 GetMethodID / GetFieldID 查它自己声明的成员；"
+                            + "未登记时原生镜像一启动就 NoSuchMethodError（issue #39）", type)
+                    .contains("\"" + type + "\"");
+            assertThat(entryFor(json, type))
+                    .as("%s 必须用 allDeclared* 全量登记（native 按名字查成员，签名跨版本会漂移）", type)
+                    .contains("allDeclaredMethods");
         }
     }
 
