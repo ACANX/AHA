@@ -23,6 +23,8 @@
 | **JLine** · `org.jline.utils.Signals` | ❌（上游元数据未覆盖） | `Class.forName("sun.misc.Signal")` / `"sun.misc.SignalHandler"` + `getMethod("handle", …)` + `getField("SIG_DFL"/"SIG_IGN")` | 手写注册这两个类型（含 public 字段 / 方法）；另注册 `java.lang.ProcessBuilder$RedirectPipeImpl` | 已验证（AHA：`javap` 反编译发现） |
 | **JavaFX** 25 | ❌ 不带完整元数据 | 见下面「JavaFX 专表」；启动反射是**链式**的 | 按启动链路一次补齐 + `jniAccessible` + 资源（着色器 / 原生库） | 已验证到"编译通过"；**真机运行待验证**（AHA `N-16`） |
 | **OpenJFX 分类器工件** | — | 带分类器与不带分类器的 jar 共用同一份 POM，会传递进 0 KB 空壳 | 在 POM 里排除无分类器传递依赖 | 已验证（AHA） |
+| **ServiceLoader 的 provider 实现类**（业务自定义） | —（看 GraalVM 内建支持） | `ServiceLoader.load(X)` 返回的实现类会被反射实例化 | **通常无需手写**：GraalVM 对 `META-INF/services` 有内建支持，会自动注册 provider；前提是服务文件进镜像（资源清单含 `META-INF/services/.*`） | 已踩坑（AHA：agent 采到 6 个业务 provider；真机待确认） |
+| **可选依赖的探测式反射** | — | `Class.forName("某可选库的类")`，类可能不在 classpath | **一般无需处理**：调用方已捕获异常；不要因为 agent 采到就登记 | 已踩坑（AHA：`com.fasterxml.jackson.databind.ObjectMapper` 出现在 agent 结果里，而项目用 Jackson 3） |
 
 ### A.1 JavaFX 25 专表（启动链路）
 
@@ -41,6 +43,23 @@
 | 条件不触发（**不要**盲目加） | `Control.loadClass` 的 `-fx-skin`、`PPSRenderer` 的 `<effect>Peer`、`java.lang.ProcessBuilder$RedirectPipeImpl`（非 JLine 场景）、Swing/Web/Media 可选模块 | 用到了才加 | 已踩坑（AHA：用 `createDefaultSkin()` 静态可达，无需注册） |
 
 JavaFX 资源：着色器 `.obj`（D3D）/ `.frag` `.vert`（ES2）、平台原生库 `.so`/`.dylib`/`.dll`、`.bss`。
+
+### A.2 agent 交叉验证结论（2026-10-08 首次实跑）
+
+用 tracing agent 跑一遍 CLI 的完整命令序列（`--version` / `--help` / `init` /
+`config` / `provider` / `tool` / `secret` / `extension` / 交互式 `chat`），得到
+**400 个反射类型 + 55 条资源**。把它们与手写清单对比：
+
+| 观察 | 结论 |
+|---|---|
+| 手写的 13 个配置记录 + `ProcessBuilder$RedirectPipeImpl` 被 agent **全部采到** | 手写审计**准确**（确实需要） |
+| `sun.misc.Signal` / `SignalHandler`、`TaskRequest` / `TaskResult` 未被采到 | 因为本次没走到那条路径 → **静态审计能补 agent 的盲区**；这些条目应标「未验证」而非删掉 |
+| 资源 `AhaDefault.yaml` / `ModelDefault.yml` / `version.properties` / `META-INF/services/*` / `*.so` 全部被采到 | 证实资源正则包含 `yaml\|yml\|properties\|so` 是**真实需求**（漏了就是运行期缺文件） |
+| 400 条中绝大多数是 log4j / JDK 内部 / JLine / sqlite | 这些**依赖自带或自动处理**，不该手写 → 印证「来源优先级」 |
+
+**用法**：agent 输出不要逐条看，先**按包前缀分组计数**（脚本见
+[discovery](discovery.md) §2.4），把「自带元数据的依赖」整组划掉，
+剩下的才是你要处理的。
 
 ## B. 常见框架（**推断**，未在本项目实测）
 

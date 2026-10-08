@@ -7,7 +7,7 @@ metadata:
   version: "0.1.0"
   owner: ACANX
   source-project: AHA（两个真实目标：JavaFX 桌面端、picocli+JLine CLI；覆盖链式反射、手写与生成、依赖自带元数据三种形态）
-  maturity: 试验中（方法论已成型并两处复用；含标注为「推断待验证」的条目，达标判据见「成熟判据」一节）
+  maturity: 试验中（方法论已成型并两处复用；已首次真跑 tracing agent 交叉验证；仍含标注为「推断待验证」的条目，达标判据见「成熟判据」一节）
 ---
 
 # 原生镜像的可达性元数据登记（反射 / JNI / 文件资源 / 初始化）
@@ -195,6 +195,7 @@ unzip -l <dep>.jar | grep -iE 'META-INF/native-image|reachability-metadata|refle
 | 2026-10-08 | "自带元数据"的 JLine 仍缺 `Signals` | [catalog](references/catalog.md)：**自带 ≠ 无缺口**，终端库的 `sun.misc.Signal` 反射要单独补 | 实测（AHA：`javap org.jline.utils.Signals`） |
 | 2026-10-08 | Jackson 3 不带 native-image 元数据，业务记录读配置即崩 | [registration](references/registration.md)：**业务层也要审计**，不只看框架；JSON/ORM 库常不带 | 实测（AHA：依赖 jar 扫描 + 记录注册） |
 | 2026-10-08 | 资源正则漏 `yaml`/`yml` | [verification](references/verification.md)：资源清单要配「启动即读全部内置资源」的自检 | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`） |
+| 2026-10-08 | 首次真跑 tracing agent（WSL + GraalVM 25.0.2） | [discovery](references/discovery.md) §2.4：实测采集 **400 个反射类型 + 55 条资源**；**关键动作是按包前缀分组过滤**（绝大多数是 log4j / JDK / JLine / sqlite，自带或自动处理），剩下才是要手写的；手写清单被交叉验证，agent 盲区靠静态审计补 | 实测（AHA：手写 14/19 命中；`AhaDefault.yaml` 等资源全被采到） |
 
 ## 成熟判据（达到才算标杆参考）
 

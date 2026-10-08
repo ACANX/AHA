@@ -153,7 +153,62 @@ java -agentlib:native-image-agent=config-merge-dir=native-config -jar app.jar --
 
 ### 盲区
 
-未执行到的代码路径 = 未采集。**"agent 没报" ≠ "没有缺口"。**
+未执行到的代码路径 = 未采集。**“agent 没报” ≠ “没有缺口”。**
+
+### 2.4 实跑经验（AHA 首次采集，2026-10-08）
+
+命令序列（关键是**把命令类型跑全**，不要只跑一个）：
+
+```bash
+# 首次用 config-output-dir，后续全部用 config-merge-dir 合并
+AGENT="-agentlib:native-image-agent=config-merge-dir=$OUT"
+java $AGENT -jar app.jar --version      # 版本（会读配置）
+java $AGENT -jar app.jar --help         # 触发子命令注册
+java $AGENT -jar app.jar init           # 初始化 / 写配置
+java $AGENT -jar app.jar config show    # 读配置（JSON/YAML 反序列化）
+java $AGENT -jar app.jar provider list  # 读内置预设
+java $AGENT -jar app.jar tool list      # ServiceLoader
+java $AGENT -jar app.jar secret list    # 安全存储 / 加密
+# 交互式：用管道喂退出命令，非 TTY 也能跑完
+printf '/exit\n' | java $AGENT -jar app.jar chat
+```
+
+**实测数字**（一次跑完上面的序列）：编译采集到 **400 个唯一反射类型 + 55 条资源**。
+
+**最重要的操作：按包前缀分组，再逐组决定要不要手写。**
+
+```bash
+python3 - <<'PY'
+import json, collections
+ag = json.load(open('reachability-metadata.json'))
+buckets = collections.Counter(t['type'].split('.')[0] + '.' + (t['type'].split('.')[1] if '.' in t['type'] else '')
+                              for t in ag.get('reflection', []))
+for k, v in buckets.most_common(20):
+    print(f"{v:5d}  {k}")
+PY
+```
+
+AHA 实测分组：`org.apache.logging.log4j.core` 100+（log4j **自带**元数据）、
+`sun.security` / `com.sun.crypto` / `java.time` / `java.sql`（JDK 内部，大多自动处理）、
+`org.jline` + `org.sqlite`（依赖**自带**）。**真正需要项目手写的只有几十条。**
+
+**三条实测结论：**
+
+1. **交叉验证手写清单**：手写的 13 个配置记录 + `ProcessBuilder$RedirectPipeImpl`
+   **被 agent 全部独立采到** → 说明这些登记确实需要；
+   而 `sun.misc.Signal` / `TaskRequest` 等** agent 没采到**（没走到那条路径）→
+   说明**静态审计确实能补 agent 的盲区**，三路互补不是口号。
+2. **资源清单被反证**：`AhaDefault.yaml` / `ModelDefault.yml` /
+   `com/.../version.properties` / `META-INF/services/*` / `*.so` 全部被 agent 采到 →
+   证实「资源正则需要 `yaml|yml|properties|so`」这条结论是真实需求。
+3. **ServiceLoader 实现类**：agent 采到 6 个业务 provider（LLM 适配器 / 工具 Provider）。
+   GraalVM 对 `META-INF/services` 有**内建支持**（会自动把 provider 注册为可达），
+   前提是服务文件本身在镜像里（资源清单覆盖 `META-INF/services/*`）。因此**通常无需手写**；
+   若真机仍失败，再补。
+
+> 另：agent 会记录**探测式反射**（`Class.forName` 试试可选依赖，如
+> `com.fasterxml.jackson.databind.ObjectMapper`）——这些类可能根本不在 classpath，
+> 业务代码已捕获异常，**一般无害**；不要因为 agent 采到它们就无脑登记。
 
 ## 3. 经验库对照：先查表，再动手
 
