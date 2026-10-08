@@ -57,6 +57,24 @@ class NativeImageMetadataTest {
             "src", "main", "resources", "META-INF", "native-image",
             "com.acanx.module.aha", "aha-desktop", "reachability-metadata.json");
 
+    /**
+     * JNI 可达类清单（issue #37）。
+     *
+     * <p>与反射不同：Glass / 字体 / 几何的 native 代码用 {@code JNIEnv->FindClass}
+     * 按名字查类，而 native-image 只允许「JNI accessible」的类被查到——
+     * 未注册时抛 {@code NoClassDefFoundError: java/lang/Runnable}（栈顶在
+     * {@code JNIFunctions$Support.findClassInClassRegistries}），随后 native 层
+     * 拿到空引用继续跑，直接 segfault。</p>
+     *
+     * <p>清单不是猜的：是对 openjfx 三平台 native 源码里所有 {@code FindClass}
+     * 字面量的静态扫描（含 font / fontpath_linux 的动态名）。每个类的成员访问
+     * 都在它自己身上声明，故统一用 {@code allDeclared*} 全量，避免签名跨版本漂移。</p>
+     */
+    private static final Path JNI_CONFIG = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "src", "main", "resources", "META-INF", "native-image",
+            "com.acanx.module.aha", "aha-desktop", "jni-config.json");
+
     @Test
     void reachabilityMetadataRegistersTheJavafxApplicationClass() throws IOException {
         String json = readMetadata();
@@ -146,6 +164,50 @@ class NativeImageMetadataTest {
                     .as("%s 由 tracing agent 在真实运行中采集到（启动链路清单曾漏掉），必须注册", type)
                     .contains("\"" + type + "\"");
         }
+    }
+
+    @Test
+    void jniConfigRegistersClassLookupsFromJavafxNativeCode() throws IOException {
+        assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();
+        String json = Files.readString(JNI_CONFIG);
+        for (String type : List.of(
+                // Glass 启动链路（Windows 的报错点）
+                "java.lang.Runnable",
+                "java.lang.Object",
+                "java.util.Collections",
+                "java.util.HashMap",
+                "javafx.scene.paint.Color",
+                // 平台实现类（三平台各一份）
+                "com.sun.glass.ui.win.WinVariant",
+                "com.sun.glass.ui.gtk.GtkView",
+                "com.sun.glass.ui.mac.MacVariant",
+                // 字体（一显示文字就会用到）
+                "com.sun.javafx.font.directwrite.DWRITE_MATRIX",
+                "com.sun.javafx.font.freetype.FT_GlyphSlotRec",
+                "com.sun.javafx.font.FontConfigManager$FcCompFont",
+                // 几何
+                "com.sun.javafx.geom.Path2D")) {
+            assertThat(json)
+                    .as("%s 由 JavaFX native 代码用 FindClass 查找；未注册时原生镜像报"
+                            + " NoClassDefFoundError 并随后 segfault（issue #37）", type)
+                    .contains("\"" + type + "\"");
+        }
+    }
+
+    @Test
+    void jniConfigIsAnArrayWithoutDuplicateEntries() throws IOException {
+        assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();
+        String json = Files.readString(JNI_CONFIG);
+        assertThat(json.stripLeading()).as("jni-config.json 顶层必须是数组").startsWith("[");
+        Matcher matcher = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"").matcher(json);
+        List<String> names = new ArrayList<>();
+        while (matcher.find()) {
+            names.add(matcher.group(1));
+        }
+        assertThat(names).as("jni-config.json 不能是空数组").isNotEmpty();
+        assertThat(new HashSet<>(names))
+                .as("jni 条目重复注册是无意义噪声（后一条覆盖前一条），请合并")
+                .hasSameSizeAs(names);
     }
 
     @Test

@@ -578,6 +578,34 @@ jobs:
           require_meta "com.acanx.module.aha.core.config.AhaConfig" "AHA 配置记录（Jackson）"
           require_meta "javafx.scene.Node" "JavaFX 运行期反射（tracing agent 采集补齐）"
           require_meta "com.sun.glass.ui.gtk.GtkView" "Glass 平台实现类（tracing agent 采集补齐）"
+
+          # ⑧b JNI 可达类（issue #37）：Glass / 字体 / 几何的 native 代码用 JNIEnv->FindClass
+          #     按名字查类，而 native-image 只允许「JNI accessible」的类被查到；否则抛
+          #     NoClassDefFoundError: java/lang/Runnable（随后 native 层用空指针继续跑 → segfault）。
+          #     这份清单单独放在 jni-config.json：reachability-metadata 的 schema（v1.2.0）
+          #     不含 jni 段，而 jni-config.json 有官方 schema v1.1.0。
+          jni="$work/jni-config.json"
+          jni_note=""
+          jni_ok=true
+          require_jni() {
+            if [ ! -f "$jni" ] || ! grep -q "$1" "$jni"; then
+              jni_ok=false
+              jni_note="${jni_note:+${jni_note}；}缺 $2"
+            fi
+          }
+          require_jni "java.lang.Runnable" "java.lang.Runnable（Glass 启动链路）"
+          require_jni "java.lang.Object" "java.lang.Object（PlatformSupport）"
+          require_jni "com.sun.glass.ui.win.WinVariant" "WinVariant（Windows 无障碍）"
+          require_jni "com.sun.javafx.font.directwrite.DWRITE_MATRIX" "DirectWrite 字体结构体"
+          require_jni "com.sun.javafx.font.FontConfigManager\$FcCompFont" "FontConfigManager（Linux 字体）"
+          if [ "$jni_ok" = "true" ]; then
+            jni_note="已注册 JNI 可达类（Glass / 字体 native 的 FindClass 清单）"
+            echo "JNI 元数据：$jni_note"
+          else
+            jni_note="**${jni_note}**（${jni}）"
+            echo "::warning::JNI 注册不完整：${jni_note}——原生镜像会在 native FindClass 处报 NoClassDefFoundError（#37）"
+          fi
+
           if [ "$meta_ok" = "true" ]; then
             meta_note="已注册主类与 JavaFX 启动链路（QuantumToolkit / Glass 工厂 / Prism 管线）"
             echo "可达性元数据：$meta_note"
@@ -602,6 +630,7 @@ jobs:
             echo "- 构建报告：$([ -n "${report}" ] && basename "${report}" || echo '**缺失**')"
             echo "- 独立报告包：${rpt_note}"
             echo "- 可达性元数据：${meta_note}"
+            echo "- JNI 元数据：${jni_note}"
             if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
             echo ""
             echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"

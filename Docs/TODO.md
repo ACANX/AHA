@@ -545,6 +545,7 @@ desktop 亦未列 tool 依赖。
 | v0.32.0 | 2026-10-08 | 新增 `N-20`（新技能 `graalvm-reachability-metadata`：元数据登记方法论）与 `N-21`（其成熟度跟踪） | @ACANX |
 | v0.33.0 | 2026-10-08 | `N-21` 推进：在 WSL + GraalVM 25.0.2 上首次真跑 tracing agent（CLI 端），采集 400 类型 / 55 资源，与手写清单完成交叉验证；结论回写技能（`discovery` §2.4、`catalog` §A.2） | @ACANX |
 | v0.34.0 | 2026-10-08 | 把 agent 采集**制度化**进技能（新增 `references/agent-collection.md` + `scripts/collect-metadata.sh`）；GUI 端也跑了一轮，补进客户端原生镜像元数据 47 条（293→340）；新增 `N-22`（Win/mac 平台采集） | @ACANX |
+| v0.35.0 | 2026-10-08 | 真机暴露 issue #37（Glass 初始化处 JNI `FindClass` 失败 → segfault）；新增 `jni-config.json`（62 类，扫描 openjfx 三平台 native 源码得到）；`N-16` 进入第二轮待验证 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1246,8 +1247,12 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       四条 Prism 管线 / 渲染器 / 全部 212 个 stock shader / Glass 原生回调 / 图片解码 / 字体 /
       AHA 自身被 Jackson 反射的记录）一次性补进
       `reachability-metadata.json`（2026-10-08 已用 tracing agent 在 Linux 上采集并补齐 47 条，总计 340 条；Windows / macOS 待采，见 `N-22`）。
+      **第一轮真机结果（2026-10-08）**：#35 的反射修复生效，但暴露下一层——
+      Glass 初始化处 `NoClassDefFoundError: java/lang/Runnable`（issue #37，JNI 可达类未注册）。
+      已补 `jni-config.json`（62 条，静态扫描 openjfx 三平台 native 源码的 `FindClass`），
+      待 CI 重出包后复跑；见 [DevLog-20261008-15.md](DevLog/DevLog-20261008-15.md)。
       验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
-      `MissingReflectionRegistrationError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
+      `MissingReflectionRegistrationError` / `NoClassDefFoundError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
       对应 `DevLog`。
       依据：[DevLog-20261008-13.md](DevLog/DevLog-20261008-13.md)、
