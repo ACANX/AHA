@@ -135,8 +135,8 @@ jobs:
 
   # ── 2. 三条腿各编自己平台的原生镜像 ────────────────────────────────────────
   #    每个 runner 只能产出自己平台的二进制（native-image 不能交叉编译）。
-  native-build:
-    name: native-build (${{ matrix.label }}, jdk${{ matrix.jdk }})
+  native-image:
+    name: native-image-${{ matrix.label }}-jdk${{ matrix.jdk }}
     needs: native-version
     strategy:
       # 一条腿失败不取消其余：三个平台的产物是并列交付物，缺哪个都要看得见。
@@ -386,7 +386,7 @@ jobs:
   #    因此先各自上传制品，再由这里一次性挂到发布页。
   native-publish:
     name: native-publish
-    needs: [native-version, native-build]
+    needs: [native-version, native-image]
     # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
     if: always() && needs.native-version.result == 'success'
     runs-on: ubuntu-latest
