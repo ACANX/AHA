@@ -1,6 +1,6 @@
 # AHA 工具宪法
 
-**文档版本**：v1.12.0
+**文档版本**：v1.13.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -27,6 +27,7 @@
 | v1.10.0 | 2026-10-07 | 日志文件名更正为 `AHA.log`；第 10 条新增第 8 项「日志文件名与切分命名」约定 | @ACANX |
 | v1.11.0 | 2026-10-07 | 第 10 条第 5 项补「权威设计文档 → `Docs/AHA/`」 | @ACANX |
 | v1.12.0 | 2026-10-07 | 第 5 条选型清单改为主版本线（Jackson 3.x），消除与父 POM 的版本漂移 | @ACANX |
+| v1.13.0 | 2026-10-08 | JPMS 改为「优先启用（非强制）」、与 OpenJFX 冲突时让路（`C-01` 决策）；第 4 条补 `tool ← desktop` 边与规则（`D-09`）；第 5 条 GUI 选型改为「JavaFX 原生控件 + 进程内直调」（`D-07`） | @ACANX |
 
 ---
 
@@ -40,13 +41,14 @@
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
 | OpenJFX | **25** | 桌面端 UI 框架（0.1 不启用） |
-| JPMS | **强制启用** | 所有模块必须有 `module-info.java` |
+| JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
 
 **禁止事项**：
 
 - 禁止在编译目标上使用低于 25 的 `release` 值
 - 禁止在 POM 中使用 Maven 4 新增语法（自动模块发现、parent 版本推断、`modelVersion 4.1.0` 等）
-- 禁止在非模块化配置下构建主代码
+- 非必要不使用 classpath 构建主代码：模块化是默认路径，仅在 JPMS 与 OpenJFX 等需求冲突
+  且无法调和时例外，且必须在 `BuildSpec.md` 记明原因与影响面
 
 ## 第 2 条：命名体系
 
@@ -119,6 +121,7 @@ com.acanx.module.aha.desktop.controller
 common ← extension-api ← core ← tool
 common ← extension-api ← core ← cli
 common ← extension-api ← core ← desktop
+common ← extension-api ← core ← tool ← desktop   # 桌面端需要内置工具（D-09 决策，2026-10-08）
 ```
 
 **硬性规则**：
@@ -128,6 +131,7 @@ common ← extension-api ← core ← desktop
 - `core` 不得依赖 `tools`、`cli`、`desktop`
 - `tool` 不得依赖 `cli`、`desktop`
 - `cli` 和 `desktop` 之间不得互相依赖
+- `desktop` 需要内置工具（file / http / shell）时依赖 `tool`；仍不得依赖 `cli`（`D-09` 决策，2026-10-08）
 - `core` 不得引用 JavaFX、picocli、JLine
 - 第三方扩展仅依赖 `extension-api` 和 `common`，不依赖 `core` 内部实现
 
@@ -136,7 +140,7 @@ common ← extension-api ← core ← desktop
 | 领域 | 选定方案 | 不可替换性 |
 |---|---|---|
 | CLI 框架 | picocli + JLine | 除非有重大安全或性能问题 |
-| GUI | OpenJFX 25，WebView + FXML | 除非有重大安全或性能问题 |
+| GUI | OpenJFX 25，**JavaFX 原生控件 + 进程内直调**（WebView + 本地 HTTP 为备选） | 除非有重大安全或性能问题 |
 | JSON/YAML | Jackson 3.x（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
 | 日志 | SLF4J + Log4j2 | 可替换 Log4j2 后端 |
 | HTTP 客户端 | JDK HttpClient 或 OkHttp | 二选一，由 Core 层适配器隔离 |

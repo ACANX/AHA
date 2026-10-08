@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0
+                              https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>dist-native</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <!-- 内容直接铺到包里：解压就能见到可执行文件，不再多一层目录 -->
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <!--
+        原生镜像包的内容刻意很少：只有一个可执行文件 + 说明 + 构建参数。
+
+        不放 lib/：原生镜像的依赖已经**静态编进可执行文件**，这也是它与 jar 模式包的区别。
+        放 native-image-args.txt 是为了「这个二进制是怎么编出来的」永远可查——
+        原生镜像的参数会反复迭代，事后能对上账比省几 KB 重要得多。
+    -->
+    <fileSets>
+        <!-- 可执行文件：必须 0755，否则 Linux / macOS 上下载后不能直接双击运行 -->
+        <fileSet>
+            <directory>${native.image.workdir}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <!-- Windows 上 native-image 产出 .exe；其它平台没有后缀。两个都列，命中一个。 -->
+                <include>${aha.native.name}</include>
+                <include>${aha.native.name}.exe</include>
+            </includes>
+            <fileMode>0755</fileMode>
+            <directoryMode>0755</directoryMode>
+        </fileSet>
+
+        <!-- 说明书与构建参数：普通文件权限（首版把 README 也标成 755 了，不该那样） -->
+        <fileSet>
+            <directory>${native.image.workdir}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>README.txt</include>
+            </includes>
+            <fileMode>0644</fileMode>
+        </fileSet>
+
+        <!--
+            构建参数原样附上（不带过滤）：原生镜像的参数会反复迭代，
+            「这个二进制是怎么编出来的」必须事后可查。
+            两份都带上——JDK25 与 JDK27 分支的差异就在这两份文件的 diff 里。
+        -->
+        <fileSet>
+            <directory>${project.basedir}/src/native</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>native-image-args.txt</include>
+                <include>native-image-args-jdk27.txt</include>
+            </includes>
+            <fileMode>0644</fileMode>
+        </fileSet>
+
+        <fileSet>
+            <directory>${project.parent.basedir}</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>LICENSE</include>
+                <include>CHANGELOG.md</include>
+            </includes>
+            <fileMode>0644</fileMode>
+        </fileSet>
+    </fileSets>
+</assembly>

@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.15.0
+**文档版本**：v1.20.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -29,6 +29,11 @@
 | v1.13.0 | 2026-10-07 | §8.1 新增「分支规则集必须对『单人 + 机器』可满足（强制）」：审批数按协作者数量设置、要求的结果必须有人生产，附两种把 PR 永久锁死的失效模式与 `G-02` 的回写约定 | @ACANX |
 | v1.14.0 | 2026-10-07 | §8.1「分支规则集必须对『单人 + 机器』可满足」补第三条要点：要求的结果不仅要有人生产，还必须**覆盖规则所在的目标分支**（默认设置只扫默认分支会永久等待），并说明本仓库改用工作流方式显式声明分支范围 | @ACANX |
 | v1.15.0 | 2026-10-07 | §8.1 补第四条要点「同一种扫描只能配一次」：GitHub 代码扫描的默认设置与高级设置互斥，同时存在会使工作流结果被拒收并表现为「检查一直等待」（附 2026-10-07 实测），取舍以能否覆盖目标分支为准 | @ACANX |
+| v1.16.0 | 2026-10-07 | 新增「main 上的构建成功后自动打 tag」小节：`Build.yml` 的 tag 作业、版本号唯一来源为根 POM、幂等语义、`contents: write` 权限前提，以及 `GITHUB_TOKEN` 不触发下游工作流这一事实 | @ACANX |
+| v1.17.0 | 2026-10-08 | 自动打 tag 小节的版本标注更正为「0.1.1 起」（该作业实际在 0.1.0 发布之后才合入） | @ACANX |
+| v1.18.0 | 2026-10-08 | §7 技术栈 JPMS 改为「优先启用（非强制）」并补 classpath 例外的记录要求；fat JAR 禁用理由改述（不再依赖 JPMS 强制）；§4.1 补 macOS 打包决策（要打包、不加测试，`D-06`） | @ACANX |
+| v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
+| v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
 
 ---
 
@@ -48,12 +53,13 @@
 | JDK | **25 (LTS)** | 编译与运行目标，禁止降级 |
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
-| JPMS | **强制启用** | 所有模块必须有 `module-info.java` |
+| JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
 
 **禁止事项**：
 
 - 禁止在编译目标上使用低于 25 的 `release` 值
-- 禁止在非模块化配置下构建主代码
+- 非必要不使用 classpath 构建主代码：模块化是默认路径，仅在 JPMS 与 OpenJFX 等需求冲突
+  且无法调和时例外，且必须在本文档记明原因与影响面
 - 禁止跳过双版本验证直接合入
 
 ## 3. Maven Wrapper 固定
@@ -114,6 +120,25 @@ CI 必须同时执行两条流水线，且结果一致：
 失败只体现在该腿自身，**不使整体构建失败**。第 4 节的「任一条失败即视为构建失败」
 只约束上面三条必需腿。
 
+**0.2 起（`D-06` 决策，2026-10-08）**：CI **要能产出 macOS 平台的包**（`jpackage` 分平台构建），
+但**不在 macOS 上加测试**——支持承诺仍只有 **Windows + Linux** 双平台，macOS 只到「能打包」为止。
+打包 job 的落地见 `TODO.md` `D-08`。
+
+**JavaFX 平台分类器（0.2 桌面端）**：JavaFX 的原生库按平台拆成分类器工件，由父 POM 的
+`javafx-*` profile 按当前 OS / 架构设定 `javafx.platform` 属性，模块只引用属性、不写平台字面量。
+激活条件的两条硬规则——Linux 用 `<name>Linux</name>`（**不用** `<family>unix</family>`）、
+架构用 `<arch>!aarch64</arch>`（**不写** `x86_64`，Maven 的 `os.arch` 是 `amd64`）——以及
+「必须显式声明三个工件并排掉 0 KB 空壳 jar（否则 module path 上出现自动模块，
+`jpackage` / `jlink` 直接失败）」，详见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节。
+未被 profile 覆盖的平台会以 `javafx-*-25-unsupported.jar` 明确失败，可用 `-Djavafx.platform=`
+应急覆盖。
+
+**发布时的平台出包（0.2 起）**：`Release.yml` 的 `desktop` 作业按矩阵在**各平台自己的 runner** 上跑
+`./mvnw clean verify`，产出本平台便携包 `aha-desktop-<版本>-<系统>-<架构>.zip`，并挂到 release 页面。
+矩阵每条腿声明 `expected`（本腿应当解析出的 `javafx.platform`），构建后由**产物名 + 依赖树**双向自证，
+不一致即失败——runner 架构变更时不至于把错平台的包发出去。新增平台 = 加一条矩阵腿（先确认
+Central 有对应分类器）。命名与包布局见 [ReleaseProcess.md](ReleaseProcess.md) §3.2。
+
 这样安排的用意：提前暴露明显的跨平台退化（例如路径分隔符、大小写敏感的文件系统、
 shell 语义），并留一个现成的落点，将来真要支持 macOS 时不必从零搭。同时明确边界——
 
@@ -161,10 +186,36 @@ POM 语法必须兼容 Maven 3.9.x：
 - 内核模块（`aha-core`）禁止依赖任何传输 / 协议库
 - 发行包固定为 **JPMS 模块路径目录**（`dist/bin` + `dist/lib`），由 `maven-assembly-plugin`
   组装（`aha-cli/src/assembly/dist.xml`）：
-  - **禁止**使用 `maven-shade-plugin` 打 fat JAR——合并产物无 `module-info`，破坏 JPMS 强制启用原则
+  - **禁止**使用 `maven-shade-plugin` 打 fat JAR——合并后的单一 JAR 无法按模块追踪依赖与许可，
+  也无法与 `dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
   - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `dist/` 布局保持一致（`$DIR/../lib`）
   - `dist/` 不入库，须在 `.gitignore` 中保持忽略
+- **构建产物一律输出到 `dist/`（仓库根只放源码与文档）**：
+  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `dist/`，**不得**在仓库根
+    生成或暂存任何 `.zip`（根目录被构建物污染后，`git status` 与「找产物」都变得不可靠）
+  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/dist</outputDirectory>`
+  - **例外**：CLI 的 assembly 输出的是 `dist/` 内的**解包目录**（`bin/` + `lib/`），
+    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
+    CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
+- **可选工作流的作业不得进必需检查（强制）**：
+  试验性 / 非交付物管线（如 `DesktopNative.yml`）的作业名**不得**写进分支保护的必需检查，
+  且其失败必须**在步骤级**容错（作业级 `continue-on-error` 只保住整次运行的颜色，
+  作业本身仍显示红叉，观感上会被误读成「流程挂了」）。
+  这类管线的正确形态是：步骤级容错 + Job Summary 留真相 + 无产物时不发版也不失败。
+- **工具链 / 平台相关的东西一律进专用 profile（强制）**：
+  - 默认构建（不带 `-P…`）的验收标准**只有一条**：**能编译、能打 jar、不报错**；
+    程序能不能跑起来不属于默认构建的职责
+  - 需要额外工具链（如 GraalVM `native-image`）或平台原生依赖（如某平台的 GUI 原生库）
+    而产出的东西，必须**只在专用 profile 里**构建：
+    模块本身也在 profile 的 `<modules>` 里，默认反应堆里根本没有它
+  - 同时对内层开关设「安全默认值」：例如 `aha-desktop-native` 的 `native.skip` 默认为 `true`，
+    由 profile 激活时置为 `false`。这样「模块误入反应堆」与「真的去编原生镜像」是两件事，
+    误入也不会要求环境具备工具链
+  - 理由：一旦默认路径依赖平台工具链，构建失败的原因会从「代码问题」变成「环境问题」，
+    而后者极难在别人的机器上复现——这是把一个可诊断的失败换成不可诊断的失败
+  - 已有实现：`aha-desktop-native`（原生镜像，`-Pdesktop-native[,native-jdk27]`）；
+    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节
 - 跨平台脚本编码与行尾约束（由 `bin/CheckScripts.py` 在 CI 中校验）：
   - `*.bat` / `*.cmd`：**纯 ASCII + CRLF + 无 BOM**——CMD 按 ANSI 代码页解析批处理，
     非 ASCII 字节会产生 `&`、`|` 等元字符并导致注释 / echo 行被当作命令执行
@@ -181,7 +232,8 @@ POM 语法必须兼容 Maven 3.9.x：
 
 ## 8. 验收标准
 
-**`mvn clean verify` 通过是唯一验收标准**，其余检查（格式化、静态分析等）均为其前置补充。
+**`mvn clean verify` 通过是唯一验收标准——由 CI 判定**（`Gate.yml` / `Compat.yml`），
+其余检查（格式化、静态分析等）均为其前置补充。**本机不跑它**，见 8.1。
 
 **按变更范围选择验证项（强制）**：全套检查在慢文件系统上可达分钟级，不得无条件重跑。
 可用 `bin/CheckChanged.py` 自动判定。
@@ -195,15 +247,18 @@ POM 语法必须兼容 Maven 3.9.x：
 | 实现代码（Java / POM / YAML） | `./mvnw -pl <模块> -am test -Djacoco.skip=true` | 覆盖率门禁、文档检查 |
 | 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | `./mvnw -B pmd:cpd && bin/CheckDuplication.py` | 构建 |
 
-**必须跑完整 `./mvnw clean verify` 的情形**：
+**本地不跑完整 `verify`（强制）**：完整 `verify`（覆盖率采集 + 打包 + javadoc + 覆盖率门禁）
+**只在 CI 跑**。即使改动触及下列内容，也一样**推送后看 CI**，不要在本机补跑：
 
-- 改动触及构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`、`.github/actions/`
-- 改动可能影响覆盖率口径：JaCoCo 排除项、模块结构、包名
-- 需要刷新文档中的实测覆盖率 / 用例数
+- 构建定义：`pom.xml`、`module-info.java`、`aha-cli/src/assembly/dist.xml`、`.github/workflows/`、`.github/actions/`
+- 可能影响覆盖率口径：JaCoCo 排除项、模块结构、包名
+- 需要刷新文档中的实测覆盖率 / 用例数（数字从 CI 的 `Gate` 日志或
+  `python3 bin/ReportCoverage.py` 在 CI 的输出里取）
 - 发布前验收（见 [ReleaseProcess.md](ReleaseProcess.md)）
 
-> 本节规定的是**开发过程中的最小验证**，用于避免每次改动都付分钟级代价。
-> 它**不能替代**合入前的门禁：合入 `main` 与发布前一律跑完整检查（见 8.1）。
+> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息。
+> 本地唯一允许的重验证手段是 `./mvnw -pl <模块> -am test -Djacoco.skip=true`（不含覆盖率采集）
+> 与各 `bin/Check*.py`。
 
 ### 8.1 检查分层与门禁时机
 
@@ -310,6 +365,21 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   （那次是作业名失配停在 `Expected`，这次是规则要的东西不存在停在 `Waiting`）。
 
 完整复盘见 [DevLog-20261007-24.md](../DevLog/DevLog-20261007-24.md)。
+
+**main 上的构建成功后自动打 tag（0.1.1 起）**：`Build.yml` 里有一个 `tag` 作业，
+条件为「`push` 到 `main` 且 `build` 作业成功」。它：
+
+- **从根 POM 读版本号**（`<version>`），创建 `V<版本号>` 的附注 tag 并推送——
+  工作流与文档都不写版本字面量，避免版本升了 tag 不跟的两处口径；
+- **幂等**：同名 tag 已存在则跳过（只改文档的合并也会 push 到 `main`，不该因此报错）；
+- 需要 `contents: write`；若仓库把 Actions 默认权限设为只读，该作业会失败，
+  处置同第 8.1 节的权限类问题。
+
+两个必须知道的事实：
+
+1. **`GITHUB_TOKEN` 推的 tag 不会触发下游工作流**（GitHub 防递归），所以 `Release.yml`
+   不会因这个 tag 自动开跑——补救见 [ReleaseProcess.md](ReleaseProcess.md) §4.2；
+2. 新增 `tag` 作业**不改变**任何既有作业名，因此不影响分支保护的必需检查契约（第 8.1 节）。
 
 ## 9. 规范变更程序
 

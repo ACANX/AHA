@@ -4,6 +4,8 @@
  * <p>零外部依赖，仅依赖 JDK。</p>
  */
 module com.acanx.module.aha.common {
+    // 版本号（AppVersion）在根包，CLI 与桌面端都要用
+    exports com.acanx.module.aha.common;
     exports com.acanx.module.aha.common.model;
     exports com.acanx.module.aha.common.tool;
     exports com.acanx.module.aha.common.event;

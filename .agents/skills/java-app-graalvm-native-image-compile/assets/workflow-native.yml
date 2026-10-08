@@ -1,0 +1,255 @@
+# 多平台原生镜像工作流骨架
+#
+# 要点（细节见 references/isolation-and-ci.md）：
+#   1. 独立工作流 + 独立作业名（不要复用 build/gate 这类必需检查的名字）；
+#   2. tag 前缀用 native-v…（不匹配正式发版的 V*/v*，因此不触发正式发版）；
+#   3. 发布为预发行版；单写者发布（多腿并发写同一个 release 会打架）；
+#   4. fail-fast: false + 实验腿 continue-on-error + 发布作业 if: always()；
+#   5. 产物自证：存在 / 体积下限 / 平台魔法数 / 关键依赖数量；
+#   6. 版本号 <基线>.<PR 补零>，基线读根 POM、PR 号按提交反查 API。
+#
+# 首次运行时请核对所用 action 的**大版本**（失败是本工作流内部的，不影响其它流程）。
+
+name: Native
+
+on:
+  push:
+    branches: [dev]          # <<< 改成你的开发主分支：每次合并都出包
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（用于版本号；留空则按当前提交反查）
+        required: false
+        default: ''
+      version:
+        description: 直接指定完整版本号（覆盖 PR 推导）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native-version:
+    name: native-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      base: ${{ steps.compute.outputs.base }}
+      pr: ${{ steps.compute.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 计算版本（<基线>.<PR 补零到 5 位>）
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "base=${INPUT_VERSION%.*}" >> "$GITHUB_OUTPUT"
+            echo "pr=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 注意命名空间：findtext('version') 会静默返回 None，版本号会变空
+          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+          pr="${INPUT_PR:-}"
+          if [ -z "$pr" ]; then
+            pr=$(curl -sS --max-time 30 \
+                   -H "Authorization: Bearer ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls" \
+                 | python3 -c "import json,sys
+          d = json.load(sys.stdin)
+          print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
+          fi
+          [ -n "$pr" ] || { echo "::warning::未确定 PR 号，记 00000"; pr=0; }
+          version=$(printf '%s.%05d' "$base" "$pr")
+          { echo "base=${base}"; echo "pr=${pr}"; echo "version=${version}"; } >> "$GITHUB_OUTPUT"
+          echo "版本 = ${version}"
+
+  native-build:
+    name: native-build (${{ matrix.label }}, jdk${{ matrix.jdk }})
+    needs: native-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  label: linux-x64,   platform: linux,      jdk: '25', experimental: false }
+          - { os: windows-latest, label: windows-x64, platform: win,        jdk: '25', experimental: false }
+          - { os: macos-latest,   label: macos-arm64, platform: mac-aarch64, jdk: '25', experimental: false }
+          # 实验腿：失败只标注自己（它是数据点，不是交付物）
+          - { os: windows-latest, label: windows-x64, platform: win,        jdk: '27', experimental: true }
+    runs-on: ${{ matrix.os }}
+    # 整条管线可选时用 true。但注意：作业级容错只保住「整次运行」的颜色，
+    # 作业本身仍显示失败（红叉）——要作业也绿，必须给下面每个可能失败的步骤
+    # 也加 continue-on-error: true，并把真相写进 Job Summary（见 references/isolation-and-ci.md §1.4）。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        # 容错：GraalVM 的某个 JDK 大版本可能还没发布（实测 JDK 27 就是这样）
+        id: graal
+        continue-on-error: true
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: 计算本腿参数
+        id: leg
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -euo pipefail
+          # Windows 上的可执行名带 .cmd（exec 不会自动补后缀）
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "executable=native-image.cmd" >> "$GITHUB_OUTPUT"
+          else
+            echo "executable=native-image" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ matrix.jdk }}" = "27" ]; then
+            echo "profiles=<原生 profile>,<新 JDK profile>" >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=<原生 profile>" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 工具链自证
+        # 只做记录：这里失败说明「环境不对」，不等于「代码编不出来」
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          java -version
+          # Windows 上 native-image 是 .cmd，bash 不能直接执行 .cmd，要交回 cmd.exe
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cmd //c "${{ steps.leg.outputs.executable }} --version"
+          else
+            "${{ steps.leg.outputs.executable }}" --version
+          fi
+
+      - name: 构建原生镜像
+        id: native
+        # 注意：显式列出主模块 —— profile 加入的模块**不会**被 -am 带上游
+        # （症状是「在中央仓库找不到 <主模块>」，很像网络问题但其实是反应堆匹配不上）
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -euo pipefail
+          ./mvnw -B -P${{ steps.leg.outputs.profiles }} \
+            -pl <原生模块>,<主模块> -am package \
+            -DskipTests -Djacoco.skip=true \
+            -Dnative.version=${{ needs.native-version.outputs.version }} \
+            -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+
+      - name: 产物自证（诊断式；判不出来也不阻塞）
+        # 诊断式：① 先打全现场 ② 判据只留真不变式 ③ 结论写摘要 + produced 交给后续步骤。
+        id: verify
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=<原生模块>/target/native
+          produced=false
+          note=""
+
+          echo "—— 现场 ——"
+          ls -la "$work" 2>/dev/null || echo "（目录不存在）"
+          find <原生模块>/target -maxdepth 3 -type f \
+               \( -name '<可执行名>' -o -name '<可执行名>.exe' \) 2>/dev/null || true
+          ls -la dist 2>/dev/null | head -20 || true
+
+          bin=$(ls "$work/<可执行名>" "$work/<可执行名>.exe" 2>/dev/null | head -n1 || true)
+          size=0; magic=""
+          if [ -z "$bin" ]; then
+            note="没有产出原生可执行文件（构建步骤结论：${{ steps.native.outcome }}）"
+            echo "::warning::$note"
+          else
+            size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+            if [ "$size" -lt 5242880 ]; then
+              note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
+              echo "::warning::$note"
+            else
+              produced=true
+            fi
+            magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+            case "${RUNNER_OS}" in
+              Windows) expect="4d5a" ;; Linux) expect="7f454c46" ;; macOS) expect="cffaedfe" ;;
+            esac
+            ok=false
+            [ "$magic" = "$expect" ] && ok=true
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
+            [ "$ok" = "true" ] || { note="${note:+$note；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
+                                    echo "::warning::$note"; }
+            echo "产物：$bin（$((size / 1024)) KB，magic=${magic:-未取到}）"
+          fi
+
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
+            if [ "$produced" = "true" ]; then echo "- 产物：${size} 字节，magic=\`${magic}\`"; \
+            else echo "- **未产出可用二进制**"; fi
+            echo "- 工具链：${{ steps.graal.outcome }}；构建：${{ steps.native.outcome }}"
+            if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 改名并上传
+        # 只有真产出二进制才上传；没有就跳过（可选管线不因此变红）
+        if: steps.verify.outputs.produced == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: dist/<原生模块>-*.zip
+          if-no-files-found: warn
+
+  native-publish:
+    name: native-publish
+    needs: [native-version, native-build]
+    if: always() && needs.native-version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          # 制品（artifact）与「构建产物目录 dist/」不是一回事，因此用 artifacts/ 承接
+          path: artifacts
+      - name: 整理资产（没有产物也算正常，不失败）
+        id: collect
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          files=(artifacts/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::本次没有任何原生包可发布（各腿结论见各自摘要）"
+            echo "### 原生镜像：本次无可发布产物" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          ls -lh "${files[@]}"
+      - name: 发布预发行版
+        # 一个包都没收上来时不发版：空 release 比不发更糟
+        if: steps.collect.outputs.any == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          # 前缀刻意区别于正式发版（V*/v*），因此不会触发正式流程
+          tag_name: native-v${{ needs.native-version.outputs.version }}
+          name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
+          prerelease: true
+          files: artifacts/*.zip

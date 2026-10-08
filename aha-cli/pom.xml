@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -71,29 +71,6 @@
     </dependencies>
 
     <build>
-        <resources>
-            <!--
-                版本号只保留一个来源：pom.xml。
-
-                注解属性要求编译期常量，无法从文件取值，因此 picocli 侧改用
-                AhaCli 的 versionProvider 在运行时求值。此处仅对版本文件开启资源过滤，
-                其余资源原样复制，避免误替换其他文件中的 ${...}。
-            -->
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-                <includes>
-                    <include>**/version.properties</include>
-                </includes>
-            </resource>
-            <resource>
-                <directory>src/main/resources</directory>
-                <filtering>false</filtering>
-                <excludes>
-                    <exclude>**/version.properties</exclude>
-                </excludes>
-            </resource>
-        </resources>
         <plugins>
             <!--
                 让 `mvn clean` 清掉 dist/ 里由构建产生的文件。
@@ -151,6 +128,15 @@
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
                             <!-- 平铺到项目根 dist/，使 bin/Aha.sh 的 $DIR/../lib 成立 -->
+                            <!--
+                                注意：这里**刻意**是仓库根，不是 ${maven.multiModuleProjectDirectory}/dist。
+
+                                原因：CLI 的 assembly 描述符（src/assembly/dist.xml）内部把内容铺到
+                                `dist/`（`bin/` + `lib/` + 三个文档），组装结果就是「仓库根的 dist/」。
+                                若在这里再加一层 /dist，产出会变成 `dist/dist/…`。
+                                也就是说：**CLI 的输出本来就在 dist/ 里**，其余模块（桌面端、原生镜像）
+                                才是通过本元素直接指向 /dist 的——口径一致，写法不同。
+                            -->
                             <outputDirectory>${maven.multiModuleProjectDirectory}</outputDirectory>
                             <finalName>dist</finalName>
                             <!-- dir 格式产物不可安装/部署，关闭 attach 以消除警告 -->

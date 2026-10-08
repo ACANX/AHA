@@ -66,6 +66,15 @@ public final class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
+    public void deleteSession(String sessionId) {
+        // 这个测试替身只有一个平铺的消息表，因此「删除会话」= 清空消息 + 忘掉配置
+        messages.clear();
+        memories.clear();
+        createdSessions.remove(sessionId);
+        sessionConfigs.remove(sessionId);
+    }
+
+    @Override
     public void clearHistory(String sessionId) {
         messages.clear();
     }

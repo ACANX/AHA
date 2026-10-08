@@ -1,6 +1,7 @@
 # Maven
 target/
 dist/
+aha-desktop-*.zip
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
@@ -32,21 +33,26 @@ Thumbs.db
 
 # 日志与运行时数据
 *.log
-data/
-logs/
+/data/
+/logs/
 *.db
 *.db-shm
 *.db-wal
 *.keystore
 
 # ── 运行期数据 ──────────────────────────────────────────────
-# AHA_HOME 未设置时，AHA 会把 Data/ Key/ Log/ 落在项目目录下。
+# AHA_HOME 未设置时，AHA 会把 Data/ Key/ Log/ 落在**项目根目录**下。
 # 目录名按项目约定用大驼峰，因此必须按同样的大小写忽略：
 # 在 Linux（大小写敏感）上，小写的 data/ 匹配不到 Data/。
-Data/
-Key/
-Log/
-Model.yml
+#
+# 必须带前导斜杠（只匹配仓库根）：不带斜杠的 `Log/` 会匹配**任意层级**的 log 目录，
+# 于是在 Windows / macOS（文件系统大小写不敏感）上会把
+# `aha-desktop/src/main/java/.../desktop/log/` 整个吃掉——git 不会报错，
+# `git add -A` 静默跳过，`git status` 还显示「干净」，只有 CI 会告诉你编译不过。
+/Data/
+/Key/
+/Log/
+/Model.yml
 
 # 用户级目录整体（若被软链进仓库）
 AHA_HOME/

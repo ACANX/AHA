@@ -26,7 +26,7 @@ AHA 的长期目标是成为**可独立承担研发工作的 Agent Harness**。
 
 ## 项目状态
 
-当前版本 **0.1.0**：Core 与 CLI 可运行，桌面端为占位模块。
+当前版本 **0.1.1**：Core 与 CLI 可运行，桌面端为占位模块。
 
 逐版本的路线图（0.2 桌面端、0.3 扩展基础、……、1.0 自举达标）与能力缺口，
 以 [AHA-Design-V1.md](Docs/AHA/AHA-Design-V1.md) 为准 —— 本文件不复制该清单，避免两处漂移。
@@ -99,8 +99,8 @@ dist/
 | JDK | **25 (LTS)** |
 | Maven 运行时 | **4.x**（Maven Wrapper 固定） |
 | Maven 兼容基线 | **3.9.x** |
-| OpenJFX | **25**（桌面端，0.1 不启用） |
-| JPMS | **强制启用** |
+| OpenJFX | **25**（桌面端，0.2 启用） |
+| JPMS | **启用（非强制）** |
 | JSON/YAML | Jackson **3.x**（groupId `tools.jackson`） |
 
 > 依赖的确切版本集中在父 `pom.xml` 的 `<properties>`，由 Dependabot 每日升级；

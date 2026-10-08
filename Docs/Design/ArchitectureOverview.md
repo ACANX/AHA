@@ -1,6 +1,6 @@
 # 架构总览
 
-**文档版本**：v1.4.0
+**文档版本**：v1.6.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -23,7 +23,9 @@
 | v1.4.0 | 2026-10-07 | 覆盖率与用例数刷新（新增项目 ID 用例） | @ACANX |
 | v1.4.0 | 2026-10-07 | §6 质量基线按实测刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
 | v1.5.0 | 2026-10-07 | 版本号改为构建期注入，补用例；覆盖率与用例数刷新 | @ACANX |
+| v1.5.0 | 2026-10-08 | JPMS 设计原则改为「优先（非强制）」，与 `C-01` 决策对齐 | @ACANX |
 | v1.6.0 | 2026-10-07 | 覆盖率与用例数刷新（新增流式输入与取消用例） | @ACANX |
+| v1.6.0 | 2026-10-08 | §6 质量基线按 0.1.1 实测刷新（621 用例 / 合计行覆盖 80.8%，4087/5061；desktop 10 例，含 1 例默认跳过的窗口冒烟） | @ACANX |
 | v1.7.0 | 2026-10-07 | 覆盖率与用例数刷新（新增状态行用例；cli 略降因真实显示路径只能在伪终端验证） | @ACANX |
 | v1.8.0 | 2026-10-07 | 覆盖率与用例数刷新（新增工具区块用例） | @ACANX |
 
@@ -45,12 +47,13 @@ common ← extension-api ← core ← desktop
 | 内核层 | `aha-core` | Agent 引擎、LLM 适配、记忆、配置、安全、扩展运行时 |
 | 实现层 | `aha-tool` | 内置工具（ServiceLoader） |
 | 接入层 | `aha-cli`、`aha-desktop` | CLI / 桌面端 |
+| 试验层 | `aha-desktop-native` | 桌面端原生镜像（GraalVM native-image）：**默认不在反应堆里**，由 `desktop-native` profile 加入；见 `DesktopNativeDesign.md` |
 
 ## 3. 关键设计
 
 - **微内核 + 扩展**：核心稳定，边缘扩展化
 - **IR 独立**：LLM 内部统一协议，适配器隔离外部协议
-- **JPMS 强制**：类加载隔离与显式依赖
+- **JPMS 优先（非强制）**：类加载隔离与显式依赖；与 OpenJFX 冲突时为它让路（`C-01` 决策，2026-10-08）
 - **虚拟线程**：每个会话一个虚拟线程，禁止池化
 
 ## 4. 依赖矩阵（实现）
@@ -63,6 +66,7 @@ common ← extension-api ← core ← desktop
 | 实现层 | `aha-tool` | `com.acanx.module.aha.tool` | common, core |
 | 接入层 | `aha-cli` | `com.acanx.module.aha.cli` | core, tool |
 | 接入层 | `aha-desktop` | `com.acanx.module.aha.desktop` | core |
+| 试验层 | `aha-desktop-native` | —（无 Java 代码，`packaging=pom`） | desktop（仅取用其 runtime 产物） |
 
 代码包名与模块名一致（`com.acanx.module.aha.<module>`）。
 
@@ -83,10 +87,10 @@ CLI（picocli）
 `ServiceLoader` 同时在 `module-info` 的 `provides` 与 `META-INF/services` 中声明，
 兼容 JPMS 与 classpath 两种运行方式。
 
-## 6. 质量基线（0.1.0）
+## 6. 质量基线（0.1.1）
 
 | 指标 | 值 |
 |---|---|
-| 测试用例 | **605**（common 57 / extension-api 6 / core 194 / tool 25 / cli 323） |
-| 行覆盖率（合计） | **80.3%**（4045/5038 行；JaCoCo 门禁 `BUNDLE` 行覆盖 ≥ 70%） |
+| 测试用例 | **621**（common 60 / extension-api 6 / core 211 / tool 25 / cli 309 / desktop 10，其中 1 例为默认跳过的窗口冒烟） |
+| 行覆盖率（合计） | **80.8%**（4087/5061 行；JaCoCo 门禁 `BUNDLE` 行覆盖 ≥ 70%） |
 | 构建 | `./mvnw clean verify`（Maven 4）与 `mvn clean verify`（Maven **3.9.11**）均通过，覆盖率数据一致 |

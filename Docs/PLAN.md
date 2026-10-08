@@ -1,6 +1,6 @@
 # AHA 暂缓与受限事项
 
-**文档版本**：v1.24.0
+**文档版本**：v1.28.0
 **状态**：草稿
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -38,6 +38,10 @@
 | v1.22.0 | 2026-10-07 | §8.1.1 按实况更新：此前那批提交已推送（PR #6 已合入 dev），现仅剩 PR #8 冲突修复的合并提交 06c6121 待推送；交叉引用 TODO.md 的 G-01 / F-12 | @ACANX |
 | v1.23.0 | 2026-10-07 | §8.7 补「当日实查快照、不随后续变动逐行回改」的标注，并指明现值出处（§6 / §8.1 / TODO.md） | @ACANX |
 | v1.24.0 | 2026-10-07 | §8 编号与顺序修正（`A-09` / `A-10`）：§8.2 表补齐并归位 `8.2.6`、原重复的 `8.2.7`（日志文件不生成，与 §8.5 重复记录）改为 `8.2.11`；`### 8.4` 由 §8.7 之后挪回 `8.3` 之后；重复的 `## 8.` 标题（「相关文档」）改为文末 `## 9.` 并移到位 | @ACANX |
+| v1.25.0 | 2026-10-07 | §6.3 的 tag 写法统一为 `V0.1.0`（与 `Build.yml` 自动打 tag 的约定一致） | @ACANX |
+| v1.26.0 | 2026-10-08 | §6.3 改为「0.1.0 已发布 / 0.1.1 待执行」并记录实际 tag 为裸 `0.1.0`；§8.2.2 发布日结项 | @ACANX |
+| v1.27.0 | 2026-10-08 | §6.3 的发布产物说明改为「CLI 包 + 各平台桌面端包」 | @ACANX |
+| v1.28.0 | 2026-10-08 | §8.7 复核表：`version.properties` 注明所在模块（`aha-common`） | @ACANX |
 
 ---
 
@@ -265,14 +269,18 @@ git switch -c dependa && git push -u origin dependa
 **顺带澄清**：wrapper 固定 `4.0.0-rc-7` 并**不是**疏忽。实测 Maven 4 尚无 GA——
 `apache-maven-4.0.0-bin.zip` 返回 404，官方 `maven-metadata.xml` 的 `release` 就是 `4.0.0-rc-7`。
 
-### 6.3 0.1 发布流程未执行
+### 6.3 发布流程（0.1.0 已发布，0.1.1 待执行）
 
-按 [ReleaseProcess.md](DevSpec/ReleaseProcess.md)：开 `release/0.1.0` 分支 → 合入 `main` →
-打 tag `v0.1.0` → 由 `Release.yml` 产出 `dist.zip`。
+**0.1.0 已发布**（2026-10-07，`main` 上的 `9138847` `Release:V0.1.0`）。实际 tag 是 **`0.1.0`**
+（无 `V` 前缀），与后续约定不一致——处置见 [TODO.md](TODO.md) `G-06`。
+`CHANGELOG.md` 的发布日期已同步由 `2026-10-06` 更正为 `2026-10-07`。
+
+**0.1.1 待执行**：开 `release/0.1.1` 分支 → 合入 `main` → 由 `Build.yml` 的 tag 作业在 main
+构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-0.1.1-cli.zip`
+与各平台桌面端包（`aha-desktop-0.1.1-<系统>-<架构>.zip`）。版本号改动清单见
+[ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
 
 **依赖**：6.1（无提交就没有 tag 可打）。
-
-**顺带**：`CHANGELOG.md` 里 `[0.1.0] - 2026-10-06` 的日期需改成实际发布日。
 
 ### 6.4 文档中的测试数据已刷新（2026-10-07）
 
@@ -350,7 +358,7 @@ git switch -c dependa && git push -u origin dependa
 | # | 问题 | 状态 |
 |---|---|---|
 | 8.2.1 | 测试数据三处口径不一致 | ✅ 已刷新为 **604 用例 / 80.4%** |
-| 8.2.2 | `CHANGELOG.md` 发布日 `2026-10-06` 需改为实际发布日 | ⬜ 待做 |
+| 8.2.2 | `CHANGELOG.md` 发布日 `2026-10-06` 需改为实际发布日 | ✅ 已修（→ `2026-10-07`，与 `main` 上 `9138847` 同日） |
 | 8.2.3 | CLI 文案残留「插件」 | ✅ 已修（代码 23 处 + 文档 2 处，全部改为「扩展」） |
 | 8.2.4 | `CliDesign.md` 未按命名约定改名 | ✅ 已修（→ `CLIDesign.md`，7 处引用同步） |
 | 8.2.5 | 真实供应商 API Key 端到端验收 | ⬜ 待做（需外部环境） |
@@ -491,7 +499,7 @@ static void install(LoggerContext context, String xml) throws IOException {
 | 核心模块 `System.out/err` | 0 处（CLI 除外） | ✓ 验收项可判 |
 | `TODO` 标记 | 5 处，全部 `TODO(0.3)`（扩展系统） | ✓ 非发布阻塞 |
 | `Docs/` 四棵目录树 | Design 16 / DevSpec 11 / Guide 8 / Diagrams 7，与磁盘**逐一比对一致** | ✓（此前 Design 缺 3 份，已修） |
-| `version.properties` | `version=${project.version}` + 资源过滤 | ✓ |
+| `version.properties` | `version=${project.version}` + 资源过滤（位于 `aha-common`，CLI 与桌面端共用） | ✓ |
 
 **本次因此改动的文档**：`LoggingDesign.md`（新建）、`ConfigurationGuide` / `ReferenceGuide`（`Logging.Level` 默认值 `INFO` → `DEBUG`，与 `AhaDefault.yaml` 一致）、`TroubleshootingGuide`、`Constitution`（第 10 条第 8 项）、`AHA-Design-V1`（目录树 + 清单表 + 日志小节指针）、`CHANGELOG`（滚动口径更正）。
 

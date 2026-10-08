@@ -1,0 +1,64 @@
+# AHA 桌面端 · GraalVM native-image 参数清单
+#
+# 用法（由 aha-desktop-native/pom.xml 的 exec 执行）：
+#     native-image @native-image-args.txt -cp <classpath> -H:Path=<dir> -H:Name=<name> <主类>
+#
+# ── 为什么单独一个文件 ────────────────────────────────────────────────────────
+# 原生镜像要反复试参数，而且试的空间很大（初始化时机、反射、资源、原生库）。
+# 把它们集中在这一个文件里，迭代时就只改这里：POM 与工作流都不用动，
+# 每次构建也会把这个文件原样打进 zip——「这个二进制是怎么编出来的」永远可查。
+#
+# ── 现状（诚实的说明）────────────────────────────────────────────────────────
+# 这是一份**起点**，不是一份已验证到位的清单。JavaFX + native-image 的难点不在代码，
+# 而在三条清单：哪些类必须运行期初始化、哪些资源必须包含、哪些原生库需要带上。
+# 第一次跑可能会在某个类上失败——把失败信息里的类名加进下面的清单即可，
+# 这正是本模块定位为「试验性」的原因（见 Docs/Design/DesktopNativeDesign.md）。
+
+# 不要退回 JVM 模式：退回会让人误以为「编出原生镜像了」
+--no-fallback
+
+# 优化等级 2（构建慢一些，产物快一些；原生镜像的产物质量比构建时长重要）
+-O2
+
+# 构建期异常带栈，便于定位（否则只有一个类名）
+-H:+ReportExceptionStackTraces
+
+# 宿主 JVM 的堆上限：GitHub runner 上 native-image 默认可能吃太多内存
+-J-Xmx4g
+
+# 走 classpath 时，JavaFX（glass / prism）与 sqlite-jdbc 的 JNI 都归在未命名模块里
+--enable-native-access=ALL-UNNAMED
+
+# 供应商调用走 HTTPS（含 SSE 流式），另外 http 用于本地调试
+--enable-url-protocols=http,https
+
+# 非 UTF-8 字符集也要带上：Windows 控制台与文件编码的探测依赖它
+-H:+AddAllCharsets
+
+# ── 资源清单 ────────────────────────────────────────────────────────────────
+# 三类资源必须有：
+#   1. 图标与界面资源（logo.png、css 等）
+#   2. 版本号与消息资源（version.properties 等）
+#   3. META-INF/services（扩展与 LLM 适配器走 ServiceLoader 发现）
+#   4. JavaFX 的平台原生库（.so / .dylib / .dll）——它们在 JavaFX 的 jar 里，
+#      运行时由 NativeLibLoader 解压加载，因此必须作为资源打进镜像
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+-H:IncludeResources=META-INF/services/.*
+
+# ── 必须运行期初始化的类 ────────────────────────────────────────────────────
+# 判据很简单：**构建期初始化就会去碰「运行时才存在的东西」**（屏幕、窗口、原生库、系统主题）。
+# 下面这批是 JavaFX 与数据库驱动的已知点，来自 Gluon Substrate 的同款处理方式。
+--initialize-at-run-time=com.sun.javafx.application.PlatformImpl
+--initialize-at-run-time=com.sun.javafx.application.LauncherImpl
+--initialize-at-run-time=com.sun.javafx.logging.PlatformLogger
+--initialize-at-run-time=com.sun.javafx.util.Utils
+--initialize-at-run-time=com.sun.javafx.font
+--initialize-at-run-time=com.sun.glass.ui
+--initialize-at-run-time=com.sun.glass.utils.NativeLibLoader
+--initialize-at-run-time=com.sun.prism
+--initialize-at-run-time=com.sun.scenario.animation
+# sqlite-jdbc：静态初始化时会去解压 / 加载本地库
+--initialize-at-run-time=org.sqlite
+# log4j2 的配置装配在运行期按文件系统解析，构建期只会读到构建机的路径
+--initialize-at-run-time=org.apache.logging.log4j.core.config
+--initialize-at-run-time=org.apache.logging.log4j.core.util

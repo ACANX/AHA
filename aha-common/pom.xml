@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -27,4 +27,29 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <resources>
+            <!--
+                版本号只保留一个来源：pom.xml。
+
+                只对版本文件开启资源过滤，其余资源原样复制，避免误替换其他文件里的 ${...}。
+                （原在 aha-cli，因桌面端也需要版本号而下移；cli 与 desktop 不得互相依赖。）
+            -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/version.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>**/version.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+    </build>
 </project>

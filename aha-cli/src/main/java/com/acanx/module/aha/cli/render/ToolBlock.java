@@ -3,6 +3,7 @@ package com.acanx.module.aha.cli.render;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.acanx.module.aha.common.tool.ToolKind;
 
 /**
  * 工具调用的区块化展示。

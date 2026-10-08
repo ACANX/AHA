@@ -3,10 +3,12 @@ package com.acanx.module.aha.core.service;
 import com.acanx.module.aha.common.exception.AhaException;
 import com.acanx.module.aha.common.model.MemoryEntry;
 import com.acanx.module.aha.common.model.SessionConfig;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.model.ToolResult;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
 import com.acanx.module.aha.common.tool.CancellationToken;
+import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.llm.protocol.ToolCall;
 import com.acanx.module.aha.core.task.TaskRequest;
 import com.acanx.module.aha.core.task.TaskResult;
@@ -118,6 +120,46 @@ public interface AgentService {
      * @return 记忆条目
      */
     List<MemoryEntry> recall(String sessionId, String query, int limit);
+
+    /**
+     * 列出会话摘要（最近创建的在前）。
+     *
+     * <p>桌面端左栏的会话列表靠它。默认返回空列表：远端实现（本地 HTTP + WebView 那条路）
+     * 未必有「本地会话」这个概念，不该被迫实现。</p>
+     *
+     * @return 会话摘要
+     */
+    default List<SessionSummary> listSessions() {
+        return List.of();
+    }
+
+    /**
+     * 加载会话历史（时间正序），用于切换会话时把对话流回放出来。
+     *
+     * @param sessionId 会话 ID
+     * @param limit     数量上限；{@code <= 0} 表示不限
+     * @return 消息列表
+     */
+    default List<ChatMessage> loadHistory(String sessionId, int limit) {
+        return List.of();
+    }
+
+    /**
+     * 重命名会话。
+     *
+     * @param sessionId 会话 ID
+     * @param title     新标题；空白表示清除自定义标题
+     */
+    default void renameSession(String sessionId, String title) {
+    }
+
+    /**
+     * 删除会话及其消息与记忆（不可恢复）。
+     *
+     * @param sessionId 会话 ID
+     */
+    default void deleteSession(String sessionId) {
+    }
 
     /**
      * 运行时描述符。
