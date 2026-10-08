@@ -3,7 +3,7 @@
 > **文档版本**：v1.0.0
 > **状态**：草案（试验性能力，随实验迭代）
 > **生效日期**：2026-10-08
-> **最后更新**：2026-10-08
+> **最后更新**：2026-10-09
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
 > **定位**：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流的设计、风险与迭代指南
@@ -295,7 +295,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | # | 风险 | 现状 | 应对 |
 |---|---|---|---|
 | R1 | JavaFX + native-image 需要一长串「运行期初始化」清单，首次跑很可能在某个类上失败 | 参数文件里已放了一批已知点（来自 Gluon Substrate 的同款处理方式），但**未验证到位** | 按失败信息把类名加进 `--initialize-at-run-time`；只改参数文件 |
-| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException` | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；`NativeImageMetadataTest` 与工作流产物自证双层守卫 |
+| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35、#37、#39）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException`；Glass 原生库又用 `FindClass` / `GetMethodID` 按名字查类与成员，需另一套 JNI 清单（#37 的 `FindClass` 与 #39 的平台子类成员） | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；再用 `jni-config.json` 补齐 `FindClass` 与平台实现类的 `Get*ID` 目标（85 条）；`NativeImageMetadataTest`（11 条）与工作流产物自证双层守卫 |
 | R3 | JavaFX 平台原生库未打进镜像 | 已把 `.so/.dylib/.dll` 纳入资源清单 | 首次真机运行若是 `UnsatisfiedLinkError`，据此调整 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 工作流用 `graalvm-community` 的对应版本号 | 该腿失败即是答案（隔离，不影响其余）；可先降到 JDK 26 或等发布 |
 | R5 | 产物体积大（把 JDK 与全部依赖编进去了） | 预期几十 MB | 后续再谈瘦身（`-H:-IncludeAllTimeZones` 等），先保证能跑 |
@@ -388,6 +388,25 @@ native 层拿到空引用继续跑就是段错误。
 字体（DirectWrite / FreeType / CoreText / FontConfig，含两个动态名）与几何。
 成员统一用 `allDeclared*` 全量（native 按名字查成员，签名跨版本不稳）。平台专属类共用一份清单，
 缺席平台只产生无害 warning。详见 [DevLog-20261008-15.md](../DevLog/DevLog-20261008-15.md)。
+
+**JNI 的第二类缺口：平台实现类自己的成员查找（issue #39，2026-10-09）**。修完 #37 后，Windows 真机在
+`WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。
+这次不是「类查不到」，而是 native 拿到 Java 传入的 `jclass`（即平台子类**本身**）后，
+用 `GetMethodID` / `GetFieldID` 查它**自己声明**的成员——`notifyMoving` / `nonClientHitTest`
+声明在 `WinWindow` 上，而 `#37` 的 `FindClass` 扫描只看到 native 里的字面量类名，
+平台子类**从不经 `FindClass`**，因此从未入册（在册的基类 `Window` 只能满足继承而来的方法，
+所以 `notifyClose` 过了、`notifyMoving` 没过）。
+
+修正方式：不再只扫 `FindClass`，而是扫三平台 native 源码里所有
+`GetMethodID` / `GetStaticMethodID` / `GetFieldID` / `GetStaticFieldID` 的**目标类**，
+把「以本类 `jclass` 为参数查成员」的平台实现类逐类补进同一个 `jni-config.json`
+（Windows 11 个：`WinWindow` / `WinView` / `WinPixels` / `WinCursor` / `WinSystemClipboard` /
+`WinDnDClipboard` / `WinMenuImpl` / `WinGestureSupport` / `WinCommonDialogs` / `WinAccessible` /
+`WinTextRangeProvider`；macOS 11 个：`MacWindow` / `MacView` / `MacPixels` / `MacCursor` /
+`MacCommonDialogs` / `MacFileNSURL` / `MacGestureSupport` / `MacMenuDelegate` / `MacPasteboard` /
+`MacTimer` / `MacAccessible`；另加三平台共用的 `com.sun.glass.ui.EventLoop`），
+清单由 62 条增至 **85 条**。GTK 无需补——它经 `FindClass` 取类，#37 已覆盖。
+详见 [DevLog-20261009-05.md](../DevLog/DevLog-20261009-05.md)。
 
 ### 6.2 迭代时改哪里（只改一处）
 
