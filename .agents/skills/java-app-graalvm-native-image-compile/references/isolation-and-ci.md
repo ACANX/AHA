@@ -41,6 +41,43 @@
 
 ### 1.4 失败传播隔离
 
+> **「可选」要落到步骤级，而不是作业级**（2026-10-08 实测踩坑）
+
+把原生编译做成「可选项」时，最常见的错法是只在**作业**上写 `continue-on-error: true`：
+
+- 作业级容错**只保证「整次运行」不变红**；
+- **作业自身仍然显示为失败（红叉）**——PR 检查列表里就是一排红，看的人会以为流程挂了。
+  （实测：不是必需检查、也确实没挡住合并，但四条腿全红，观感就是「挂了」。）
+
+要真的不吓人，容错必须落到**步骤级**：
+
+```yaml
+      - name: 安装 GraalVM
+        id: graal
+        continue-on-error: true        # 某个 JDK 大版本可能还没发布（实测 JDK 27）
+        uses: graalvm/setup-graalvm@v1
+      - name: 构建原生镜像
+        id: native
+        continue-on-error: true        # 编译失败在这一步消化掉，不上升为作业失败
+        if: steps.graal.outcome == 'success'
+```
+
+配套三件事，缺一件就会从「不吓人」滑到「没人知道坏了」：
+
+1. **摘要留真相**：每个作业末尾把结论写进 `$GITHUB_STEP_SUMMARY`
+   （编了没有 / 产物在哪 / 多大 / 为什么没成）。红叉消失了，信息不能跟着消失。
+2. **诊断式自证**：失败时先把现场打全（`ls -la`、`find`、classpath 清单），
+   再把结论写成摘要，而不是 `exit 1`。
+   反面例子（真实踩到）：`jfx=$(ls dir/javafx-*.jar | wc -l)` 放在 `set -e` 下——
+   glob 不匹配时 `ls` 退 2，**赋值语句直接让整步失败**，报错只有一行
+   `No such file or directory`，看不出真正原因。
+   另一条：Windows 上 `native-image` 是 `.cmd`，bash **不能直接执行** `.cmd`
+   （工具链自证那一步就是这样红的），要交回 `cmd //c`。
+3. **无产物不发版**：发布作业在「一个制品都没收到」时要**既不发布也不失败**，
+   否则一次空发布比不发更糟（历史上正是这一步把整次运行染红）。
+
+**旧的写法（已废弃）**：
+
 ```yaml
 strategy:
   fail-fast: false            # 一条腿失败不取消其余（三个平台是并列交付物）
@@ -75,34 +112,90 @@ if: always() && needs.<版本作业>.result == 'success'   # 部分平台成功�
 9. **单独一个发布作业**汇总制品并发布：三条腿并发写同一个 release 会互相打架，
    所以要**单写者**。
 
-## 3. 产物自证脚本（可直接改用）
+## 3. 产物自证脚本（两种形态，先选形态再抄）
+
+先决定这条管线的性质，**不要糊里糊涂地抄**：
+
+| 形态 | 用在 | 判据写法 |
+|---|---|---|
+| **诊断式**（推荐给试验/可选管线） | 原生编译是**数据点**，不是交付物 | 打全现场 + 结论写摘要 + `exit 0`，用 `produced` 输出决定要不要上传/发版 |
+| **硬门禁** | 原生编译是**交付物**，坏了必须拦 | 判据不满足就 `exit 1`（但别把它加成必需检查，除非你确定要挡住所有人的合并） |
+
+下面是**诊断式**，可直接改用。三条纪律：① 先打现场；② 判据只留真不变式；
+③ 结论进摘要，别只靠红叉说话。
 
 ```bash
-set -euo pipefail
+set -uo pipefail          # 注意：**不要**用 set -e
 work=my-native/target/native
+produced=false
+note=""
 
-# ① 存在（Windows 带 .exe）
+# ① 先打现场：失败时最需要的是「到底有什么」，而不是一句 error
+echo "—— 现场 ——"
+ls -la "$work" 2>/dev/null || echo "（目录不存在）"
+find my-native/target -maxdepth 3 -type f \
+     \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null || true
+ls -la dist 2>/dev/null | head -20 || true
+
+# ② 可执行文件（Windows 带 .exe；先看约定位置，再整个 target/ 兜一遍）
 bin=$(ls "$work/my-native" "$work/my-native.exe" 2>/dev/null | head -n1 || true)
-[ -n "$bin" ] || { echo "::error::没有产出可执行文件"; ls -la "$work"; exit 1; }
-size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
-echo "产物：$bin（$((size / 1024)) KB）"
+if [ -z "$bin" ]; then
+  bin=$(find my-native/target -maxdepth 3 -type f \
+          \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null | head -n1 || true)
+fi
 
-# ② 体积下限（原生镜像把 JDK 编进去了，异常小说明只编了个壳）
-[ "$size" -ge 5242880 ] || { echo "::error::产物过小，不像原生镜像"; exit 1; }
+size=0; magic=""
+if [ -z "$bin" ]; then
+  note="没有产出可执行文件"
+  echo "::warning::$note"
+else
+  # 体积下限：原生镜像把 JDK 编进去了，异常小说明只编了个壳
+  size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+  if [ "$size" -lt 5242880 ]; then
+    note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
+    echo "::warning::$note"
+  else
+    produced=true
+  fi
 
-# ③ 平台魔法数
-magic=$(head -c 4 "$bin" | od -An -tx1 | tr -d ' \n')
-case "${RUNNER_OS}" in
-  Windows) expect="4d5a" ;;      # PE
-  Linux)   expect="7f454c46" ;;  # ELF
-  macOS)   expect="cffaedfe" ;;  # Mach-O 64 位小端
-esac
-[ "$magic" = "$expect" ] || { echo "::error::平台魔法数不符：$magic != $expect"; exit 1; }
+  # 平台魔法数
+  magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+  case "${RUNNER_OS}" in
+    Windows) expect="4d5a" ;;      # PE
+    Linux)   expect="7f454c46" ;;  # ELF
+    macOS)   expect="cffaedfe" ;;  # Mach-O 64 位小端
+  esac
+  ok=false
+  [ "$magic" = "$expect" ] && ok=true
+  if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
+  [ "$ok" = "true" ] || { note="${note:+$note；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
+                          echo "::warning::$note"; }
+fi
 
-# ④ 关键依赖数量（示例：GUI 框架三件套必须带平台分类器）
-n=$(ls "$work"/lib/*gui*-*.jar 2>/dev/null | wc -l)
-[ "$n" -eq 3 ] || { echo "::error::期望 3 个本平台 GUI jar，实际 $n"; exit 1; }
+# 关键依赖：真正的不变式是「三件套齐全 + 没有 0 KB 空壳」，
+# **不是**「恰好 3 个」——带分类器与不带分类器的 jar 共用同一份 POM，多出来的条目很正常。
+jfx=$(ls "$work"/lib/*gui*-*.jar 2>/dev/null | wc -l | tr -d ' ')
+empty=$(find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
+if [ "${jfx:-0}" -lt 3 ]; then note="${note:+$note；}本平台 GUI jar 只有 ${jfx} 个"; fi
+if [ "${empty:-0}" -ne 0 ]; then note="${note:+$note；}有 ${empty} 个 0 KB 空壳 jar"; fi
+[ -z "$note" ] || echo "::warning::$note"
+
+# 交给后续步骤 + 结论进摘要（成与不成都写，避免「没消息」被误读成「没跑」）
+echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+{
+  echo "### ${RUNNER_OS}"
+  if [ "$produced" = "true" ]; then echo "- 产物：${size} 字节，magic=\`${magic}\`";
+  else echo "- **未产出可用二进制**"; fi
+  if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
+} >> "$GITHUB_STEP_SUMMARY"
 ```
+
+**三个已经踩过的坑**（写进脚本前先看一遍）：
+
+1. `jfx=$(ls dir/*.jar | wc -l)` 放在 `set -e` 下：glob 不匹配时 `ls` 退 2，
+   **赋值语句直接让整步失败**，报错只有一行 `No such file or directory`。→ 用 `set -uo pipefail`。
+2. 「恰好 N 个」这类判据几乎一定会漂：多一个传递依赖就红，而它并不代表坏了。→ 只留不变式。
+3. Windows 上 `native-image` 是 `.cmd`，bash 不能直接执行。→ 交回 `cmd //c`。
 
 ## 4. 版本号：可追溯到 PR
 
