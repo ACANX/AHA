@@ -537,6 +537,7 @@ desktop 亦未列 tool 依赖。
 | v0.27.0 | 2026-10-08 | 0.2 六项功能完成（工具卡片 / 会话列表 / 日志面板 / 输入区增强 / 授权弹窗 / 主题与设置）；新增 `D-13`（剩余项）与 `F-18`（已入库的合并冲突标记，已修复并加守卫） | @ACANX |
 | v0.28.0 | 2026-10-08 | 新增 `aha-desktop-native`（试验性原生镜像模块）与 `DesktopNative.yml`：`N-01`~`N-04` 落地（profile 隔离、独立出包、`a.b.c.PPPPP` 版本、JDK 27 实验分支），`N-05`~`N-07` 待跟踪 | @ACANX |
 | v0.29.0 | 2026-10-08 | 新增 `N-08`/`N-09`：把原生镜像经验沉淀为可复用技能，并明确「先建骨架、边做边改、达成目标才成熟」的迭代方式与四条达标判据 | @ACANX |
+| v0.30.0 | 2026-10-08 | 新增 `N-16`（真机验证 issue #35 补上的 JavaFX 启动链路反射 / JNI 元数据）、`N-17`（改用 tracing agent 采集元数据，手写清单的抄底方案）与 `G-08`（推送修复分支 `fix/issue-35-native-quantum-toolkit` 并提 PR，含验收标准） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1232,6 +1233,27 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       CI 全绿却零产物零报错（见 `Docs/DevLog/DevLog-20261008-08.md`）。
 - [ ] **N-11**：确认 `native-*` 作业**没有**被加进任何分支保护的必需检查
       （它现在即使失败也不会红，但契约上仍不该出现，见 `BuildSpec.md` §8.1）。
+- [ ] **N-16**：真机验证 issue #35 补上的「JavaFX 启动链路」反射 / JNI 元数据是否完整。
+      背景：修完 #26（主类注册）后，二进制下一处报 `ClassNotFoundException:
+      com.sun.javafx.tk.quantum.QuantumToolkit`。已按启动链路（工具包 / 三平台 Glass 工厂 /
+      四条 Prism 管线 / 渲染器 / 全部 212 个 stock shader / Glass 原生回调 / 图片解码 / 字体 /
+      AHA 自身被 Jackson 反射的记录）一次性补进
+      `reachability-metadata.json`，但**清单是按静态分析 + 同类工程推导的，不是本机 agent 采集的**。
+      验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
+      `MissingReflectionRegistrationError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
+      ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
+      对应 `DevLog`。
+      依据：[DevLog-20261008-13.md](DevLog/DevLog-20261008-13.md)、
+      `Docs/Design/DesktopNativeDesign.md` §6.1。
+- [ ] **N-17**：改用 GraalVM tracing agent 采集可达性元数据（手写清单的「抄底」方案）。
+      背景：`N-16` 与 issue #35 已证明——**手工枚举只能做到「已知缺口已闭」，无法证明完整**；
+      本次就靠审计才发现 Jackson 3 不随附元数据。做法建议（任选一）：
+      ① 在 `DesktopNative.yml` 的各腿先跑 JVM 产物 + `-agentlib:native-image-agent=...`
+      （Linux 腿用 `xvfb-run`；需一个「启动后自动退出」的自检开关，正好与 `N-05` 合并），
+      把生成的 `reachability-metadata.json` 作为 native-image 输入；
+      ② 或在 GraalVM JDK 下跑现有单测（无 GUI）采集 core 侧反射，与手写的 JavaFX 清单合并。
+      验收标准：原生产物能连续跑完「开窗 → 读配置 → 存配置 → 一轮对话 → 退出」
+      且无 `MissingReflectionRegistrationError` / `ClassNotFoundException`。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1275,6 +1297,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
 | G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
+| G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 
@@ -1490,6 +1513,28 @@ Dependabot 的版本漂移而失修；仓库是 `public`，CodeQL 免费。
 
 **验收标准**：合入 `main` 后先用 `workflow_dispatch` 手动跑通一次；随后在 Actions 页面
 看到 `schedule` 触发的运行记录（时间戳应落在周一 03:00 UTC 附近）。
+
+**闭环后**：本条改 ✅。
+
+### G-08 ☐ 未完成
+
+**内容**：把 issue #35 的修复分支 `fix/issue-35-native-quantum-toolkit` 推到 origin，
+并提 PR 合入 `dev`。
+
+**为什么必须人工**：本环境没有推送凭据（同 `G-01`，`GIT_TERMINAL_PROMPT=0 git push` 实测
+`could not read Username`）。不推上去，改动只存在于本地：CI 不会跑，`DesktopNative` 的
+可选腿不会重跑，`N-16`（真机验证启动链路的反射 / JNI 元数据是否完整）就无法开工。
+
+**验收标准**：
+
+1. `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；
+2. PR 上 `Build` / `Gate` / `Compat` 绿；
+3. `DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出
+   「已注册主类与 JavaFX 启动链路（QuantumToolkit / Glass 工厂 / Prism 管线）」，
+   而不是「可达性元数据不完整」的 warning；
+4. 合入 `dev` 后自动出 `V<版本>-aha-desktop-native` 预发行版，供 `N-16` 下载验证。
+
+**依赖**：与 `N-05` / `N-16` 同一条链路——先推上去，才有真机验证的对象。
 
 **闭环后**：本条改 ✅。
 

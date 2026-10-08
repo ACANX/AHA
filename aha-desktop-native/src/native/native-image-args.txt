@@ -98,13 +98,17 @@
 -R:MaxHeapSize=1g
 
 # ── 资源清单 ────────────────────────────────────────────────────────────────
-# 三类资源必须有：
-#   1. 图标与界面资源（logo.png、css 等）
+# 五类资源必须有：
+#   1. 图标与界面资源（logo.png、css、编译样式 .bss 等）
 #   2. 版本号与消息资源（version.properties 等）
 #   3. META-INF/services（扩展与 LLM 适配器走 ServiceLoader 发现）
 #   4. JavaFX 的平台原生库（.so / .dylib / .dll）——它们在 JavaFX 的 jar 里，
 #      运行时由 NativeLibLoader 解压加载，因此必须作为资源打进镜像
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+#   5. **着色器**：D3D 的内建 shader 是 .obj（HLSL 预编译字节码，
+#      D3DShaderSource 用 getResourceAsStream 读）；ES2 的是 .frag / .vert。
+#      漏掉 .obj 的症状不是构建失败，而是**首次绘制时 shader 加载不到**——
+#      「静默坏掉」，所以一开真机就先把它补上（issue #35 同批处理）。
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|bss|xml|properties|txt|json|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
 
 # ── 必须运行期初始化的类 ────────────────────────────────────────────────────

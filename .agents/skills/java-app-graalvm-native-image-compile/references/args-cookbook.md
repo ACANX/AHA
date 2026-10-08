@@ -97,12 +97,19 @@
 按项目实际类型收窄，越窄体积越省：
 
 ```
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|bss|xml|properties|txt|json|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
 ```
 
 注意把 **原生库扩展名**（`.so` / `.dylib` / `.dll`）纳进来：GUI 工具包与 JNI 驱动的本地库
 通常就在它们的 jar 里，运行期由加载器解压 —— 不放进镜像就会 `UnsatisfiedLinkError`。
+
+**别漏着色器资源**（来源：AHA issue #35）：JavaFX 的 D3D 内建 shader 是 **`.obj`**
+（HLSL 预编译字节码，由 `D3DShaderSource` / `D3DResourceFactory` 用 `getResourceAsStream` 读），
+ES2 的是 **`.frag` / `.vert`**。漏掉的症状**不是构建失败**，而是首次绘制时
+shader 加载不到——又一次「静默坏掉」。任何以 GUI 框架为主的产物，都应把
+该框架的资源扩展名列全（去它的 jar 里 `find` 一遍非 `*.class` 文件的扩展名最稳），
+而不是只写常见的图片 / 配置 / 原生库。
 
 ### 3.2 运行期初始化清单（`--initialize-at-run-time`）
 
@@ -128,6 +135,26 @@
   在 `reachability-metadata.json` 注册主类构造器，并把 `main` 改成
   `launch(YourApp.class, args)`；漏注册的典型症状是
   `ClassNotFoundException: <你的主类>`（构建完全成功，一启动就炸）。
+- **JavaFX 的启动反射是链式的，要按「启动链路」一次补齐，而不是只补报错里那一个类**。
+  只注册主类后，下一处会换成 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`。
+  反编译 JavaFX 25 可见这条链（来源：AHA issue #35，2026-10-08）：
+
+  | 反射点 | 目标 |
+  |---|---|
+  | `Toolkit.getToolkit()` | `com.sun.javafx.tk.quantum.QuantumToolkit`（无参构造器）|
+  | `PlatformFactory.getPlatformFactory()` | `com.sun.glass.ui.<win\|gtk\|mac>.<X>PlatformFactory`（无参构造器）|
+  | `GraphicsPipeline.createPipeline()` | `com.sun.prism.<d3d\|es2\|sw\|j2d>.<X>Pipeline`（静态 `getInstance`）|
+  | `PrRenderer` / `RendererFactory` | `PPSRenderer` / `PSWRenderer` / `JSWRendererDelegate` / `SSERendererDelegate` |
+  | `PrismFontLoader` | 反射调 `GraphicsPipeline.getPipeline()` / `getFontFactory()` |
+  | `PulseLogger` / `MethodUtil` | `PrintLogger` / `JFRPulseLogger` / `com.sun.javafx.reflect.Trampoline` |
+
+- **反射 ≠ JNI**：`Class.forName` 注册只解决「找得到类」。Glass / Prism / 字体的原生库还会
+  回调 Java、读写结构体字段，这需要 `jniAccessible` + 方法 / 字段注册，否则运行期抛
+  `MissingReflectionRegistrationError`。原生库按名字查成员时，用
+  `allDeclaredMethods` / `allDeclaredFields` 比逐条列更稳（类数有限，代价可控）。
+- **多平台产物共用一份元数据**：平台专属类（Glass 工厂、Prism 管线、字体后端）在
+  别的平台缺席，只会形成一条无害的 `Could not resolve class ...` 警告；
+  但哪条腿缺自己的那条，哪条腿就一启动就炸——所以三平台的条目都要写。
 
 ### 3.4 GC 与堆（实验位，按场景选）
 
@@ -138,6 +165,29 @@
 | `--gc=epsilon` | **没有运行时回收**，只适合短命进程（长驻 GUI 会 OOM） |
 | `-R:MaxHeapSize=512m` | 镜像内运行期堆上限；长驻程序建议显式给 |
 | `-H:-IncludeAllTimeZones` / `-H:-IncludeAllLocales` | 体积瘦身，按需 |
+
+### 3.5 运行时依赖的元数据审计（容易被忽略的第二类缺口）
+
+**反射不只发生在框架里。** 框架（JavaFX / Spring / …）之后，业务层同样会反射：
+JSON / YAML 反序列化、ORM、配置绑定…… 所以补完框架清单后，**必须再查每个运行时依赖**。
+
+先看依赖 jar 里有没有自带元数据（有就完全不用管，最多确认版本）：
+
+```bash
+unzip -l <dep>.jar | grep -E 'native-image|\.json$' | grep -iE 'reflect|reachability|native-image'  # 逐个依赖
+```
+
+判断直接、不含糊：
+
+| 情况 | 例子 | 处置 |
+|---|---|---|
+| jar 里带 `META-INF/native-image/...` | `sqlite-jdbc`（`native-image.properties`）、`log4j-core`（`reflect-config.json`） | ✅ 不用管 |
+| **不带任何元数据，但业务代码用它的反射** | **Jackson 3**（配置记录 / 会话记录的 `treeToValue` / `TypeReference`）；大多数 JSON / ORM 库 | ⚠️ 必须自己把**被反射的 POJO** 注册（`allDeclaredConstructors` / `allDeclaredMethods` / `allDeclaredFields`） |
+| 不带元数据，但实际只解析成 `Map` / `JsonNode` | `snakeyaml-engine` 当前路径 | ⚪ 无需处理 |
+
+> 经验（AHA issue #35 实测）：**这一层不查，就会「窗口开得起来、一存配置就炸」**。
+> 手工枚举永远只能做到「已知缺口已闭」，不能证明完整——
+> 要抄底就用 tracing agent（见 [troubleshooting](troubleshooting.md) 第 5 节）。
 
 ## 四、体积与启动的常见杠杆
 

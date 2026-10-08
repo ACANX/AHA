@@ -202,6 +202,11 @@ metadata:
 | 2026-10-08 | native 二进制启动即 `ClassNotFoundException: <主类>`（issue #26） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 入口的两处反射必须注册**（`launch(String...)` 的 `Class.forName` 与 `LauncherImpl` 的 `getConstructor().newInstance()`）；`main` 改用 `launch(Class, args)`，并用单测 + 产物自证双层守卫 | 实测（AHA：注册 `AhaDesktopApp` 构造器；`NativeImageMetadataTest` 反向验证过） |
 | 2026-10-08 | macOS 腿「构建成功却没上传镜像包」（run 37744912968） | `isolation-and-ci` §3：**`$VAR` 后跟全角字符会被 bash 并进变量名**（`$bin（` → unbound），`set -u` 下退出并**丢掉 outputs**；修法：`${VAR}` + 命中产物立刻写 outputs + `trap 'exit 0' EXIT` | 实测（AHA：macos 镜像包丢失；`CheckScripts.py` 加 YAML 守卫并反向验证） |
 | 2026-10-08 | Windows 腿工具链自证 `PLATFORM: unbound variable` | `isolation-and-ci` §3：runner 自带 VS 环境变量与注入名冲突 → 注入名加前缀 + `${VAR:-}` + 只做记录的步骤对失败加 `|| echo` | 实测（run 37744912968） |
+| 2026-10-08 | native 二进制下一处 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`（issue #35） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 启动反射是链式的，要按「启动链路」一次补齐**（工具包 → Glass 工厂 → Prism 管线 → 渲染器 / 着色器 → 字体 / 日志 / 辅助）；且**反射 ≠ JNI**，Glass / 字体还需 `jniAccessible` + 全量方法 / 字段 | 推导 + 同类工程对照（AHA：76 条元数据、单测已反向验证；**真机待验证**→`N-05`） |
+| 2026-10-08 | 同类工程的公开配置直接照抄会错（issue #35） | `args-cookbook` §3.3：注册的是**方法签名**不是类名，跨版本后者稳、前者不一定（实测：`loadShader` 实为三参，参考配置写的是两参） | 实测（AHA：JavaFX 25 字节码 `javap` 比对） |
+| 2026-10-08 | D3D shader 资源漏进镜像（issue #35 同批发现） | `args-cookbook` §3.1：**着色器扩展名**要进 `-H:IncludeResources`（D3D `.obj`、ES2 `.frag`/`.vert`）；漏掉不是构建失败，是首次绘制静默坏掉 | 推导 + JavaFX jar 扫描（AHA：262 个 `.obj` + 224 个 `.png`） |
+| 2026-10-08 | 手写反射清单「看起来补完了」但实际不完整（issue #35） | `args-cookbook` §3.5：**审计要覆盖整个运行时依赖，不只框架**——`sqlite-jdbc` / `log4j-core` 自带 native-image 元数据，而 **Jackson 3 不带**，业务层的配置 / 会话记录会反射读写失败；「启动链路」只是反射的一部分 | 实测（AHA：293 条元数据；Jackson 缺口靠依赖 jar 扫描发现） |
+| 2026-10-08 | 想回答「还会不会再报别的类找不到」 | `troubleshooting` §5：**手工清单只能做到「已知缺口已闭」，不能证明完整**；要抄底只能 tracing agent 或真机逐功能跑——把这句话写进交付说明，不要过度承诺 | 自述（据本次用户追问） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
 | 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
 
@@ -217,7 +222,7 @@ metadata:
 | **native-image 能编出二进制**（编译期） | **已踩坑→已验证（部分平台）**：2026-10-08 在 AHA 首次真跑，**linux-x64 与 macos-arm64 编译成功**（win-x64 卡在工具链/`.cmd`，见 `references/troubleshooting.md`）。 |
 | Windows 腿的工具链自证（`native-image.cmd`） | **已踩坑**：bash 不能直接执行 `.cmd`，要 `cmd //c`。修法已合入，**待下一次运行确认** |
 | 容器/依赖清单的「真不变式」 | **已踩坑**：`恰好 N 个` 会随传递依赖漂移（不代表坏）；真正的不变式是「三件套齐全 + 无 0 KB 空壳」 |
-| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论 |
+| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论；已知启动链路的反射 / JNI 清单已按静态分析补齐（issue #26/#35），但**未真机确认** |
 | 首次真编 → 三平台真机可运行 → 在别的项目复用一次 | **部分完成**：首次真编已在 Linux/macOS 达成；剩「三平台真机可运行」与「在别的项目复用一次」（见 metadata.maturity） |
 
 这条「验证状态」是技能的一部分，不是免责声明：原生镜像的参数清单与平台行为随

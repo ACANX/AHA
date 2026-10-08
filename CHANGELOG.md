@@ -110,6 +110,20 @@
   去掉 `find -maxdepth`（macOS BSD find 不支持），并把 `Release.yml` 同写法一并修正。
 - **跨平台 shell 守卫**：`bin/CheckScripts.py` 新增 YAML 检查——`$VAR` 后紧跟非 ASCII
   且未用 `${}` 就报错（已反向验证）；同一条规则不再靠人盯。
+- **原生镜像桌面端启动链路反射 / JNI 缺失（issue #35）**：修完 #26 后，二进制下一处报
+  `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`——JavaFX 的工具包、
+  Glass 平台工厂、Prism 渲染管线都用 `Class.forName` + `getDeclaredConstructor().newInstance()`
+  这类反射加载，native-image 的 closed-world 看不到。经对 4878 个 JavaFX 类逐个反编译审计后，
+  把反射与 JNI 清单一次性补进 `reachability-metadata.json`（293 条）：工具包与日志 / 反射辅助类、
+  三平台 Glass 工厂、四条 Prism 管线、效果渲染器、ShaderSource 与**全部 212 个** stock shader 加载器、
+  Glass 原生回调（`jniAccessible`）、图片解码、字体（DirectWrite / CoreText / FreeType）；
+  审计同时发现 **Jackson 3 不随附 native-image 元数据**，而配置与会话记录靠它反射读写，
+  因此一并注册了 13 个配置记录与 `TaskRequest` / `TaskResult` / `ToolCall`。
+  另把 `-H:IncludeResources` 补上 D3D 的 `.obj` 与 ES2 的 `.frag` / `.vert` 着色器资源
+  （漏掉不会构建失败，而是首次绘制时静默坏掉）。
+  `NativeImageMetadataTest` 扩到 7 条断言（已反向验证），DesktopNative 产物自证第 ⑧ 条改为
+  逐类检查启动链路。**诚实说明**：这是手工推导的「已知缺口已闭」，不等于「证明完整」——
+  真机逐功能验证仍待 `N-05` / `N-16`，抄底方案（tracing agent）登记为 `N-17`。
 - **原生镜像桌面端启动即崩（issue #26）**：`aha-desktop-native.exe` 一启动就报
   `ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp`——JavaFX 入口有两处反射：
   `Application.launch(String...)` 用 `Class.forName` 加载主类，`LauncherImpl` 又用

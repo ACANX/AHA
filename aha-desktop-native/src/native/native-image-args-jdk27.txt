@@ -37,7 +37,7 @@
 --gc=G1
 --future-defaults=all
 -R:MaxHeapSize=1g
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|bss|xml|properties|txt|json|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
 --initialize-at-run-time=com.sun.javafx.application.PlatformImpl
 --initialize-at-run-time=com.sun.javafx.application.LauncherImpl
