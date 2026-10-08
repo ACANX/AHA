@@ -189,8 +189,9 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
+          version: '25.4'
           java-version: ${{ matrix.jdk }}
-          distribution: graalvm-community
+          distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven
 
