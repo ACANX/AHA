@@ -14,6 +14,19 @@
 **按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
+- **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
+  把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
+  定位是「验证线」：正式交付仍是 JVM 模式。
+  - **四条隔离**：模块只在父 POM 的 `desktop-native` profile 里（默认不在反应堆）；
+    独立工作流与作业名；tag 用 `native-v…`（不匹配 `V*`/`v*`，不触发正式发版）；
+    `fail-fast: false` + 实验腿 `continue-on-error` + 发布作业 `if: always()`。
+  - **每次合并到 dev 自动出包**：版本按 `a.b.c.PPPPP`（PR 号补零到 5 位，如 PR21 → `0.1.1.00021`），
+    基线读根 POM、PR 号按提交反查 API；发布为预发行版，可在发布页直接下载。
+  - **JDK 25 / JDK 27 两条轴**：`native-jdk27` profile 切换参数文件与产物名，
+    **目前只开 Windows**；用于对比 Project Leyden 的 AOT、原始类型预览与 GC 策略对
+    启动速度 / 内存占用的影响，为明年适配 JDK 29 铺路。
+  - **产物自证**：工作流检查产物存在、体积下限、平台魔法数（PE / ELF / Mach-O）、
+    classpath 恰好含 3 个带分类器的 OpenJFX jar；包内附带两份构建参数文件便于事后对账。
 - **桌面端 0.2 六项功能**（按用户指定顺序）：
   1. **工具卡片**：默认折叠；展开显示参数与带行号输出（前 200 行并写明总行数）；复制 / 查看全部；
      失败卡片红边、正文摊开并给「重试 / 改参数后重试」——重试交给模型判断，不在本地偷偷重放命令。

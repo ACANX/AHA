@@ -217,6 +217,57 @@ FileReadTool 误导描述。
          CodeQL.yml 因此一直是无效工作流；已解析（CodeQL 升到 v4），
          并在 bin/CheckDocs.py 加了「残留冲突标记」检查
 
+0.2 桌面端原生镜像（试验性，2026-10-08）
+======================================
+
+需求（用户提出）
+----------------
+
+[已完成] 新增 aha-desktop-native 模块：定位为**试验性 / 探索性**
+         —— 基于 aha-desktop 编出的三平台 jar 包，再前进一步编成 GraalVM
+         native-image 原生二进制（可直接双击运行）
+[已完成] 为该模块单独增加工作流，做到四条隔离：
+           1. 默认不在反应堆里（profile 隔离）→ 原生镜像失败不影响开发与测试
+           2. 独立 tag 命名空间 native-v*（不匹配 V*/v*）→ 不触发正式发版
+           3. 作业名与 Build/Gate/Compat 全不同 → 不进入必需检查
+           4. fail-fast: false + 实验腿 continue-on-error → 失败不互相牵连
+[已完成] 每次 PR 合并到 dev 独立打包并发布，产物版本 = a.b.c.PPPPP
+         （PR 号补零到 5 位；实测 0.1.1 + PR21 → 0.1.1.00021）
+[已完成] 支持从发布页直接下载对应 PR 的构建包，本地快速验证
+[已完成] 增加 JDK 27 编译分支（对比 Project Leyden 的 AOT、原始类型预览、GC 策略
+         对启动速度与内存占用的影响），**目前只开 Windows**，
+         试验成功后再扩展到 Linux / macOS，为明年 JDK 29 铺路
+
+计划与跟踪（详见 Docs/Design/DesktopNativeDesign.md §7）
+-------------------------------------------------------
+
+[待办] N-05 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话）
+[待办] N-06 填写对比表真实数字（原生镜像 JDK25 / JDK27 / JVM+Leyden AOT 三种形态）
+             测量口径：冷启动 = 启动到主窗口可见；驻留内存 = 静置 60 秒的工作集；
+             每个数字取 5 次中位数并记机器
+[待办] N-07 扩展 JDK 27 到 Linux/macOS；二进制内部版本号带上 PR 段；体积瘦身
+[待办] N-08（备选路径）若手工参数清单维护成本过高，评估 GluonFX 插件
+
+已知风险（同设计文档第 6.1 节）
+-------------------------------
+
+  R1 JavaFX + native-image 需要一长串运行期初始化清单，首次跑很可能在某个类上失败
+  R2 反射 / 资源缺失导致构建成功但运行期才炸
+  R3 JavaFX 平台原生库可能未打进镜像（UnsatisfiedLinkError）
+  R4 GraalVM 未必有对应 JDK（尤其 JDK 27）——该腿失败即是答案（已隔离）
+  R5 产物体积大（几十 MB）；R6 未签名 → macOS Gatekeeper / Windows SmartScreen
+  R7 「只在 Windows 试」可能掩盖平台差异
+
+本机怎么试（Windows）
+---------------------
+
+  .\mvnw -Pdesktop-native -pl aha-desktop-native,aha-desktop -am package -DskipTests
+  # 只验证管线不真编：加 -Dnative.skip=true
+  # JDK 27 实验分支：加 -Pnative-jdk27
+
+  注意 -pl 要显式带上 aha-desktop：profile 加入的模块不会被 -am 带上游
+  （症状是「在中央仓库找不到 aha-desktop」）
+
 需要人工 / 平台侧（与桌面端并行）
 --------------------------------
 

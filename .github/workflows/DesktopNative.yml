@@ -1,0 +1,361 @@
+name: DesktopNative
+
+# ── 这是什么 ────────────────────────────────────────────────────────────────────
+# 把 aha-desktop 的 JVM 产物再编译成 **GraalVM native-image 二进制**（可直接点开的原生程序），
+# 每次合并到 dev 就出一版，挂到发布页供下载验证。
+#
+# ── 为什么单独一个工作流（四条隔离）───────────────────────────────────────────
+# 1. **不参与反应堆**：aha-desktop-native 只在父 POM 的 `desktop-native` profile 里，
+#    `./mvnw clean verify` 根本看不到它 → 原生镜像编不出来不会挡住 Build / Gate / Compat。
+# 2. **不影响发版流程**：tag 前缀是 `native-v…`，**不匹配** Release.yml 的 `V*` / `v*`，
+#    因此发预发行版不会触发正式发版，也不会打乱 `V<版本号>` 的约定。
+# 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
+# 4. **可被打断**：原生镜像构建慢，同一分支的新一次运行会取消上一次（见 concurrency）。
+#
+# ── 版本号规则 ──────────────────────────────────────────────────────────────────
+#     <基线版本>.<PR 号，补零到 5 位>
+# 基线与 PR 号都从「唯一来源」推导，不复制字面量：
+#     基线  ← 根 pom.xml 的 <version>（0.1.1）
+#     PR 号 ← pull_request 事件自带；push 到 dev 时按提交 SHA 反查关联 PR
+# 例：PR #21 合进 dev，当基线是 0.1.1 → 0.1.1.00021
+#
+# ── 需要人工留意的一点 ─────────────────────────────────────────────────────────
+# 本文件里的 `graalvm/setup-graalvm@v1` 与上传/下载制品的 action 大版本号，
+# 请在首次运行时看一眼日志；大版本不对时失败是**本工作流内部**的，不影响其它流程。
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（用于 0.1.1.PPPPP 的版本号；留空则按当前提交反查）
+        required: false
+        default: ''
+      version:
+        description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+# 同一分支只保留最新一次：原生镜像构建慢，旧的运行没有价值。
+# 注意这是**本工作流自己的**并发组，不碰其它工作流。
+concurrency:
+  group: desktop-native-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Windows 运行器上也有 bash（Git Bash）；统一用它，脚本只有一套。
+    shell: bash
+
+jobs:
+  # ── 1. 算版本（单独一个作业：三条腿共用同一个版本号）────────────────────────
+  native-version:
+    name: native-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      base: ${{ steps.compute.outputs.base }}
+      pr: ${{ steps.compute.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 计算版本（a.b.c.PPPPP）
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # ① 显式给了完整版本号：直接用它（重打历史版本时用）
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "base=${INPUT_VERSION%.*}" >> "$GITHUB_OUTPUT"
+            echo "pr=0" >> "$GITHUB_OUTPUT"
+            echo "使用显式版本：${INPUT_VERSION}"
+            exit 0
+          fi
+
+          # ② 基线版本从根 POM 读，唯一来源。
+          #    刻意不用 `help:evaluate`：Maven 4 下它带 -q 时输出为空（踩过）。
+          #    注意不能写 findtext('version')：ElementTree 的标签是**带命名空间**的
+          #    （{http://maven.apache.org/POM/4.0.0}version），那样永远取不到，而且不报错、
+          #    只会让版本号变成空的（本地实测踩到过）。这里按「第一个以 version 结尾的直接子节点」取。
+          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+
+          # ③ PR 号：先看输入，其次按提交反查。
+          #    push 事件里没有 PR 号（merge commit 也是普通 push），所以要走一次 API。
+          pr="${INPUT_PR:-}"
+          if [ -z "$pr" ]; then
+            pr=$(curl -sS --max-time 30 \
+                   -H "Authorization: Bearer ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls" \
+                 | python3 -c "import json,sys
+          d = json.load(sys.stdin)
+          print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
+          fi
+          if [ -z "$pr" ]; then
+            # 直接 push 到 dev、或 API 限流：不猜一个假 PR 号，明确记 00000 并在摘要里告警。
+            echo "::warning::没能确定 PR 号（直接 push 或 API 限流），版本里的 PR 段记为 00000"
+            pr=0
+          fi
+
+          version=$(printf '%s.%05d' "$base" "$pr")
+          {
+            echo "base=${base}"
+            echo "pr=${pr}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "版本 = ${version}（基线 ${base} + PR ${pr}，PR 段补零到 5 位）"
+          echo "### 原生镜像版本：\`${version}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "基线 ${base}，PR #${pr}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. 三条腿各编自己平台的原生镜像 ────────────────────────────────────────
+  #    每个 runner 只能产出自己平台的二进制（native-image 不能交叉编译）。
+  native-build:
+    name: native-build (${{ matrix.label }}, jdk${{ matrix.jdk }})
+    needs: native-version
+    strategy:
+      # 一条腿失败不取消其余：三个平台的产物是并列交付物，缺哪个都要看得见。
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            platform: linux
+            jdk: '25'
+            experimental: false
+          - os: windows-latest
+            label: windows-x64
+            platform: win
+            jdk: '25'
+            experimental: false
+          - os: macos-latest
+            label: macos-arm64
+            platform: mac-aarch64
+            jdk: '25'
+            experimental: false
+
+          # ── JDK 27 试验分支（目前**只开 Windows**）──────────────────────────
+          # 目的：与 JDK 25 分支对比启动速度与内存占用，为明年适配 JDK 29 铺路。
+          # 关注 Project Leyden 的 AOT（类装载 / 链接 / 方法剖析）、原始类型预览与 GC 策略。
+          # 试验腿失败**不算整体失败**：它是数据点，不是交付物。
+          - os: windows-latest
+            label: windows-x64
+            platform: win
+            jdk: '27'
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    # 试验腿用 continue-on-error：它的失败只标注在自己身上，不牵连其余腿与发布作业。
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # GraalVM（含 native-image）。用社区版：开源项目无需商用授权顾虑，
+      # 同样带 native-image；换 Oracle GraalVM 只需把 distribution 改成 graalvm。
+      - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: 计算本腿的 Maven 参数
+        id: leg
+        run: |
+          set -euo pipefail
+          # Windows 上的可执行文件是 native-image.cmd，exec 插件不会自动补后缀
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "executable=native-image.cmd" >> "$GITHUB_OUTPUT"
+          else
+            echo "executable=native-image" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ matrix.jdk }}" = "27" ]; then
+            echo "profiles=desktop-native,native-jdk27" >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=desktop-native" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 工具链自证（门禁必须自证）
+        run: |
+          set -euo pipefail
+          echo "—— 本腿参数 ——"
+          echo "OS=${RUNNER_OS} 平台=${PLATFORM} 标签=${LABEL} JDK=${{ matrix.jdk }}"
+          echo "原生镜像可执行文件=${{ steps.leg.outputs.executable }}"
+          echo "Maven profile=${{ steps.leg.outputs.profiles }}"
+          echo "版本=${VERSION}"
+          echo "—— 工具链版本 ——"
+          java -version
+          "${{ steps.leg.outputs.executable }}" --version
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          LABEL: ${{ matrix.label }}
+          VERSION: ${{ needs.native-version.outputs.version }}
+
+      - name: 构建原生镜像
+        # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
+        #
+        # 两点必须写清：
+        #   * `-pl aha-desktop-native,aha-desktop -am`：profile 加入的模块**不会**被 `-am`
+        #     带上游（实测 Maven 3.9.11 与 4 都一样：只选 native 时反应堆里只有它自己），
+        #     所以显式把 aha-desktop 也列出来，让 `-am` 把五个上游一起拉进来。
+        #   * skipTests + jacoco.skip：这里要的是可执行文件，不是测试报告（测试由 Build/Gate 跑）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B -P${{ steps.leg.outputs.profiles }}
+            -pl aha-desktop-native,aha-desktop -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.native.version=${{ needs.native-version.outputs.version }}
+            -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+
+      - name: 产物自证（存在 / 体积 / 平台魔法数 / classpath 输入）
+        run: |
+          set -euo pipefail
+          work=aha-desktop-native/target/native
+
+          # ① 可执行文件必须存在（Windows 上是 .exe，其它平台没有后缀）
+          bin=$(ls "$work/aha-desktop-native" "$work/aha-desktop-native.exe" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            echo "::error::没有产出原生可执行文件（$work 下既无 aha-desktop-native 也无 .exe）"
+            ls -la "$work" || true
+            exit 1
+          fi
+          size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
+          echo "原生可执行文件：$bin（$((size / 1024)) KB）"
+
+          # ② 体积下限：原生镜像把 JDK 与全部依赖都编进去了，正常几十 MB。
+          #    小于 5 MB 基本只可能是「编译没真正完成却留下了壳」，直接判失败。
+          if [ "$size" -lt 5242880 ]; then
+            echo "::error::产物只有 $((size / 1024)) KB，不像原生镜像（阈值为 5 MB）"
+            exit 1
+          fi
+
+          # ③ 平台魔法数：确认拿到的确实是本平台的二进制，而不是错平台的产物
+          magic=$(head -c 4 "$bin" | od -An -tx1 | tr -d ' \n')
+          case "${RUNNER_OS}" in
+            Windows) expect="4d5a" ;;            # MZ（PE）
+            Linux)   expect="7f454c46" ;;        # ELF
+            macOS)   expect="cffaedfe" ;;        # Mach-O 64 位（小端）
+          esac
+          if [ "$magic" != "$expect" ]; then
+            # macOS 上偶见另一种字节序，单独放行
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then
+              echo "macOS 二进制（大端魔法数）"
+            else
+              echo "::error::二进制魔法数不匹配：期望 ${expect}，实际 ${magic}"
+              exit 1
+            fi
+          fi
+          echo "魔法数自证通过：${magic}"
+
+          # ④ classpath 输入自证：恰好三个**带分类器**的 OpenJFX 真 jar。
+          #    带分类器的 jar 与无分类器 jar 共用同一份 POM，会传递进 0 KB 空壳；
+          #    本项目已在 POM 里排除（见 aha-desktop-native/pom.xml 的注释）。
+          jfx=$(ls "$work"/lib/javafx-*.jar | wc -l)
+          total=$(ls "$work"/lib/*.jar | wc -l)
+          if [ "$jfx" -ne 3 ]; then
+            echo "::error::classpath 里的 OpenJFX jar 应为 3 个（本平台三件套），实际 ${jfx} 个"
+            ls "$work"/lib/javafx-*.jar
+            exit 1
+          fi
+          echo "classpath 输入：lib/ 共 ${total} 个 jar，其中 OpenJFX ${jfx} 个"
+
+          # ⑤ 把结论写进摘要，便于在运行页直接看到
+          {
+            echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
+            echo ""
+            echo "- 产物：\`$(basename "$bin")\`（$((size / 1024 / 1024)) MB）"
+            echo "- 魔法数：\`$magic\`"
+            echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个）"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 改名为发布用资产名
+        run: |
+          set -euo pipefail
+          work=aha-desktop-native/target/native
+          # POM 产出的是 aha-desktop-native-<版本>-<jdk>.zip，
+          # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
+          src=$(ls aha-desktop-native-*.zip)
+          target="aha-desktop-native-${{ needs.native-version.outputs.version }}-jdk${{ matrix.jdk }}-${{ matrix.label }}.zip"
+          mv -- "$src" "$target"
+          ls -lh "$target"
+          echo "发布资产：${target}"
+
+      - name: 上传制品
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: aha-desktop-native-*.zip
+          if-no-files-found: error
+          # 实验腿的失败不该把「没有文件」变成错误之外的噪音
+          retention-days: 14
+
+  # ── 3. 汇总发布（预发行版）─────────────────────────────────────────────────
+  #    单个作业发布：三条腿并发写同一个 release 会互相打架，
+  #    因此先各自上传制品，再由这里一次性挂到发布页。
+  native-publish:
+    name: native-publish
+    needs: [native-version, native-build]
+    # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
+    if: always() && needs.native-version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部制品
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+
+      - name: 整理资产
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          find dist -name '*.zip' -exec mv -n {} dist/ \;
+          files=(dist/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::没有任何原生包可发布（所有腿都失败了）"
+            exit 1
+          fi
+          ls -lh "${files[@]}"
+
+      - name: 发布预发行版（native-v<版本>）
+        uses: softprops/action-gh-release@v3
+        with:
+          # tag 前缀刻意用 native-v：不匹配 Release.yml 的 V* / v*，
+          # 因此这一条不会触发正式发版流程。
+          tag_name: native-v${{ needs.native-version.outputs.version }}
+          name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
+          # 预发行版：不出现在 releases/latest，不会被误当成正式版本
+          prerelease: true
+          files: dist/*.zip
+          body: |
+            ## 这是什么
+
+            以 `aha-desktop` 的 JVM 产物为输入，用 GraalVM native-image 编成的**平台原生可执行文件**：
+            解压即用，不需要本机装 JDK 或 JavaFX。
+
+            > ⚠️ **试验性产物，不是正式发行包。** 正式使用请选 JVM 版
+            > （`aha-desktop-<版本>-<平台>.zip`）。这里的东西用来「下载下来点开就试」。
+            > 遇到问题时请先用 JVM 版对照一次，以区分「原生镜像特有」与「功能本身」的问题。
+
+            ## 版本
+            - 本版版本号：`${{ needs.native-version.outputs.version }}`
+            - 基线版本：`${{ needs.native-version.outputs.base }}`（读自根 pom.xml）
+            - 来源 PR：#${{ needs.native-version.outputs.pr }}
+
+            ## 怎么用
+            1. 按你的系统下载对应 zip（`jdk25` 是基线，`jdk27` 是试验分支）；
+            2. 解压后双击可执行文件；Linux / macOS 首次可能需要 `chmod +x`；
+            3. 配置与数据与 JVM 版共用（`AHA_HOME`，默认 `~/.aha`）。
+
+            ## 包内附带的构建参数
+            包里有 `native-image-args.txt`（JDK 25 基线）与 `native-image-args-jdk27.txt`
+            （JDK 27 试验），两者 diff 就是这一版做的实验改动。

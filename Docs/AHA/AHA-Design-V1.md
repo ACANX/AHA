@@ -318,6 +318,7 @@ aha/
     │   ├── TUIDesign.md
     │   ├── GUIDesign.md
     │   ├── DesktopDesign.md
+    │   ├── DesktopNativeDesign.md
     │   ├── RemoteAndProtocolDesign.md
     │   ├── ExtensionSystemDesign.md
     │   ├── SelfHostingDesign.md
@@ -348,7 +349,8 @@ aha/
         ├── DevLog-20261008-00.md
         ├── DevLog-20261008-01.md
         ├── DevLog-20261008-02.md
-        └── DevLog-20261008-03.md
+        ├── DevLog-20261008-03.md
+        └── DevLog-20261008-04.md
 ```
 
 ## 2. 命名规范
@@ -3695,6 +3697,7 @@ Closes #123
 | `CLIDesign.md` | CLI 设计 |
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
+| `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
 | `SelfHostingDesign.md` | AHA 自举里程碑（1.0 硬门槛：从依赖其他 Harness 切换到独立自举） |
@@ -3739,6 +3742,7 @@ Closes #123
 | `DevLog-20261008-01.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
 | `DevLog-20261008-02.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
 | `DevLog-20261008-03.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
+| `DevLog-20261008-04.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
 
 ### .agents/skills/
 

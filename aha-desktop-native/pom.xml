@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.acanx.module</groupId>
+        <artifactId>aha</artifactId>
+        <version>0.1.1</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>aha-desktop-native</artifactId>
+    <packaging>pom</packaging>
+    <name>AHA Desktop Native</name>
+    <description>桌面端原生镜像（试验性）：把 aha-desktop 的 JVM 产物编译成 GraalVM native-image 二进制</description>
+
+    <!--
+        这是**试验性 / 探索性**模块，服务于两条并行的线：
+
+          开发线：照旧用 JVM 模式（jar 包）开发、测试、调试；
+          验证线：每次 dev 合并后由 DesktopNative.yml 打出平台原生二进制，
+                  在发布页直接下载来点开就试。
+
+        三条硬约束（见 Docs/Design/DesktopNativeDesign.md）：
+
+        1. **默认不在反应堆里**：靠父 POM 的 `desktop-native` profile 加入。
+           原生镜像构建失败绝不影响 `./mvnw clean verify`、Gate、Compat。
+        2. **产物版本可覆盖**：`-Daha.native.version=0.1.1.00021`，默认与项目版本一致。
+           工作流据此打出 `a.b.c.PPPPP`（PR 号补零到 5 位）的包与 tag。
+        3. **参数只有一个来源**：`src/native/native-image-args.txt`。
+           原生镜像要反复调参数，迭代时只改那一个文件——POM 与工作流都不必动。
+
+        本地用法：
+
+            # 只验证依赖拷贝与打包管线，不真的编原生镜像
+            ./mvnw -Pdesktop-native -pl aha-desktop-native -am package -DskipTests -Dnative.skip=true
+
+            # 真编（需要 GraalVM 的 native-image 在 PATH 上，或用 -Dnative.image.executable= 指定）
+            ./mvnw -Pdesktop-native -pl aha-desktop-native -am package -DskipTests
+    -->
+
+    <properties>
+        <!-- 产物版本：默认跟项目走，工作流传 -Daha.native.version=<a.b.c.PPPPP> 覆盖 -->
+        <aha.native.version>${project.version}</aha.native.version>
+
+        <!-- 可执行文件基名（Windows 上由 native-image 自动追加 .exe） -->
+        <aha.native.name>aha-desktop-native</aha.native.name>
+
+        <!--
+            编译用 JDK 轴：`jdk25`（默认）与 `jdk27`（试验分支，profile `native-jdk27`）。
+
+            为什么要这条轴：JDK 25 与 JDK 27 在**启动速度与内存占用**上的差异正是要对比的东西
+            （Project Leyden 的 AOT 装载 / 链接、AOT 方法剖析、原始类型（Valhalla）预览、
+            GC 策略演进）。两条轴编出的镜像放进同一个包里会互相覆盖，因此版本名里带上它：
+                aha-desktop-native-0.1.1-jdk25-...
+                aha-desktop-native-0.1.1-jdk27-...
+            详见 Docs/Design/DesktopNativeDesign.md 第 5 节。
+        -->
+        <aha.native.jdk>jdk25</aha.native.jdk>
+
+        <!--
+            native-image 参数文件：**JDK 变体只改这一个属性**。
+            两条 JDK 轴需要不同的开关（例如原始类型的预览开关、AOT 相关选项、GC 选择），
+            因此各自一份文件，迭代时互不干扰。
+        -->
+        <native.image.argsfile>src/native/native-image-args.txt</native.image.argsfile>
+
+        <!--
+            native-image 可执行文件。默认按 PATH 查找；两个平台的差异由工作流传入：
+              Windows: -Dnative.image.executable=native-image.cmd
+              Linux/macOS: 保持默认（native-image）
+        -->
+        <native.image.executable>native-image</native.image.executable>
+
+        <!-- 跳过真正的 native-image 调用（只跑依赖拷贝与打包，便于在本机验证管线） -->
+        <native.skip>false</native.skip>
+
+        <!-- 原生镜像的工作目录：依赖拷贝、产物与日志都落在这里，便于工作流取件 -->
+        <native.image.workdir>${project.build.directory}/native</native.image.workdir>
+
+        <!--
+            本模块没有 Java 代码，覆盖率与 javadoc 无从谈起：
+            关掉两者，免得空模块在 verify 阶段被覆盖率门禁判成 0% 而失败。
+            （只影响本模块，且本模块默认不在反应堆里，因此不会改变既有统计口径。）
+        -->
+        <jacoco.skip>true</jacoco.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+    </properties>
+
+    <dependencies>
+        <!--
+            原生镜像的输入就是 aha-desktop 的 JVM 产物：主模块 + 它的全部 runtime 传递依赖
+            （aha-core / aha-common / aha-extension-api / aha-tool、Jackson、picocli、JLine、
+            sqlite-jdbc、log4j2、slf4j…）。声明 scope=runtime：这里只需要它们的 classpath。
+        -->
+        <!--
+            注意 groupId 是 com.acanx.module.aha：各模块**覆盖**了父 POM 的 groupId
+            （父是 com.acanx.module，模块们是 com.acanx.module.aha）。
+            写错这里不会报「坐标不对」，而是「在中央仓库找不到」——
+            因为反应堆匹配不上，于是它去外网找了一个不存在的坐标。
+        -->
+        <dependency>
+            <groupId>com.acanx.module.aha</groupId>
+            <artifactId>aha-desktop</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            OpenJFX 三件套：显式再声明一次，不用「从 aha-desktop 传递过来」这条隐性路径。
+            理由：原生镜像对「classpath 上究竟是哪三个 JavaFX jar」极其敏感
+            （分类器错了会拿到别的平台的原生库），显式声明让这里成为可读、可审的一处。
+            分类器由父 POM 的 javafx-* profile 按当前 OS/架构解析（`javafx.platform`）。
+        -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-base</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.platform}</classifier>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.platform}</classifier>
+            <scope>runtime</scope>
+            <!--
+                空壳 jar 的真正来源是这里：带分类器的 javafx-graphics 与不带分类器的
+                javafx-graphics 共用同一份 POM，而那份 POM 声明的是**无分类器的**
+                javafx-base —— 于是 javafx-base-25.jar（0 KB 空壳）被传递进来。
+                只在 javafx-controls 上排除是不够的（实测：排除后 classpath 里仍有 20 个 jar）。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.platform}</classifier>
+            <scope>runtime</scope>
+            <!--
+                与 aha-desktop 保持同一口径：排掉同名 GA 的「无分类器」传递依赖——
+                那是一堆 0 KB 的空壳 jar。实测（本模块首次跑通时）它们确实混进了
+                target/native/lib：classpath 上无害，但会给 native-image 引入
+                两个什么都不含的同名模块，白白增加「为什么有这个 jar」的疑问。
+                排除后 classpath 里只剩本平台的三个真 javafx jar。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                第 1 步：把 runtime 依赖拷到 target/native/lib，并把 classpath 抽成一个属性。
+                两步都在 process-classes 完成，package 阶段的 native-image 直接用。
+            -->
+            <!--
+                第 0 步：清掉上一次的 native 工作目录。
+
+                为什么需要：copy-dependencies **不会**删除已经不在依赖集里的旧 jar。
+                首次跑通时就踩到了——排除空壳 jar 之后，那两个 302 字节的旧文件仍留在
+                lib/ 里，于是「依赖树已经干净了，lib/ 里却还有」，两边对不上账。
+                excludeDefaultDirectories=true 是关键：不要顺手把整个 target/ 删掉
+                （那会连编译产物一起清掉，而且这绑定在 initialize 阶段）。
+            -->
+            <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-clean-workdir</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${native.image.workdir}</directory>
+                                    <includes>
+                                        <include>lib/**</include>
+                                    </includes>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-copy-dependencies</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-classpath</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>build-classpath</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 抽成属性：exec 的 <argument> 不会做词分割，整串作为单个 argv 传过去 -->
+                            <outputProperty>native.classpath</outputProperty>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 2 步：README 模板过滤（把版本号写进包内说明）。
+                只过滤这一份模板，其余文件不碰。
+            -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-readme</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/native</directory>
+                                    <filtering>true</filtering>
+                                    <includes>
+                                        <include>README.txt</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 3 步：native-image。
+
+                先跑一次 `native-image` 的版本查询作为预检：没有 GraalVM 时给出的是
+                「Cannot run program "native-image"」这类一眼可懂的失败，而不是让人
+                在几十行构建日志里猜。**这两个执行都不会影响常规构建**——本模块默认不在反应堆里。
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-preflight</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <argument>--version</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <!-- 参数清单：唯一的开关来源，迭代只改这个文件 -->
+                                <argument>@${project.basedir}/${native.image.argsfile}</argument>
+                                <!--
+                                    走 classpath 而不是 module-path：原生镜像下 JPMS 不参与，
+                                    `requires` / `exports` / ServiceLoader 都不再是约束
+                                    （C-01：JPMS 优先启用但非强制，这正是「必要时让路」的场景）。
+                                -->
+                                <argument>-cp</argument>
+                                <argument>${native.classpath}</argument>
+                                <argument>-H:Path=${native.image.workdir}</argument>
+                                <argument>-H:Name=${aha.native.name}</argument>
+                                <argument>com.acanx.module.aha.desktop.AhaDesktopApp</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 4 步：把二进制 + 说明 + 构建参数打成 zip。
+
+                产物名与桌面端 jar 包保持同一族：aha-desktop-native-<版本>.zip，
+                落到仓库根（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
+                版本由 -Daha.native.version 决定，工作流用 <a.b.c.PPPPP> 覆盖。
+            -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dist-native</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/dist-native.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${aha.native.name}-${aha.native.version}-${aha.native.jdk}</finalName>
+                            <outputDirectory>${project.parent.basedir}</outputDirectory>
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <profiles>
+        <!--
+            ── JDK 27 试验分支（试验中的试验）─────────────────────────────────────
+            用途：与默认的 JDK 25 分支对比**启动速度与内存占用**，为明年适配 JDK 29 铺路。
+            关注点（见 Docs/Design/DesktopNativeDesign.md 第 5 节）：
+
+              * Project Leyden：AOT 类装载与链接、AOT 方法剖析（命令行工效学）；
+              * 原始类型（Valhalla，预览）：值类型去掉装箱与指针追逐；
+              * GC 策略：native-image 侧的 gc 选项（默认 serial，另有 epsilon / G1）与
+                JVM 侧 GC 选择对启动与驻留内存的影响。
+
+            范围：**目前只开 Windows**（工作流矩阵里显式限定）。试验成功后再评估
+            Linux / macOS——各平台的 AOT 与原始类型支持进度并不一致。
+
+            用法：
+                ./mvnw -Pdesktop-native,native-jdk27 -pl aha-desktop-native,aha-desktop \
+                       -am package -DskipTests
+            命令行属性优先，因此也可以临时只换参数文件：
+                -Dnative.image.argsfile=src/native/native-image-args-jdk27.txt
+        -->
+        <profile>
+            <id>native-jdk27</id>
+            <properties>
+                <aha.native.jdk>jdk27</aha.native.jdk>
+                <native.image.argsfile>src/native/native-image-args-jdk27.txt</native.image.argsfile>
+            </properties>
+        </profile>
+    </profiles>
+</project>

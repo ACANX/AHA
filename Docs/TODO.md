@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.27.0
+**文档版本**：v0.28.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -357,6 +357,13 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线 / `jpackage`） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 | F-18 | 三个文件里残留合并冲突标记且已入库（`CodeQL.yml` / `BuildSpec.md` / `TODO.md`，共 11 处） | 缺陷 | ✅ | P1 | ✅ 已修复 | `.github/workflows/CodeQL.yml`、`bin/CheckDocs.py` |
+| N-01 | 需要「下载即用」的验证包：JVM 模式要先配 JDK 与 JavaFX，无法一键试 | 需求 | ✅ | P1 | ✅ 已完成 | `aha-desktop-native`、`DesktopNativeDesign.md` |
+| N-02 | 原生镜像构建失败不得影响既有构建与发版 | 需求 | ✅ | P1 | ✅ 已完成（profile 隔离 + 独立工作流 + `native-v` tag 命名空间 + `continue-on-error`） | `pom.xml`、`.github/workflows/DesktopNative.yml` |
+| N-03 | 每次合并到 dev 独立出包，版本可追溯到 PR | 需求 | ✅ | P1 | ✅ 已完成（`a.b.c.PPPPP`，PR 段补零到 5 位；本地实测 `0.1.1.00021`） | `DesktopNative.yml`、`DesktopNativeDesign.md` §4.3 |
+| N-04 | 增加 JDK 27 编译分支（对比 Leyden AOT / 原始类型 / GC 对启动与内存的影响），**先只开 Windows**，为 JDK 29 铺路 | 需求 | ✅ | P2 | ◐ 机制已就位，数据待采集 | `aha-desktop-native/pom.xml`（`native-jdk27` profile）、`native-image-args-jdk27.txt`、`DesktopNativeDesign.md` §5 |
+| N-05 | 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话） | 验证 | ☐ | P1 | ☐ 待工作流首跑 | `DesktopNativeDesign.md` §7 N-1 |
+| N-06 | 把 §5.3 的对比表填上真实数字（原生镜像 JDK25 / JDK27 / JVM+Leyden AOT 三种形态） | 实验 | ☐ | P2 | ☐ 待采集 | `DesktopNativeDesign.md` §5.3 |
+| N-07 | JDK 27 分支扩展到 Linux / macOS；二进制内部版本号带上 PR 段；体积瘦身 | 规划 | ☐ | P3 | ☐ 后续 | `DesktopNativeDesign.md` §7 N-3/N-4/N-5 |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -526,6 +533,7 @@ desktop 亦未列 tool 依赖。
 | v0.25.0 | 2026-10-08 | 新增 `F-17`（`-Djavafx.platform` 触发 `recursive variable reference` 的构建日志噪音） | @ACANX |
 | v0.26.0 | 2026-10-08 | `D-12` 遗留更新：Agent 接入与 `ToolKind` 下移、供应商配置已完成；列明尚未做项（工具卡片展开/输出预览、会话列表、记忆/扩展/日志面板、`/` `@`、主题、设置、授权弹窗样式） | @ACANX |
 | v0.27.0 | 2026-10-08 | 0.2 六项功能完成（工具卡片 / 会话列表 / 日志面板 / 输入区增强 / 授权弹窗 / 主题与设置）；新增 `D-13`（剩余项）与 `F-18`（已入库的合并冲突标记，已修复并加守卫） | @ACANX |
+| v0.28.0 | 2026-10-08 | 新增 `aha-desktop-native`（试验性原生镜像模块）与 `DesktopNative.yml`：`N-01`~`N-04` 落地（profile 隔离、独立出包、`a.b.c.PPPPP` 版本、JDK 27 实验分支），`N-05`~`N-07` 待跟踪 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |

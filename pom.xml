@@ -75,6 +75,12 @@
         <jacoco.version>0.8.15</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
+        <!-- 桌面端原生镜像（试验性）：见 aha-desktop-native 与 DesktopDesign 的姊妹篇
+             Docs/Design/DesktopNativeDesign.md -->
+        <exec.plugin.version>3.5.1</exec.plugin.version>
+        <dependency.plugin.version>3.9.0</dependency.plugin.version>
+        <resources.plugin.version>3.3.1</resources.plugin.version>
+        <clean.plugin.version>3.4.1</clean.plugin.version>
         <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
         <pmd.plugin.version>3.28.0</pmd.plugin.version>
     </properties>
@@ -242,6 +248,26 @@
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>${dependency.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>${clean.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>${resources.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>${exec.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-javadoc-plugin</artifactId>
                     <version>${javadoc.plugin.version}</version>
                     <configuration>
@@ -396,6 +422,32 @@
                 <javafx.platform>linux-aarch64</javafx.platform>
             </properties>
         </profile>
+
+
+        <!--
+            桌面端原生镜像（试验性，默认不在反应堆里）：见 aha-desktop-native 与
+            Docs/Design/DesktopNativeDesign.md。常规构建看不到这个模块。
+        -->
+        <profile>
+            <id>desktop-native</id>
+            <modules>
+                <module>aha-desktop-native</module>
+            </modules>
+        </profile>
     </profiles>
 
+    <!--
+        ── 桌面端原生镜像（试验性，默认不在反应堆里） ────────────────────────────────
+        把 aha-desktop 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos）。
+
+        为什么用 profile 而不是直接写进 <modules>：原生镜像的构建比 JVM 构建脆得多
+        （JavaFX 原生库、反射与资源清单、各平台工具链差异），挂在常规反应堆上意味着
+        一次实验性失败会挡住 `./mvnw clean verify`、Gate、Compat 全部流程。
+        放在 profile 里，常规构建完全看不到它；只有显式 `-Pdesktop-native` 才加入：
+
+            ./mvnw -Pdesktop-native -pl aha-desktop-native -am package -DskipTests
+
+        工作流见 .github/workflows/DesktopNative.yml，设计与风险见
+        Docs/Design/DesktopNativeDesign.md。
+    -->
 </project>

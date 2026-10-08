@@ -47,6 +47,7 @@ common ← extension-api ← core ← desktop
 | 内核层 | `aha-core` | Agent 引擎、LLM 适配、记忆、配置、安全、扩展运行时 |
 | 实现层 | `aha-tool` | 内置工具（ServiceLoader） |
 | 接入层 | `aha-cli`、`aha-desktop` | CLI / 桌面端 |
+| 试验层 | `aha-desktop-native` | 桌面端原生镜像（GraalVM native-image）：**默认不在反应堆里**，由 `desktop-native` profile 加入；见 `DesktopNativeDesign.md` |
 
 ## 3. 关键设计
 
@@ -65,6 +66,7 @@ common ← extension-api ← core ← desktop
 | 实现层 | `aha-tool` | `com.acanx.module.aha.tool` | common, core |
 | 接入层 | `aha-cli` | `com.acanx.module.aha.cli` | core, tool |
 | 接入层 | `aha-desktop` | `com.acanx.module.aha.desktop` | core |
+| 试验层 | `aha-desktop-native` | —（无 Java 代码，`packaging=pom`） | desktop（仅取用其 runtime 产物） |
 
 代码包名与模块名一致（`com.acanx.module.aha.<module>`）。
 
