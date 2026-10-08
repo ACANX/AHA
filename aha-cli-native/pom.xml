@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.acanx.module</groupId>
+        <artifactId>aha</artifactId>
+        <version>0.1.1</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>aha-cli-native</artifactId>
+    <packaging>pom</packaging>
+    <name>AHA CLI Native</name>
+    <description>CLI 原生镜像（试验性）：把 aha-cli 的 JVM 产物编译成 GraalVM native-image 二进制</description>
+
+    <!--
+        这是 `aha-desktop-native` 的**姊妹模块**：同一套隔离约定、同一种构建管线，
+        只是输入换成 CLI 的 JVM 产物、主类换成 AhaCli、依赖里没有 JavaFX。
+
+        它服务于两条并行的线：
+
+          开发线：照旧用 JVM 模式（jar 包）开发、测试、调试；
+          验证线：每次 dev 合并后由 CliNative.yml 打出平台原生二进制，
+                  在发布页直接下载来跑，不装 JDK 也能用。
+
+        三条硬约束（见 Docs/Design/CliNativeDesign.md）：
+
+        1. **默认不在反应堆里**：靠父 POM 的 `cli-native` profile 加入。
+           原生镜像构建失败绝不影响 `./mvnw clean verify`、Gate、Compat。
+        2. **产物版本可覆盖**：`-Daha.native.version=0.1.1.00021`，默认与项目版本一致。
+           工作流据此打出 `a.b.c.PPPPP`（PR 号补零到 5 位）的包与 tag。
+        3. **参数只有一个来源**：`src/native/native-image-args.txt`。
+           原生镜像要反复调参数，迭代时只改那一个文件——POM 与工作流都不必动。
+
+        本地用法：
+
+            # 只验证依赖拷贝与打包管线，不真的编原生镜像
+            ./mvnw -Pcli-native -pl aha-cli-native,aha-cli -am package -DskipTests -Dnative.skip=true
+
+            # 真编（需要 GraalVM 的 native-image 在 PATH 上，或用 -Dnative.image.executable= 指定）
+            ./mvnw -Pcli-native -pl aha-cli-native,aha-cli -am package -DskipTests
+    -->
+
+    <properties>
+        <!-- 产物版本：默认跟项目走，工作流传 -Daha.native.version=<a.b.c.PPPPP> 覆盖 -->
+        <aha.native.version>${project.version}</aha.native.version>
+
+        <!-- 可执行文件基名（Windows 上由 native-image 自动追加 .exe） -->
+        <aha.native.name>aha-cli-native</aha.native.name>
+
+        <!--
+            编译用 JDK 轴：与桌面端保持一致，`jdk25`（默认）与 `jdk27`（试验分支，profile `native-jdk27`）。
+            两条轴编出的镜像放进同一个包里会互相覆盖，因此版本名里带上它：
+                aha-cli-native-0.1.1-jdk25-...
+                aha-cli-native-0.1.1-jdk27-...
+            对比实验方法与口径见 Docs/Design/DesktopNativeDesign.md 第 5 节
+            （CLI 复用同一套方法，数据记在 CliNativeDesign.md）。
+        -->
+        <aha.native.jdk>jdk25</aha.native.jdk>
+
+        <!--
+            native-image 参数文件：**JDK 变体只改这一个属性**。
+            两条 JDK 轴需要不同的开关，因此各自一份文件，迭代时互不干扰。
+        -->
+        <native.image.argsfile>src/native/native-image-args.txt</native.image.argsfile>
+
+        <!--
+            native-image 可执行文件。默认按 PATH 查找；两个平台的差异由工作流传入：
+              Windows: -Dnative.image.executable=native-image.cmd
+              Linux/macOS: 保持默认（native-image）
+        -->
+        <native.image.executable>native-image</native.image.executable>
+
+        <!--
+            `native.skip` **刻意不在这里定义**，默认值只放在根 POM 的 <properties> 里。
+            模块自身的 <properties> 会赢过父 POM 里 profile 注入的属性，导致
+            profile 的 false 不生效、native-image 被静默跳过（详见桌面端的实测事故）。
+            本模块只负责使用它；CI 另外显式传 -Dnative.skip=false 兜底。
+        -->
+
+        <!-- 原生镜像的工作目录：依赖拷贝、产物与日志都落在这里，便于工作流取件 -->
+        <native.image.workdir>${project.build.directory}/native</native.image.workdir>
+
+        <!--
+            本模块没有 Java 代码，覆盖率与 javadoc 无从谈起：
+            关掉两者，免得空模块在 verify 阶段被覆盖率门禁判成 0% 而失败。
+        -->
+        <jacoco.skip>true</jacoco.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+    </properties>
+
+    <dependencies>
+        <!--
+            原生镜像的输入就是 aha-cli 的 JVM 产物：主模块 + 它的全部 runtime 传递依赖
+            （aha-core / aha-common / aha-extension-api / aha-tool、picocli、JLine、
+            sqlite-jdbc、log4j2、slf4j、Jackson…）。声明 scope=runtime：这里只需要 classpath。
+
+            注意 groupId 是 com.acanx.module.aha：各模块**覆盖**了父 POM 的 groupId。
+            写错这里不会报「坐标不对」，而是「在中央仓库找不到」——因为反应堆匹配不上。
+        -->
+        <dependency>
+            <groupId>com.acanx.module.aha</groupId>
+            <artifactId>aha-cli</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                第 0 步：清掉上一次的 native 工作目录。
+
+                为什么需要：copy-dependencies **不会**删除已经不在依赖集里的旧 jar。
+                依赖降级 / 换版本后，旧 jar 会一直留在 lib/ 里，于是「依赖树已经干净了，
+                lib/ 里却还有」，两边对不上账。
+                excludeDefaultDirectories=true 是关键：不要顺手把整个 target/ 删掉。
+            -->
+            <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-clean-workdir</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${native.image.workdir}</directory>
+                                    <includes>
+                                        <include>lib/**</include>
+                                    </includes>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 1 步：把 runtime 依赖拷到 target/native/lib，并把 classpath 抽成一个属性。
+                两步都在 process-classes 完成，package 阶段的 native-image 直接用。
+            -->
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-copy-dependencies</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-classpath</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>build-classpath</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 抽成属性：exec 的 <argument> 不会做词分割，整串作为单个 argv 传过去 -->
+                            <outputProperty>native.classpath</outputProperty>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 2 步：README 模板过滤（把版本号写进包内说明）与元数据对账副本。
+            -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-metadata</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <!--
+                                        元数据的**真实来源**在 aha-cli 里（它会随 aha-cli.jar
+                                        进 classpath，native-image 会自动读取，无需任何参数）。
+                                        这里只是复制一份到 workdir，好让它随 zip 一起交付——
+                                        「这个二进制是靠哪些可达性元数据编出来的」要能事后对账。
+                                    -->
+                                    <directory>${project.parent.basedir}/aha-cli/src/main/resources/META-INF/native-image/com.acanx.module.aha/aha-cli</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>reachability-metadata.json</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-readme</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/native</directory>
+                                    <filtering>true</filtering>
+                                    <includes>
+                                        <include>README.txt</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 3 步：native-image。
+
+                先跑一次 native-image 的版本查询作为预检：没有 GraalVM 时给出的是
+                「Cannot run program "native-image"」这类一眼可懂的失败。
+                这两个执行都不会影响常规构建——本模块默认不在反应堆里。
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-preflight</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <argument>--version</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <!--
+                                工作目录设成 workdir，而不是模块根：这样 native-image 的
+                                「emit build report」参数产出的报告会和可执行文件落在同一目录
+                                （target/native/），既方便工作流把报告单独打成独立发布包，
+                                也能被自证步骤直接检查。
+                            -->
+                            <workingDirectory>${native.image.workdir}</workingDirectory>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <!-- 参数清单：唯一的开关来源，迭代只改这个文件 -->
+                                <argument>@${project.basedir}/${native.image.argsfile}</argument>
+                                <!--
+                                    走 classpath 而不是 module-path：原生镜像下 JPMS 不参与，
+                                    `requires` / `exports` / ServiceLoader 都不再是约束
+                                    （C-01：JPMS 优先启用但非强制，这正是「必要时让路」的场景）。
+                                -->
+                                <argument>-cp</argument>
+                                <argument>${native.classpath}</argument>
+                                <!-- 输出用 `-o`（`-H:Path` / `-H:Name` 已弃用） -->
+                                <argument>-o</argument>
+                                <argument>${native.image.workdir}/${aha.native.name}</argument>
+                                <!-- 主类：与 bin/Aha.sh 走的是同一个入口 -->
+                                <argument>com.acanx.module.aha.cli.AhaCli</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                第 4 步：把二进制 + 说明 + 构建参数打成 zip。
+
+                产物名与桌面端原生包保持同一族（换成 cli 前缀）：aha-cli-native-<版本>-<jdk>.zip，
+                落到 dist/（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
+            -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dist-native</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/dist-native.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${aha.native.name}-${aha.native.version}-${aha.native.jdk}</finalName>
+                            <!-- 产物统一落 dist/（与桌面端的 jar 包同一处） -->
+                            <outputDirectory>${project.parent.basedir}/dist</outputDirectory>
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <profiles>
+        <!--
+            ── JDK 27 试验分支（与桌面端同名、可叠加）───────────────────────────────
+            用法：
+                ./mvnw -Pcli-native,native-jdk27 -pl aha-cli-native,aha-cli \
+                       -am package -DskipTests
+            命令行属性优先，因此也可以临时只换参数文件：
+                -Dnative.image.argsfile=src/native/native-image-args-jdk27.txt
+        -->
+        <profile>
+            <id>native-jdk27</id>
+            <properties>
+                <aha.native.jdk>jdk27</aha.native.jdk>
+                <native.image.argsfile>src/native/native-image-args-jdk27.txt</native.image.argsfile>
+            </properties>
+        </profile>
+    </profiles>
+</project>

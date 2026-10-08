@@ -207,6 +207,8 @@ metadata:
 | 2026-10-08 | D3D shader 资源漏进镜像（issue #35 同批发现） | `args-cookbook` §3.1：**着色器扩展名**要进 `-H:IncludeResources`（D3D `.obj`、ES2 `.frag`/`.vert`）；漏掉不是构建失败，是首次绘制静默坏掉 | 推导 + JavaFX jar 扫描（AHA：262 个 `.obj` + 224 个 `.png`） |
 | 2026-10-08 | 手写反射清单「看起来补完了」但实际不完整（issue #35） | `args-cookbook` §3.5：**审计要覆盖整个运行时依赖，不只框架**——`sqlite-jdbc` / `log4j-core` 自带 native-image 元数据，而 **Jackson 3 不带**，业务层的配置 / 会话记录会反射读写失败；「启动链路」只是反射的一部分 | 实测（AHA：293 条元数据；Jackson 缺口靠依赖 jar 扫描发现） |
 | 2026-10-08 | 想回答「还会不会再报别的类找不到」 | `troubleshooting` §5：**手工清单只能做到「已知缺口已闭」，不能证明完整**；要抄底只能 tracing agent 或真机逐功能跑——把这句话写进交付说明，不要过度承诺 | 自述（据本次用户追问） |
+| 2026-10-08 | 同一仓库要编第二个原生目标（CLI，`aha-cli-native`） | `isolation-and-ci` §6：**逐项复制并改名**（模块 / profile / 参数 / 工作流 / tag / 产物），不要合并成一个工作流；**元数据来源会变**——picocli 用 `picocli-codegen` 注解处理器生成（比手写可靠）、JLine 自带但 `Signals` 的 `sun.misc.Signal` 要补 | 实测（AHA：CLI 管线跑通 `native.skip=true`，picocli 生成 30 个类型，单测守卫生成结果） |
+| 2026-10-08 | 建第二个目标时反查发现第一个目标漏了资源（yaml/yml） | `args-cookbook` §3.1：资源正则要**逐项对源码里的 `getResourceAsStream` 路径**，别只凭扩展名直觉；桌面端漏了 `yaml`/`yml` → 启动即 `CONFIG_NOT_FOUND` | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`；两份桌面参数已修） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
 | 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
 

@@ -111,6 +111,15 @@ shader 加载不到——又一次「静默坏掉」。任何以 GUI 框架为�
 该框架的资源扩展名列全（去它的 jar 里 `find` 一遍非 `*.class` 文件的扩展名最稳），
 而不是只写常见的图片 / 配置 / 原生库。
 
+**不要凭扩展名直觉列，要对着源码的读取点逐项核**（来源：AHA 建 CLI 原生镜像时反查发现）：
+把项目里所有 `getResourceAsStream(...)` / `getResource(...)` 的参数路径列出来，逐个确认正则能匹配。
+AHA 就跣过这个坑——桌面端正则里有 `properties|txt|json`，却漏了 `yaml` / `yml`，
+而 `ConfigLoader` 读的是 `/AhaDefault.yaml`、`ProviderPresets` 读 `/ModelDefault.yml`，
+症状是**启动即报 `CONFIG_NOT_FOUND`**（不是构建失败）。所以：
+
+- 资源清单里至少要有 `properties`、`yaml`、`yml`、`json`、`xml`、`txt`、`svg`；
+- 最好用一个「启动即读全部内置资源」的自检开关，让缺项在启动时就暴露。
+
 ### 3.2 运行期初始化清单（`--initialize-at-run-time`）
 
 判据一句话：**构建期初始化就会去碰「只有运行期才存在的东西」**（屏幕、窗口、原生库、
@@ -132,6 +141,16 @@ shader 加载不到——又一次「静默坏掉」。任何以 GUI 框架为�
 - 只出现在**运行期**的失败（构建通过、启动就炸）多半是反射或资源，优先补这两类。
 - **JavaFX 应用的入口必须注册**：`Application.launch(String...)` 用 `Class.forName` 加载主类，
   `LauncherImpl` 用 `getConstructor().newInstance()` 实例化它——两者都在 closed-world 之外。
+- **CLI 框架：优先用它的注记处理器生成，而不是手写**（来源：AHA 建 CLI 原生镜像）：
+  picocli 不自带 native-image 元数据，但有 `picocli-codegen`——加进 `maven-compiler-plugin`
+  的 `annotationProcessorPaths`，编译期生成
+  `META-INF/native-image/picocli-generated/reflect-config.json`，随 jar 进 classpath。
+  它扫的是源码，子命令 / `@Option` 一变就跟着变，比手写清单可靠；
+  类似机制还有 Spring 的 `RuntimeHints` / Quarkus 的构建步——**先查框架有没有**。
+- **终端库也要查**（来源：同上）：JLine 4 自带完整元数据，但 `org.jline.utils.Signals`
+  仍用 `Class.forName("sun.misc.Signal")` 处理 Ctrl+C，这块**不在**它的元数据里，
+  要自己补（连同 `sun.misc.SignalHandler` 与 `ProcessBuilder$RedirectPipeImpl`）。
+  「某依赖自带元数据」不等于「没有缺口」。
   在 `reachability-metadata.json` 注册主类构造器，并把 `main` 改成
   `launch(YourApp.class, args)`；漏注册的典型症状是
   `ClassNotFoundException: <你的主类>`（构建完全成功，一启动就炸）。

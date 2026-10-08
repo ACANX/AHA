@@ -43,6 +43,7 @@
 | v1.27.0 | 2026-10-08 | §6.3 的发布产物说明改为「CLI 包 + 各平台桌面端包」 | @ACANX |
 | v1.28.0 | 2026-10-08 | §8.7 复核表：`version.properties` 注明所在模块（`aha-common`） | @ACANX |
 | v1.29.0 | 2026-10-08 | §8.2 表下补注：issue #35 的修复分支推送（`G-08`）不在 0.1.x 发版阻塞项内（原生镜像是可选管线），但它阻塞 `N-16` 真机验证 | @ACANX |
+| v1.30.0 | 2026-10-08 | §8.2 表下注补 `G-09`：CLI 原生镜像（`aha-cli-native` + `CliNative.yml`）已落地，同样属可选管线，不阻塞 0.1.x 发版，但阻塞 `N-19` 真机验证 | @ACANX |
 
 ---
 
@@ -374,6 +375,11 @@ git switch -c dependa && git push -u origin dependa
 > **不在** 0.1.x 的发版阻塞项内——原生镜像管线是**可选**的（失败不挡合并 / 发版）。
 > 但它阻塞 `N-16`（真机验证启动链路的反射 / JNI 元数据是否完整），因此单独登记在
 > `TODO.md` 第 11 节，凡人工动作不进对话、进清单。
+>
+> **注（CLI 原生镜像）**：`aha-cli-native` 模块与 `CliNative.yml` 工作流已落地
+> （[CliNativeDesign.md](Design/CliNativeDesign.md)），它与桌面端是**平行的可选管线**，
+> 同样**不在** 0.1.x 发版阻塞项内。其推送与 PR（[TODO.md](TODO.md) `G-09`）
+> 阻塞 `N-19`（真机验证 CLI 产物）。
 
 在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
 共 15 个失败 / 错误，归为四类：

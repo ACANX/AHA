@@ -366,6 +366,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | N-07 | JDK 27 分支扩展到 Linux / macOS；二进制内部版本号带上 PR 段；体积瘦身 | 规划 | ☐ | P3 | ☐ 后续 | `DesktopNativeDesign.md` §7 N-3/N-4/N-5 |
 | N-08 | 沉淀可复用技能：`.agents/skills/java-app-graalvm-native-image-compile/`（先建骨架、边做边改、达成目标才成熟） | 需求 | ✅ | P1 | ◐ 已建（v0.1.0 试验中） | `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md` |
 | N-09 | 把该技能迭代到**成熟**：目标平台真机跑通 + 未验证条目清零 + **在别的项目复用过一次**（四条达标判据见技能「用法」一节） | 验证 | ☐ | P2 | ☐ 待跟踪 | `SKILL.md`（成熟度）、`references/skill-lifecycle.md` |
+| N-18 | CLI 原生镜像：`aha-cli-native` 模块 + `CliNative.yml` 工作流 | 需求 | ✅ | P1 | ✅ 已完成（picocli 注解处理器生成元数据 + JLine Signals 补齐 + 同批修客户端 yaml/yml 资源正则） | `aha-cli-native/`、`aha-cli/pom.xml`、`.github/workflows/CliNative.yml`、`CliNativeDesign.md`、[DevLog-20261008-14.md](DevLog/DevLog-20261008-14.md) |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -538,6 +539,7 @@ desktop 亦未列 tool 依赖。
 | v0.28.0 | 2026-10-08 | 新增 `aha-desktop-native`（试验性原生镜像模块）与 `DesktopNative.yml`：`N-01`~`N-04` 落地（profile 隔离、独立出包、`a.b.c.PPPPP` 版本、JDK 27 实验分支），`N-05`~`N-07` 待跟踪 | @ACANX |
 | v0.29.0 | 2026-10-08 | 新增 `N-08`/`N-09`：把原生镜像经验沉淀为可复用技能，并明确「先建骨架、边做边改、达成目标才成熟」的迭代方式与四条达标判据 | @ACANX |
 | v0.30.0 | 2026-10-08 | 新增 `N-16`（真机验证 issue #35 补上的 JavaFX 启动链路反射 / JNI 元数据）、`N-17`（改用 tracing agent 采集元数据，手写清单的抄底方案）与 `G-08`（推送修复分支 `fix/issue-35-native-quantum-toolkit` 并提 PR，含验收标准） | @ACANX |
+| v0.31.0 | 2026-10-08 | 新增 `N-18`（CLI 原生镜像 `aha-cli-native` + `CliNative.yml` 已落地）与 `N-19`（真机验证 CLI 原生镜像）、`G-09`（推送并提 PR）；`N-17` 范围扩到 CLI；同批修正客户端（桌面端）资源正则漏 `yaml` / `yml` 的潜在缺陷 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1254,6 +1256,17 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       ② 或在 GraalVM JDK 下跑现有单测（无 GUI）采集 core 侧反射，与手写的 JavaFX 清单合并。
       验收标准：原生产物能连续跑完「开窗 → 读配置 → 存配置 → 一轮对话 → 退出」
       且无 `MissingReflectionRegistrationError` / `ClassNotFoundException`。
+      范围应覆盖 CLI（`aha-cli-native`）：CLI 的 picocli / JLine 元数据同样是手写 +
+      推导，不能假定比桌面端更完整。
+- [ ] **N-19**：真机验证 CLI 原生镜像（`aha-cli-native`）是否完整可用。
+      背景：元数据来自三处——picocli 注解处理器（生成）、JLine Signals 补充（手写）、
+      AHA 自身 Jackson 记录（手写）；均为推导，**未在真机跑过**。
+      验收标准：① 下载三平台产物，`--version` / `--help` 正常；② 非交互 `run "..."`
+      能完成一次真实对话（顺带验证 HTTPS 与配置读取）；③ 交互式进入后能输入、
+      能 Ctrl+C 打断当前生成而不退出进程（验证 `sun.misc.Signal` 注册）；
+      ④ 无 `ClassNotFoundException` / `MissingReflectionRegistrationError`；
+      ⑤ 若仍缺项，按同一格式补 `CliNativeDesign.md` §4 与元数据。
+      依据：`Docs/Design/CliNativeDesign.md` §6。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1298,6 +1311,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 | G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
+| G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 

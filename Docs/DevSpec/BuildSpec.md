@@ -199,7 +199,7 @@ POM 语法必须兼容 Maven 3.9.x：
     因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
     CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
 - **可选工作流的作业不得进必需检查（强制）**：
-  试验性 / 非交付物管线（如 `DesktopNative.yml`）的作业名**不得**写进分支保护的必需检查，
+  试验性 / 非交付物管线（如 `DesktopNative.yml`、`CliNative.yml`）的作业名**不得**写进分支保护的必需检查，
   且其失败必须**在步骤级**容错（作业级 `continue-on-error` 只保住整次运行的颜色，
   作业本身仍显示红叉，观感上会被误读成「流程挂了」）。
   这类管线的正确形态是：步骤级容错 + Job Summary 留真相 + 无产物时不发版也不失败。
@@ -214,8 +214,9 @@ POM 语法必须兼容 Maven 3.9.x：
     误入也不会要求环境具备工具链
   - 理由：一旦默认路径依赖平台工具链，构建失败的原因会从「代码问题」变成「环境问题」，
     而后者极难在别人的机器上复现——这是把一个可诊断的失败换成不可诊断的失败
-  - 已有实现：`aha-desktop-native`（原生镜像，`-Pdesktop-native[,native-jdk27]`）；
-    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节
+  - 已有实现：`aha-desktop-native`（桌面端原生镜像，`-Pdesktop-native[,native-jdk27]`）；
+    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节；以及 `aha-cli-native`
+    （CLI 原生镜像，`-Pcli-native[,native-jdk27]`）；详见 `Docs/Design/CliNativeDesign.md` 第 2 节
 - 跨平台脚本编码与行尾约束（由 `bin/CheckScripts.py` 在 CI 中校验）：
   - `*.bat` / `*.cmd`：**纯 ASCII + CRLF + 无 BOM**——CMD 按 ANSI 代码页解析批处理，
     非 ASCII 字节会产生 `&`、`|` 等元字符并导致注释 / echo 行被当作命令执行
