@@ -340,7 +340,8 @@
                                 工作目录设成 workdir，而不是模块根：这样 native-image 的
                                 「emit build report」参数产出的报告会和可执行文件落在同一目录
                                 （target/native/），
-                                既能被 assembly 打进 zip，也能被工作流的自证步骤直接检查。
+                                既方便工作流把报告单独打成独立发布包，也能被自证步骤直接检查。
+                                （报告**不打进本模块的镜像包**——理由见 dist-native.xml 的说明。）
                                 安全性：参数文件用绝对路径（@ 后面是 ${project.basedir}），
                                 -cp 与 -o 也都是绝对路径，因此不受工作目录影响。
                             -->

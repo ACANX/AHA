@@ -60,15 +60,17 @@
   因此被跳过（作业仍是绿的）。修法：诊断步骤开头先写兜底 `produced=false`、
   结尾强制 `exit 0`；执行证据判据从 `*.build_artifacts.txt`（macOS 不产出）改为 `*build-report.*`。
   同时修正构建报告通配——真实文件名是 `<可执行名>-build-report.html`（34~36 MB），
-  按 `build-report*` 写会静默漏掉（报告因此一直没进制品）；现按体积只放进报告制品，不塞进镜像包。
-- **构建报告作为交付物**：native-image 的构建报告随镜像包一起打包，
-  并**另传一个只含报告的制品**（`native-report-<平台>-jdk<版本>`，保留 90 天，
-  连带参数文件与可达性元数据），产物自证还会把报告里的关键数字摘进 Job Summary。
-  报告只有几十 KB 而镜像包几十 MB——要分析「为什么编得这么大/这么慢」不该先下大包。
+  按 `build-report*` 写会静默漏掉（报告因此一直没进制品）。
+- **构建报告作为独立发布物**：native-image 的构建报告**不打进镜像包**
+  （镜像是给人运行的，报告是给人分析的），由工作流单独打成
+  `AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`，
+  与镜像包**同族命名、同批挂到发布页**，并作为 CI 制品保留 90 天。
+  包内含报告 + 镜像参数 + 可达性元数据；产物自证会检查报告包是否真的生成，
+  并把报告里的关键数字摘进 Job Summary。
 - **按首次真编日志调优 native-image 参数**：删除已弃用且无效的 `no fallback` 开关；
   解锁实验性选项；输出由 `-H:Path` + `-H:Name` 改为 `-o`；
   采纳日志建议的 `--gc=G1`、`--future-defaults=all`、`-R:MaxHeapSize=1g`；
-  新增 `emit build report`（随包交付，作为后续调参依据）；
+  新增 `emit build report`（打成独立报告包交付，作为后续调参依据）；
   两份参数文件（JDK 25 / JDK 27）逐条同步且保持行序一致。
   `--enable-url-protocols` 属「静默坏掉」风险项，保留但写明退出路径（`TODO.md` N-14）。
 - **XML 注释守卫**：`bin/CheckScripts.py` 新增 `check_xml`——注释体禁 `--`、禁嵌套注释
@@ -96,6 +98,13 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生镜像缺独立构建报告（issue #29）**：`dist-native.xml` 原先排除
+  `<可执行名>-build-report.html`，而文档已把它记为「已随包交付」，两边对不上——
+  发布页上既看不到包内报告，也没有独立的报告发布物。现定案：报告**不进镜像包**，
+  改由工作流打成独立发布包
+  `AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`（版本、系统、
+  架构、JDK 轴全在文件名里，与镜像包一一对应），并在产物自证里新增
+  「报告包是否真的生成」的回归守卫——「workdir 里有报告」不等于「发布物里有报告」。
 - **`.gitignore` 静默吃掉源码**：不带前导斜杠的 `Log/` 在任意层级匹配，且在 Windows / macOS
   大小写不敏感，于是 `aha-desktop/.../desktop/log/` 的 8 个源文件从未进入版本控制——
   git 不报错、`git add -A` 静默跳过、`git status` 显示干净、本地测试全绿，
