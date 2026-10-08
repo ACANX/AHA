@@ -19,7 +19,7 @@
 
 三条边界（与桌面端完全一致）：
 
-1. **正式交付仍是 JVM 模式**（`dist/bin` + `dist/lib` 的 CLI 发行目录、`bin/Aha.*`）。
+1. **正式交付仍是 JVM 模式**（`Dist/bin` + `Dist/lib` 的 CLI 发行目录、`bin/Aha.*`）。
    原生镜像是**旁路**，不替代它。
 2. **失败必须被隔离**：CLI 原生镜像编不出来，不允许挡住任何既有流程（见第 2 节）。
 3. **参数会反复改**：这是一份「起点」，不是终稿。
@@ -75,7 +75,7 @@ aha-cli-native/target/native/lib/*.jar
 aha-cli-native/target/native/aha-cli-native[.exe]
         │  打包（二进制 + README + 两份参数文件 + 可达性元数据 + LICENSE/CHANGELOG）
         ▼
-dist/aha-cli-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  V<版本>-aha-cli-native 预发行版
+Dist/aha-cli-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  V<版本>-aha-cli-native 预发行版
 ```
 
 与桌面端的三处不同：

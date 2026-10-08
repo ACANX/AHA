@@ -210,8 +210,8 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 
 | 项 | 为什么这里验不了 | 怎么验 |
 |---|---|---|
-| **0.1 界面整体观感**（分隔线、状态行、工具区块色带、区块间空行） | 伪终端能验“画出来了”，验不了“好不好看” | Windows 下 `dist\bin\Aha.bat chat`，让它读一个文件 |
-| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost；能力不足时应自动降级为不显示 | Windows 下 `dist\bin\Aha.bat chat`，看是否花屏；若无线则确认降级生效 |
+| **0.1 界面整体观感**（分隔线、状态行、工具区块色带、区块间空行） | 伪终端能验“画出来了”，验不了“好不好看” | Windows 下 `Dist\bin\Aha.bat chat`，让它读一个文件 |
+| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost；能力不足时应自动降级为不显示 | Windows 下 `Dist\bin\Aha.bat chat`，看是否花屏；若无线则确认降级生效 |
 | **`Aha.bat`** 启动路径 | WSL 只能通过 `cmd.exe` 间接调用 | Windows 下直接运行 |
 | **滚动区域对原生滚动/复制的影响** | 这是选 A 时接受的代价，属于手感判断 | Windows Terminal / PowerShell 下滚动与复制 |
 | **`/memory edit`** 的编辑器接管终端 | 需要真实交互式终端与编辑器 | Windows 下 `code -w` / `notepad` |
@@ -243,7 +243,7 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 | 9~13 | 开发规范 / 设计文档 / 用户指南 / 图资源 / 项目说明 | 51 |
 | 14 | AGENT 技能 | 17 |
 
-**提交前已核对**：`dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
+**提交前已核对**：`Dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
 `pom.xml.upgraded` **均未入库**（逐项在索引层面验证过）。
 
 **仍待做（需要远端凭据）**：
@@ -353,7 +353,7 @@ git switch -c dependa && git push -u origin dependa
 | 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建，此前那批提交**已推送**（PR #6 已合入 `dev`）；现仅剩 PR #8 冲突修复的合并提交 `06c6121` **待推送**——见 [TODO.md](TODO.md) `G-01`、`F-12` |
 | 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
 | 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
-| 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `dist/`」 |
+| 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`Dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `Dist/`」 |
 
 ### 8.2 发版前必须解决
 
@@ -414,7 +414,7 @@ GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖
 
 `aha-plugin-api` / `aha-tools` 目录已删净；`.idea/` 已被忽略；`CheckDocs` / `CheckSkills` / `CheckScripts` 全过；
 `TODO.md` 已是干净的 656 行；CLI 冒烟（`version` / `provider list` / `tool list` / `init --no-input`）正常；
-`dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
+`Dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
 
 ### 8.5 已修复：日志文件长期不生成（2026-10-07）
 
@@ -506,8 +506,8 @@ static void install(LoggerContext context, String xml) throws IOException {
 | Maven 3.9.x | `/root/apache-maven-3.9.11` 可用（JDK 25 下可跑） | 待跑一次 ⬜ |
 | CI | `Build.yml` 含 wrapper(**Maven 4**) 与 system(**Maven 3.9.x**) 双腿 + 三项检查 | ✓ 推送后自动覆盖基线 |
 | 未勾的 0.1 验收项 | 仅验收清单里「LLM 供应商接入测试」（需真实 API Key），见 `AHA/AHA-Design-V1.md` §0.1 功能核查 | 唯一遗留 ⬜ |
-| `Aha.bat` / `dist/bin/Aha.bat` | `file`: ASCII + CRLF | ✓ |
-| `dist/` | 18 个 jar；`Aha.sh version` → `AHA 0.1.0`；`aha-core` jar 内含 `AhaDefault.yaml` / `ModelDefault.yml` | ✓ 新鲜可用 |
+| `Aha.bat` / `Dist/bin/Aha.bat` | `file`: ASCII + CRLF | ✓ |
+| `Dist/` | 18 个 jar；`Aha.sh version` → `AHA 0.1.0`；`aha-core` jar 内含 `AhaDefault.yaml` / `ModelDefault.yml` | ✓ 新鲜可用 |
 | 核心模块 `System.out/err` | 0 处（CLI 除外） | ✓ 验收项可判 |
 | `TODO` 标记 | 5 处，全部 `TODO(0.3)`（扩展系统） | ✓ 非发布阻塞 |
 | `Docs/` 四棵目录树 | Design 16 / DevSpec 11 / Guide 8 / Diagrams 7，与磁盘**逐一比对一致** | ✓（此前 Design 缺 3 份，已修） |

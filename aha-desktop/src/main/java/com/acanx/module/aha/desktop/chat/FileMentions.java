@@ -38,7 +38,7 @@ public final class FileMentions {
 
     /** 不参与候选的目录名（构建产物、依赖与版本控制目录）。 */
     public static final Set<String> SKIPPED_DIRS =
-            Set.of(".git", ".idea", ".gradle", ".mvn", "target", "build", "out", "dist",
+            Set.of(".git", ".idea", ".gradle", ".mvn", "target", "build", "out", "Dist", "dist",
                     "node_modules", ".venv", "__pycache__", ".mypy_cache", ".cache");
 
     private FileMentions() {

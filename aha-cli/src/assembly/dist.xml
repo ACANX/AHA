@@ -7,7 +7,7 @@
     <formats>
         <format>dir</format>
     </formats>
-    <!-- 内容直接铺到 dist/，与 bin/Aha.sh 的 $DIR/../lib 布局一致 -->
+    <!-- 内容直接铺到 Dist/，与 bin/Aha.sh 的 $DIR/../lib 布局一致 -->
     <includeBaseDirectory>false</includeBaseDirectory>
 
     <dependencySets>
@@ -44,4 +44,21 @@
             </includes>
         </fileSet>
     </fileSets>
+
+    <files>
+        <!--
+            命令速查随包重建：`mvnw clean` 会删掉 Dist/*.md（见 aha-cli/pom.xml 的
+            maven-clean-plugin 配置），因此速查必须由 assembly 重新写回，否则一次 clean
+            就消失。源文件是仓库里的 Docs/Guide/CommandCheatsheet.md，唯一来源。
+
+            落地名刻意用 README.commands.md 而不是 README.md：README.md 是项目 README
+            （上面 fileSet 复制），两者同名会互相覆盖。文件名不在 Release.yml 的打包清单里，
+            因此不会进入正式发行 zip，只服务本地 Dist/。
+        -->
+        <file>
+            <source>${project.parent.basedir}/Docs/Guide/CommandCheatsheet.md</source>
+            <outputDirectory>.</outputDirectory>
+            <destName>README.commands.md</destName>
+        </file>
+    </files>
 </assembly>

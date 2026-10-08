@@ -107,7 +107,7 @@
 
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | `dist/` 目录（`bin/` + `lib/`），发布为 `aha-<版本>-cli.zip` | — |
+| 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-<版本>-cli.zip` | — |
 | 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2）；jpackage 安装包待评估 |
 | 1.x | native-image | jpackage (MSI/DEB/DMG) |
 
@@ -157,12 +157,12 @@
 
 ```bash
 ./mvnw clean package
-./dist/bin/Aha.sh version     # 应输出版本号
-./dist/bin/Aha.sh --help      # 应列出全部命令
+./Dist/bin/Aha.sh version     # 应输出版本号
+./Dist/bin/Aha.sh --help      # 应列出全部命令
 ```
 
-`dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
-发布流程将其打包为 `aha-<版本>-cli.zip` 并上传到 GitHub Release；`dist/` 不入库。
+`Dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
+发布流程将其打包为 `aha-<版本>-cli.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
 > **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。

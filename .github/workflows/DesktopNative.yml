@@ -332,7 +332,7 @@ jobs:
             echo "::warning::runner 上没有 python，无法打独立报告包"
             exit 0
           fi
-          out="dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
+          out="Dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
           "$py" -c "import sys,zipfile,glob,os; out,work=sys.argv[1],sys.argv[2]; files=sorted(glob.glob(work+'/*build-report.*')+glob.glob(work+'/*.build_artifacts.txt')+glob.glob(work+'/reachability-metadata.json')+glob.glob('aha-desktop-native/src/native/native-image-args*.txt')); z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [z.write(f,os.path.basename(f)) for f in files]; z.close(); print(out, len(files), 'files')" "$out" "$work"
           ls -lh "$out"
           "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
@@ -346,7 +346,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Native-Report-${{ matrix.label }}-jdk${{ matrix.jdk }}
-          path: dist/AHA-Desktop-Native-*-Report.zip
+          path: Dist/AHA-Desktop-Native-*-Report.zip
           if-no-files-found: warn
           retention-days: 90
 
@@ -453,8 +453,8 @@ jobs:
           echo "—— 现场：候选可执行文件 ——"
           find aha-desktop-native/target -maxdepth 3 -type f \
                \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null || true
-          echo "—— 现场：dist/ ——"
-          ls -la dist 2>/dev/null | head -20 || true
+          echo "—— 现场：Dist/ ——"
+          ls -la Dist 2>/dev/null | head -20 || true
 
           # ① 找可执行文件：不写死路径，先看约定位置，再在整个 target/ 兜一遍
           bin=$(ls "$work/aha-desktop-native" "$work/aha-desktop-native.exe" 2>/dev/null | head -n1 || true)
@@ -543,13 +543,13 @@ jobs:
           # ⑦ 独立报告包是否真的生成（issue #29 的回归守卫）。
           #    「workdir 里有报告」不等于「发布物里有报告」——报告是单独打的包，
           #    报告是用户要的交付物，缺了必须叫得响。
-          rpt_note="未检查（dist/ 下没有报告包）"
-          rpt=$(ls -t dist/AHA-Desktop-Native-*-Report.zip 2>/dev/null | head -n1 || true)
+          rpt_note="未检查（Dist/ 下没有报告包）"
+          rpt=$(ls -t Dist/AHA-Desktop-Native-*-Report.zip 2>/dev/null | head -n1 || true)
           if [ -n "$rpt" ]; then
             rpt_note="$(basename "$rpt")"
             echo "独立报告包：$rpt_note"
           else
-            rpt_note="**缺失**（dist/ 下没有 AHA-Desktop-Native-*-Report.zip）"
+            rpt_note="**缺失**（Dist/ 下没有 AHA-Desktop-Native-*-Report.zip）"
             echo "::warning::${rpt_note}——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
           fi
 
@@ -658,9 +658,9 @@ jobs:
           work=aha-desktop-native/target/native
           # POM 产出的是 aha-desktop-native-<版本>-<jdk>.zip，
           # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
-          # 产物统一落 dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
-          src=$(ls dist/aha-desktop-native-*.zip)
-          target="dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
+          # 产物统一落 Dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
+          src=$(ls Dist/aha-desktop-native-*.zip)
+          target="Dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
@@ -673,8 +673,8 @@ jobs:
         with:
           name: Native-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
-            dist/AHA-Desktop-Native-*.zip
-            !dist/AHA-Desktop-Native-*-Report.zip
+            Dist/AHA-Desktop-Native-*.zip
+            !Dist/AHA-Desktop-Native-*-Report.zip
           if-no-files-found: warn
           retention-days: 14
 
@@ -688,8 +688,8 @@ jobs:
     if: always() && needs.native-version.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 dist/ 不是一回事，
-      # 因此目录名刻意用 artifacts/，免得看起来像在往 dist/ 里塞东西。
+      # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 Dist/ 不是一回事，
+      # 因此目录名刻意用 artifacts/，免得看起来像在往 Dist/ 里塞东西。
       - name: 下载全部制品
         # 没有任何制品时，下载本身可能报错——这属于本次「无可发布产物」的正常分支
         continue-on-error: true

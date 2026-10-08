@@ -1991,7 +1991,7 @@ messages.add(ChatMessage.text(Role.USER, input));
 **验证线上请求体**（三家一次跑完，输出即上面三段 JSON）：
 
 ```java
-// 用 dist/lib 作为 classpath，构造同样的 ChatRequest 再调各适配器
+// 用 Dist/lib 作为 classpath，构造同样的 ChatRequest 再调各适配器
 ChatRequest request = new ChatRequest("gpt-4o",
         List.of(ChatMessage.text(Role.SYSTEM, "片段1"),
                 ChatMessage.text(Role.SYSTEM, "片段2"),
@@ -3009,16 +3009,16 @@ wrapperUrl=https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-w
 
 | 版本 | CLI | 桌面端 |
 |---|---|---|
-| 0.1 | JPMS 模块路径目录（`dist/`）+ 启动脚本 | — |
+| 0.1 | JPMS 模块路径目录（`Dist/`）+ 启动脚本 | — |
 | 0.2 | 同上 | jpackage (MSI/DEB) |
 | 1.x | native-image | jpackage (MSI/DEB) |
 
 ### 2.1 0.1 发行包
 
-`./mvnw clean package` 在项目根生成 `dist/`：
+`./mvnw clean package` 在项目根生成 `Dist/`：
 
 ```
-dist/
+Dist/
 ├── bin/
 │   ├── Aha.sh
 │   └── Aha.bat
@@ -3032,12 +3032,12 @@ dist/
 
 - `dependencySet` 以 `useProjectArtifact=true` 收集 `aha-cli` 自身与全部 runtime 依赖到 `lib/`
 - `fileSet` 附带 `bin/` 启动脚本与项目文档
-- `bin/Aha.sh` 取 `$DIR/../lib`，与平铺布局一致（`outputDirectory` 指向项目根，`finalName=dist`）
+- `bin/Aha.sh` 取 `$DIR/../lib`，与平铺布局一致（`outputDirectory` 指向项目根，`finalName=Dist`）
 
-`dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
+`Dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
 **为何不用 fat JAR**：shade 合并后的单一 JAR 无法按模块追踪依赖与许可，也无法与
-`dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
+`Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
 的决策而改变**）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
 **为何不用 jpackage（0.1）**：0.1 仅需 CLI + `bin/` 脚本，jpackage 主要用于 0.2 的桌面端。
@@ -3443,7 +3443,7 @@ Closes #123
 
 - [x] `./mvnw clean verify` 通过
 - [x] `mvn clean verify` 通过
-- [x] 发行包构建与启动（`mvnw clean package` → `dist/bin/Aha.sh version|--help` 实测通过）
+- [x] 发行包构建与启动（`mvnw clean package` → `Dist/bin/Aha.sh version|--help` 实测通过）
 - [x] CLI 端到端测试（伪终端下验证 `chat` 的启动、提示符与 `exit` 退出；非交互命令已全量验证）
 - [ ] LLM 供应商接入测试（需真实 API Key，已通过 Mock HTTP 与 fixture 验证协议转换）
 - [x] 会话持久化测试（`EndToEndTest`：真实 SQLite 重建后读取）

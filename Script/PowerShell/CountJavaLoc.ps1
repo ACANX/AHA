@@ -12,7 +12,7 @@
     判定规则：整行内容均落在注释内（含独立的 `*/` 闭合行、块注释内的空行）
     记为 Comment；行内出现首个非注释字符即记为 Code；其余为 Blank。
 
-    默认排除 target/、dist/、bin/、.agents/ 等非产品目录，避免把构建产物与
+    默认排除 target/、Dist/、bin/、.agents/ 等非产品目录，避免把构建产物与
     技能模板（.agents/skills/*/assets/*.java）计入产品代码。
 
 .PARAMETER Root
@@ -41,7 +41,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # 非产品代码目录：构建产物、IDE 配置、技能模板、启动脚本
-$SkipDirs = @('target', 'dist', 'bin', '.git', '.idea', '.vscode', 'node_modules', '.agents')
+$SkipDirs = @('target', 'Dist', 'dist', 'bin', '.git', '.idea', '.vscode', 'node_modules', '.agents')
 
 function Get-JavaLineStats {
     <#

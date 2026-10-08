@@ -379,7 +379,7 @@
                 第 4 步：把二进制 + 说明 + 构建参数打成 zip。
 
                 产物名与桌面端 jar 包保持同一族：aha-desktop-native-<版本>.zip，
-                落到 dist/（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
+                落到 Dist/（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
                 版本由 -Daha.native.version 决定，工作流用 <a.b.c.PPPPP> 覆盖。
             -->
             <plugin>
@@ -397,8 +397,8 @@
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
                             <finalName>${aha.native.name}-${aha.native.version}-${aha.native.jdk}</finalName>
-                            <!-- 产物统一落 dist/（与桌面端的 jar 包同一处） -->
-                            <outputDirectory>${project.parent.basedir}/dist</outputDirectory>
+                            <!-- 产物统一落 Dist/（与桌面端的 jar 包同一处） -->
+                            <outputDirectory>${project.parent.basedir}/Dist</outputDirectory>
                             <attach>false</attach>
                         </configuration>
                     </execution>

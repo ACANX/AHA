@@ -184,20 +184,20 @@ POM 语法必须兼容 Maven 3.9.x：
 - 内部模块版本统一由父 POM `dependencyManagement` 管理，子模块不得硬编码版本
 - `aha-common` 保持**零外部依赖**（仅 JDK），禁止引入 Jackson 等第三方库
 - 内核模块（`aha-core`）禁止依赖任何传输 / 协议库
-- 发行包固定为 **JPMS 模块路径目录**（`dist/bin` + `dist/lib`），由 `maven-assembly-plugin`
+- 发行包固定为 **JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
   组装（`aha-cli/src/assembly/dist.xml`）：
   - **禁止**使用 `maven-shade-plugin` 打 fat JAR——合并后的单一 JAR 无法按模块追踪依赖与许可，
-  也无法与 `dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
+  也无法与 `Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
-  - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `dist/` 布局保持一致（`$DIR/../lib`）
-  - `dist/` 不入库，须在 `.gitignore` 中保持忽略
-- **构建产物一律输出到 `dist/`（仓库根只放源码与文档）**：
-  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `dist/`，**不得**在仓库根
+  - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `Dist/` 布局保持一致（`$DIR/../lib`）
+  - `Dist/` 不入库，须在 `.gitignore` 中保持忽略
+- **构建产物一律输出到 `Dist/`（仓库根只放源码与文档）**：
+  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `Dist/`，**不得**在仓库根
     生成或暂存任何 `.zip`（根目录被构建物污染后，`git status` 与「找产物」都变得不可靠）
-  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/dist</outputDirectory>`
-  - **例外**：CLI 的 assembly 输出的是 `dist/` 内的**解包目录**（`bin/` + `lib/`），
-    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
-    CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
+  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/Dist</outputDirectory>`
+  - **例外**：CLI 的 assembly 输出的是 `Dist/` 内的**解包目录**（`bin/` + `lib/`），
+    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `Dist/…`；
+    CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`（直接在 `Dist/` 内写会把归档自身收进去）
 - **可选工作流的作业不得进必需检查（强制）**：
   试验性 / 非交付物管线（如 `DesktopNative.yml`、`CliNative.yml`）的作业名**不得**写进分支保护的必需检查，
   且其失败必须**在步骤级**容错（作业级 `continue-on-error` 只保住整次运行的颜色，

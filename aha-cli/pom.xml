@@ -99,10 +99,10 @@
                 </configuration>
             </plugin>
             <!--
-                让 `mvn clean` 清掉 dist/ 里由构建产生的文件。
+                让 `mvn clean` 清掉 Dist/ 里由构建产生的文件。
 
                 必要性：assembly 只覆盖同名文件，旧版本的依赖 jar 会一直留在
-                dist/lib。JPMS 下一个模块出现两个版本是致命错误
+                Dist/lib。JPMS 下一个模块出现两个版本是致命错误
                 （java.lang.module.FindException: Two versions of module ...），
                 依赖升级后重新构建出的发行包会直接启不来。
 
@@ -115,7 +115,7 @@
                 <configuration>
                     <!--
                         文件被占用时不让整个 clean 失败：正在运行的 AHA 实例会锁住
-                        dist/lib 里自己的 jar（Windows 上尤其严格）。
+                        Dist/lib 里自己的 jar（Windows 上尤其严格）。
 
                         安全前提：被锁的必然是**当前版本**的同名文件，assembly 会直接覆盖；
                         真正需要清理的是旧版本残留，而那些文件没人占用、能正常删掉。
@@ -123,20 +123,28 @@
                     <failOnError>false</failOnError>
                     <filesets>
                         <fileset>
-                            <directory>${maven.multiModuleProjectDirectory}/dist</directory>
+                            <directory>${maven.multiModuleProjectDirectory}/Dist</directory>
                             <includes>
                                 <include>*.md</include>
                                 <include>bin/*</include>
                                 <include>lib/*.jar</include>
                             </includes>
+                            <excludes>
+                                <!--
+                                    命令速查已纳入版本控制（.gitignore 里放行），因此不能跟着
+                                    `clean` 一起删掉，否则工作区每次 clean 都显示“文件被删除”。
+                                    它的内容仍由 package 阶段的 assembly 重新写回。
+                                -->
+                                <exclude>README.commands.md</exclude>
+                            </excludes>
                         </fileset>
                     </filesets>
                 </configuration>
             </plugin>
             <!--
                 发行包：将 aha-cli 自身、全部模块与第三方依赖收集到 lib/，
-                并附带 bin/ 启动脚本，生成到项目根 dist/。
-                布局：dist/{bin,lib} —— bin/Aha.sh 取 $DIR/../lib。
+                并附带 bin/ 启动脚本，生成到项目根 Dist/。
+                布局：Dist/{bin,lib} —— bin/Aha.sh 取 $DIR/../lib。
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -153,18 +161,18 @@
                                 <descriptor>src/assembly/dist.xml</descriptor>
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
-                            <!-- 平铺到项目根 dist/，使 bin/Aha.sh 的 $DIR/../lib 成立 -->
+                            <!-- 平铺到项目根 Dist/，使 bin/Aha.sh 的 $DIR/../lib 成立 -->
                             <!--
-                                注意：这里**刻意**是仓库根，不是 ${maven.multiModuleProjectDirectory}/dist。
+                                注意：这里**刻意**是仓库根，不是 ${maven.multiModuleProjectDirectory}/Dist。
 
                                 原因：CLI 的 assembly 描述符（src/assembly/dist.xml）内部把内容铺到
-                                `dist/`（`bin/` + `lib/` + 三个文档），组装结果就是「仓库根的 dist/」。
-                                若在这里再加一层 /dist，产出会变成 `dist/dist/…`。
-                                也就是说：**CLI 的输出本来就在 dist/ 里**，其余模块（桌面端、原生镜像）
-                                才是通过本元素直接指向 /dist 的——口径一致，写法不同。
+                                `Dist/`（`bin/` + `lib/` + 三个文档），组装结果就是「仓库根的 Dist/」。
+                                若在这里再加一层 /Dist，产出会变成 `Dist/Dist/…`。
+                                也就是说：**CLI 的输出本来就在 Dist/ 里**，其余模块（桌面端、原生镜像）
+                                才是通过本元素直接指向 /Dist 的——口径一致，写法不同。
                             -->
                             <outputDirectory>${maven.multiModuleProjectDirectory}</outputDirectory>
-                            <finalName>dist</finalName>
+                            <finalName>Dist</finalName>
                             <!-- dir 格式产物不可安装/部署，关闭 attach 以消除警告 -->
                             <attach>false</attach>
                         </configuration>

@@ -40,8 +40,8 @@
 首次使用执行一次，生成配置与目录结构（**无需手工编写配置文件**）：
 
 ```bash
-dist/bin/Aha.sh init          # Linux / macOS
-dist\bin\Aha.bat init         # Windows
+Dist/bin/Aha.sh init          # Linux / macOS
+Dist\bin\Aha.bat init         # Windows
 ```
 
 交互模式下会列出内置供应商供选择，并可选择直接写入 API Key：
@@ -100,9 +100,9 @@ aha init --force                           # 覆盖已有配置（默认幂等�
 ### 方式二：从发行包运行（推荐）
 
 ```bash
-./mvnw clean package         # 产出项目根 dist/
-dist/bin/Aha.sh chat         # Linux / macOS
-dist\bin\Aha.bat chat        # Windows
+./mvnw clean package         # 产出项目根 Dist/
+Dist/bin/Aha.sh chat         # Linux / macOS
+Dist\bin\Aha.bat chat        # Windows
 ```
 
 发行包内 `lib/` 已包含全部运行时依赖，无需另行准备 classpath。

@@ -119,8 +119,8 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 - profile 一开，**classpath 上只有本平台的原生库** → 桌面端自己的 assembly 描述符 / `jpackage`
   输入天然只含一个平台，`D-01`（发行包混入多平台 native JAR）**不需要额外的 `<classifier>` 过滤**；
-- CLI 的 `dist` **不受影响**：`aha-cli` 与 `aha-desktop` 互不依赖（`Constitution.md` 第 4 条），
-  实测 `dist/lib` 的 18 个 jar 中 javafx 相关为 **0**；
+- CLI 的 `Dist` **不受影响**：`aha-cli` 与 `aha-desktop` 互不依赖（`Constitution.md` 第 4 条），
+  实测 `Dist/lib` 的 18 个 jar 中 javafx 相关为 **0**；
 - 未被任何 profile 覆盖的平台（如 Windows ARM）会以默认值 `unsupported` 解析失败——失败信息
   直接点名 `javafx-*-25-unsupported.jar`，不会静默拿到错平台的原生库；
   应急覆盖：`-Djavafx.platform=<win|linux|mac|linux-aarch64|mac-aarch64>`。
