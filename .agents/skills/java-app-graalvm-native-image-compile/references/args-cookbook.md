@@ -123,6 +123,11 @@
 - 手写时用 `-H:ReflectionConfigurationFiles=reflect-config.json`，条目形如
   `{"name":"a.b.C","methods":[{"name":"m","parameterTypes":[]}]}`；
 - 只出现在**运行期**的失败（构建通过、启动就炸）多半是反射或资源，优先补这两类。
+- **JavaFX 应用的入口必须注册**：`Application.launch(String...)` 用 `Class.forName` 加载主类，
+  `LauncherImpl` 用 `getConstructor().newInstance()` 实例化它——两者都在 closed-world 之外。
+  在 `reachability-metadata.json` 注册主类构造器，并把 `main` 改成
+  `launch(YourApp.class, args)`；漏注册的典型症状是
+  `ClassNotFoundException: <你的主类>`（构建完全成功，一启动就炸）。
 
 ### 3.4 GC 与堆（实验位，按场景选）
 

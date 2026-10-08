@@ -1,5 +1,10 @@
 {
   "reflection": [
+    {
+      "type": "com.acanx.module.aha.desktop.AhaDesktopApp",
+      "allDeclaredConstructors": true,
+      "allPublicConstructors": true
+    },
     { "type": "sun.net.www.protocol.http.Handler", "allPublicConstructors": true },
     { "type": "sun.net.www.protocol.https.Handler", "allPublicConstructors": true },
     { "type": "sun.net.www.protocol.http.HttpURLConnection" },
