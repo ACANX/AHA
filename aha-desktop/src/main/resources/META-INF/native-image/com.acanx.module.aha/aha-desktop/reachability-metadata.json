@@ -1,0 +1,8 @@
+{
+  "reflection": [
+    { "type": "sun.net.www.protocol.http.Handler", "allPublicConstructors": true },
+    { "type": "sun.net.www.protocol.https.Handler", "allPublicConstructors": true },
+    { "type": "sun.net.www.protocol.http.HttpURLConnection" },
+    { "type": "sun.net.www.protocol.https.HttpsURLConnectionImpl" }
+  ]
+}

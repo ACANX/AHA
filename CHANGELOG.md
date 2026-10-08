@@ -55,6 +55,24 @@
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
 ### 变更
+- **修「全绿却没上传」的真因**：带 `continue-on-error` 的步骤一旦非零退出，
+  它的 `outputs` **不会被发布**，下游 `if:` 静默变 false——macOS 腿的「改名 / 上传制品」
+  因此被跳过（作业仍是绿的）。修法：诊断步骤开头先写兜底 `produced=false`、
+  结尾强制 `exit 0`；执行证据判据从 `*.build_artifacts.txt`（macOS 不产出）改为 `*build-report.*`。
+  同时修正构建报告通配——真实文件名是 `<可执行名>-build-report.html`（34~36 MB），
+  按 `build-report*` 写会静默漏掉（报告因此一直没进制品）；现按体积只放进报告制品，不塞进镜像包。
+- **构建报告作为交付物**：native-image 的构建报告随镜像包一起打包，
+  并**另传一个只含报告的制品**（`native-report-<平台>-jdk<版本>`，保留 90 天，
+  连带参数文件与可达性元数据），产物自证还会把报告里的关键数字摘进 Job Summary。
+  报告只有几十 KB 而镜像包几十 MB——要分析「为什么编得这么大/这么慢」不该先下大包。
+- **按首次真编日志调优 native-image 参数**：删除已弃用且无效的 `no fallback` 开关；
+  解锁实验性选项；输出由 `-H:Path` + `-H:Name` 改为 `-o`；
+  采纳日志建议的 `--gc=G1`、`--future-defaults=all`、`-R:MaxHeapSize=1g`；
+  新增 `emit build report`（随包交付，作为后续调参依据）；
+  两份参数文件（JDK 25 / JDK 27）逐条同步且保持行序一致。
+  `--enable-url-protocols` 属「静默坏掉」风险项，保留但写明退出路径（`TODO.md` N-14）。
+- **XML 注释守卫**：`bin/CheckScripts.py` 新增 `check_xml`——注释体禁 `--`、禁嵌套注释
+  （本轮两次踩到，且守卫当场抓出技能模板里的嵌套注释）。
 - **修复原生镜像「静默跳过」**：`native.skip` 的默认值原先写在模块自身的 `<properties>` 里，
   会**赢过**父 POM 中 profile 的覆盖，导致 `native-image` 被静默跳过——
   构建成功、零产物、零报错、CI 全绿。现改为：默认值唯一来源放聚合 POM 的 `<properties>`，

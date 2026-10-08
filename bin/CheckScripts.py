@@ -21,6 +21,15 @@
     - 应当以 `#!` shebang 开头
     - 必须是 LF 行尾
 
+  *.xml（含 pom.xml）
+    - 必须是良构 XML（整体可被解析器解析）
+    - 注释里不得出现 `--`，也不得嵌套 `<!--`
+    原因：XML 规范禁止注释体出现 `--`，解析器直接报
+    `String '--' not allowed in comment`。写命令行选项时极易踩到
+    （例如在注释里写 native-image 的双短横参数），而**报错位置指向注释本身**，
+    看起来像文件坏了。本仓库已踩两次，因此固化成检查。
+    嵌套注释更阴：外层会被内层的 `-->` 提前闭合，剩下的文字变成正文，报错离原因很远。
+
 用法：
     python3 bin/CheckScripts.py
     python3 bin/CheckScripts.py --verbose
@@ -31,10 +40,12 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import os
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -50,7 +61,7 @@ def collect() -> dict[str, list[Path]]:
     在慢文件系统（如 WSL 下的 /mnt/e）上遍历代价很高：既要避免同一棵树
     扫多遍，也要对 SKIP_DIRS 直接剪枝而不要走进去了再逐条判定。
     """
-    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": []}
+    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": [], "xml": []}
     for dirpath, dirnames, filenames in os.walk(ROOT):
         # 就地改写 dirnames 实现剪枝，os.walk 不会进入被移除的子目录
         dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
@@ -63,6 +74,10 @@ def collect() -> dict[str, list[Path]]:
                 found["sh"].append(base / name)
             elif suffix in PY_SUFFIXES:
                 found["py"].append(base / name)
+            elif suffix == ".xml":
+                # 只关心仓库自己的 XML（pom.xml、assembly 描述符等）。
+                # target/ 与 dist/ 已在 SKIP_DIRS 里剪掉，不会扫到生成物。
+                found["xml"].append(base / name)
     return {group: sorted(paths) for group, paths in found.items()}
 
 
@@ -148,6 +163,50 @@ def check_ignored_sources() -> list[str]:
             for path in offenders]
 
 
+XML_COMMENT = re.compile(r"<!--(.*?)-->", re.S)
+
+
+def check_xml(path: Path) -> list[str]:
+    """XML 的三条硬约束：整体良构、注释里不能有 `--`、不能嵌套 `<!--`。
+
+    前两条与「嵌套」都会让 XML 直接不可解析，而且报错位置离真正的原因往往很远
+    （`--` 报在注释那一行；嵌套报在内层 `-->` 之后；尖括号占位符报成「无效记号」）。
+
+    为什么要查良构性：**模板类文件**（如技能 assets 下的 POM 骨架）如果本身不是合法
+    XML，别人拷贝过去会在解析阶段就失败，而报错信息看起来像文件损坏、不像「有东西没替换」。
+    实测踩过：占位符写成三个尖括号包中文，整个模板不可解析。
+    """
+    problems: list[str] = []
+
+    # ① 良构性：整体解析一次（这也能挡住非 UTF-8 与尖括号占位符）
+    try:
+        ElementTree.parse(path)
+    except ElementTree.ParseError as exc:
+        problems.append(f"{path.relative_to(ROOT)} 不是良构 XML：{exc}")
+    except Exception as exc:  # 权限、编码等
+        problems.append(f"{path.relative_to(ROOT)} 无法解析为 XML：{exc}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return [f"{path.relative_to(ROOT)} 不是 UTF-8，无法检查 XML 注释"]
+
+    rel = path.relative_to(ROOT)
+    for match in XML_COMMENT.finditer(text):
+        body = match.group(1)
+        line = text[: match.start()].count("\n") + 1
+        if "--" in body:
+            problems.append(
+                f"{rel}:{line} XML 注释里出现 `--`；解析器会报 "
+                f"String '--' not allowed in comment（改写措辞，不要直接写双短横选项）"
+            )
+        if "<!--" in body:
+            problems.append(
+                f"{rel}:{line} XML 注释里嵌套了 `<!--`；外层注释会被提前闭合，"
+                f"内层改用普通文字"
+            )
+    return problems
+
+
 def check_py(path: Path) -> list[str]:
     """Python：shebang + LF。"""
     problems: list[str] = []
@@ -170,7 +229,12 @@ def main() -> int:
     checked = 0
 
     groups = collect()
-    for group, checker in (("bat", check_bat), ("sh", check_sh), ("py", check_py)):
+    for group, checker in (
+        ("bat", check_bat),
+        ("sh", check_sh),
+        ("py", check_py),
+        ("xml", check_xml),
+    ):
         for path in groups[group]:
             checked += 1
             found = checker(path)
@@ -181,7 +245,7 @@ def main() -> int:
     ignored = check_ignored_sources()
     problems.extend(ignored)
 
-    print(f"\n检查 {checked} 个脚本文件")
+    print(f"\n检查 {checked} 个脚本文件（含 {len(groups['xml'])} 个 XML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     if problems:
         print("\n[问题]")
