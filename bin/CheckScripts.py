@@ -22,6 +22,7 @@
     - 必须是 LF 行尾
 
   *.xml（含 pom.xml）
+    - 必须是良构 XML（整体可被解析器解析）
     - 注释里不得出现 `--`，也不得嵌套 `<!--`
     原因：XML 规范禁止注释体出现 `--`，解析器直接报
     `String '--' not allowed in comment`。写命令行选项时极易踩到
@@ -44,6 +45,7 @@ import subprocess
 import os
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -165,12 +167,24 @@ XML_COMMENT = re.compile(r"<!--(.*?)-->", re.S)
 
 
 def check_xml(path: Path) -> list[str]:
-    """XML 注释的两条硬约束：不能有 `--`，也不能嵌套 `<!--`。
+    """XML 的三条硬约束：整体良构、注释里不能有 `--`、不能嵌套 `<!--`。
 
-    两者都会让 XML 直接不可解析，而且报错位置离真正的原因往往很远
-    （`--` 报在注释那一行；嵌套报在内层 `-->` 之后）。
+    前两条与「嵌套」都会让 XML 直接不可解析，而且报错位置离真正的原因往往很远
+    （`--` 报在注释那一行；嵌套报在内层 `-->` 之后；尖括号占位符报成「无效记号」）。
+
+    为什么要查良构性：**模板类文件**（如技能 assets 下的 POM 骨架）如果本身不是合法
+    XML，别人拷贝过去会在解析阶段就失败，而报错信息看起来像文件损坏、不像「有东西没替换」。
+    实测踩过：占位符写成三个尖括号包中文，整个模板不可解析。
     """
     problems: list[str] = []
+
+    # ① 良构性：整体解析一次（这也能挡住非 UTF-8 与尖括号占位符）
+    try:
+        ElementTree.parse(path)
+    except ElementTree.ParseError as exc:
+        problems.append(f"{path.relative_to(ROOT)} 不是良构 XML：{exc}")
+    except Exception as exc:  # 权限、编码等
+        problems.append(f"{path.relative_to(ROOT)} 无法解析为 XML：{exc}")
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:

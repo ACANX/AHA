@@ -194,6 +194,7 @@ metadata:
 | 2026-10-08 | **四条腿全绿，却零产物、零报错**（用户发现「二进制没编出来」） | `troubleshooting` §3「静默跳过」：默认值写在**模块自身**的 `<properties>` 里 → 模块属性赢过父 POM 的 profile 覆盖 → `native.skip` 一直是 `true` | 实测（同一指令：搬到聚合 POM 后本地立刻报 `Cannot run program "native-image"`，证明开关真的生效了） |
 | 2026-10-08 | 首次真编报 9 条警告 + 5 条 Recommendations | `args-cookbook` §0：弃用项该删的删、实验性项要解锁、`-H:Path/-H:Name` 改 `-o`；采纳 G1 / future-defaults / 显式堆；**不采纳** PGO(native) / `-march=native` / 混淆，并写明理由 | 实测（真实构建日志逐条处置） |
 | 2026-10-08 | 想「不装 GraalVM 也验证命令行」 | `args-cookbook` §0.4：把可执行文件换成 `echo`，构建会打印完整命令行 | 实测（本机验出 `-o` 已生效、classpath 正确） |
+| 2026-10-08 | 技能模板 POM 拷过去直接解析失败 | `args-cookbook` §4.5：**模板必须自身良构**——尖括号占位符（三个尖括号包中文）会让整个文件不可解析，改成 `__UPPER_SNAKE__` 并在文件头列含义表；注释里也没有行内注释，别用括号冒充 | 实测（守卫升级为「解析所有 `*.xml`」后当场验证：探针 XML 被点名） |
 | 2026-10-08 | 构建报告该不该只留在本地 | `args-cookbook` §0.3：**报告是交付物**——随包交付 + 另传只含报告的制品（几十 KB vs 几十 MB）+ 摘要摘关键数字；制品连带参数文件与元数据一起传 | 实测（AHA：zip 内已含 build-report.*，另加 native-report-* 制品，保留 90 天） |
 | 2026-10-08 | XML 注释里写选项把 POM 改坏（两次） | `troubleshooting` §3 + `args-cookbook` §4.5：注释禁 `--`、禁嵌套；`bin/CheckScripts.py` 加正则守卫（反向验证过） | 实测（守卫当场抓出技能模板里的嵌套注释） |
 | 2026-10-08 | 无法判断 native-image 跑没跑 | 用 `<name>.build_artifacts.txt` 作执行痕迹自证；「构建成功」不算验收 | 实测（本次工作流加了「确认 native-image 真的执行过」一步） |
