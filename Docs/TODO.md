@@ -367,7 +367,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | N-08 | 沉淀可复用技能：`.agents/skills/java-app-graalvm-native-image-compile/`（先建骨架、边做边改、达成目标才成熟） | 需求 | ✅ | P1 | ◐ 已建（v0.1.0 试验中） | `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md` |
 | N-09 | 把该技能迭代到**成熟**：目标平台真机跑通 + 未验证条目清零 + **在别的项目复用过一次**（四条达标判据见技能「用法」一节） | 验证 | ☐ | P2 | ☐ 待跟踪 | `SKILL.md`（成熟度）、`references/skill-lifecycle.md` |
 | N-20 | 新技能 `graalvm-reachability-metadata`：把元数据登记（反射 / JNI / 资源 / 初始化）的**发现 → 登记 → 验证 → 守卫**方法论沉淀为可跨项目复用的独立技能 | 需求 | ✅ | P1 | ✅ 已建（v0.1.0，含三路发现法、来源优先级、经验库与模板） | `.agents/skills/graalvm-reachability-metadata/` |
-| N-21 | 把 `graalvm-reachability-metadata` 迭代到成熟：至少两个形态不同的目标走通（GUI + CLI 已具备）+ 推断条目清零 + **tracing agent 至少启用过一次** | 验证 | ☐ | P2 | ◐ 进行中（2026-10-08：CLI 端 tracing agent 已首次实跑，采集 400 类型 / 55 资源并完成交叉验证；GUI 侧与真实 native 运行待做） | `.agents/skills/graalvm-reachability-metadata/SKILL.md`（成熟判据） |
+| N-21 | 把 `graalvm-reachability-metadata` 迭代到成熟：至少两个形态不同的目标走通（GUI + CLI 已具备）+ 推断条目清零 + **tracing agent 至少启用过一次** | 验证 | ☐ | P2 | ◐ 进行中（2026-10-08：CLI + GUI 两形态 agent 均已实跑；已输出「agent 采集制度」与编排脚本；Windows/mac 平台采集与真实 native 运行待做，见 N-22） | `.agents/skills/graalvm-reachability-metadata/SKILL.md`（成熟判据） |
 | N-18 | CLI 原生镜像：`aha-cli-native` 模块 + `CliNative.yml` 工作流 | 需求 | ✅ | P1 | ✅ 已完成（picocli 注解处理器生成元数据 + JLine Signals 补齐 + 同批修客户端 yaml/yml 资源正则） | `aha-cli-native/`、`aha-cli/pom.xml`、`.github/workflows/CliNative.yml`、`CliNativeDesign.md`、[DevLog-20261008-14.md](DevLog/DevLog-20261008-14.md) |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
@@ -544,6 +544,7 @@ desktop 亦未列 tool 依赖。
 | v0.31.0 | 2026-10-08 | 新增 `N-18`（CLI 原生镜像 `aha-cli-native` + `CliNative.yml` 已落地）与 `N-19`（真机验证 CLI 原生镜像）、`G-09`（推送并提 PR）；`N-17` 范围扩到 CLI；同批修正客户端（桌面端）资源正则漏 `yaml` / `yml` 的潜在缺陷 | @ACANX |
 | v0.32.0 | 2026-10-08 | 新增 `N-20`（新技能 `graalvm-reachability-metadata`：元数据登记方法论）与 `N-21`（其成熟度跟踪） | @ACANX |
 | v0.33.0 | 2026-10-08 | `N-21` 推进：在 WSL + GraalVM 25.0.2 上首次真跑 tracing agent（CLI 端），采集 400 类型 / 55 资源，与手写清单完成交叉验证；结论回写技能（`discovery` §2.4、`catalog` §A.2） | @ACANX |
+| v0.34.0 | 2026-10-08 | 把 agent 采集**制度化**进技能（新增 `references/agent-collection.md` + `scripts/collect-metadata.sh`）；GUI 端也跑了一轮，补进客户端原生镜像元数据 47 条（293→340）；新增 `N-22`（Win/mac 平台采集） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1244,7 +1245,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       com.sun.javafx.tk.quantum.QuantumToolkit`。已按启动链路（工具包 / 三平台 Glass 工厂 /
       四条 Prism 管线 / 渲染器 / 全部 212 个 stock shader / Glass 原生回调 / 图片解码 / 字体 /
       AHA 自身被 Jackson 反射的记录）一次性补进
-      `reachability-metadata.json`，但**清单是按静态分析 + 同类工程推导的，不是本机 agent 采集的**。
+      `reachability-metadata.json`（2026-10-08 已用 tracing agent 在 Linux 上采集并补齐 47 条，总计 340 条；Windows / macOS 待采，见 `N-22`）。
       验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
       `MissingReflectionRegistrationError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
@@ -1271,6 +1272,15 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       ④ 无 `ClassNotFoundException` / `MissingReflectionRegistrationError`；
       ⑤ 若仍缺项，按同一格式补 `CliNativeDesign.md` §4 与元数据。
       依据：`Docs/Design/CliNativeDesign.md` §6。
+
+- [ ] **N-22**：在 Windows / macOS 上各跑一轮 tracing agent，补齐平台专属类。
+      背景：agent 只采到**跑在哪个平台**的类。Linux（WSLg）采集出现
+      `com.sun.glass.ui.gtk.GtkView` / `GtkWindow` / `GtkPixels`、`com.sun.prism.es2.X11GLFactory`；
+      Windows / macOS 的对应实现类（`WinView` / `MacView` 等）尚未采集，元数据里缺失。
+      做法：按技能 [agent-collection](../.agents/skills/graalvm-reachability-metadata/references/agent-collection.md)
+      §3.3 在各自平台跑同一套命令清单，`config-merge-dir` 合并后补进元数据。
+      验收标准：三平台元数据分别覆盖各自的 Glass / Prism 实现类；产物自证与
+      `NativeImageMetadataTest` 仍绿。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 

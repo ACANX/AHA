@@ -338,13 +338,8 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 这些要在 `reachability-metadata.json` 里用 `jniAccessible` + `allDeclaredMethods` / `allDeclaredFields`
 声明，否则运行期抛 `MissingReflectionRegistrationError`。清单见
 `aha-desktop/src/main/resources/META-INF/native-image/.../reachability-metadata.json`
-（按「启动链路」分组，共 288 条新条目），逐条理由见
+（按「启动链路」分组；后续又用 tracing agent 采集补充，当前总计 **340 条**），逐条理由见
 [DevLog-20261008-13.md](../DevLog/DevLog-20261008-13.md)。
-
-**诚实说明**：这份清单是**按静态分析 + 已跑通的同类工程（含 Gluon Substrate 的公开配置）推导的**，
-不是本机 agent 采集的结果（本机没有 GraalVM、也没有可运行 JavaFX 的显示环境）。
-因此它仍有可能是「不完整」的：真机一跑才发现还缺哪条。这是 R2 的常态，也是 `N-05` 存在的原因——
-**构建成功不是验收标准**。
 
 **反射不只 JavaFX（同一 issue 审计出来的第二类缺口）**：把运行时依赖也查了一遍，
 `sqlite-jdbc` 与 `log4j-core` 都**自带** native-image 元数据（无需本项目处理），
@@ -352,10 +347,30 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 正是 Jackson 反射读写。因此同一批还注册了 13 个配置记录与 `TaskRequest` / `TaskResult` / `ToolCall`。
 不查这一层，会变成「窗口开得起来、一存配置就炸」。
 
-**仍然不能声称「完整」**：手工清单只能做到「已知缺口已闭」；AHA 自身新增反射点、
-未用到的功能路径（effect / 自定义 skin / 打印）都可能在真机上暴露。
-唯一能「抄底」的做法是 GraalVM 的 tracing agent（见 `TODO` `N-17`），
-或按 `N-16` 在真机上逐功能跑。**不要把这一版当成「一定不再报 ClassNotFound」。**
+**tracing agent 采集补齐（2026-10-08）**：上面这份清单最初是**静态分析 + 同类工程对照**推导的
+（当初本机没有 GraalVM）。后来在 WSL + GraalVM 25.0.2 上对 GUI 真实跑了一轮 agent，
+采集到 **422 个反射类型 + 69 条资源**；按「依赖自带 / JDK 内部 / 应用栈」分组过滤后，
+补进了 **47 条**此前遗漏的应用栈条目：
+
+- **JavaFX 运行期反射**（约 30 条）：`javafx.scene.Node` / `Parent` / `Scene` / `Stage` /
+  `Region` / `Control` / `Labeled` / `Shape` / `Path` / `Effect` / `Font` / `Interpolator` / `Rule` …
+  —— 来自 CSS / 属性 / 动画系统，「启动链路」清单**不包含**它们；
+- **平台实现类**：Linux 侧 `com.sun.glass.ui.gtk.GtkView` / `GtkWindow` / `GtkPixels`、
+  `com.sun.prism.es2.X11GLFactory`、`FontConfigManager$*` —— 手写清单只写了三平台
+  `*PlatformFactory`，没写这些实现类；**Windows / macOS 的对应类只能各自平台采集**（见 `TODO` `N-22`）；
+- **ServiceLoader provider**：3 个 LLM 适配器 + 3 个工具 Provider（GraalVM 对
+  `META-INF/services` 有内建支持，登记属保险）；
+- **资源盲区**：`sun/text/resources/LineBreakIteratorData`（**无扩展名**）、`*.icu`、
+  `com/sun/glass/utils/NativeLibLoader.class`（JavaFX 以 `.class` 形式读自己）——
+  已补进两份参数文件的 `-H:IncludeResources`。
+
+方法与工具已沉淀成可跨项目复用的技能
+[`graalvm-reachability-metadata`](../../.agents/skills/graalvm-reachability-metadata/SKILL.md)
+（发现 → 登记 → 验证 → 守卫；其中 agent 采集制度见其 `references/agent-collection.md`）。
+
+**诚实说明**：以上是**agent 采集 + 静态审计的组合结果**，仍不构成「证明完整」：
+agent 只覆盖**跑到的路径**，且 Windows / macOS 平台尚未采集。这是 R2 的常态——
+**构建成功不是验收标准**，真机走查（`N-16`）仍要做。
 
 ### 6.2 迭代时改哪里（只改一处）
 

@@ -56,6 +56,9 @@
   并附常见框架经验库（JavaFX / picocli / JLine / Jackson / sqlite / log4j 等，区分「自带元数据 / 不带」）
   与可复制的元数据模板。与 `java-app-graalvm-native-image-compile`（工程化全流程）互补、互相引用，
   当前 `0.1.0`（试验中）。
+  - **tracing agent 采集已制度化**：新增 `references/agent-collection.md`（何时必须跑、自检模式契约、
+    多平台合并、过滤规则、CI 接入）与 `scripts/collect-metadata.sh`（`run` / `summarize` / `filter`）；
+    并用它对 CLI 与桌面端各采一轮——桌面端据此补进 47 条应用栈元数据（293 → 340）。
 - **桌面端 0.2 六项功能**（按用户指定顺序）：
   1. **工具卡片**：默认折叠；展开显示参数与带行号输出（前 200 行并写明总行数）；复制 / 查看全部；
      失败卡片红边、正文摊开并给「重试 / 改参数后重试」——重试交给模型判断，不在本地偷偷重放命令。
@@ -136,7 +139,7 @@
   `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`——JavaFX 的工具包、
   Glass 平台工厂、Prism 渲染管线都用 `Class.forName` + `getDeclaredConstructor().newInstance()`
   这类反射加载，native-image 的 closed-world 看不到。经对 4878 个 JavaFX 类逐个反编译审计后，
-  把反射与 JNI 清单一次性补进 `reachability-metadata.json`（293 条）：工具包与日志 / 反射辅助类、
+  把反射与 JNI 清单一次性补进 `reachability-metadata.json`（后经 tracing agent 采集补齐至 **340 条**）：工具包与日志 / 反射辅助类、
   三平台 Glass 工厂、四条 Prism 管线、效果渲染器、ShaderSource 与**全部 212 个** stock shader 加载器、
   Glass 原生回调（`jniAccessible`）、图片解码、字体（DirectWrite / CoreText / FreeType）；
   审计同时发现 **Jackson 3 不随附 native-image 元数据**，而配置与会话记录靠它反射读写，

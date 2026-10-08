@@ -134,6 +134,21 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void reachabilityMetadataRegistersTracingAgentDiscoveredTypes() throws IOException {
+        String json = readMetadata();
+        // 这些类型是 tracing agent 在真实运行（WSLg + GraalVM）中采集到的，
+        // 是「只覆盖启动链路」时遗漏的一类：运行期反射 + 平台实现类 + ServiceLoader provider。
+        for (String type : List.of(
+                "javafx.scene.Node",
+                "com.sun.glass.ui.gtk.GtkView",
+                "com.acanx.module.aha.tool.FileToolProvider")) {
+            assertThat(json)
+                    .as("%s 由 tracing agent 在真实运行中采集到（启动链路清单曾漏掉），必须注册", type)
+                    .contains("\"" + type + "\"");
+        }
+    }
+
+    @Test
     void reachabilityMetadataHasNoDuplicateTypes() throws IOException {
         List<String> types = new ArrayList<>();
         Matcher matcher = TYPE.matcher(readMetadata());

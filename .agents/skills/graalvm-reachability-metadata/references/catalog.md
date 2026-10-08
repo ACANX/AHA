@@ -61,6 +61,20 @@ JavaFX 资源：着色器 `.obj`（D3D）/ `.frag` `.vert`（ES2）、平台原�
 [discovery](discovery.md) §2.4），把「自带元数据的依赖」整组划掉，
 剩下的才是你要处理的。
 
+**GUI 形态再采一次（同批）**：桌面端在 WSLg 下采集到 **422 个反射 + 69 条资源**，
+比 CLI 多出的正是 GUI 栈，也是「启动链路」清单最容易漏的部分：
+
+- **平台专属类**：`com.sun.glass.ui.gtk.GtkView` / `GtkWindow` / `GtkPixels`、
+  `com.sun.prism.es2.X11GLFactory`（Linux）——手写清单只写了三平台 `*PlatformFactory`，
+  **没有这些实现类**；Windows / macOS 的对应类只能各自平台采到 →
+  **必须每平台各跑一次**（见 [agent-collection](agent-collection.md) §3.3）；
+- **JavaFX 运行期反射**：`javafx.scene.Node` / `Parent` / `Scene` / `Stage` / `Region` /
+  `Control` / `Labeled` / `Shape` / `Path` / `Effect` / `Font` / `Interpolator` / `Rule` …
+  约 30 条，来自 CSS / 属性 / 动画系统——**「启动链路」清单不包含它们**，典型缺口；
+- **资源盲区**：`sun/text/resources/LineBreakIteratorData`（**无扩展名**）、
+  `jdk/internal/icu/impl/data/.../ubidi.icu`、`com/sun/glass/utils/NativeLibLoader.class`
+  （JavaFX 以 `.class` 形式读自己）——**按扩展名写的资源正则匹配不到**。
+
 ## B. 常见框架（**推断**，未在本项目实测）
 
 > 下列条目来自公开资料与通用经验，**未经本技能验证**，使用前请按自己的版本核对。

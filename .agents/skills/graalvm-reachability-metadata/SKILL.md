@@ -7,7 +7,7 @@ metadata:
   version: "0.1.0"
   owner: ACANX
   source-project: AHA（两个真实目标：JavaFX 桌面端、picocli+JLine CLI；覆盖链式反射、手写与生成、依赖自带元数据三种形态）
-  maturity: 试验中（方法论已成型并两处复用；已首次真跑 tracing agent 交叉验证；仍含标注为「推断待验证」的条目，达标判据见「成熟判据」一节）
+  maturity: 试验中（方法论已成型并两处复用；agent 采集已在 CLI 与 GUI 两形态实跑并制度化；仍含标注为「推断待验证」的条目，达标判据见「成熟判据」一节）
 ---
 
 # 原生镜像的可达性元数据登记（反射 / JNI / 文件资源 / 初始化）
@@ -135,7 +135,10 @@ java -agentlib:native-image-agent=config-merge-dir=native-config -jar app.jar
   给程序加一个"自检 N 秒后退出"的开关，对真机验收同样有用；
 - 输出的是**参考**不是终稿：agent 覆盖不到的路径不会出现，仍需静态审计补。
 
-详见 [discovery](references/discovery.md)。
+**制度化流程**（本节只管「怎么用」）：自检模式契约、多平台合并、过滤规则、
+CI 接入与实测坑，见 [agent-collection](references/agent-collection.md)；
+编排脚本 [scripts/collect-metadata.sh](scripts/collect-metadata.sh)（`run` / `summarize` / `filter`）。
+三路发现法的细节见 [discovery](references/discovery.md) §2。
 
 ### C. 经验库对照：别重新发明已知答案
 
@@ -196,6 +199,7 @@ unzip -l <dep>.jar | grep -iE 'META-INF/native-image|reachability-metadata|refle
 | 2026-10-08 | Jackson 3 不带 native-image 元数据，业务记录读配置即崩 | [registration](references/registration.md)：**业务层也要审计**，不只看框架；JSON/ORM 库常不带 | 实测（AHA：依赖 jar 扫描 + 记录注册） |
 | 2026-10-08 | 资源正则漏 `yaml`/`yml` | [verification](references/verification.md)：资源清单要配「启动即读全部内置资源」的自检 | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`） |
 | 2026-10-08 | 首次真跑 tracing agent（WSL + GraalVM 25.0.2） | [discovery](references/discovery.md) §2.4：实测采集 **400 个反射类型 + 55 条资源**；**关键动作是按包前缀分组过滤**（绝大多数是 log4j / JDK / JLine / sqlite，自带或自动处理），剩下才是要手写的；手写清单被交叉验证，agent 盲区靠静态审计补 | 实测（AHA：手写 14/19 命中；`AhaDefault.yaml` 等资源全被采到） |
+| 2026-10-08 | 桌面端（GUI）也跑了一遍 agent | [agent-collection](references/agent-collection.md)：把采集制度化（自检/超时退路、多平台合并、按前缀过滤、输出独立存放）；**单平台会漏平台专属类**——Linux 采集出现 `GtkView`/`GtkWindow`/`GtkPixels`/`X11GLFactory`，手写清单里没有 | 实测（AHA：422 反射 + 69 资源；资源里有无扩展名的 `LineBreakIteratorData`、`.icu`、以 `.class` 形式读取的 `NativeLibLoader`） |
 
 ## 成熟判据（达到才算标杆参考）
 
@@ -219,5 +223,7 @@ unzip -l <dep>.jar | grep -iE 'META-INF/native-image|reachability-metadata|refle
 - [registration](references/registration.md)：元数据格式、来源优先级、精确签名、JNI、资源、初始化
 - [verification](references/verification.md)：四层守卫、反向验证、诚实边界
 - [catalog](references/catalog.md)：常见框架 / 依赖的已知元数据点与「是否自带」
+- [agent-collection](references/agent-collection.md)：**tracing agent 采集制度**（何时必须跑、自检模式契约、多平台合并、过滤规则、CI 接入、实测坑）
+- [scripts/collect-metadata.sh](scripts/collect-metadata.sh)：采集编排脚本（`run` / `summarize` / `filter`）
 - 同源技能：[java-app-graalvm-native-image-compile](../java-app-graalvm-native-image-compile/SKILL.md)
   —— 本技能只管元数据这条纵向链路；构建、隔离、CI、参数调优、体积与启动对比在那个技能里。

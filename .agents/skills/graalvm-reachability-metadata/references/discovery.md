@@ -115,7 +115,10 @@ GraalVM 对 `META-INF/services` 有**内建**支持，但两个前提常被忽�
 
 ## 2. tracing agent：让真实运行自己报告
 
-最接近"完整"的一路。JVM 正常跑一遍，agent 把发生过的反射 / 资源 / JNI / 代理 / 序列化记下来。
+> **完整制度**（何时必须跑、自检模式契约、多平台合并、过滤规则、CI 接入）见
+> [agent-collection](agent-collection.md)；本节是速览与实测记录。
+
+最接近“完整”的一路。JVM 正常跑一遍,agent 把发生过的反射 / 资源 / JNI / 代理 / 序列化记下来。
 
 ### 2.1 最小用法
 

@@ -114,6 +114,13 @@
 #      「静默坏掉」，所以一开真机就先把它补上（issue #35 同批处理）。
 -H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
+# tracing agent 采集发现的资源盲区（2026-10-08）：
+#   * JDK 的文本断行 / 双向文本数据：无扩展名（LineBreakIteratorData）或 .icu（ubidi.icu），
+#     按扩展名的正则匹不上，缺了会导致换行 / 双向文本行为异常；
+#   * JavaFX 的 NativeLibLoader 会以 .class 形式读自己。
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class
 
 # ── 必须运行期初始化的类 ────────────────────────────────────────────────────
 # 判据很简单：**构建期初始化就会去碰「运行时才存在的东西」**（屏幕、窗口、原生库、系统主题）。

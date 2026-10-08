@@ -39,6 +39,9 @@
 -R:MaxHeapSize=1g
 -H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class
 --initialize-at-run-time=com.sun.javafx.application.PlatformImpl
 --initialize-at-run-time=com.sun.javafx.application.LauncherImpl
 --initialize-at-run-time=com.sun.javafx.logging.PlatformLogger
