@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    原生镜像模块的 POM 骨架。
+
+    拷贝到新项目时要改的地方，全部用 <<< >>> 标出。
+    设计要点（每条都对应一个踩过的坑，见 SKILL.md「四个必须显式处理的坑」）：
+
+      1. packaging=pom：本模块没有 Java 代码，只做打包；
+      2. 依赖坐标注意 groupId 可能与父 POM 不同（子模块覆盖父 POM 是常见做法）；
+      3. 平台分类器依赖要显式声明，并排除「无分类器空壳」（0 KB，会通过传递依赖漏进来）；
+      4. copy-dependencies + build-classpath：前者备好目录，后者把整串 classpath 抽成属性；
+      5. initialize 阶段只清本模块的工作目录（excludeDefaultDirectories=true，别删整个 target）；
+      6. 参数清单只在 native-image-args.txt 里，本 POM 不写开关；
+      7. 预检一次 native-image 的版本查询，让「没装 GraalVM」变成一眼可懂的失败。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId><<< 父 groupId >>></groupId>
+        <artifactId><<< 父 artifactId >>></artifactId>
+        <version><<< 版本 >>></version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId><<< 原生模块 artifactId，如 my-native >>></artifactId>
+    <packaging>pom</packaging>
+    <name><<< 显示名 >>></name>
+    <description>原生镜像（试验性）：把主模块的 JVM 产物编译成 GraalVM native-image 二进制</description>
+
+    <properties>
+        <!-- 产物版本：默认跟项目走；CI 可传 -Dnative.version=<基线>.<PR 补零> 覆盖 -->
+        <native.version>${project.version}</native.version>
+        <native.name><<< 可执行文件基名 >>></native.name>
+
+        <!-- native-image 可执行文件；Windows 上由 CI 传 native-image.cmd -->
+        <native.image.executable>native-image</native.image.executable>
+
+        <!-- 只验证管线、不真编（本机快速自检用） -->
+        <native.skip>false</native.skip>
+
+        <!-- 工作目录：依赖、产物、说明都落在这里，便于 CI 取件 -->
+        <native.image.workdir>${project.build.directory}/native</native.image.workdir>
+
+        <!-- 本模块无 Java 代码：关掉覆盖率与 javadoc，免得空模块被判 0% -->
+        <jacoco.skip>true</jacoco.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+    </properties>
+
+    <dependencies>
+        <!-- 输入就是主模块的 JVM 产物：主模块 + 它的全部 runtime 传递依赖 -->
+        <dependency>
+            <groupId><<< 主模块 groupId（注意可能与父 POM 不同） >>></groupId>
+            <artifactId><<< 主模块 artifactId >>></artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            GUI / 原生库框架：显式声明本平台三件套（或等价的一批）。
+            分类器由父 POM 的按平台 profile 解析；必须显式，别依赖「从主模块传递过来」。
+        -->
+        <dependency>
+            <groupId><<< 框架 groupId >>></groupId>
+            <artifactId><<< 框架核心 artifactId >>></artifactId>
+            <version><<< 框架版本 >>></version>
+            <classifier>${<<< 平台分类器属性 >>>}</classifier>
+            <scope>runtime</scope>
+            <exclusions>
+                <!-- 排掉无分类器的同名空壳（0 KB）：它们与带分类器的工件共用同一份 POM -->
+                <exclusion>
+                    <groupId><<< 框架 groupId >>></groupId>
+                    <artifactId><<< 被传递依赖的框架 artifactId >>></artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 依此类推声明其余框架工件，并同样排除空壳 -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 0) 只清本模块的工作目录：拷贝步骤不会删已不在依赖集里的旧文件 -->
+            <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-clean-workdir</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 关键：不要顺手把整个 target/ 删掉 -->
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${native.image.workdir}</directory>
+                                    <includes>
+                                        <include>lib/**</include>
+                                    </includes>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 1) 拷依赖 + 抽 classpath 属性 -->
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-copy-dependencies</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                            <overWriteReleases>false</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-classpath</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>build-classpath</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 属性里的整串 classpath 会作为**一个** argv 传给 native-image -->
+                            <outputProperty>native.classpath</outputProperty>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 2) 说明模板过滤（把版本号写进包内说明） -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-readme</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/native</directory>
+                                    <filtering>true</filtering>
+                                    <includes>
+                                        <include>README.txt</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 3) native-image：预检 + 真编 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>native-preflight</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <argument>version-query-only</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>native-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${native.skip}</skip>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <executable>${native.image.executable}</executable>
+                            <arguments>
+                                <!-- 参数清单：唯一的开关来源（原生镜像的开关全在这里） -->
+                                <argument>@${project.basedir}/src/native/native-image-args.txt</argument>
+                                <!-- 走 classpath：原生镜像下 JPMS 不参与，少一类失败 -->
+                                <argument>-cp</argument>
+                                <argument>${native.classpath}</argument>
+                                <argument>-H:Path=${native.image.workdir}</argument>
+                                <argument>-H:Name=${native.name}</argument>
+                                <argument><<< 主类全限定名 >>></argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 4) 打包：二进制 0755，文档 0644 -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dist-native</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/dist-native.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${native.name}-${native.version}</finalName>
+                            <outputDirectory>${project.parent.basedir}</outputDirectory>
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

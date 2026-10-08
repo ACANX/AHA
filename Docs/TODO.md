@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.28.0
+**文档版本**：v0.29.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -364,6 +364,8 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | N-05 | 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话） | 验证 | ☐ | P1 | ☐ 待工作流首跑 | `DesktopNativeDesign.md` §7 N-1 |
 | N-06 | 把 §5.3 的对比表填上真实数字（原生镜像 JDK25 / JDK27 / JVM+Leyden AOT 三种形态） | 实验 | ☐ | P2 | ☐ 待采集 | `DesktopNativeDesign.md` §5.3 |
 | N-07 | JDK 27 分支扩展到 Linux / macOS；二进制内部版本号带上 PR 段；体积瘦身 | 规划 | ☐ | P3 | ☐ 后续 | `DesktopNativeDesign.md` §7 N-3/N-4/N-5 |
+| N-08 | 沉淀可复用技能：`.agents/skills/graalvm-native-image/`（先建骨架、边做边改、达成目标才成熟） | 需求 | ✅ | P1 | ◐ 已建（v0.1.0 试验中） | `.agents/skills/graalvm-native-image/SKILL.md` |
+| N-09 | 把该技能迭代到**成熟**：目标平台真机跑通 + 未验证条目清零 + **在别的项目复用过一次**（四条达标判据见技能「用法」一节） | 验证 | ☐ | P2 | ☐ 待跟踪 | `SKILL.md`（成熟度）、`references/skill-lifecycle.md` |
 
 ### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
 
@@ -534,6 +536,7 @@ desktop 亦未列 tool 依赖。
 | v0.26.0 | 2026-10-08 | `D-12` 遗留更新：Agent 接入与 `ToolKind` 下移、供应商配置已完成；列明尚未做项（工具卡片展开/输出预览、会话列表、记忆/扩展/日志面板、`/` `@`、主题、设置、授权弹窗样式） | @ACANX |
 | v0.27.0 | 2026-10-08 | 0.2 六项功能完成（工具卡片 / 会话列表 / 日志面板 / 输入区增强 / 授权弹窗 / 主题与设置）；新增 `D-13`（剩余项）与 `F-18`（已入库的合并冲突标记，已修复并加守卫） | @ACANX |
 | v0.28.0 | 2026-10-08 | 新增 `aha-desktop-native`（试验性原生镜像模块）与 `DesktopNative.yml`：`N-01`~`N-04` 落地（profile 隔离、独立出包、`a.b.c.PPPPP` 版本、JDK 27 实验分支），`N-05`~`N-07` 待跟踪 | @ACANX |
+| v0.29.0 | 2026-10-08 | 新增 `N-08`/`N-09`：把原生镜像经验沉淀为可复用技能，并明确「先建骨架、边做边改、达成目标才成熟」的迭代方式与四条达标判据 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |

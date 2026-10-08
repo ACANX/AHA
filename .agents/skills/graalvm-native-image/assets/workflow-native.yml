@@ -1,0 +1,187 @@
+# 多平台原生镜像工作流骨架
+#
+# 要点（细节见 references/isolation-and-ci.md）：
+#   1. 独立工作流 + 独立作业名（不要复用 build/gate 这类必需检查的名字）；
+#   2. tag 前缀用 native-v…（不匹配正式发版的 V*/v*，因此不触发正式发版）；
+#   3. 发布为预发行版；单写者发布（多腿并发写同一个 release 会打架）；
+#   4. fail-fast: false + 实验腿 continue-on-error + 发布作业 if: always()；
+#   5. 产物自证：存在 / 体积下限 / 平台魔法数 / 关键依赖数量；
+#   6. 版本号 <基线>.<PR 补零>，基线读根 POM、PR 号按提交反查 API。
+#
+# 首次运行时请核对所用 action 的**大版本**（失败是本工作流内部的，不影响其它流程）。
+
+name: Native
+
+on:
+  push:
+    branches: [dev]          # <<< 改成你的开发主分支：每次合并都出包
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（用于版本号；留空则按当前提交反查）
+        required: false
+        default: ''
+      version:
+        description: 直接指定完整版本号（覆盖 PR 推导）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native-version:
+    name: native-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      base: ${{ steps.compute.outputs.base }}
+      pr: ${{ steps.compute.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 计算版本（<基线>.<PR 补零到 5 位>）
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "base=${INPUT_VERSION%.*}" >> "$GITHUB_OUTPUT"
+            echo "pr=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 注意命名空间：findtext('version') 会静默返回 None，版本号会变空
+          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+          pr="${INPUT_PR:-}"
+          if [ -z "$pr" ]; then
+            pr=$(curl -sS --max-time 30 \
+                   -H "Authorization: Bearer ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls" \
+                 | python3 -c "import json,sys
+          d = json.load(sys.stdin)
+          print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
+          fi
+          [ -n "$pr" ] || { echo "::warning::未确定 PR 号，记 00000"; pr=0; }
+          version=$(printf '%s.%05d' "$base" "$pr")
+          { echo "base=${base}"; echo "pr=${pr}"; echo "version=${version}"; } >> "$GITHUB_OUTPUT"
+          echo "版本 = ${version}"
+
+  native-build:
+    name: native-build (${{ matrix.label }}, jdk${{ matrix.jdk }})
+    needs: native-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  label: linux-x64,   platform: linux,      jdk: '25', experimental: false }
+          - { os: windows-latest, label: windows-x64, platform: win,        jdk: '25', experimental: false }
+          - { os: macos-latest,   label: macos-arm64, platform: mac-aarch64, jdk: '25', experimental: false }
+          # 实验腿：失败只标注自己（它是数据点，不是交付物）
+          - { os: windows-latest, label: windows-x64, platform: win,        jdk: '27', experimental: true }
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: 计算本腿参数
+        id: leg
+        run: |
+          set -euo pipefail
+          # Windows 上的可执行名带 .cmd（exec 不会自动补后缀）
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "executable=native-image.cmd" >> "$GITHUB_OUTPUT"
+          else
+            echo "executable=native-image" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ matrix.jdk }}" = "27" ]; then
+            echo "profiles=<原生 profile>,<新 JDK profile>" >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=<原生 profile>" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 工具链自证
+        run: |
+          set -euo pipefail
+          java -version
+          "${{ steps.leg.outputs.executable }}" --version
+
+      - name: 构建原生镜像
+        # 注意：显式列出主模块 —— profile 加入的模块**不会**被 -am 带上游
+        # （症状是「在中央仓库找不到 <主模块>」，很像网络问题但其实是反应堆匹配不上）
+        run: |
+          set -euo pipefail
+          ./mvnw -B -P${{ steps.leg.outputs.profiles }} \
+            -pl <原生模块>,<主模块> -am package \
+            -DskipTests -Djacoco.skip=true \
+            -Dnative.version=${{ needs.native-version.outputs.version }} \
+            -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+
+      - name: 产物自证
+        run: |
+          set -euo pipefail
+          work=<原生模块>/target/native
+          bin=$(ls "$work/<可执行名>" "$work/<可执行名>.exe" 2>/dev/null | head -n1 || true)
+          [ -n "$bin" ] || { echo "::error::没有产出可执行文件"; ls -la "$work" || true; exit 1; }
+          size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin")
+          [ "$size" -ge 5242880 ] || { echo "::error::产物过小，不像原生镜像"; exit 1; }
+          magic=$(head -c 4 "$bin" | od -An -tx1 | tr -d ' \n')
+          case "${RUNNER_OS}" in
+            Windows) expect="4d5a" ;; Linux) expect="7f454c46" ;; macOS) expect="cffaedfe" ;;
+          esac
+          [ "$magic" = "$expect" ] || { echo "::error::平台魔法数不符：$magic != $expect"; exit 1; }
+          echo "产物：$bin（$((size/1024)) KB，magic=$magic）"
+
+      - name: 改名并上传
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: <原生模块>-*.zip
+          if-no-files-found: error
+
+  native-publish:
+    name: native-publish
+    needs: [native-version, native-build]
+    if: always() && needs.native-version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - name: 整理资产
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          find dist -name '*.zip' -exec mv -n {} dist/ \;
+          files=(dist/*.zip)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::没有任何包可发布"; exit 1; }
+          ls -lh "${files[@]}"
+      - name: 发布预发行版
+        uses: softprops/action-gh-release@v3
+        with:
+          # 前缀刻意区别于正式发版（V*/v*），因此不会触发正式流程
+          tag_name: native-v${{ needs.native-version.outputs.version }}
+          name: 原生镜像（试验）${{ needs.native-version.outputs.version }}
+          prerelease: true
+          files: dist/*.zip
