@@ -76,17 +76,19 @@
         <native.image.executable>native-image</native.image.executable>
 
         <!--
-            默认 **不做** 原生编译。
+            `native.skip` **刻意不在这里定义**，默认值只放在根 POM 的 <properties> 里。
 
-            约定（强制）：**原生编译只在专用 profile 下进行**
-            （`desktop-native`，需要新 JDK 时再加 `native-jdk27`）。
-            默认构建的验收标准只有一条：**能编译、能打 jar、不报错。**
+            2026-10-08 实测踩到的坑：模块自身的 <properties> **打得过**父 POM 里
+            profile 注入的属性。曾在这里写 <native.skip>true</native.skip>、又在
+            desktop-native profile 里写 false，结果是 profile 的 false **没生效**，
+            native-image 被静默跳过——构建「成功」、没有二进制、没有报错，
+            CI 全绿却什么都没产出。
 
-            这条约定的价值在于「没有装工具链的环境」：一旦默认路径依赖 GraalVM 或
-            平台原生依赖，构建失败的原因会从「代码问题」变成「环境问题」，
-            而后者极难在别人的机器上复现。默认值是 true，由 profile 激活时置为 false。
+            所以：默认值的**唯一来源**是根 POM 的 <properties>（true），
+            由 desktop-native profile 在同一个 POM 内覆盖为 false；
+            本模块只负责使用它。CI 另外显式传 -Dnative.skip=false 兜底
+            （命令行 -D 的优先级最高）。
         -->
-        <native.skip>true</native.skip>
 
         <!-- 原生镜像的工作目录：依赖拷贝、产物与日志都落在这里，便于工作流取件 -->
         <native.image.workdir>${project.build.directory}/native</native.image.workdir>

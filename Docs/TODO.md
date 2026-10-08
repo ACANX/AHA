@@ -1206,6 +1206,13 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 - [ ] **N-10**：下一次 `DesktopNative` 运行确认「四条腿都绿、且摘要逐腿写清结论」；
       windows-x64 的工具链自证是否已因 `cmd //c` 修复；
       产物自证的诊断输出会揭示「构建成功但自证失败」的真正原因（此前不可见）。
+- [ ] **N-12**：确认「静默跳过」已根除。判据三条：① 各腿的「确认 native-image 真的执行过」
+      步骤输出「执行证据：aha-desktop-native.build_artifacts.txt」；
+      ② 三条 jdk25 腿的 `上传制品` 不再是 `skipped`；
+      ③ `native-publish` 真正创建 `native-v<版本>` 预发行版并挂上 zip。
+      背景：2026-10-08 事故——`native.skip` 的默认值写在模块自己的 `<properties>` 里，
+      赢过了父 POM 中 profile 的覆盖，导致 native-image 被静默跳过，
+      CI 全绿却零产物零报错（见 `Docs/DevLog/DevLog-20261008-08.md`）。
 - [ ] **N-11**：确认 `native-*` 作业**没有**被加进任何分支保护的必需检查
       （它现在即使失败也不会红，但契约上仍不该出现，见 `BuildSpec.md` §8.1）。
 

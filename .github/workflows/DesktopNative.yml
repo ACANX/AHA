@@ -194,6 +194,18 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven
 
+      - name: 工具链不可用时的说明（本腿的其余步骤都会跳过）
+        # 跳过的步骤不会自己解释自己，所以在跳之前留一条摘要，免得看运行页的人以为漏跑了。
+        if: steps.graal.outcome != 'success'
+        run: |
+          {
+            echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
+            echo ""
+            echo "- **本腿跳过**：GraalVM（JDK ${{ matrix.jdk }}）安装失败（结论：${{ steps.graal.outcome }}）。"
+            echo "  常见原因是该 JDK 大版本的 GraalVM 尚未发布（实测 JDK 27 就是如此），属于上游发布节奏。"
+            echo "- 本腿是数据点，不是交付物：跳过不影响其它腿，也不影响发布。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 计算本腿的 Maven 参数
         id: leg
         if: steps.graal.outcome == 'success'
@@ -250,6 +262,11 @@ jobs:
         #     带上游（实测 Maven 3.9.11 与 4 都一样：只选 native 时反应堆里只有它自己），
         #     所以显式把 aha-desktop 也列出来，让 `-am` 把五个上游一起拉进来。
         #   * skipTests + jacoco.skip：这里要的是可执行文件，不是测试报告（测试由 Build/Gate 跑）。
+        #   * `-Dnative.skip=false` **必须显式传**：默认值是 true（见根 POM 的 properties），
+        #     profile 里虽然也覆盖为 false，但 2026-10-08 实测踩过一层坑——
+        #     模块自身的 <properties> 会赢过父 POM 里 profile 注入的属性，于是
+        #     native-image **被静默跳过**：构建「成功」、零产物、零报错、CI 全绿。
+        #     命令行 -D 的优先级最高，显式传一次就把这类坑彻底关掉。
         uses: ./.github/actions/maven-run
         with:
           command: >-
@@ -258,6 +275,32 @@ jobs:
             -DskipTests -Djacoco.skip=true
             -Daha.native.version=${{ needs.native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+            -Dnative.skip=false
+
+      - name: 确认 native-image 真的执行过（防「静默跳过」）
+        # 这一步专治「全绿但零产物」：native-image 只要真的跑过，就会在输出目录留下
+        # <name>.build_artifacts.txt；文件不存在基本只有两种可能：
+        #   ① native.skip 没生效（被跳过，历史上真发生过）→ 现在 CI 已显式传 false；
+        #   ② native-image 早退（参数不认、内存不足等）→ 真实原因在构建日志里。
+        # 无论哪种都不阻塞（本管线可选），但必须**叫得响**：warning + 摘要双写。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success' && steps.native.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          marker=$(ls "$work"/*.build_artifacts.txt 2>/dev/null | head -n1 || true)
+          if [ -n "$marker" ]; then
+            echo "native-image 执行证据：$(basename "$marker")"
+            echo "- native-image：确实执行过（$(basename "$marker")）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::构建步骤成功，但没有 native-image 的执行痕迹（$work/*.build_artifacts.txt 不存在）。"
+            echo "::warning::最可能的原因：native.skip 仍然是 true（被静默跳过）；其次看构建日志里 native-image 的真实报错。"
+            {
+              echo ""
+              echo "> ⚠ **本腿的构建步骤「成功」，但没有 native-image 的执行痕迹**，"
+              echo "> 因此这一步什么都没产出。最可能的原因是 \`native.skip\` 仍为 \`true\`（被静默跳过）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: 产物自证（诊断式；判不出来也不阻塞）
         # 为什么是「诊断式」而不是硬门禁：
@@ -292,6 +335,11 @@ jobs:
           magic=""
           if [ -z "$bin" ]; then
             note="没有产出原生可执行文件（构建步骤结论：${{ steps.native.outcome }}）"
+            # 构建「成功」却没有产物，只可能是「被跳过」或「早退」，把两种可能都点名，
+            # 免得看的人以为只是「这次运气不好」。
+            if [ "${{ steps.native.outcome }}" = "success" ]; then
+              note="$note；最可能是 native.skip 未生效（静默跳过）或 native-image 早退"
+            fi
             echo "::warning::$note"
           else
             size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)

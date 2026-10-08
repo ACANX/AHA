@@ -83,6 +83,25 @@
         <clean.plugin.version>3.4.1</clean.plugin.version>
         <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
         <pmd.plugin.version>3.28.0</pmd.plugin.version>
+
+        <!--
+            原生编译总开关：**默认关闭**，默认值的唯一来源就在这里。
+
+            约定（强制）：原生编译只在专用 profile 下进行（desktop-native，需要新 JDK
+            时再加 native-jdk27）。默认构建的验收标准只有一条——**能编译、能打 jar、
+            不报错**；能不能运行不属于默认构建的职责。价值在于「没装工具链的环境」：
+            默认路径一旦依赖 GraalVM，构建失败就会从「代码问题」变成「环境问题」，
+            而后者极难在别人的机器上复现。
+
+            覆盖点有两个，缺一不可：
+              ① desktop-native profile（**同一个 POM** 内覆盖为 false，有效）；
+              ② CI 显式 -Dnative.skip=false（命令行 -D 优先级最高，兜底）。
+
+            ⚠ **不要在子模块里重复定义它**：模块自身的 <properties> 会**赢过**父 POM 里
+            profile 注入的属性，于是 profile 的 false 不生效、native-image 被静默跳过。
+            2026-10-08 的实测症状是「构建成功、零产物、零报错」，CI 全绿却什么都没编出来。
+        -->
+        <native.skip>true</native.skip>
     </properties>
 
     <dependencyManagement>
