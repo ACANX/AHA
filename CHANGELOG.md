@@ -123,6 +123,16 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生桌面镜像 Windows 启动即崩：平台子类的 JNI 成员查找未登记（issue #39）**：修完 #37（JNI 可达**类**）后，
+  真机在 `WinWindow.<clinit>` 报 `NoSuchMethodError:
+  com.sun.glass.ui.win.WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。根因：`WinWindow._initIDs` 用
+  `GetMethodID(cls, …)` 查的是「Java 传入的 `jclass`」——即平台子类**自己声明**的方法；
+  而 #37 的 `FindClass` 扫描只会看到 native 里写成字面量的类名，平台子类从不经 `FindClass`，
+  因此从未入册（只在册的基类 `Window` 与它继承的方法能查到）。修法：改扫 openjfx 三平台
+  native 源码里所有 `Get*ID` 的**目标类**，把 Windows / macOS 的平台实现类逐类补进
+  `jni-config.json`（62 → 85 条），并顺带补上 `Class.forName` 现查的 `WinDnDClipboard` / `EventLoop`。
+  守卫 `NativeImageMetadataTest` 10 → 11 条（已反向验证），产物自证第 ⑧b 条补 4 项。
+  详见 `Docs/DevLog/DevLog-20261009-05.md`。
 - **原生桌面镜像启动即 segfault：JNI 可达类未注册（issue #37）**：修完 #35（JavaFX 启动链路反射）后，
   真机在 Glass 初始化处报 `NoClassDefFoundError: java/lang/Runnable`，随后段错误。
   根因是 native-image 只允许「JNI accessible」的类被 `FindClass` 查到——反射元数据解决「类可达」，
