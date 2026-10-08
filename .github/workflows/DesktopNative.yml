@@ -419,7 +419,7 @@ jobs:
           # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
           # 产物统一落 dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
           src=$(ls dist/aha-desktop-native-*.zip)
-          target="dist/aha-desktop-native-${{ needs.native-version.outputs.version }}-jdk${{ matrix.jdk }}-${{ matrix.label }}.zip"
+          target="dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
@@ -430,8 +430,8 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: native-${{ matrix.label }}-jdk${{ matrix.jdk }}
-          path: dist/aha-desktop-native-*.zip
+          name: Native-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: dist/AHA-Desktop-Native-*.zip
           if-no-files-found: warn
           retention-days: 14
 
