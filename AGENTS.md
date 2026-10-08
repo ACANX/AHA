@@ -167,6 +167,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [TUIDesign.md](Docs/Design/TUIDesign.md) - 终端界面当前实现：支持范围、版面样式示例、降级矩阵
 - [GUIDesign.md](Docs/Design/GUIDesign.md) - 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2）
 - [DesktopNativeDesign.md](Docs/Design/DesktopNativeDesign.md) - 桌面端原生镜像（试验性，`aha-desktop-native` + `DesktopNative.yml`）
+- [DesktopNativeUpdateDesign.md](Docs/Design/DesktopNativeUpdateDesign.md) - 原生镜像版本更新脚本（`Script/Python/DesktopNativeVersionUpdate.py`）
 - [CliNativeDesign.md](Docs/Design/CliNativeDesign.md) - CLI 原生镜像（试验性，`aha-cli-native` + `CliNative.yml`）
 
 ## 用户指南

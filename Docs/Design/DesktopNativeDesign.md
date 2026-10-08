@@ -429,6 +429,10 @@ CLI 发行 zip）一律输出到 `dist/`：
 时反应堆里只有它自己），所以要显式把 `aha-desktop` 也列出来，让 `-am` 把五个上游一起拉进来。
 症状很好认：**「在中央仓库找不到 aha-desktop」** —— 因为反应堆匹配不上，它就去外网找了个不存在的坐标。
 
+不想自己编也行：`Script/Python/DesktopNativeVersionUpdate.py` 会把发布页上最新一版的本平台
+包取下来、解压到 `Dist/`（Windows 用法：`python3 Script\Python\DesktopNativeVersionUpdate.py`），
+设计见 [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)。
+
 ## 6.4 技能边做边改（本项目约定的工作方式）
 
 本项目同时产出可复用的技能：工程化全流程的
@@ -463,6 +467,7 @@ CLI 发行 zip）一律输出到 `dist/`：
 ## 8. 相关文档
 
 - [DesktopDesign.md](DesktopDesign.md)：桌面端（JVM 模式）的形态、线程模型与骨架设计
+- [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)：把发布页上最新一版本平台包取到本机 `Dist/` 的更新脚本设计
 - [GUIDesign.md](GUIDesign.md)：界面设计（原生镜像与 JVM 版共用同一套界面）
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（原生镜像属于「慢检查」之外的新工作流）
