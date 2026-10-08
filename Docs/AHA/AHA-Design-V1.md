@@ -1,10 +1,10 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.56.0
+**文档版本**：v3.64.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
-**目标版本**：AHA 0.1.0
+**目标版本**：AHA 0.1.1
 **文档命名规范**：Markdown、SVG、图片统一大驼峰（PascalCase）；`.agents/skills/` 下技能目录及 `SKILL.md` 的 `name` 采用 kebab-case
 **YAML 字段命名规范**：AHA 自有字段统一大驼峰（PascalCase）
 **SQL 字段命名规范**：SQLite 表名（单数）与字段名统一 snake_case
@@ -43,14 +43,20 @@
 | JDK | **25 (LTS)** | 编译与运行目标，禁止降级 |
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
-| OpenJFX | **25** | 桌面端 UI 框架（0.1 不启用） |
-| JPMS | **强制启用** | 所有模块必须有 `module-info.java` |
+| OpenJFX | **25** | 桌面端 UI 框架（0.2 启用）；平台分类器由父 POM 的 `javafx-*` profile 解析，详见 `DesktopDesign.md` 第 5 节 |
+| JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
+
+> **JPMS 的定位（`C-01` 决策，2026-10-08）**：JPMS 是**默认路径而非硬性门槛**。
+> 优先尝试 OpenJFX + 模块化；若两者冲突（如 TestFX、WebView 的反射与 `--add-opens` 需要），
+> **OpenJFX 优先，JPMS 让路**（可退到 classpath 构建，须在 `BuildSpec.md` 记明原因）。
+> 扩展路线图是否推迟，不再触发「JPMS 存废」的重新评估——该决策已提前给出。
 
 **禁止事项**：
 
 - 禁止在编译目标上使用低于 25 的 `release` 值
 - 禁止在 POM 中使用 Maven 4 新增语法（自动模块发现、parent 版本推断、`modelVersion 4.1.0` 等）
-- 禁止在非模块化配置下构建主代码
+- 非必要不使用 classpath 构建主代码：模块化是默认路径，仅在 JPMS 与 OpenJFX 等需求冲突
+  且无法调和时例外，且必须在 `BuildSpec.md` 记明原因与影响面
 
 ## 第 2 条：命名体系
 
@@ -140,7 +146,7 @@ common ← extension-api ← core ← desktop
 | 领域 | 选定方案 | 不可替换性 |
 |---|---|---|
 | CLI 框架 | picocli + JLine | 除非有重大安全或性能问题 |
-| GUI | OpenJFX 25，WebView + FXML | 除非有重大安全或性能问题 |
+| GUI | OpenJFX 25，**JavaFX 原生控件 + 进程内直调**（WebView + 本地 HTTP 为备选） | 除非有重大安全或性能问题 |
 | JSON/YAML | Jackson 3.x（groupId `tools.jackson`） | 除非有重大安全或性能问题 |
 | 日志 | SLF4J + Log4j2 | 可替换 Log4j2 后端 |
 | HTTP 客户端 | JDK HttpClient 或 OkHttp | 二选一，由 Core 层适配器隔离 |
@@ -282,7 +288,8 @@ aha/
 │       ├── llm-adapter/
 │       ├── tool-authoring/
 │       ├── extension-authoring/
-│       └── release/
+│       ├── release/
+│       └── java-app-graalvm-native-image-compile/
 └── Docs/
     ├── AHA/
     │   └── AHA-Design-V1.md
@@ -312,6 +319,7 @@ aha/
     │   ├── TUIDesign.md
     │   ├── GUIDesign.md
     │   ├── DesktopDesign.md
+    │   ├── DesktopNativeDesign.md
     │   ├── RemoteAndProtocolDesign.md
     │   ├── ExtensionSystemDesign.md
     │   ├── SelfHostingDesign.md
@@ -338,7 +346,12 @@ aha/
         ├── DevLog-20261007-21.md
         ├── DevLog-20261007-22.md
         ├── DevLog-20261007-23.md
-        └── DevLog-20261007-24.md
+        ├── DevLog-20261007-24.md
+        ├── DevLog-20261008-00.md
+        ├── DevLog-20261008-01.md
+        ├── DevLog-20261008-02.md
+        ├── DevLog-20261008-03.md
+        └── DevLog-20261008-04.md
 ```
 
 ## 2. 命名规范
@@ -446,6 +459,14 @@ aha/
 | v3.54.0 | 2026-10-07 | §3.1 实测值刷新（605 用例 / 合计行覆盖 80.3%，4045/5038） | @ACANX |
 | v3.55.0 | 2026-10-07 | 附录 A 目录树同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`，命名规则见 DocumentationSpec §1） | @ACANX |
 | v3.56.0 | 2026-10-07 | 附录 A 目录树补齐 `.github/`：原先只列 Build 与 Release，现列四个工作流（Build / Gate / Compat / Release）并新增 `actions/maven-run/` | @ACANX |
+| v3.57.0 | 2026-10-08 | 版本号切到 0.1.1：目标版本、当前版本与两处 POM 示例同步；补记「只改根 POM 会静默产出旧版本」的实测结论（见 ReleaseProcess.md 第 2 节与 DevLog-20261008-00）；目录树与附录 A 的 DevLog 索引补齐至 6 篇 | @ACANX |
+| v3.58.0 | 2026-10-08 | 五项决策落地：JPMS 改为「优先启用（非强制）」并新增定位说明（`C-01`）；fat JAR 禁用理由改述；路线图 0.2 行与第 5 条 GUI 选型改为「原生控件 + 进程内直调」（`D-07`） | @ACANX |
+| v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
+| v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
+| v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（621 用例 / 合计行覆盖 80.8%（4087/5061）），补 `aha-desktop` 用例数 | @ACANX |
+| v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
+| v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
+| v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
 
 ---
 ```
@@ -493,10 +514,10 @@ aha/
 # AHA - Agent Harness
 
 **项目代号**：AHA
-**当前版本**：0.1.0
+**当前版本**：0.1.1
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
-**模块化**：JPMS 强制启用
+**模块化**：JPMS 优先启用（非强制；与 OpenJFX 冲突时为它让路）
 
 ---
 
@@ -539,7 +560,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | aha-core | 推理引擎、LLM 适配、存储、配置、扩展运行时 | common, extension-api |
 | aha-tool | 工具实现（ServiceLoader） | common, core |
 | aha-cli | 命令行入口（picocli + JLine） | core, tool |
-| aha-desktop | 桌面端（OpenJFX，0.1 占位） | core |
+| aha-desktop | 桌面端（OpenJFX；0.2 起实装） | core, common, tool（runtime）, JavaFX |
 
 ## 核心约定
 
@@ -591,6 +612,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `tool-authoring` | 新增工具 | [SKILL.md](.agents/skills/tool-authoring/SKILL.md) |
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
+| `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
 
 ## 常用命令
 
@@ -873,7 +895,15 @@ aha/
 │       │   └── com/acanx/module/aha/cli/
 │       └── test/java/
 └── aha-desktop/
-    └── pom.xml
+    ├── pom.xml
+    ├── src/
+    │   ├── assembly/dist-desktop.xml          # 便携包描述符（bin/ + lib/）
+    │   ├── main/java/
+    │   │   ├── module-info.java
+    │   │   └── com/acanx/module/aha/desktop/
+    │   │       ├── AhaDesktopApp.java         # Application：窗口骨架
+    │   │       └── fx/                        # 线程桥接契约（FxDispatcher / FxBridge）
+    │   └── test/java/                         # 桥接单测 + 冒烟（默认跳过）
 ```
 
 ## 2. 父 POM
@@ -886,7 +916,7 @@ aha/
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -1050,7 +1080,7 @@ aha/
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -1424,11 +1454,20 @@ aha
 └── version                   版本信息
 ```
 
-## 6. aha-desktop（0.1 仅占位）
+## 6. aha-desktop（0.2 实装）
 
-0.1 版本不实现桌面端。0.2 版本实现 OpenJFX WebView + 本地 HTTP 服务器 + FXML Controller。
+桌面端为**进程内直调** `AgentService` + JavaFX 原生控件（`D-07`），不是 WebView 套壳。
+0.1 只有占位；0.1.1 起落地窗口骨架与线程桥接契约（实现细节见
+[DesktopDesign.md](../Design/DesktopDesign.md) §4 与 §6）：
 
----
+- 启动：`AhaDesktopApp extends Application`，开窗前走 `aha-core` 的 `AhaBootstrap`
+  （读项目 `./Aha.yaml` → 装配日志 → 装密钥库回退源，与 CLI 同一实现）并在窗口显示配置摘要；
+- 线程：界面改动一律经 `FxDispatcher` / `FxBridge` 投递到 UI 线程，主源码扫描钉住该约束；
+- 界面：`DesktopShell` 搭菜单栏 + 三栏（左 220 / 中弹性 / 右 280）+ 底部状态栏；
+  左右栏可折叠，菜单、快捷键（`Ctrl+B` / `Ctrl+J`）与栏边常驻窄条按钮三条路径等价
+  （折叠逻辑为纯 `FoldState`，可在无图形环境下测试）；
+- 打包：per-OS profile 解析 JavaFX 分类器，assembly 产出
+  `aha-desktop-<版本>-<系统>-<架构>.zip` 便携包（`ReleaseProcess.md` §3.2）。
 
 # 第六部分：LLM 供应商适配体系
 
@@ -2994,7 +3033,9 @@ dist/
 
 `dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
-**为何不用 fat JAR**：shade 会合并出无 `module-info` 的单一 JAR，破坏 JPMS 强制启用原则。
+**为何不用 fat JAR**：shade 合并后的单一 JAR 无法按模块追踪依赖与许可，也无法与
+`dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
+的决策而改变**）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
 **为何不用 jpackage（0.1）**：0.1 仅需 CLI + `bin/` 脚本，jpackage 主要用于 0.2 的桌面端。
 
@@ -3111,20 +3152,21 @@ aha-core/src/test/resources/
 - CLI 模块 ≥ 60%
 - Tool 模块 ≥ 70%
 
-### 3.1 实测覆盖率（0.1.0）
+### 3.1 实测覆盖率（0.1.1）
 
 | 模块 | 行覆盖 | 达标 |
 |---|---|---|
 | `aha-extension-api` | 100.0%（23/23） | ✅ |
-| `aha-common` | 90.2%（165/183） | ✅ |
-| `aha-cli` | 83.8%（2246/2681） | ✅ |
+| `aha-common` | 88.8%（175/197） | ✅ |
+| `aha-cli` | 84.3%（2190/2597） | ✅ |
 | `aha-tool` | 79.6%（148/186） | ✅ |
-| `aha-core` | 74.6%（1449/1943） | ✅ |
+| `aha-core` | 75.4%（1551/2058） | ✅ |
 
-合计行覆盖 **80.3%**（4045/5038 行），共 **605** 个测试用例
-（`aha-common` 57 / `aha-extension-api` 6 / `aha-core` 193 / `aha-tool` 25 / `aha-cli` 323）。
+合计行覆盖 **80.8%**（4087/5061 行），共 **621** 个测试用例
+（`aha-common` 60 / `aha-extension-api` 6 / `aha-core` 211 / `aha-tool` 25 /
+`aha-cli` 309 / `aha-desktop` 10）。
 
-> **口径与复现**：数据取自 `./mvnw clean verify`（Maven 4 wrapper；JaCoCo 0.8.15；
+> **口径与复现**：数据取自 CI 的 `Gate.yml`（`./mvnw clean verify`；Maven 4 wrapper；JaCoCo 0.8.15；
 > 门禁 `BUNDLE` 行覆盖 ≥ 0.70）。合计 = 各模块 `LINE_COVERED / (LINE_COVERED + LINE_MISSED)`
 > 求和；`aha-desktop` 是 0.1 占位模块，已从门禁排除，不计入合计。
 >
@@ -3484,7 +3526,7 @@ Closes #123
 | 版本 | 内容 | 关键里程碑 |
 |---|---|---|
 | **0.1** | Core + CLI 可运行 | AgentService + picocli + SQLite + LLM 适配器 + 远程/协议前向兼容契约 |
-| **0.2** | 桌面端 | OpenJFX WebView + FXML + jpackage |
+| **0.2** | 桌面端 | OpenJFX **原生控件 + 进程内直调**（备选：WebView + 本地 HTTP）+ jpackage |
 | **0.3** | 扩展基础 | aha-extension-api + ExtensionRuntime + Registration |
 | 0.4 | 事件总线 | EventBus + 生命周期事件 + CLI extension 命令 |
 | 0.5 | 隔离与权限 | ModuleLayer 隔离 + 扩展权限 + 热重载探索 |
@@ -3657,6 +3699,7 @@ Closes #123
 | `CLIDesign.md` | CLI 设计 |
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
+| `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
 | `SelfHostingDesign.md` | AHA 自举里程碑（1.0 硬门槛：从依赖其他 Harness 切换到独立自举） |
@@ -3694,6 +3737,14 @@ Closes #123
 |---|---|
 | `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
 | `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
+| `DevLog-20261007-22.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
+| `DevLog-20261007-23.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
+| `DevLog-20261007-24.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
+| `DevLog-20261008-00.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
+| `DevLog-20261008-01.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
+| `DevLog-20261008-02.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
+| `DevLog-20261008-03.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
+| `DevLog-20261008-04.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
 
 ### .agents/skills/
 

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.acanx.module.aha.common.tool.ToolKind;
 
 /**
  * {@link ToolBlock} / {@link ToolKind} 测试。

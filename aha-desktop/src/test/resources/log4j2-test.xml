@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    测试期日志出口：写文件、关 console。
+
+    理由同 aha-core：测试输出污染构建日志会让真正的失败淹没在噪音里（曾经每次构建
+    刷出上百行 [stdout]）。桌面端的 FxBridge 会记录「渲染失败」，若不重定向就会打到 stdout。
+    断言用的输出由测试自行用 System.out 捕获，不经日志。
+-->
+<Configuration status="WARN">
+    <Appenders>
+        <File name="TestFile" fileName="target/test-logs/AHA-test.log" append="false">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%t] %logger.%method:%line - %msg%n"/>
+        </File>
+    </Appenders>
+    <Loggers>
+        <Root level="DEBUG">
+            <AppenderRef ref="TestFile"/>
+        </Root>
+    </Loggers>
+</Configuration>

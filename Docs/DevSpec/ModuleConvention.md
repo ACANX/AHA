@@ -1,6 +1,6 @@
 # 模块约定
 
-**文档版本**：v1.1.0
+**文档版本**：v1.9.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -15,6 +15,7 @@
 |---|---|---|---|
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-07 | 扩展机制统一为 Extension 命名：模块 `aha-extension-api`、包名、类名、配置段与描述符 | @ACANX |
+| v1.9.0 | 2026-10-08 | §2 依赖矩阵补 `tool ← desktop` 边与对应硬性规则（`D-09` 决策，2026-10-08） | @ACANX |
 
 ---
 
@@ -30,6 +31,7 @@
 common ← extension-api ← core ← tool
 common ← extension-api ← core ← cli
 common ← extension-api ← core ← desktop
+common ← extension-api ← core ← tool ← desktop   # 桌面端需要内置工具（D-09 决策，2026-10-08）
 ```
 
 **硬性规则**：
@@ -39,6 +41,7 @@ common ← extension-api ← core ← desktop
 - `core` 不得依赖 `tools`、`cli`、`desktop`
 - `tool` 不得依赖 `cli`、`desktop`
 - `cli` 与 `desktop` 不得互相依赖
+- `desktop` 需要内置工具（file / http / shell）时依赖 `tool`；仍不得依赖 `cli`（`D-09` 决策，2026-10-08）
 - `core` 不得引用 JavaFX、picocli、JLine
 
 ## 3. 包结构

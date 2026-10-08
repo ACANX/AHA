@@ -60,6 +60,10 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 `package` 阶段会自动组装发行包到项目根 `dist/`：
 
+> 桌面端便携包（`aha-desktop-<版本>-<平台>.zip`）与原生镜像包
+> （`aha-desktop-native-<版本>-<jdk>.zip`）同样落在 `dist/`——
+> **仓库根不放构建物**，所有 `.zip` 产物统一进 `dist/`。
+
 ```bash
 ./mvnw clean package
 ```

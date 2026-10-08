@@ -1,10 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-<<<<<<< HEAD
-**文档版本**：v0.15.0
-=======
-**文档版本**：v0.16.0
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
+**文档版本**：v0.29.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -270,12 +266,24 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 
 | 编号 | 事项                                 | 类型   | 证据 | 优先级 | 状态     | 落地文档                                         |
 | ---- | ------------------------------------ | ------ | ---- | ------ | -------- | ------------------------------------------------ |
-| C-01 | JPMS 收益与成本的时间错配            | 待决策 | ✅    | P2     | ⏸ 待决策 | `Constitution.md` 第 4 条、`ModuleConvention.md` |
+| C-01 | JPMS 收益与成本的时间错配 | 待决策 | ✅ | P2 | ✅ 已决策 | `Constitution.md` 第 4 条、`ModuleConvention.md` |
 | C-02 | `ServiceLoader` 双声明的长期维护成本 | 待决策 | ✅    | P3     | ⏸ 待决策 | `ModuleConvention.md`                            |
 | C-03 | 依赖治理补强（Enforcer / ArchUnit）  | 调研   | ✅    | P2     | ☐ 未完成 | `BuildSpec.md`                                   |
 | C-04 | `jlink` 禁令的解除条件未登记         | 待决策 | ✅    | P3     | ☐ 未完成 | `BuildSpec.md` §7                                |
 
-### C-01 ⏸ 待决策
+### C-01 ✅ 已决策（2026-10-08）：JPMS 非强制，OpenJFX 优先
+
+**决策**：**JPMS 不再要求强制使用**。优先尝试采用 OpenJFX；必要时 **JPMS 为 OpenJFX 让路**
+（可退到 classpath 构建，须在 `BuildSpec.md` 记明原因与影响面）。
+
+**连带修正（本轮已落地）**：`Constitution.md` 第 1 条、`BuildSpec.md` §7、`AHA-Design-V1.md`
+第 1 条与头部、`README.md`、`AGENTS.md`、`ArchitectureOverview.md` 的「JPMS 强制启用」
+全部改为「**优先启用（非强制）**」；fat JAR 的禁用理由改述为「无法按模块追踪依赖与许可、
+无法与 `dist/{bin,lib}` 布局一致」，**不再挂在 JPMS 上**；`TestingSpec.md` 的 TestFX 行补注
+「与 JPMS 冲突时可在 classpath 下运行」。
+
+**残留动作**：OpenJFX 真正引入后，若发现模块化阻碍（TestFX、WebView 反射、`--add-opens`），
+按「OpenJFX 优先」原则退到 classpath，并在 `BuildSpec.md` 记明原因。
 
 **结论（复核 ✅ 已核实，2026-10-07）**：`ModuleConvention.md` v1.1.0 §1 现为三行简短规则
 （必须有 `module-info`、必须显式导出、`opens` 必须限定），**仍未写明 JPMS 的存在理由与复核点**。
@@ -328,22 +336,50 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 
 ## 4. 桌面端（OpenJFX，规划 0.2）
 
-> 现状：`aha-desktop` 为占位模块（`module-info` + 空 JAR）。
-> 父 POM 已声明 `javafx.version = 25`，但仍**未引入任何 JavaFX 依赖**。✅ 已核实
+> 现状：`aha-desktop` 仍为占位模块（`module-info` + 空 JAR），但**平台依赖机制已就位**——
+> 父 POM 的 5 个 `javafx-*` profile + `dependencyManagement` 已能解析本平台的 JavaFX 分类器工件，
+> `aha-desktop` 已声明 `javafx-base` / `javafx-graphics` / `javafx-controls`（2026-10-08 实装并实测）。
 
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
-| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ☐ 未完成 | `dist.xml`、`BuildSpec.md` §7      |
-| D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ☐ 未完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
+| D-01 | 发行包会混入多平台 JavaFX native JAR    | 风险     | ⚠️    | P1     | ✅ 已解决 | `dist.xml`、`BuildSpec.md` §7      |
+| D-02 | 启动脚本需按模块路径分叉                | 风险     | ✅    | P2     | ✅ 已完成 | `bin/Aha.sh`、`bin/Aha.bat`        |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
-| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ☐ 未完成 | `TestingSpec.md` §1                |
-| D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ⏸ 待决策 | `TestingSpec.md` §3.2              |
-| D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ☐ 未完成 | `DesktopDesign.md` §2/§3           |
-| D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ◐ 进行中 | `DesktopDesign.md`、`GUIDesign.md` §8 |
-| D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ☐ 未完成 | `Build.yml`、`DesktopDesign.md` §3 |
-| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ☐ 未完成 | `aha-desktop/pom.xml`、`DesktopDesign.md` |
+| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ◐ 门禁方式已定 | `TestingSpec.md` §1                |
+| D-05 | 覆盖率排除项的长期归属未定              | 待决策   | ✅    | P2     | ✅ 已决策 | `TestingSpec.md` §3.2              |
+| D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
+| D-07 | JavaFX 线程模型与虚拟线程的桥接未设计   | 设计缺口 | ✅    | P2     | ✅ 已完成 | `DesktopDesign.md`、`GUIDesign.md` §8 |
+| D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ◐ 流水线已就位 | `Build.yml`、`DesktopDesign.md` §3 |
+| D-09 | 桌面端无内置工具（未依赖 `aha-tool`）   | 设计缺口 | ✅    | P1     | ✅ 已落地（pom 已声明） | `aha-desktop/pom.xml`、`DesktopDesign.md` |
+| D-10 | 桌面端包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-common`、`aha-core` |
+| D-11 | 桌面端不读 `Aha.yaml`（只用默认日志配置） | 设计缺口 | ✅ | P2 | ✅ 已完成 | `aha-core/boot`、`aha-desktop` |
+| D-12 | 桌面端界面仍是 0.1 占位（无三栏） | 设计缺口 | ✅ | P1 | ✅ 已完成 | `aha-desktop/view` |
+| D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线 / `jpackage`） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
+| F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
+| F-18 | 三个文件里残留合并冲突标记且已入库（`CodeQL.yml` / `BuildSpec.md` / `TODO.md`，共 11 处） | 缺陷 | ✅ | P1 | ✅ 已修复 | `.github/workflows/CodeQL.yml`、`bin/CheckDocs.py` |
+| N-01 | 需要「下载即用」的验证包：JVM 模式要先配 JDK 与 JavaFX，无法一键试 | 需求 | ✅ | P1 | ✅ 已完成 | `aha-desktop-native`、`DesktopNativeDesign.md` |
+| N-02 | 原生镜像构建失败不得影响既有构建与发版 | 需求 | ✅ | P1 | ✅ 已完成（profile 隔离 + 独立工作流 + `native-v` tag 命名空间 + `continue-on-error`） | `pom.xml`、`.github/workflows/DesktopNative.yml` |
+| N-03 | 每次合并到 dev 独立出包，版本可追溯到 PR | 需求 | ✅ | P1 | ✅ 已完成（`a.b.c.PPPPP`，PR 段补零到 5 位；本地实测 `0.1.1.00021`） | `DesktopNative.yml`、`DesktopNativeDesign.md` §4.3 |
+| N-04 | 增加 JDK 27 编译分支（对比 Leyden AOT / 原始类型 / GC 对启动与内存的影响），**先只开 Windows**，为 JDK 29 铺路 | 需求 | ✅ | P2 | ◐ 机制已就位，数据待采集 | `aha-desktop-native/pom.xml`（`native-jdk27` profile）、`native-image-args-jdk27.txt`、`DesktopNativeDesign.md` §5 |
+| N-05 | 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话） | 验证 | ☐ | P1 | ☐ 待工作流首跑 | `DesktopNativeDesign.md` §7 N-1 |
+| N-06 | 把 §5.3 的对比表填上真实数字（原生镜像 JDK25 / JDK27 / JVM+Leyden AOT 三种形态） | 实验 | ☐ | P2 | ☐ 待采集 | `DesktopNativeDesign.md` §5.3 |
+| N-07 | JDK 27 分支扩展到 Linux / macOS；二进制内部版本号带上 PR 段；体积瘦身 | 规划 | ☐ | P3 | ☐ 后续 | `DesktopNativeDesign.md` §7 N-3/N-4/N-5 |
+| N-08 | 沉淀可复用技能：`.agents/skills/java-app-graalvm-native-image-compile/`（先建骨架、边做边改、达成目标才成熟） | 需求 | ✅ | P1 | ◐ 已建（v0.1.0 试验中） | `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md` |
+| N-09 | 把该技能迭代到**成熟**：目标平台真机跑通 + 未验证条目清零 + **在别的项目复用过一次**（四条达标判据见技能「用法」一节） | 验证 | ☐ | P2 | ☐ 待跟踪 | `SKILL.md`（成熟度）、`references/skill-lifecycle.md` |
 
-### D-01 ☐ 未完成（0.2 前置）
+### D-01 ✅ 已解决（2026-10-08）：机制 + 描述符均已落地
+
+**已落地**：父 POM 的 `javafx-*` per-OS profile（设 `javafx.platform`）+
+`dependencyManagement`（三个工件带分类器）+ `aha-desktop` 显式声明与空壳排除。
+实测依赖树只剩本平台三个真 jar（`javafx-base` / `javafx-graphics` / `javafx-controls` 的
+`linux` 分类器），模块名均无 `[auto]`；`dist/lib` 的 18 个 jar 中 javafx 相关为 0（CLI 不受影响）。
+详见 `DesktopDesign.md` 第 5 节。
+
+**描述符已加**：`aha-desktop/src/assembly/dist-desktop.xml` 产出便携包
+`aha-desktop-<版本>-<平台分类器>.zip`，文件名由构建期解析结果决定（实测 Linux 产出 24 MB 包，
+内含且仅含 `linux` 分类器的 3 个 OpenJFX jar）。
+
+**残留动作**：自包含安装包（`jpackage`，内置运行时）仍待评估，见 `D-08`。
 
 **复核（✅ / ⚠️）**：`aha-cli/src/assembly/dist.xml` 的 `<dependencySet>` **仍无 classifier 过滤**
 （✅ 已核实）；JavaFX 的平台 classifier 机制属外部知识（⚠️），需在引入 JavaFX 后实测。
@@ -351,13 +387,14 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **残留动作**：为桌面端另建 assembly 描述符（如 `dist-desktop.xml`），用 `<classifier>` 或
 profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再依赖 `dist/lib` 布局。
 
-### D-02 ☐ 未完成
+### D-02 ✅ 已完成（2026-10-08）：桌面端独立启动脚本
 
 **复核（✅ 已核实）**：`bin/Aha.sh` 仍为单一 CLI 启动路径（`--module com...AhaCli`）；
 `bin/` 下**无** `AhaDesktop.sh` / `.bat`。
 
-**残留动作**：新增独立桌面端启动脚本，而非在现有脚本中加分支。
-`.bat` 必须**纯 ASCII + CRLF**，并由 `bin/CheckScripts.py` 校验。
+**已实现**：新增 `bin/AhaDesktop.sh`（LF）与 `bin/AhaDesktop.bat`（纯 ASCII + CRLF，经
+`bin/CheckScripts.py` 校验），**未改动** `bin/Aha.sh` / `bin/Aha.bat`（不在现有脚本里加分支）。
+两者以 JPMS 模块路径启动 `com.acanx.module.aha.desktop.AhaDesktopApp`，并随桌面端便携包一起分发。
 
 ### D-03 ☐ 未完成
 
@@ -367,15 +404,29 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 > 注：`GUIDesign.md` §8.1 建议采用「进程内直调 + JavaFX 原生控件」，若最终仍用 FXML，
 > 本条适用；若完全转为代码构建 UI 则本条可降级。
 
-### D-04 ☐ 未完成
+### D-04 ◐ 门禁方式已定（2026-10-08），TestFX 选型与 CI 启用待定
 
-**复核（✅ 已核实）**：`TestingSpec.md` §1 仍写「JavaFX 测试 | TestFX（0.2+）」，
-**无**「JavaFX 测试的环境要求」小节。
+**要定的事**：UI 测试怎么跑、在哪里跑。
 
-**残留动作**：0.2 前在 CI 中先跑通一个 TestFX 最小样例，再纳入 `Build.yml`；
-同步补充环境要求小节（`--add-opens`、`xvfb-run` / Monocle、`--patch-module`）。
+**已定**：需要图形环境的测试**默认不跑**。`AhaDesktopSmokeTest` 由
+`@EnabledIfSystemProperty(named = "aha.ui.tests", matches = "true")` 门禁，显式加
+`-Daha.ui.tests=true` 才执行。依据是项目自己的硬规则——测试必须环境无关
+（`TestingSpec.md` §5.1）——而 CI 的 ubuntu runner 无显示、本机 WSL **连 GTK 都没有**
+（实测 `libgtk-3` 命中数为 0），开成默认只会满地红。
 
-### D-05 ⏸ 待决策
+**待定**：
+
+1. 用 TestFX 还是纯 JUnit 驱动？当前冒烟测试是**纯 JUnit**（`Platform.startup` + `runLater`
+   断言 + 轮询等待状态更新），**没有引入任何新依赖**；
+2. 何时在 CI 打开：Linux 需 Xvfb 并装 GTK 依赖，Windows / macOS runner 通常有会话；
+3. 打开的开关应是**独立可选 job**，不进必需检查——否则又是一次「必需检查永久挂起」。
+
+**验收标准**：至少一条平台（建议 Windows）在 CI 上**真实跑过**窗口冒烟测试并留下日志。
+
+### D-05 ✅ 已决策（2026-10-08）：纳入门禁 + 单独阈值，分两步走
+
+**决策**：桌面端**纳入覆盖率门禁**，但用**单独阈值**——0.2 开发期 **0.30**（适度调低便于开发），
+0.2 收尾评审后再向其他模块的 **0.70** 对齐。细则已写入 `TestingSpec.md` §3.4。
 
 **复核（✅ 已核实）**：父 POM JaCoCo 仍泛排除 `com/acanx/module/aha/desktop/**`；
 `TestingSpec.md` §3 仍**未给 Desktop 阈值**，§3.2 仍登记「桌面端 0.2 实现」。
@@ -383,7 +434,10 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：在 `TestingSpec.md` §3 中为 Desktop 模块**显式设定阈值或明确永久排除**，
 并说明 `BUNDLE` 级聚合门禁下桌面端低覆盖对整体的影响。
 
-### D-06 ☐ 未完成
+### D-06 ◐ 已决策（2026-10-08），文档待回填
+
+**决策**：**支持承诺只有 Windows + Linux 双平台**；macOS **要求 CI 能打出包**（`jpackage`），
+但**不要求跑测试**——开发资源有限，不在 macOS 上投入测试维护。
 
 **复核（✅ 已核实）**：`DesktopDesign.md` v1.1.0 §2 已改为指向 `GUIDesign.md` 并标注
 「WebView / FXML 组合从未真正决策，待评审」——**这是 D-07 范畴的进展，不是 D-06**。
@@ -393,29 +447,46 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
 
-### D-07 ◐ 进行中
+### D-07 ✅ 已完成（2026-10-08）：选型 + 线程模型 + 可执行契约
 
-**复核（✅ 已核实）**：新增的 `GUIDesign.md` §8.1 已给出**单一桥接点**的表述：
+**决策**：进程内直调 + JavaFX 原生控件优先（`GUIDesign.md` §8.1）；本地 HTTP + WebView 降为兜底。
 
-> `AgentService.streamChat(...)` 的 `AgentEventListener` 直接回调到 UI 线程（经 `Platform.runLater`）
+**已完成**：
 
-并选择「进程内直调」取消本地 HTTP 层。**方向已定，但三项细节仍缺**：
+- `DesktopDesign.md` 新增 **§6 线程模型**，含三项决策：高频回调的**合并**、**取消与关窗联动**、
+  **虚拟线程不得直接触碰界面**；
+- 契约落到代码：`FxDispatcher` / `PlatformFxDispatcher` / `FxBridge`
+  （`aha-desktop/src/main/java/com/acanx/module/aha/desktop/fx/`）；
+- **规则可自证**：`FxThreadContractTest` 扫描主源码，除 `PlatformFxDispatcher` 外出现
+  `Platform.runLater(` / `Platform.startup(` / `Platform.isFxApplicationThread(` 即失败，
+  并断言白名单文件里确实存在调用（避免扫描范围写错导致假通过）；
+- **可测性**：`FxBridgeTest`（6 例）在**无图形环境**下验证合并、终值不丢、
+  渲染期间到达的值不丢、关窗丢弃、渲染异常不致命。
 
-1. 高频 `ContentEvent` 的 `runLater` 积压与节流策略
-2. 取消（`CancellationToken`）与窗口关闭的联动
-3. 虚拟线程 → FX 线程的**禁止直触**约束未成文
-
-**残留动作**：在 `DesktopDesign.md` 新增「线程模型」小节（或由 `GUIDesign.md` §8 升格），
-明确单一桥接点与上述三条。
-
-### D-08 ☐ 未完成
+### D-08 ◐ 打包流水线已就位（2026-10-08），jpackage 安装包待评估
 
 **复核（✅ 已核实）**：`Build.yml` 仍无打包 job；`Release.yml` 仍只上传 `dist.zip`。
 
 **残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵
 （桌面端安装包需另设产物）。
 
-### D-09 ☐ 未完成（新增条目）
+**补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；
+必需检查仍是 Windows + Linux。
+
+**已落地（2026-10-08）**：`Release.yml` 新增 `desktop` 作业（矩阵 `ubuntu` / `windows` / `macos`，
+`fail-fast: false`），每条腿跑 `./mvnw clean verify` 后由产物名 + 依赖树**双向自证**平台分类器，
+再把 `aha-desktop-<版本>-<系统>-<架构>.zip` 上传到 release 页面；CLI 资产同步改名
+`aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住
+且不动物件）。
+
+**残留动作**：`jpackage` 自包含安装包（内置运行时，用户无需自备 JDK）仍需评估——
+`jlink` 受 `sqlite-jdbc`（自动模块）限制，可行路径是非模块化 app image。
+
+### D-09 ✅ 已决策（2026-10-08）：桌面端需要内置工具
+
+**决策**：桌面端**需要内置工具**（引入 `aha-tool`）。依赖矩阵已在
+`Constitution.md` 第 4 条与 `ModuleConvention.md` §2 补上 `core ← tool ← desktop` 边与对应规则。
+剩余实现动作：`aha-desktop/pom.xml` 声明 `aha-tool`（0.2 实施时）。
 
 **现象**：`aha-desktop/pom.xml` 仅依赖 `aha-core`，**未声明 `aha-tool`**。
 内置工具（file / http / shell）全在 `aha-tool` 且经 `ServiceLoader` 发现，
@@ -426,6 +497,152 @@ desktop 亦未列 tool 依赖。
 
 **建议动作**：0.2 明确桌面端是否需要内置工具；若需要，修订 `Constitution.md` 第 4 条
 依赖矩阵（新增 `core ← tool → desktop` 边）并同步 `ModuleConvention.md` §2。
+
+### D-10 ✅ 已完成（2026-10-08）：版本号与日志装配下移公共模块
+
+| 内容 | 原位置 | 现位置 |
+|---|---|---|
+| v0.1.0 | 2026-10-06 | 初始版本：汇总 0.1 代码走查、JPMS 架构评估、桌面端与原生编译调研结论 | @ACANX |
+| v0.2.0 | 2026-10-07 | 新增第 6 节「记忆能力（0.6 起）」：推进顺序、写入策略、载体选型实测依据、跨环境共享机制 | @ACANX |
+| v0.3.0 | 2026-10-07 | **重排版**：清除重复副本与误粘贴的会话日志（见 `PLAN.md` §4）；全部条目表格新增「状态」列并逐条复核；新增第 9 节「复核结论汇总」 | @ACANX |
+| v0.3.0 | 2026-10-07 | `Docs/` 清单更新：设计文档已移入 `Docs/AHA/` | @ACANX |
+| v0.4.0 | 2026-10-07 | B-03 版本漂移结项 | @ACANX |
+| v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
+| v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
+| v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
+| v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
+| v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
+| v0.10.0 | 2026-10-07 | 新增 `A-10`（`PLAN.md` 有两个 `## 8.` 标题）。新增 `F-12`（✅ 已修：PR #6 以单父提交重新落地，使 PR #8 永久 `dirty`；已用 `-s ours` 补血缘并逐项验证）与对应的教训、规范落点；`G-01` 按实况更新（前半已完成，现待推送合并提交 `06c6121`，补 `mergeable_state` 验收标准） | @ACANX |
+| v0.10.1 | 2026-10-07 | `F-12` 引用同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`） | @ACANX |
+| v0.11.0 | 2026-10-07 | 新增 `F-13`（✅ 已修：CI 插件依赖「当次要不到」的定性过程与修法，含两条 Maven 消息的判别）与 `F-14`（⏸ 待决策：`.github/**/*.yml` 无本地检查） | @ACANX |
+| v0.11.1 | 2026-10-07 | `D-06` 修正失效断言：`Build.yml` 矩阵已含 macOS 腿（`F-06`，定位为演示与可选），而 `DesktopDesign.md` §2 缺平台清单一节经再次实查仍成立 | @ACANX |
+| v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
+| v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
+| v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
+| v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
+| v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
+| v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
+| v0.15.0 | 2026-10-07 | `G-04` 改写：新增 `.github/workflows/CodeQL.yml`（高级设置/工作流方式，显式覆盖 `pull_request → main`，手工构建走统一 Maven 入口），说明为何默认设置覆盖不到 `main`、与必需检查契约无关，并给出「不要扫描就删规则 + 删工作流」的备选 | @ACANX |
+| v0.16.0 | 2026-10-07 | `G-04` 补上线实测：工作流 init/compile 三次全过、失败仅在 `analyze`；因两份分支树零差异判定为配置冲突，指向「默认设置与高级设置互斥」并给出二选一处置；顺手把 codeql-action 升到 v4，并注明 build-mode 那条提示为良性 | @ACANX |
+| v0.17.0 | 2026-10-08 | `G-01` 结项（两条文档提交已随 PR #9/#10 进入 `origin/dev`）；新增 `G-06` 处置 0.1.0 的裸 tag 与 `V*` 约定的不一致 | @ACANX |
+| v0.18.0 | 2026-10-08 | 五项决策拍板并落地：`C-01`（JPMS 非强制，OpenJFX 优先）、`D-05`（桌面端纳入门禁 + 单独阈值 0.30→0.70）、`D-06`（Win+Linux 为承诺，macOS 只打包不测）、`D-07`（进程内直调优先）、`D-09`（需要内置工具，依赖矩阵已改） | @ACANX |
+| v0.19.0 | 2026-10-08 | `D-01` 机制落地并实测（父 POM 的 javafx-* per-OS profile + 分类器依赖 + 空壳排除），状态改为 ◐ 机制已落地；§4 现状陈述同步（JavaFX 依赖已实装） | @ACANX |
+| v0.20.0 | 2026-10-08 | `D-01` 结项（机制 + 描述符落地）、`D-02` 完成（桌面端启动脚本）、`D-09` 落地（`aha-tool` 已声明）、`D-08` 改为「流水线已就位」（`Release.yml` 矩阵化 + 双向自证 + 上传）；§5 制品表补桌面端便携包 | @ACANX |
+| v0.21.0 | 2026-10-08 | 新增 `D-10`：桌面端便携包缺 `log4j2.xml` 与 `version.properties`（二者在 `aha-cli`，而 `cli` 与 `desktop` 不得互相依赖），含实测证据、影响与建议动作 | @ACANX |
+| v0.22.0 | 2026-10-08 | `D-07` 结项（线程模型小节 + 桥接契约 + 静态扫描 + 6 例单测）、`D-10` 结项（版本号下移 `aha-common`、日志装配下移 `aha-core`，并更正早期「缺 `log4j2.xml`」的误判）、`D-04` 记为「门禁方式已定」（冒烟默认跳过）、新增 `D-11`（桌面端不读 `Aha.yaml`） | @ACANX |
+| v0.23.0 | 2026-10-08 | `D-11` 结项：抽出 `AhaBootstrap`（CLI 与桌面端共用读配置/装配日志/装密钥库），桌面端窗口显示配置摘要；含单测与 CLI 端到端实测证据 | @ACANX |
+| v0.24.0 | 2026-10-08 | 新增并结项 `D-12`（桌面端三栏骨架 + 折叠三条路径 + 纯逻辑 `FoldState`），遗留项记明（工具卡片 / Agent 接线 / `ToolKind` 下移） | @ACANX |
+| v0.25.0 | 2026-10-08 | 新增 `F-17`（`-Djavafx.platform` 触发 `recursive variable reference` 的构建日志噪音） | @ACANX |
+| v0.26.0 | 2026-10-08 | `D-12` 遗留更新：Agent 接入与 `ToolKind` 下移、供应商配置已完成；列明尚未做项（工具卡片展开/输出预览、会话列表、记忆/扩展/日志面板、`/` `@`、主题、设置、授权弹窗样式） | @ACANX |
+| v0.27.0 | 2026-10-08 | 0.2 六项功能完成（工具卡片 / 会话列表 / 日志面板 / 输入区增强 / 授权弹窗 / 主题与设置）；新增 `D-13`（剩余项）与 `F-18`（已入库的合并冲突标记，已修复并加守卫） | @ACANX |
+| v0.28.0 | 2026-10-08 | 新增 `aha-desktop-native`（试验性原生镜像模块）与 `DesktopNative.yml`：`N-01`~`N-04` 落地（profile 隔离、独立出包、`a.b.c.PPPPP` 版本、JDK 27 实验分支），`N-05`~`N-07` 待跟踪 | @ACANX |
+| v0.29.0 | 2026-10-08 | 新增 `N-08`/`N-09`：把原生镜像经验沉淀为可复用技能，并明确「先建骨架、边做边改、达成目标才成熟」的迭代方式与四条达标判据 | @ACANX |
+| `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
+| picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
+| 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
+
+**为什么拆成两半**：`AppVersion` 原本依赖 picocli，整体搬进 `aha-common` 会破坏其零外部依赖的约定
+——所以**资源与读取逻辑**下移、**picocli 适配**留在 CLI。日志装配放 `aha-core`，让 CLI 与桌面端
+共用同一份实现，而谁都不必依赖对方（`Constitution.md` 第 4 条）。
+
+**实测证据**：`aha-common-0.1.1.jar` 内 `com/acanx/module/aha/common/version.properties` 内容为
+`version=0.1.1`（资源过滤生效，非占位符）；桌面端 `init()` 即调用 `LoggingSetup.apply(null)` 并能落日志。
+
+> **更正一则早期误判**：本条目先前写作「桌面端包缺 `log4j2.xml`」。实际上**全仓原本就没有**该文件
+> ——日志装配一直是程序化的（理由见 `LoggingDesign.md`：JPMS 下 `getResources` 不搜模块路径）。
+> 真正缺的是**类**，现已下移。
+
+### D-12 ✅ 已完成（2026-10-08）：桌面端三栏骨架
+
+**落地内容**：`DesktopShell`（菜单栏 + 左 220 / 中弹性 / 右 280 + 底 24px 状态栏）、
+`ShellLayout`（尺寸与可见性规则）、`Palette`（语义色值）、`FoldState`（折叠状态机）；
+`AhaDesktopApp.start` 改为装配该骨架，底栏承载状态桥接与配置摘要。
+
+**折叠**：菜单（视图 → 折叠左栏 / 折叠右栏）、快捷键（`Ctrl+B` / `Ctrl+J`）、
+栏边**常驻窄条按钮**三条路径等价；折叠后窄条仍在，鼠标用户随时能展回来
+（只留快捷键会让鼠标用户折叠后无法展开）。
+
+**测试**：`FoldStateTest`（4，含折叠→展开往返与提示文案）、`ShellLayoutTest`（4）、
+`PaletteTest`（2）默认运行；冒烟测试扩展为**走真实按钮**，覆盖折叠→展开、右栏默认收起、
+Enter 发送 / Shift+Enter 换行（默认跳过，需图形环境）。
+
+**遗留**：
+
+1. ~~接入 Agent~~ ✅ 已完成（`ChatController` + `ChatView`；Windows 真机已验证流式往返）；
+2. ~~`ToolKind` 下移~~ ✅ 已完成（现位于 `aha-common`，两端共用语义）；
+3. 供应商配置 ✅ 已完成（可查看/修改/保存，含校验）；
+4. **尚未做**：工具卡片的折叠展开与输出预览（当前只有首行 + 结果行）、
+   会话列表持久化展示、记忆 / 扩展 / 日志面板、`/` `@` 补全、暗/亮主题切换、设置面板、
+   授权弹窗的自定义样式（现为系统默认 Alert）。
+
+---
+
+### F-17 ☐ 新增（2026-10-08）：`-Djavafx.platform=win` 时构建输出 `recursive variable reference: javafx.platform`
+
+**现象**：在 WSL 里用 `-Djavafx.platform=win` 打 Windows 便携包时，构建日志出现两行
+`[ERROR] recursive variable reference: javafx.platform`；**构建仍然成功**，产物名与内容都正确。
+
+**影响**：目前只是日志噪音；但它可能意味着某个 `${javafx.platform}` 的插值路径不健康，
+值得在 Windows 原生构建（profile 自动生效、无 `-D`）时对照确认一次是否同样出现。
+
+**验收标准**：在 Windows 原生 `./mvnw -pl aha-desktop -am package` 输出里确认有无该行；
+若有则定位到具体插件/属性并消除。
+
+---
+
+### F-16 ☐ 新增（2026-10-08）：Maven 4 下 verify 日志出现 10 行 `[stderr]`
+
+**现象**：一次 `./mvnw clean verify`（Maven 4.0.0-rc-7）中共出现 10 行 `[stderr]`，
+而同一提交在 Maven 3.9.11 下为 0 行——与 `F-11` 治好的「测试输出污染构建日志」同类。
+
+**已查明来源**（2026-10-08，据 Windows CI 日志）：这些 `[stderr]` 是 **JDK 的 native-access 警告**，
+由 `sqlite-jdbc` 触发，出现在 `EndToEndTest` 等真正加载 SQLite 的用例里：
+
+```
+[stderr] WARNING: java.lang.System::load has been called by org.sqlite.SQLiteJDBCLoader
+                  in module org.xerial.sqlitejdbc
+[stderr] WARNING: Use --enable-native-access=org.xerial.sqlitejdbc to avoid a warning ...
+```
+
+不是测试输出污染，而是 JVM 提示缺 `--enable-native-access`。
+
+**修法（待评估）**：给 surefire 加该参数。注意不能简单写死 `argLine`——JaCoCo 的
+`prepare-agent` 也通过 `argLine` 注入探针，覆盖它会让覆盖率失效；正确写法是
+`<argLine>@{argLine} --enable-native-access=org.xerial.sqlitejdbc</argLine>`，
+但 `-Djacoco.skip=true`（`Build.yml` 的快检查）下该属性不存在，`@{argLine}` 会原样传入而报错。
+需要先验证这两种情形都能跑通再改。**CLI 的启动脚本 `bin/Aha.sh` 早已带这个参数**，
+所以最终应当一致。
+
+**验收标准**：CI 日志（`Build` 与 `Gate`）中 `[stderr]` 行数为 0。
+**不要为了复现它而在本地重跑 verify**（慢检查只在 CI 跑）。
+
+---
+
+### D-11 ✅ 已完成（2026-10-08）：桌面端真读 `Aha.yaml`
+
+**做法**：把「读主配置 → 装配日志 → 装密钥库回退源」抽成 `aha-core` 的 `AhaBootstrap`，
+CLI 与桌面端共用（两者不得互相依赖，各写一遍必然分叉）。
+
+| 方法 | 副作用 | 用途 |
+|---|---|---|
+| `load(Path)` | 无 | 纯解析，便于测试 |
+| `boot()` / `boot(Path)` | **有**（替换进程级日志配置、注册静态回退源） | 入口启动 |
+
+**失败降级**：配置不存在 → 用内置默认（不算错误，不刷警告）；YAML 破损 / 密钥库不可用 →
+记 warning 继续启动（CLI 打 stderr，桌面端记日志）。顺带修掉一处旧行为：CLI 以前在读配置
+失败时传 `null` 给后续流程，会让 `CliContext` 二次读取时抛异常。
+
+**桌面端可见自证**：窗口新增一行配置摘要 `配置：<路径> · 日志级别：<级别>`（id `#aha.config`）。
+
+**实测证据**：
+
+- 单测（无图形环境）：`AhaBootstrapTest` 断言「配置里的 `WARN` 真的成了 log4j2 的生效级别」；
+  `AhaDesktopAppConfigTest` 断言桌面端引导读到配置且摘要随之变化；
+- 端到端（CLI 同一代码路径，真跑发行包）：`Level: WARN` → 指定路径日志里 DEBUG 行 **0** 条；
+  `Level: DEBUG` → 同一路径 DEBUG 行 **1** 条；`File: './Log/custom.log'` → 按 CWD 解析生成；
+  无 `Aha.yaml` → 落到 `~/.aha/Log/AHA.log`。
+
+**遗留**：桌面端尚未把配置用于界面行为（会话模型、工具开关等随真实界面接入）。
 
 ---
 
@@ -503,7 +720,8 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 | 发行形态                        | 目标用户       | 产物            | 状态      |
 | ------------------------------- | -------------- | --------------- | --------- |
-| JPMS 模块路径目录（`dist/`）    | 需 JVM、可调优 | `dist.zip`      | ✅ 已实现 |
+| JPMS 模块路径目录（`dist/`）    | 需 JVM、可调优 | `aha-<版本>-cli.zip` | ✅ 已实现 |
+| 桌面端便携包（按平台）          | 需 JDK 25      | `aha-desktop-<版本>-<系统>-<架构>.zip` | ✅ 流水线已就位 |
 | native-image 单文件             | 免 JVM、启动快 | 平台可执行文件  | ☐ 未开工  |
 | `jpackage` 安装包（0.2 桌面端） | 普通用户       | MSI / DEB / DMG | ☐ 未开工  |
 
@@ -533,31 +751,6 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 | 序 | 条目 | 说明 | 状态 |
 |---|---|---|---|
-| v0.1.0 | 2026-10-06 | 初始版本：汇总 0.1 代码走查、JPMS 架构评估、桌面端与原生编译调研结论 | @ACANX |
-| v0.2.0 | 2026-10-07 | 新增第 6 节「记忆能力（0.6 起）」：推进顺序、写入策略、载体选型实测依据、跨环境共享机制 | @ACANX |
-| v0.3.0 | 2026-10-07 | **重排版**：清除重复副本与误粘贴的会话日志（见 `PLAN.md` §4）；全部条目表格新增「状态」列并逐条复核；新增第 9 节「复核结论汇总」 | @ACANX |
-| v0.3.0 | 2026-10-07 | `Docs/` 清单更新：设计文档已移入 `Docs/AHA/` | @ACANX |
-| v0.4.0 | 2026-10-07 | B-03 版本漂移结项 | @ACANX |
-| v0.5.0 | 2026-10-07 | 新增第 10 节「CI、门禁与工程效能」（F-01~F-06，均已落地）：检查分层与每周定期扫描、门禁断言 Maven 版本、Maven 3.9.x 独立兼容工作流、重复代码率检查、矩阵不再 fail-fast、macOS 可选腿定位；§2 新增 B-04~B-07（Windows 暴露的四类缺陷，均已修）并**修正 B-03 的三处过期状态**（条目正文 ✅ 已解决，而 §2 汇总表与 §8 落地去向表仍写 ◐ 进行中） | @ACANX |
-| v0.6.0 | 2026-10-07 | 新增第 11 节「待人工执行的动作」（G-01 推送提交 / G-02 分支保护配必需检查 / G-03 确认定期扫描生效），每条写明阻塞面与**验收标准**，并在 §0 立下「此类事项不得只写在对话里」的约定；新增第 12 节与 H-01（启动标志默认风格待拍板）；§1 新增 A-08（暂存区文件存放位置）、A-09（`PLAN.md` §8.2 存在两个 `8.2.7`）；§10 新增 F-07（`.ps1` 未纳入检查）；§7 补三条待决策项并重排序 | @ACANX |
-| v0.7.0 | 2026-10-07 | 新增 `F-08`（✅ 已修）：给必需腿补 `optional` 矩阵键使作业名多出 `, false`，必需检查永久停在 `Expected — Waiting`——附取证对照表与教训；`G-02` 按实况重写（现已配置三条 `build (...)` 快速腿，另需补配 `Gate` / `Compat` 两条，给出与作业 `name:` 完全一致的字符串与维护约定） | @ACANX |
-| v0.8.0 | 2026-10-07 | 新增 `F-09`（✅ 已修）：覆盖率门禁静默不可自证，附两步核实法（配置 + 抬阈值使其失败）与修法；`Gate.yml` 现打印实测值 | @ACANX |
-| v0.9.0 | 2026-10-07 | 新增 `F-10`（✅ 规范偏差：工具层已知拒绝被记 ERROR 并附堆栈，违反 LoggingDesign §4）与 `F-11`（✅ 测试日志污染构建日志），附修法与实测验证数据 | @ACANX |
-| v0.10.0 | 2026-10-07 | 新增 `A-10`（`PLAN.md` 有两个 `## 8.` 标题）。新增 `F-12`（✅ 已修：PR #6 以单父提交重新落地，使 PR #8 永久 `dirty`；已用 `-s ours` 补血缘并逐项验证）与对应的教训、规范落点；`G-01` 按实况更新（前半已完成，现待推送合并提交 `06c6121`，补 `mergeable_state` 验收标准） | @ACANX |
-| v0.10.1 | 2026-10-07 | `F-12` 引用同步开发日志改名（`DevLog-20261007-21-2.md` → `DevLog-20261007-22.md`） | @ACANX |
-| v0.11.0 | 2026-10-07 | 新增 `F-13`（✅ 已修：CI 插件依赖「当次要不到」的定性过程与修法，含两条 Maven 消息的判别）与 `F-14`（⏸ 待决策：`.github/**/*.yml` 无本地检查） | @ACANX |
-| v0.11.1 | 2026-10-07 | `D-06` 修正失效断言：`Build.yml` 矩阵已含 macOS 腿（`F-06`，定位为演示与可选），而 `DesktopDesign.md` §2 缺平台清单一节经再次实查仍成立 | @ACANX |
-| v0.11.2 | 2026-10-07 | `A-09` / `A-10` 结项：`PLAN.md` §8 编号与顺序整体重排（§8.2 表归位并新增 `8.2.11`、`### 8.4` 归位、重复的 `## 8.` 改为文末 `## 9.`），外部引用经核对零改动 | @ACANX |
-| v0.11.3 | 2026-10-07 | 新增 `F-15`（⏸ 待决策：是否把「文档编号重复」纳入 `bin/CheckDocs.py`）；说明 `B-01`/`B-02` 的状态列经复核**不是**矛盾（该列为「证据」而非结果） | @ACANX |
-| v0.11.4 | 2026-10-07 | §7 补「与 0.1 的关系」与建议表：13 项待决策中只有 `H-01` / `E-12` / `A-08` / `F-07` 与 0.1 相关，逐条给出建议与理由 | @ACANX |
-| v0.12.0 | 2026-10-07 | `G-02` 重写为「分支规则集整改」：附现状实测表（dev/main 两条规则集逐条规则）与目标规格表（审批数、必需检查、`code_scanning`/`code_coverage` 二选一）；新增 `G-04`（开启 CodeQL，附「不开就必须删规则」的对应关系） | @ACANX |
-| v0.13.0 | 2026-10-07 | `F-12` 补「同日复发」实测记录（PR #8 以 squash 合入，`dev` 树 == `dependa@1518056` 树，用 `-s ours` 接回血缘 `d1de175`）；新增 `G-05`（仓库设置关闭 squash/rebase 合并）；`G-01` 改为推送本次补血缘的合并提交 | @ACANX |
-| v0.14.0 | 2026-10-07 | `G-01` 按方案 B 后的实际分支状态重写（`dev` 待推送 2 条、`dependa` 已复位无需推送、`dev` 直接推送可能被规则集拒绝的处置），并记录复位后的实测代价：首次 `dependa ← dev` 会在 6 个文档文件上冲突及解法 | @ACANX |
-| v0.15.0 | 2026-10-07 | `G-04` 改写：新增 `.github/workflows/CodeQL.yml`（高级设置/工作流方式，显式覆盖 `pull_request → main`，手工构建走统一 Maven 入口），说明为何默认设置覆盖不到 `main`、与必需检查契约无关，并给出「不要扫描就删规则 + 删工作流」的备选 | @ACANX |
-<<<<<<< HEAD
-=======
-| v0.16.0 | 2026-10-07 | `G-04` 补上线实测：工作流 init/compile 三次全过、失败仅在 `analyze`；因两份分支树零差异判定为配置冲突，指向「默认设置与高级设置互斥」并给出二选一处置；顺手把 codeql-action 升到 v4，并注明 build-mode 那条提示为良性 | @ACANX |
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 | 1 | `storeMemory` 加 upsert | 现状为纯 `INSERT`，同一 key 写两次会产生重复行 | ☐ 未完成 |
 | 2 | 作用域改为项目级 | **已定**：`~/.aha/Project/<项目ID>/Memory/`，项目 ID 规则已实现（`ProjectId`） | ✅ 已完成 |
 | 3 | 记忆工具（模型侧）+ `/memory` 命令（用户侧）+ 候选区 | **建议从这里开始**：能立刻验证记录是否真的可用 | ☐ 未完成 |
@@ -621,7 +814,17 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 以下条目**需要人来决策**，技术上无唯一正解。建议按优先级依次拍板：
 
-**只有 4 项与 0.1 相关**，其余属 0.2+、桌面端或 native-image 路线，可在发布后从容讨论。
+**只有 4 项与 0.1 相关**，其余属 0.2+、桌面端或 native-image 路线。
+
+> **2026-10-08 已拍板 5 项**（详见各条目正文）：
+>
+> | 编号 | 决策 |
+> |---|---|
+> | `C-01` | JPMS **非强制**；优先 OpenJFX，必要时 JPMS 让路 |
+> | `D-05` | 桌面端**纳入门禁 + 单独阈值**，0.2 初期 0.30 → 收尾向 0.70 对齐 |
+> | `D-06` | 支持承诺 **Windows + Linux**；macOS **只打包、不测试** |
+> | `D-07` | **进程内直调优先**，本地 HTTP + WebView 降为兜底 |
+> | `D-09` | 桌面端**需要内置工具**（依赖矩阵已补 `tool ← desktop`） |
 这 4 项的建议如下——**仅为建议，仍需拍板**：
 
 | 编号 | 决策问题 | 建议 | 理由 |
@@ -634,15 +837,15 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 顺序 | 编号 | 决策问题                                                     | 影响范围                     | 状态     |
 | ---- | ---- | ------------------------------------------------------------ | ---------------------------- | -------- |
 | 1    | E-01 | native 产物中扩展系统的降级策略？`ModuleLayer` 与 native-image 冲突如何处置？ | 决定 native-image 是否值得做 | ⏸ 待决策 |
-| 2    | C-01 | JPMS 的投入产出错配是否接受？扩展路线图推迟时如何处理？      | 架构根基                     | ⏸ 待决策 |
+| 2    | C-01 | JPMS 的投入产出错配是否接受？扩展路线图推迟时如何处理？      | 架构根基                     | ✅ 已决策（2026-10-08） |
 | 3    | E-11 | 发行矩阵如何定义？三种形态是否并存？                         | 打包与文档全局               | ⏸ 待决策 |
 | 4    | E-10 | native 产物的验收标准与 CI 归属？                            | 质量基线                     | ⏸ 待决策 |
 | 5    | C-02 | `ServiceLoader` 双声明：维持／删除／加校验？                 | 维护成本（与 E-04 相关）     | ⏸ 待决策 |
-| 6    | D-06 | 桌面端目标平台是否含 macOS？                                 | CI 与打包                    | ⏸ 待决策 |
-| 7    | D-05 | 桌面端覆盖率：纳入门禁／单独阈值／永久排除？                 | 质量基线                     | ⏸ 待决策 |
-| 8    | D-07 | 桌面端技术选型：进程内直调（8.1）vs 本地 HTTP + WebView（8.2）？ | 0.2 全部实现                 | ⏸ 待决策 |
+| 6    | D-06 | 桌面端目标平台是否含 macOS？                                 | CI 与打包                    | ✅ 已决策（2026-10-08） |
+| 7    | D-05 | 桌面端覆盖率：纳入门禁／单独阈值／永久排除？                 | 质量基线                     | ✅ 已决策（2026-10-08） |
+| 8    | D-07 | 桌面端技术选型：进程内直调（8.1）vs 本地 HTTP + WebView（8.2）？ | 0.2 全部实现                 | ✅ 已决策（2026-10-08） |
 | 9    | E-12 | `TODO.md` 文件名是否改名？                                   | 文档规范一致性               | ⏸ 待决策 |
-| 10   | D-09 | 桌面端是否需要内置工具（引入 `aha-tool`）？                  | 依赖矩阵与 `Constitution.md` | ⏸ 待决策 |
+| 10   | D-09 | 桌面端是否需要内置工具（引入 `aha-tool`）？                  | 依赖矩阵与 `Constitution.md` | ✅ 已决策（2026-10-08） |
 | 11   | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/`？ | 文档存放规范 | ⏸ 待决策 |
 | 12   | F-07 | `Script/PowerShell/CountJavaLoc.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并？ | 检查覆盖面与目录约定 | ⏸ 待决策 |
 | 13   | H-01 | 启动标志默认风格：像素风（现状）还是线框风？ | 首屏观感 | ⏸ 待决策 |
@@ -683,10 +886,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 条目                    | 目标文档                                                | 变更性质                     | 状态     |
 | ----------------------- | ------------------------------------------------------- | ---------------------------- | -------- |
 | B-01 / B-02             | `AgentEngine.java`、`AgentServiceDesign.md`             | 明确契约 + 补测试            | ☐ 未完成 |
-| D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ☐ 未完成 |
-| D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ☐ 未完成 |
-| D-07                    | `DesktopDesign.md`（或 `GUIDesign.md` §8 升格）         | 线程模型小节                 | ◐ 进行中 |
-| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ☐ 未完成（待决策） |
+| D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ◐ 骨架已就位 |
+| D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ◐ 已决策，待回填 |
+| D-07                    | `DesktopDesign.md`（或 `GUIDesign.md` §8 升格）         | 线程模型小节                 | ✅ 已完成（`DesktopDesign.md` §6） |
+| D-09                    | `Constitution.md` 第 4 条、`ModuleConvention.md` §2     | 依赖矩阵补 tool 边           | ✅ 已落地（矩阵 + pom 均已改） |
 | E-02 ~ E-09             | `BuildSpec.md`（新增 native 章节）                      | 待验证后登记                 | ☐ 未完成 |
 | E-11                    | `BuildSpec.md` §7                                       | 发行矩阵                     | ☐ 未完成（待决策） |
 | 6.1 序 1、3、4、5       | `MemoryStorageDesign.md`、`aha-core`、`aha-cli`         | 记忆写入与命令落地           | ☐ 未完成 |
@@ -1013,10 +1216,11 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
-| G-01 | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
+| ~~G-01~~ | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
 | G-02 | **分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表 | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [DevLog-20261007-24.md](DevLog/DevLog-20261007-24.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ☐ 未完成 |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
+| G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
@@ -1155,8 +1359,6 @@ Waiting for Code Scanning results. Code Scanning may not be configured for the t
 **备选（若你不想要代码扫描）**：删掉 `main` 规则集的 `code_scanning` 规则，并删除本工作流。
 规则与产出必须成对——**要么都留，要么都去**。
 
-<<<<<<< HEAD
-=======
 **上线实测（2026-10-07）**：工作流**能跑**——`init`（含 `build-mode: manual`，被接受）与
 走仓库 Maven 的 `compile` 两步在三次运行里**全部成功**；三次运行里 **1 次成功、2 次失败**，
 失败**只在 `analyze`（上传 SARIF）**这一步：
@@ -1184,17 +1386,13 @@ processed when the default setup is enabled.`）。**待你在 run #3 第 6 步�
 运行日志里那条 `Cannot build an overlay-base database because build-mode is set to "manual"…`
 是**良性**提示（回退为建立完整数据库，分析更完整），已在工作流里注明「不要为消掉它改成 `none`」。
 
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 **验收标准**：Security → Code scanning 出现 java-kotlin 的分析结果；
 PR #7 上「Code Scanning」由等待变为**给出结论**（按阈值：高危以上或存在错误才拦）。
 
 **闭环后**：本条改 ✅。
 
-<<<<<<< HEAD
-=======
 **闭环后**：本条改 ✅。
 
->>>>>>> e2a6eb821005d3920b6cfd77aff5798016d017b7
 ### G-05 ☐ 未完成
 
 **内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，

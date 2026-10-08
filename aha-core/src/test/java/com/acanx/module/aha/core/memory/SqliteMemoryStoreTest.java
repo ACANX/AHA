@@ -180,4 +180,66 @@ class SqliteMemoryStoreTest {
         assertThat(store.loadHistory("s1", 10)).extracting(ChatMessage::content)
                 .containsExactly("m1");
     }
+
+
+    @Test
+    void listsSessionsWithFirstUserMessageAsTitle() {
+        store.createSession("s2", "{}");
+        store.appendMessage("s2", ChatMessage.text(Role.USER, "看看 AgentEngine"));
+        store.appendMessage("s2", ChatMessage.text(Role.ASSISTANT, "好的"));
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "另一个会话"));
+
+        List<com.acanx.module.aha.common.model.SessionSummary> sessions = store.listSessions();
+
+        assertThat(sessions).extracting(com.acanx.module.aha.common.model.SessionSummary::id)
+                .containsExactlyInAnyOrder("s1", "s2");
+        assertThat(sessions).filteredOn(s -> s.id().equals("s2"))
+                .singleElement()
+                .satisfies(s -> {
+                    // 没有标题的会话，用首条用户消息当标题（比显示 UUID 有用）
+                    assertThat(s.title()).isEqualTo("看看 AgentEngine");
+                    assertThat(s.messageCount()).isEqualTo(2);
+                    assertThat(s.createdAt()).isPositive();
+                });
+    }
+
+    @Test
+    void sessionsWithoutMessagesFallBackToPlaceholder() {
+        assertThat(store.listSessions()).singleElement()
+                .satisfies(s -> assertThat(s.title())
+                        .isEqualTo(com.acanx.module.aha.common.model.SessionSummary.UNTITLED));
+    }
+
+    @Test
+    void renameOverridesDerivedTitle() {
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "原始标题"));
+
+        store.updateSessionTitle("s1", "  我起的名字  ");
+
+        assertThat(store.listSessions()).singleElement()
+                .satisfies(s -> assertThat(s.title()).isEqualTo("我起的名字"));
+    }
+
+    @Test
+    void blankRenameRestoresDerivedTitle() {
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "原始标题"));
+        store.updateSessionTitle("s1", "临时");
+
+        store.updateSessionTitle("s1", "   ");
+
+        assertThat(store.listSessions()).singleElement()
+                .satisfies(s -> assertThat(s.title()).isEqualTo("原始标题"));
+    }
+
+    @Test
+    void deleteSessionRemovesItFromTheList() {
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "x"));
+        store.storeMemory("s1", new MemoryEntry("k", "v", 0));
+
+        store.deleteSession("s1");
+
+        assertThat(store.listSessions()).isEmpty();
+        assertThat(store.loadHistory("s1", 10)).isEmpty();
+        assertThat(store.recall("s1", null, 10)).isEmpty();
+    }
 }

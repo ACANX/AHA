@@ -168,3 +168,172 @@ FileReadTool 误导描述。
   - Extensions.*（扩展运行时）→ 0.3
   - aha-desktop / McpAdapter → 0.2
   - LLM 供应商真实 API Key 端到端验收 → 需外部环境
+
+0.2 桌面端 · 下一步待办（2026-10-08 汇总）
+========================================
+
+已完成（本轮，供对照）
+--------------------
+
+[已完成] 三栏骨架：菜单栏 + 左 220 / 中弹性 / 右 280 + 底部 24px 状态栏
+[已完成] 左右栏折叠：菜单（视图）/ 快捷键（Ctrl+B、Ctrl+J）/ 栏边常驻窄条按钮，三条路径等价
+[已完成] Logo.svg 作窗口图标与空会话展示（bin/GenLogoPng.py 栅格化，含裁切自检）
+[已完成] 启动引导：读项目 ./Aha.yaml → 装配日志 → 装密钥库回退源，与 CLI 共用 AhaBootstrap
+[已完成] 对话接入 Agent：流式正文、工具卡片（类别配色 + 结果行）、错误、用量、Esc 中断
+[已完成] 供应商配置：查看 + 修改 + 保存；编辑区与新增区分离；启用项绿灯 + 模型名；
+         打开即选中启用项；按预设新建 + 可编辑模型候选；坏配置安全读取不再抛异常
+[已完成] 输入框启动即获得焦点（此前焦点落在左栏按钮上，敲空格会误触）
+
+下一步（按建议顺序）
+--------------------
+
+[已完成]  1. 工具卡片：默认折叠；展开看参数与带行号输出（前 200 行并写明总量）；复制/全部；
+           失败卡片红边 + 正文摊开 + 首行「重试 / 改参数后重试」（重试交给模型，不偷偷执行命令）
+[已完成]  2. 会话列表：列出 SQLite 里的真实会话（标题 / 消息数 / 相对时间），当前会话绿点加粗；
+           点选回放历史；右键重命名 / 导出 Markdown / 导出 JSON / 删除（二次确认）
+[待办]  3. 工具面板：把 Tools.Enabled 做成开关（现在只读展示 + 权限标注）
+[待办]  3b. 压缩上下文（Ctrl+K / `/compact`）与自动压缩设置：AgentService 还没有对应入口
+[待办]  3c. 会话内搜索（Ctrl+F）与 `F6` 焦点循环
+[已完成]  4. 日志面板：往 log4j2 根记录器挂内存 appender，实时日志 + 级别过滤（读取时过滤，
+           调回 DEBUG 仍能看到之前的行）；面板写明「低于配置级别的事件不会被产生」
+[已完成]  5. 输入区增强：/ 命令面板、@ 文件引用补全（跳过构建产物目录）、↑/↓ 历史（不丢草稿）、
+           Tab/Enter 接受候选、Ctrl+Enter 强制发送；斜杠命令在本端执行、不发给模型
+[已完成]  6. 授权弹窗：权限人话说明 + 完整参数 + 「本会话内始终允许 WRITE」+ 默认焦点在拒绝 +
+           Esc 即拒绝 + 已自动允许的权限清单；工具菜单可「全部撤销本会话授权」（Ctrl+Shift+R）
+[已完成]  7. 主题与设置：暗 / 亮 / 跟随系统（换主题会重刷已建节点），字号；设置存
+           AHA_HOME/desktop.properties；/theme、视图菜单、设置面板三条路径等价
+[待办]  8. 供应商增强：连接测试（等价 aha provider test）、密钥写入密钥库而非明文
+[待办]  9. 记忆面板（项目记忆 + 候选区）与 /stats 用量面板 → 0.3 范围
+[待办] 10. 桌面端覆盖率门禁上线（D-05：0.2 开发期 0.30，收尾向 0.70 对齐）
+[待办] 11. jpackage 自包含安装包（D-08 残留：用户无需自备 JDK）
+
+已修复（本轮顺带）
+------------------
+
+[已完成] .gitignore 里不带前导斜杠的 `Log/` 在 Windows 上吃掉了
+         `aha-desktop/src/main/java/.../desktop/log/` 的 8 个源文件（CI 编译失败）。
+         已把运行期目录锚定仓库根，并在 bin/CheckScripts.py 加了守卫
+[已完成] 三个文件里残留的 11 处合并冲突标记（CodeQL.yml / BuildSpec.md / TODO.md），
+         CodeQL.yml 因此一直是无效工作流；已解析（CodeQL 升到 v4），
+         并在 bin/CheckDocs.py 加了「残留冲突标记」检查
+
+0.2 桌面端原生镜像（试验性，2026-10-08）
+======================================
+
+需求（用户提出）
+----------------
+
+[已完成] 新增 aha-desktop-native 模块：定位为**试验性 / 探索性**
+         —— 基于 aha-desktop 编出的三平台 jar 包，再前进一步编成 GraalVM
+         native-image 原生二进制（可直接双击运行）
+[已完成] 为该模块单独增加工作流，做到四条隔离：
+           1. 默认不在反应堆里（profile 隔离）→ 原生镜像失败不影响开发与测试
+           2. 独立 tag 命名空间 native-v*（不匹配 V*/v*）→ 不触发正式发版
+           3. 作业名与 Build/Gate/Compat 全不同 → 不进入必需检查
+           4. fail-fast: false + 实验腿 continue-on-error → 失败不互相牵连
+[已完成] 每次 PR 合并到 dev 独立打包并发布，产物版本 = a.b.c.PPPPP
+         （PR 号补零到 5 位；实测 0.1.1 + PR21 → 0.1.1.00021）
+[已完成] 支持从发布页直接下载对应 PR 的构建包，本地快速验证
+[已完成] 增加 JDK 27 编译分支（对比 Project Leyden 的 AOT、原始类型预览、GC 策略
+         对启动速度与内存占用的影响），**目前只开 Windows**，
+         试验成功后再扩展到 Linux / macOS，为明年 JDK 29 铺路
+
+计划与跟踪（详见 Docs/Design/DesktopNativeDesign.md §7）
+-------------------------------------------------------
+
+[待办] N-05 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话）
+[待办] N-06 填写对比表真实数字（原生镜像 JDK25 / JDK27 / JVM+Leyden AOT 三种形态）
+             测量口径：冷启动 = 启动到主窗口可见；驻留内存 = 静置 60 秒的工作集；
+             每个数字取 5 次中位数并记机器
+[待办] N-07 扩展 JDK 27 到 Linux/macOS；二进制内部版本号带上 PR 段；体积瘦身
+[待办] N-08（备选路径）若手工参数清单维护成本过高，评估 GluonFX 插件
+
+已知风险（同设计文档第 6.1 节）
+-------------------------------
+
+  R1 JavaFX + native-image 需要一长串运行期初始化清单，首次跑很可能在某个类上失败
+  R2 反射 / 资源缺失导致构建成功但运行期才炸
+  R3 JavaFX 平台原生库可能未打进镜像（UnsatisfiedLinkError）
+  R4 GraalVM 未必有对应 JDK（尤其 JDK 27）——该腿失败即是答案（已隔离）
+  R5 产物体积大（几十 MB）；R6 未签名 → macOS Gatekeeper / Windows SmartScreen
+  R7 「只在 Windows 试」可能掩盖平台差异
+
+本机怎么试（Windows）
+---------------------
+
+  .\mvnw -Pdesktop-native -pl aha-desktop-native,aha-desktop -am package -DskipTests
+  # 只验证管线不真编：加 -Dnative.skip=true
+  # JDK 27 实验分支：加 -Pnative-jdk27
+
+  注意 -pl 要显式带上 aha-desktop：profile 加入的模块不会被 -am 带上游
+  （症状是「在中央仓库找不到 aha-desktop」）
+
+构建契约（用户明确要求，2026-10-08）
+------------------------------------
+
+[已完成] 原生编译**只在专用 profile 下**定义与执行；默认 profile 只需保证
+         「能编译、能打 jar、不报错」（可不可以运行不在默认构建的职责内）
+[已完成] 两层保障：① 模块只在 profile 的 <modules> 里（默认反应堆没有它）
+         ② 内层开关安全默认（native.skip 默认 true，由 -Pdesktop-native 置 false）
+[已完成] 理由写进规范：默认路径一旦依赖平台工具链，失败原因会从「代码问题」
+         变成「环境问题」，后者在别人机器上极难复现
+[已完成] 实测：默认 ./mvnw clean package → BUILD SUCCESS、反应堆 7 个模块、
+         native 相关日志 0 行、原生模块 target/ 完全未被触碰、6 个模块 jar 全产出
+[已完成] 顺带修 CI 抖动的真因：maven-run action 原来只在重试循环**之前**清一次
+         *.lastUpdated → 首轮失败写下负缓存后，后两次重试会「秒失败」（等于没重试）。
+         已改为每轮开跑前清理，并把失败提示按「先查 Central 是否有该 artifact →
+         再查网络 → 最后才怀疑坐标」的顺序重写
+[已完成] 核对：CI 报错的 org.jacoco:jacoco-maven-plugin:0.8.15 **在 Central 上存在**
+         （HTTP 200、maven-metadata 里也有）→ 属于瞬时/负缓存，不是版本问题
+[已完成] Release.yml 的桌面端 glob 收紧为 dist/aha-desktop-[0-9]*.zip，
+         避免把 aha-desktop-native-*.zip 误当成桌面端 jar 包
+
+构建产物落点（用户明确要求，2026-10-08）
+----------------------------------------
+
+[已完成] 编译出来的 .zip 程序文件统一输出/保存到 dist/ 目录，
+         不再放到仓库根目录下保存或暂存
+         - 桌面端便携包：aha-desktop/pom.xml 的 assembly outputDirectory → dist/
+         - 原生镜像包：aha-desktop-native/pom.xml 的 assembly outputDirectory → dist/
+         - CLI 发行 zip：工作流先在临时目录打好再移入 dist/
+           （直接在 dist/ 里写会把正在写入的归档自身收进去）
+         - 注意：CLI 的 assembly 输出的是 dist/ 内的**解包目录**（bin/ + lib/），
+           它的 outputDirectory 必须保持仓库根，否则会变成 dist/dist/…
+         - 规则已写进 Docs/DevSpec/BuildSpec.md §7；技能模板资产同步
+         - 实测：./mvnw package（桌面端）与 -Pdesktop-native package（原生端）
+           两个 zip 均落到 dist/，仓库根无残留
+
+工作方式（用户明确要求，2026-10-08）
+------------------------------------
+
+[已完成] 原生镜像经验要做成**可复用技能**：.agents/skills/java-app-graalvm-native-image-compile/
+[已完成] 技能必须**在动手之前就建骨架**，在实现过程中不断试错、不断迭代升级，
+         而不是「全部准备完才写」；目标达成时它才成熟可用
+[已完成] 因此技能里显式标注**状态与来源**：推断 / 已踩坑 / 已验证 / 已定稿，
+         并禁止「只加不改」与「把推断写成结论」
+[已完成] 每次踩坑的固定顺序：① 先写进技能（症状→根因→修法）② 再改代码或参数 ③ 记来源
+[待办] 技能成熟判据（四条）：目标平台真机跑通 / 未验证条目清零 /
+         版本与发布链路可追溯 / **在至少一个别的项目上照它跑通过一次**
+[待办] 目前版本 0.1.0（试验中）：隔离、构建系统坑、版本号规则已实测；
+         真正的 native-image 编译与运行期行为**尚未验证**，逐条待回填
+
+需要人工 / 平台侧（与桌面端并行）
+--------------------------------
+
+[待办] G-02 dev/main 规则集：必需审批 1 → 0、关 last_push_approval、main 补 Gate/Compat 必需检查
+[待办] G-04 CodeQL 与 Default setup 二选一（当前两者互斥，「分析并上传结果」必失败）
+[待办] G-05 关闭仓库的 squash / rebase 合并
+[待办] G-06 处置 0.1.0 的裸 tag（现行约定是 V<版本号>）
+[待办] F-16 Build/Gate 日志里的 [stderr]（sqlite native-access 警告）在 CI 侧确认并消除
+[待办] F-17 桌面端原生构建时确认 javafx.platform 的 recursive variable reference 是否出现
+
+已知限制（写下来免得再踩）
+--------------------------
+
+- 本机 WSL 无 libgtk-3，GUI 只能在 Windows 上跑。界面验证方式固定为：
+  纯逻辑抽出来单测（无图形环境）+ Windows 真机启动 + 截图核对；不要指望在 WSL 里开窗。
+- 一键启动：C:\Users\ACANX\run-aha-desktop.bat
+  控制台输出落 C:\Users\ACANX\aha-desktop-console.log —— 界面出问题先看它。
+- 桌面端包由 WSL 侧强制平台分类器打出（-Djavafx.platform=win），
+  解到 C:\Users\ACANX\aha-desktop-win 后运行。
+

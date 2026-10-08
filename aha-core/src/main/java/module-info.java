@@ -11,6 +11,9 @@ module com.acanx.module.aha.core {
     requires tools.jackson.dataformat.yaml;
     requires com.fasterxml.jackson.annotation;
     requires org.slf4j;
+    // LoggingSetup 程序化配置 Log4j2：需要 api（LogManager）与 core（XmlConfiguration）
+    requires org.apache.logging.log4j;
+    requires org.apache.logging.log4j.core;
     requires java.net.http;
     requires java.sql;
 
@@ -21,6 +24,8 @@ module com.acanx.module.aha.core {
     exports com.acanx.module.aha.core.memory;
     exports com.acanx.module.aha.core.config;
     exports com.acanx.module.aha.core.security;
+    exports com.acanx.module.aha.core.logging;
+    exports com.acanx.module.aha.core.boot;
     exports com.acanx.module.aha.core.mcp;
     exports com.acanx.module.aha.core.extension;
     exports com.acanx.module.aha.core.extension.event;

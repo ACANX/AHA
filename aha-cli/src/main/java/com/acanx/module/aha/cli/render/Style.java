@@ -1,6 +1,7 @@
 package com.acanx.module.aha.cli.render;
 
 import com.acanx.module.aha.cli.tty.TerminalCapabilities.ColorDepth;
+import com.acanx.module.aha.common.tool.ToolKind;
 
 /**
  * 文字样式。

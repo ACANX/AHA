@@ -5,18 +5,100 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-> 0.1.0 是首个版本，即项目基线，因此本节只包含「新增」——
+> 0.1.0 是首个版本，即项目基线，因此**该段落**只包含「新增」——
 > 所有能力均以最终形态描述，不记录开发过程中的调整。
 
-## [0.1.0] - 2026-10-06
+## [0.1.1] - 2026-10-08
 
-首个可用版本：Core + CLI 可运行。
+**无用户可见的功能变更**：版本号由 0.1.0 切到 0.1.1；本版集中修正版本号清单、发布流程与
+**按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
+- **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
+  把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
+  定位是「验证线」：正式交付仍是 JVM 模式。
+  - **四条隔离**：模块只在父 POM 的 `desktop-native` profile 里（默认不在反应堆）；
+    独立工作流与作业名；tag 用 `native-v…`（不匹配 `V*`/`v*`，不触发正式发版）；
+    `fail-fast: false` + 实验腿 `continue-on-error` + 发布作业 `if: always()`。
+  - **每次合并到 dev 自动出包**：版本按 `a.b.c.PPPPP`（PR 号补零到 5 位，如 PR21 → `0.1.1.00021`），
+    基线读根 POM、PR 号按提交反查 API；发布为预发行版，可在发布页直接下载。
+  - **JDK 25 / JDK 27 两条轴**：`native-jdk27` profile 切换参数文件与产物名，
+    **目前只开 Windows**；用于对比 Project Leyden 的 AOT、原始类型预览与 GC 策略对
+    启动速度 / 内存占用的影响，为明年适配 JDK 29 铺路。
+  - **产物自证**：工作流检查产物存在、体积下限、平台魔法数（PE / ELF / Mach-O）、
+    classpath 恰好含 3 个带分类器的 OpenJFX jar；包内附带两份构建参数文件便于事后对账。
+- **可复用技能 `java-app-graalvm-native-image-compile`**（`.agents/skills/`）：把本项目在
+  「JavaFX + JPMS + JNI + 反射 + 多平台分类器」这一复杂场景下编译原生镜像的经验沉淀成技能 ——
+  隔离四条、四类清单（初始化时机 / 反射 / 资源 / JNI）、按症状排错、产物自证四项、测量口径，
+  外加可拷贝的 POM 骨架、参数起点与工作流骨架。
+  技能按「开工前建骨架、边做边改、达成目标才成熟」的方式维护：条目带**状态**（推断 / 已踩坑 /
+  已验证 / 已定稿）与**来源**，未验证部分显式标注；当前 `0.1.0`（试验中），
+  成熟判据见技能内「用法」一节（含「在别的项目复用过一次」）。
+- **桌面端 0.2 六项功能**（按用户指定顺序）：
+  1. **工具卡片**：默认折叠；展开显示参数与带行号输出（前 200 行并写明总行数）；复制 / 查看全部；
+     失败卡片红边、正文摊开并给「重试 / 改参数后重试」——重试交给模型判断，不在本地偷偷重放命令。
+     结果行口径与 CLI 一致（不足 100ms 不显示耗时），耗时由注入的计时源保证可确定断言
+  2. **会话列表**：左栏列出 SQLite 里的真实会话（标题取用户重命名或首条用户消息、消息数、
+     相对时间），当前会话绿点加粗；点选即回放历史（只读，不重新推理）；
+     右键重命名 / 导出 Markdown / 导出 JSON / 删除（不可恢复的操作二次确认）
+  3. **日志面板**：往 log4j2 根记录器挂内存 appender，实时日志 + 级别过滤；
+     过滤在读的时候做，把门槛调回 DEBUG 仍能看到之前的记录
+  4. **输入区**：`/` 命令面板（命令名与 CLI 同名，只登记真能执行的命令；命令在本端执行、
+     不发给模型）、`@` 文件引用补全（跳过 `.git`/`target`/`node_modules` 等噪音目录）、
+     `↑`/`↓` 历史输入（不丢草稿）、`Tab`/`Enter` 接受候选
+  5. **授权弹窗**：权限人话说明、完整参数（执行类即完整命令）、按钮上写出被放宽的权限名、
+     默认焦点在「拒绝」且 `Esc` 即拒绝、列出本会话已自动允许的权限；
+     新增「工具 → 全部撤销本会话授权」（`Ctrl+Shift+R`）
+  6. **主题与设置**：暗色 / 亮色 / 跟随系统（换主题会把已建节点一起重刷，不是只换新控件）、
+     字号；设置存 `AHA_HOME/desktop.properties`；三条切换路径（`/theme`、视图菜单、设置面板）等价
+- **检查守卫两项**：`bin/CheckScripts.py` 新增「源码文件不得被 `.gitignore` 吃掉」；
+  `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
+
+### 变更
+- **构建契约明确化**：默认构建（不带 profile）只保证「能编译、能打 jar、不报错」；
+  工具链 / 平台相关的产物（原生镜像）**只在专用 profile 下**构建，
+  且内层开关默认关闭（`native.skip` 默认 `true`，由 `-Pdesktop-native` 置为 `false`）。
+  实测默认 `clean package`：反应堆 7 个模块、native 相关日志 0 行、原生模块 `target/` 未被触碰。
+  规则写进 `BuildSpec.md` §7 与 `DesktopNativeDesign.md` §2.0。
+- **构建产物统一落 `dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
+  与 CLI 发行包一起放进 `dist/`（已在 `.gitignore` 里）；
+  CLI 的 zip 改由工作流在临时目录打好后移入，避免把正在写入的归档自身收进去。
+  规则写进 `BuildSpec.md` §7。
+
+### 修复
+- **`.gitignore` 静默吃掉源码**：不带前导斜杠的 `Log/` 在任意层级匹配，且在 Windows / macOS
+  大小写不敏感，于是 `aha-desktop/.../desktop/log/` 的 8 个源文件从未进入版本控制——
+  git 不报错、`git add -A` 静默跳过、`git status` 显示干净、本地测试全绿，
+  只有 CI 报 `cannot find symbol`。运行期目录已锚定到仓库根（`/Data/` `/Key/` `/Log/` `/Model.yml`）
+- **残留的合并冲突标记**：`.github/workflows/CodeQL.yml`、`Docs/DevSpec/BuildSpec.md`、
+  `Docs/TODO.md` 里共 11 处标记已入库，其中 `CodeQL.yml` 因此一直是**无效工作流**；
+  已逐处解析（CodeQL 行动升到 v4，文档版本取新）
+- `InputHistory.next()` 复位顺序错误会丢掉用户正在输入的草稿
+- `FileMentions.insert()` 在光标位于片段之后时会替换错位置
+- `LogCapture` 卸载后重新安装会静默失效（判重条件问错了对象）
+- **主题应用顺序**：主题原来在界面建好之后才应用，只能靠逐个重刷已建节点；一旦漏掉某个控件
+  就会出现「日志说生效亮色、界面还是暗的」。改为启动时**先定色表再建界面**，
+  并把生效主题与实际色值写进日志自证
 - **自动打 tag**：`Build.yml` 新增 `tag` 作业——`dev` → `main` 的 PR 合并、且构建成功后，
   按根 `pom.xml` 的 `<version>` 创建 `V<版本号>` 附注 tag 并推送（同名已存在则跳过）；
   版本号只从 POM 读，工作流与文档不复制。注意：`GITHUB_TOKEN` 推的 tag 不会触发下游工作流，
   故 `Release.yml` 需手工触发或改用 PAT（见 [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) §4.2）
+- **桌面端按平台出包**：新增 `aha-desktop/src/assembly/dist-desktop.xml`，产出便携包
+  `aha-desktop-<版本>-<系统>-<架构>.zip`（`bin/` 启动脚本 + `lib/` 本项目模块与本平台 OpenJFX
+  原生库），文件名由构建期真实解析结果决定；`Release.yml` 新增 `desktop` 作业按
+  `ubuntu` / `windows` / `macos` 矩阵出包，由产物名 + 依赖树**双向自证**平台分类器后上传到
+  release 页面。桌面端启动脚本 `bin/AhaDesktop.{sh,bat}` 随包分发；`aha-desktop` 另声明
+  `aha-tool`，桌面端由此具备内置工具
+- **桌面端三栏骨架**：`DesktopShell` 搭出菜单栏 + 左 220 / 中弹性 / 右 280 + 底部 24px 状态栏；
+  左右两栏可折叠，菜单（视图）、快捷键（`Ctrl+B` / `Ctrl+J`）与栏边**常驻窄条按钮**三条路径等价
+  ——折叠后窄条仍在，鼠标用户随时能把栏展回来；折叠状态抽成不依赖 JavaFX 的 `FoldState`，
+  使「折叠→展开」的往返在无图形环境下也能被测试钉住；输入区支持 Enter 发送 /
+  Shift+Enter 换行，发送只落到本地消息流并明确提示「尚未接入 Agent」
+- **桌面端窗口骨架与线程桥接契约**（0.2 的第一步）：`AhaDesktopApp` 改为 `Application` 子类，
+  开窗并显示版本号；新增 `desktop/fx` 桥接契约（`FxDispatcher` / `PlatformFxDispatcher` /
+  `FxBridge`），把高频后台回调合并成每帧至多一次界面更新；`FxThreadContractTest` 扫描主源码
+  钉住「只有 `PlatformFxDispatcher` 可触碰 JavaFX 线程 API」；窗口冒烟测试默认跳过
+  （需图形环境），用 `-Daha.ui.tests=true` 显式开启
 - **构建**：`.gitignore` 补充本地工具的项目索引 `.xcodemap/` 与 `versions-maven-plugin` 的备份产物 `pom.xml.upgraded`，二者不入库
 
 - **Windows 平台**：修复三处只在 Windows 暴露的缺陷——`--help` 在非交互场景混入 ANSI 转义序列；
@@ -389,3 +471,50 @@
   PR 先合入 `dependa` 分支再人工合并；minor 与 patch 分组，major 单独成单
 
 [0.1.0]: https://github.com/ACANX/AHA/releases/tag/V0.1.0
+
+### 变更
+- **供应商配置更好用**：对话框宽度翻倍；列表用**绿灯**标出当前启用的供应商并附其模型
+  （状态行复述「● 已启用：<供应商> <模型> 密钥 <打码>」）；打开时默认选中当前启用项；
+  新增供应商支持「按预设新建」（六家已知供应商一键填好适配器 / 基础地址 / 默认模型），
+  模型字段是可编辑下拉（候选取自 `ModelDefault.yml` 的真实模型名，也允许自己填）
+- **桌面端可用了（最小可用版）**：接入 Agent，能真的对话——流式正文、工具卡片（类别配色 + 结果行）、
+  错误展示、用量回填、`Esc` 中断；左栏导航可用（新建会话 / 供应商 / 工具）；
+  输入框启动即获得焦点；供应商配置改为**可查看与修改的表单**（适配器 / 基础地址 / 模型 /
+  API Key（打码，可显示）/ 超时 / 重试 + 保存 / 设为默认 / 新增 / 删除，写回 `Model.yml`）。
+  对话内核与表单校验都抽成不依赖 JavaFX 的类（`ChatController` / `ChatView` / `ToolSummary` /
+  `DesktopToolApprover` / `ProviderForm`），因此整条链路在无图形环境下有 49 例测试覆盖
+- **桌面端窗口图标与标志**：把 `Logo.svg` 栅格化为 PNG 入库（新增 `bin/GenLogoPng.py`），
+  用作窗口 / 任务栏图标与空会话展示；生成器把 SVG 根元素宽高写成目标像素数、
+  开一个更高的窗口，再自己解码 PNG 按 alpha 裁掉透明边并**自检包围盒**
+  （第一版只验「是正方形、够大」，于是「只渲染出四分之一 / 只保留上半」的裁切图全数通过，
+  到真机启动才被发现）
+- **窗口尺寸按 DPI 缩放计算**：`Screen` 报的是物理像素而场景尺寸是逻辑像素，
+  之前在高 DPI（本机 150%）下按 800 逻辑像素开窗会变成 1200 物理像素，把输入区与底部状态栏
+  顶出屏幕；同时给消息区 `setMinHeight(0)`，避免 `ScrollPane` 把输入区挤出窗口
+- **桌面端正式读取配置**：新增 `aha-core` 的启动引导 `AhaBootstrap`（读项目 `./Aha.yaml`
+  → 装配日志 → 装密钥库回退源），CLI 与桌面端共用；桌面端窗口新增一行配置摘要
+  「配置：<路径> · 日志级别：<级别>」。此前桌面端固定用默认日志配置，
+  `Aha.Logging.*` 在桌面端完全不生效
+- **版本号与日志装配下移到公共模块**：`version.properties` 与 `AppVersion` 迁到 `aha-common`
+  （picocli 适配留在 `aha-cli` 的 `CliVersionProvider`，避免把 picocli 带进零依赖模块）；
+  `LoggingSetup` 迁到 `aha-core`（该模块的 `log4j-core` 改 `compile`）。桌面端因此能取到版本号、
+  配置日志，且无需依赖 `aha-cli`
+- **release 资产改名**：CLI 发行包由 `aha-<tag>-dist.zip` 改为 `aha-<版本>-cli.zip`
+  （版本从产物名读，不再用含 `V` 前缀的 tag 名），与桌面端的
+  `aha-desktop-<版本>-<系统>-<架构>.zip` 命名保持一致
+
+### 修复
+- **主配置不可用时不再让后续流程抛异常**：启动引导会退回内置默认并记一条警告；
+  此前 CLI 会把 `null` 传给后续流程，`CliContext` 二次读取配置时会抛错
+- **版本号清单不完整（静默错版本）**：`ReleaseProcess.md` 原文称「版本号只需改根 `pom.xml`」，
+  实测只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析——反应堆显示
+  `Building AHA-Common 0.1.0`、产物名 `aha-common-0.1.0.jar`、`aha --version` 仍报旧版本，
+  而构建**不报错**。清单更正为 8 处（根 POM + 六个子 POM 的 `<parent>` + `AppVersion.FALLBACK`）
+- **CHANGELOG 链接 404**：`[0.1.0]` 指向 `releases/tag/V0.1.0`，而实际 tag 是 `0.1.0`
+- **发布日**：`[0.1.0]` 由 `2026-10-06` 更正为实际发布日 `2026-10-07`（发布提交 `9138847`）
+
+## [0.1.0] - 2026-10-07
+
+首个可用版本：Core + CLI 可运行。
+
+### 新增

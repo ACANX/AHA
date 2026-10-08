@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.0</version>
+        <version>0.1.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -51,7 +51,10 @@
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <scope>runtime</scope>
+            <!--
+                compile scope：core 的 LoggingSetup 要用 Log4j2 的 API 程序化配置 appender
+                与级别（CLI 与桌面端共用这份配置）。实现的绑定仍由入口模块提供。
+            -->
         </dependency>
 
         <!-- 测试 -->

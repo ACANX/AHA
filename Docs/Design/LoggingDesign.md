@@ -1,6 +1,6 @@
 # 日志设计
 
-**文档版本**：v1.1.0
+**文档版本**：v1.3.0
 **状态**：冻结
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
@@ -15,6 +15,8 @@
 |---|---|---|---|
 | v1.0.0 | 2026-10-07 | 初始版本：技术选型、程序化装配、分级与分流、文件命名与切分规则、已知限制、测试与验收 | @ACANX |
 | v1.1.0 | 2026-10-07 | §4 新增「工具失败分两条路径」（已知拒绝 INFO 不带堆栈 / 未预期异常 ERROR 带堆栈）与「测试日志出口」（log4j2-test.xml 写文件、关 console）；§9 验收要求补「测试不得污染构建日志」 | @ACANX |
+| v1.2.0 | 2026-10-08 | 第 5 节更正后端位置：`log4j-core` 在 `aha-core` 为 `compile`（装配需 API），绑定实现由入口模块提供；§8 源码索引 `LoggingSetup` 改指 `aha-core`（D-10 下移） | @ACANX |
+| v1.3.0 | 2026-10-08 | 装配调用点改为 `AhaBootstrap.boot(...)`（CLI 与桌面端共用），并说明为何不允许入口各自直调 `apply`（桌面端曾因此让 `Aha.Logging.*` 失效） | @ACANX |
 
 ---
 
@@ -47,13 +49,13 @@
 | 层 | 选择 | 位置 |
 |---|---|---|
 | API | SLF4J（`org.slf4j:slf4j-api`） | 各模块均可依赖 |
-| 后端 | Log4j2（`log4j-slf4j2-impl` + `log4j-core`） | **只在 `aha-cli`** |
+| 后端 | Log4j2（`log4j-slf4j2-impl` + `log4j-core`） | `log4j-core` 在 `aha-core`（`compile`，装配要用 API）；绑定实现由入口模块提供 |
 
-**依赖方向**：`aha-core` 等模块只依赖 `slf4j-api`，**不绑定具体实现**；`aha-cli` 是组合根，
-显式引入 Log4j2 后端并在启动时装配。这样 Core 可脱离 CLI 被桌面端（0.2）或远程运行时复用，
-不必继承 CLI 的日志实现。
-
-`aha-cli/module-info.java` 因此需要 `requires org.slf4j;`、`requires log4j;`、`requires log4j.core;`。
+**依赖方向**：核心模块**经 SLF4J 记录**，不绑定实现；`log4j-slf4j2-impl`（绑定）由入口模块
+以 `runtime` scope 提供。装配逻辑 `LoggingSetup` 放在 `aha-core` 且 `log4j-core` 在 core 为
+`compile` scope——因为 CLI 与桌面端都要装配日志，而两者**不得互相依赖**
+（依赖矩阵见 `Constitution.md` 第 4 条）。因此 `aha-core/module-info.java` 需要
+`requires org.apache.logging.log4j;` 与 `requires org.apache.logging.log4j.core;`。
 
 ---
 
@@ -71,7 +73,8 @@ jar 内的 `log4j2.xml` 可能根本不被发现——症状是「配置文件�
 ```java
 // AhaCli.main
 AhaConfig loaded = loadConfig();                                  // ① 读配置
-LoggingSetup.apply(loaded == null ? null : loaded.logging());     // ② 装配日志
+AhaBootstrap.Result boot = AhaBootstrap.boot();   // ① 读 ./Aha.yaml ② 装配日志 ③ 装密钥库回退源
+boot.warnings().forEach(w -> System.err.println("[warn] " + w));
 installSecretResolver(loaded);                                    // ③ 密钥库
 CliContext.preload(loaded);                                       // ④ 复用配置
 new CommandLine(new AhaCli()).execute(args);                       // ⑤ 交给 picocli
@@ -124,6 +127,10 @@ static void install(LoggerContext context, String xml) throws IOException {
 **为什么 Console 是 stderr 且只输出 ERROR**：CLI 是交互式的，stdout 专供对话内容与
 提示符重绘；若把 INFO/WARN 写进 stdout，会打断流式输出与输入行。级别常量
 `CONSOLE_LEVEL` 在 `LoggingSetup` 中集中定义。
+
+**谁调用装配**：CLI 与桌面端都通过 `aha-core` 的 `AhaBootstrap.boot(...)` 间接调用
+（不能各自直接调 `apply`：那样两个入口会各写一遍读配置的逻辑，事实证明确实会分叉——
+桌面端曾长期传 `null`，于是 `Aha.Logging.*` 在桌面端完全失效，见 `TODO.md` `D-11`）。
 
 **为什么预期业务结果记 `INFO` 而非 `WARN`**：用户拒绝工具授权、参数不合法等属于
 **预期内的业务结果**，不是故障。它们记 `INFO`，既能进日志文件供追溯，
@@ -222,7 +229,7 @@ Log4j2 的 `DefaultRolloverStrategy` 达到 `max` 后，会**删除最旧的切�
 
 | 文件 | 职责 |
 |---|---|
-| `aha-cli/.../cli/LoggingSetup.java` | 装配：级别/路径解析、XML 生成、`install` 内核 |
+| `aha-core/.../core/logging/LoggingSetup.java` | 装配：级别/路径解析、XML 生成、`install` 内核（CLI 与桌面端共用；原在 `aha-cli`） |
 | `aha-core/.../config/LoggingConfig.java` | 配置记录（`Level` / `File`） |
 | `aha-core/src/main/resources/AhaDefault.yaml` | 默认值（`Aha.Logging`） |
 | `aha-cli/.../cli/session/ConfigView.java` | `/config` 展示 `Logging.Level` / `Logging.File` |

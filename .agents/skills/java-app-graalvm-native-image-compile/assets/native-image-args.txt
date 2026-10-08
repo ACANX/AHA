@@ -1,0 +1,58 @@
+# native-image 参数起点（按项目改）
+#
+# 用法：native-image @native-image-args.txt -cp <classpath> -H:Path=<dir> -H:Name=<name> <主类>
+#
+# 三档说明见 SKILL.md 的 args-cookbook：必须有 / 建议有 / 实验位。
+# 下面凡是标「待验证」的，都必须在你的项目上重新跑一遍再定稿。
+
+# ── 必须有 ──────────────────────────────────────────────────────────────────
+--no-fallback
+-O2
+-H:+ReportExceptionStackTraces
+-J-Xmx4g
+
+# ── 建议有 ──────────────────────────────────────────────────────────────────
+# classpath 模式 + JNI（GUI 工具包、JDBC 驱动）都在未命名模块里
+--enable-native-access=ALL-UNNAMED
+# 需要联网时的协议（默认集合不含它们）
+--enable-url-protocols=http,https
+# 非 UTF-8 字符集（Windows 控制台与文件编码探测依赖它）
+-H:+AddAllCharsets
+
+# ── 资源清单 ────────────────────────────────────────────────────────────────
+# 原生库扩展名（.so/.dylib/.dll）必须在内：GUI/JNI 的本地库就藏在各自的 jar 里
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+# ServiceLoader 的服务文件必须在内，否则「实现类找不到」
+-H:IncludeResources=META-INF/services/.*
+
+# ── 运行期初始化清单（种子，按报错补）────────────────────────────────────────
+# 判据：构建期初始化就会碰「只有运行期才存在的东西」（屏幕/窗口/原生库/系统主题/驱动环境）
+# GUI（以 JavaFX 为例）：
+--initialize-at-run-time=com.sun.javafx.application.PlatformImpl
+--initialize-at-run-time=com.sun.javafx.application.LauncherImpl
+--initialize-at-run-time=com.sun.javafx.logging.PlatformLogger
+--initialize-at-run-time=com.sun.javafx.util.Utils
+--initialize-at-run-time=com.sun.javafx.font
+--initialize-at-run-time=com.sun.glass.ui
+--initialize-at-run-time=com.sun.glass.utils.NativeLibLoader
+--initialize-at-run-time=com.sun.prism
+--initialize-at-run-time=com.sun.scenario.animation
+# 数据库驱动（以 sqlite-jdbc 为例；其它驱动改成自己的包名）：
+--initialize-at-run-time=org.sqlite
+# 日志框架（以 log4j2 为例；配置装配会读构建机路径）：
+--initialize-at-run-time=org.apache.logging.log4j.core.config
+--initialize-at-run-time=org.apache.logging.log4j.core.util
+
+# ── 实验位（默认注释掉，先跑「同参数换 JDK」这条最干净的对比）───────────────
+# GC：serial（默认，停顿可预期、体积最小）/ G1（堆大更稳）/ epsilon（无回收，只适合短命进程）
+# --gc=epsilon
+# --gc=G1
+# 体积瘦身：
+# -H:-IncludeAllTimeZones
+# -H:-IncludeAllLocales
+# 镜像内运行期堆（长驻程序建议显式给上限）：
+# -R:MaxHeapSize=512m
+# -R:MinHeapSize=64m
+# 排查用（会显著变慢，只在定位时开）：
+# -H:+PrintClassInitialization
+# -H:Log=registerResource:off

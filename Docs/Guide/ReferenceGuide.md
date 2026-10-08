@@ -1,6 +1,6 @@
 # 命令与配置参考
 
-**文档版本**：v1.29.0
+**文档版本**：v1.31.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-07
@@ -43,6 +43,8 @@
 | v1.27.0 | 2026-10-07 | `Aha.Logging.Level` 默认值更正为 `DEBUG` | @ACANX |
 | v1.28.0 | 2026-10-07 | 启动信息样本更新为实际输出：顶栏与右侧 ASCII 标志并排、细节整宽在下 | @ACANX |
 | v1.29.0 | 2026-10-07 | `aha chat` 新增 `--logo` 选项（auto / pixel / ascii / off） | @ACANX |
+| v1.30.0 | 2026-10-08 | 版本号说明改为「已发行版本 / dev 上版本 / 改版本号不止根 POM」，并指向 ReleaseProcess.md 第 2 节 | @ACANX |
+| v1.31.0 | 2026-10-08 | 版本号说明补充资源所在模块（`aha-common`，CLI 与桌面端共用） | @ACANX |
 
 ---
 
@@ -70,9 +72,12 @@
 | `aha --help` / `-h` | 帮助 | ✅ |
 | `aha --version` / `-V` | 版本 | ✅ |
 
-> **版本号**：`-V` 输出的版本在构建时由 Maven 注入（`AhaCli` 的 `@Command(version=...)`）。
-> 官方发行包为 `0.1.0`；从源码构建的版本号取自 `pom.xml`（开发期为 `X.Y.Z-SNAPSHOT`），
-> 由资源过滤写入 `version.properties` 后运行时读取，因此**改 `pom.xml` 即唯一来源**。
+> **版本号**：`-V` 输出的版本在构建时由 Maven 注入（`AhaCli` 的 `@Command(version=...)`）——
+> 由资源过滤写入 `version.properties`（位于 `aha-common`，CLI 与桌面端共用），运行时读取，
+> **根 `pom.xml` 是唯一来源**。
+> 已发行的版本见 release 页（当前最新为 `0.1.0`，tag `0.1.0`；`dev` 上工作在 `0.1.1`）。
+> 改版本号时**不止根 POM**：六个子模块的 `<parent><version>` 也要同步，
+> 否则构建会成功但产物仍是旧版本号（详见 [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节）。
 
 ---
 

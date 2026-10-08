@@ -101,4 +101,21 @@ class SessionManagerTest {
         // 恢复后进入缓存
         assertThat(restarted.exists(id)).isTrue();
     }
+
+
+    @Test
+    void listRenameAndDeleteDelegateToStore() {
+        InMemoryMemoryStore memory = new InMemoryMemoryStore();
+        SessionManager manager = new SessionManager(memory);
+        String id = manager.create(new SessionConfig("m", null, Map.of()));
+
+        assertThat(manager.list()).isEmpty();
+
+        manager.rename(id, "新标题");
+        manager.delete(id);
+
+        // 删除后不再是活跃会话，也不应再能取到配置
+        assertThat(manager.exists(id)).isFalse();
+        assertThat(memory.loadSession(id)).isNull();
+    }
 }

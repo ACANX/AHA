@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.memory;
 
 import com.acanx.module.aha.common.exception.AhaException;
 import com.acanx.module.aha.common.model.MemoryEntry;
+import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.ToolCall;
@@ -78,6 +79,9 @@ public final class SqliteMemoryStore implements MemoryStore {
                 // 请求体违反 OpenAI 协议（tool 消息必须带 tool_call_id），服务端返回 422。
                 ensureColumn(st, "message", "tool_calls", "TEXT");
                 ensureColumn(st, "message", "tool_call_id", "TEXT");
+                // 会话标题（用户重命名用）。老实现在这里新增列，靠 ensureColumn 迁移；
+                // 会话表原本没有标题列，而 CREATE TABLE IF NOT EXISTS 对已存在的表不生效。
+                ensureColumn(st, "session", "title", "TEXT");
                 st.executeUpdate("""
                         CREATE TABLE IF NOT EXISTS memory (
                             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,11 +272,50 @@ public final class SqliteMemoryStore implements MemoryStore {
         return entries;
     }
 
+    @Override
+    public List<SessionSummary> listSessions() {
+        // 标题：用户重命名过就用它；否则取该会话的首条用户消息（比显示 UUID 有用）。
+        // 一次查询取全，避免 N+1——列表每次刷新都会跑它。
+        String sql = "SELECT s.id AS id, s.gmt_create AS created, s.title AS title,"
+                + " (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS cnt,"
+                + " (SELECT m2.content FROM message m2 WHERE m2.session_id = s.id"
+                + "   AND m2.role = 'USER' ORDER BY m2.id LIMIT 1) AS first_user"
+                + " FROM session s ORDER BY s.gmt_create DESC";
+        List<SessionSummary> summaries = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String explicit = rs.getString("title");
+                String title = explicit == null || explicit.isBlank()
+                        ? rs.getString("first_user")
+                        : explicit;
+                summaries.add(new SessionSummary(
+                        rs.getString("id"), title, rs.getLong("created"), rs.getInt("cnt")));
+            }
+        } catch (SQLException e) {
+            throw new AhaException("DB_LIST_FAILED", "列出会话失败", e);
+        }
+        return summaries;
+    }
+
+    @Override
+    public void updateSessionTitle(String sessionId, String title) {
+        String sql = "UPDATE session SET title = ? WHERE id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, title == null || title.isBlank() ? null : title.strip());
+            ps.setString(2, sessionId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new AhaException("DB_RENAME_FAILED", "重命名会话失败: " + sessionId, e);
+        }
+    }
+
     /**
      * 删除会话及其消息与记忆。
      *
      * @param sessionId 会话 ID
      */
+    @Override
     public void deleteSession(String sessionId) {
         try (PreparedStatement m = connection.prepareStatement("DELETE FROM message WHERE session_id = ?");
              PreparedStatement mem = connection.prepareStatement("DELETE FROM memory WHERE session_id = ?");

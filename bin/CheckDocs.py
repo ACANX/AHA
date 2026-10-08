@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import re
 import sys
 from pathlib import Path
@@ -151,6 +152,57 @@ def check_links(path: Path) -> list[str]:
     return problems
 
 
+def check_conflict_markers() -> list[str]:
+    """检查有没有残留的合并冲突标记（`<<<<<<<` / `=======` / `>>>>>>>`）。
+
+    这个检查是有来历的：`dev` 与 `dependa` 合并后，`.github/workflows/CodeQL.yml`、
+    `Docs/DevSpec/BuildSpec.md`、`Docs/TODO.md` 三个文件里残留了 11 处冲突标记，
+    而且**已经进了版本库**。后果不只是文档难看：
+
+      * 带标记的 YAML 不是合法工作流——CodeQL 那一条其实一直是坏的；
+      * 版本头一行写着 `v1.20.0`，下面是 `=======`，谁都不知道该信哪个；
+      * 而这类残留不会让任何构建失败，只能靠人偶然看到。
+
+    所以把它变成检查：扫描受版本控制的文本文件，发现标记即失败。
+    """
+    try:
+        # --cached + --others --exclude-standard：已跟踪的与「未跟踪但没被忽略」的都要看。
+        # 只看已跟踪的话，冲突标记要等提交之后才被发现——那时 CI 已经红了一次。
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:  # pragma: no cover - 环境问题
+        return [f"调用 git 失败，无法检查冲突标记：{error}"]
+
+    if listed.returncode != 0:
+        return [f"调用 git 失败（exit={listed.returncode}）"]
+
+    suffixes = (".md", ".java", ".xml", ".yml", ".yaml", ".py", ".sh", ".bat", ".cmd",
+                ".properties", ".toml", ".json", ".txt", "")
+    problems: list[str] = []
+    for raw in listed.stdout.split("\0"):
+        if not raw:
+            continue
+        path = ROOT / raw
+        if path.suffix not in suffixes or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.split("\n"), start=1):
+            if (line.startswith("<<<<<<< ") or line.rstrip() == "======="
+                    or line.startswith(">>>>>>> ") or line.startswith("||||||| ")):
+                problems.append(f"{raw}:{number} 残留合并冲突标记：{line.strip()[:40]}")
+                break
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 文档一致性检查")
     parser.add_argument("--verbose", action="store_true", help="输出检查详情")
@@ -177,8 +229,13 @@ def main() -> int:
     print("\n[链接检查]")
     print("\n".join(f"  ❌ {p}" for p in link_problems) if link_problems else "  ✅ 全部有效")
 
-    if fence_problems or link_problems:
-        print(f"\n共 {len(fence_problems) + len(link_problems)} 个问题")
+    conflict_problems = check_conflict_markers()
+    print("\n[冲突标记检查]")
+    print("\n".join(f"  ❌ {p}" for p in conflict_problems) if conflict_problems
+          else "  ✅ 无残留合并冲突标记")
+
+    if fence_problems or link_problems or conflict_problems:
+        print(f"\n共 {len(fence_problems) + len(link_problems) + len(conflict_problems)} 个问题")
         return 1
     print("\n✅ 文档一致性检查通过")
     return 0

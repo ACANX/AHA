@@ -17,10 +17,9 @@ module com.acanx.module.aha.cli {
     // 所以这个问题只在模块路径下暴露。
     requires jdk.unsupported;
 
-    // 日志实现在应用层绑定：需要在运行时按 Aha.Logging 程序化配置 appender 与级别。
-    // core 仅依赖 slf4j-api，不绑定具体实现。
-    requires org.apache.logging.log4j.core;
-    requires org.apache.logging.log4j;
+    // 日志实现在应用层绑定：pom 里的 log4j-core / log4j-slf4j2-impl 提供实现；
+    // 配置逻辑（LoggingSetup）已下移到 core，故此处不再 requires Log4j2——
+    // 模块图经 core 的 requires 解析得到。
 
     exports com.acanx.module.aha.cli;
 

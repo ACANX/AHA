@@ -1,0 +1,64 @@
+# AHA 桌面端 · GraalVM native-image 参数清单（JDK 27 试验分支）
+#
+# 用法：由 POM 的 native-jdk27 profile 选择本文件：
+#     ./mvnw -Pdesktop-native,native-jdk27 -pl aha-desktop-native,aha-desktop -am package -DskipTests
+#
+# ── 这一份与 JDK 25 那份的关系 ────────────────────────────────────────────────
+# 基线（JDK 25）那份是**能编出来**的起点；这一份是**用来做对比实验**的。
+# 因此这里的每条改动都要能回答一个问题：「它把启动时间或内存占用改了多少？」
+# 改完把结果记到 Docs/Design/DesktopNativeDesign.md 第 5 节的对比表里。
+#
+# ── 关注点（对应「为 JDK 29 铺路」这件事）─────────────────────────────────────
+# 1. Project Leyden：AOT 类装载与链接、AOT 方法剖析。
+#    注意：native-image 本身已是「全量 AOT」，Leyden 的 AOT 缓存主要作用在 **JVM 模式**。
+#    因此这里的对比实际上是「原生镜像（JDK25 编）vs 原生镜像（JDK27 编）vs JVM+AOT 缓存」，
+#    第三条腿在 jar 模式下做（见 DesktopNativeDesign.md 第 5 节的三种形态）。
+# 2. 原始类型（Valhalla，预览）：价值在于去掉装箱与指针追逐。它需要**源码**使用值类型，
+#    光换 JDK 不会有效果——因此这一条目前只记录「是否可编译 / 预览开关是否与 native-image 兼容」。
+# 3. GC 策略：native-image 侧默认是 serial；下面对比位列了 epsilon 与 G1。
+#    取舍见下：epsilon 没有运行时回收，只适合「短命进程」，不适合本应用（一次会话可能很久）。
+
+# ── 与基线相同的部分（保持逐条对应，便于 diff 出真正的差异）──────────────────
+--no-fallback
+-O2
+-H:+ReportExceptionStackTraces
+-J-Xmx4g
+--enable-native-access=ALL-UNNAMED
+--enable-url-protocols=http,https
+-H:+AddAllCharsets
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+-H:IncludeResources=META-INF/services/.*
+--initialize-at-run-time=com.sun.javafx.application.PlatformImpl
+--initialize-at-run-time=com.sun.javafx.application.LauncherImpl
+--initialize-at-run-time=com.sun.javafx.logging.PlatformLogger
+--initialize-at-run-time=com.sun.javafx.util.Utils
+--initialize-at-run-time=com.sun.javafx.font
+--initialize-at-run-time=com.sun.glass.ui
+--initialize-at-run-time=com.sun.glass.utils.NativeLibLoader
+--initialize-at-run-time=com.sun.prism
+--initialize-at-run-time=com.sun.scenario.animation
+--initialize-at-run-time=org.sqlite
+--initialize-at-run-time=org.apache.logging.log4j.core.config
+--initialize-at-run-time=org.apache.logging.log4j.core.util
+
+# ── JDK 27 分支的差异（逐条说明「为什么」）───────────────────────────────────
+
+# 记录构建期 JDK 版本信息，便于事后区分产物（产物的 --version 也会带上）
+-H:+PrintClassInitialization
+-H:Log=registerResource:off
+
+# ── 实验结果位（默认注释掉：先跑「同参数 + 换 JDK」这条最干净的对比）──────────
+#
+# ① GC 选择（本应用是长驻 GUI，epsilon 只适合短命进程，仅作数据点）
+#    --gc=epsilon      启动最快、内存最省，但**没有回收**：会话久了会 OOM
+#    --gc=serial       默认；单线程 GC，停顿可预期
+#    --gc=G1           并发回收，堆大时更稳，但启动与静态体积更大
+#
+# ② 镜像体积 / 启动的常见取舍位
+#    -H:-IncludeAllTimeZones      只带上用到的时区（体积 -1~2 MB）
+#    -H:-IncludeAllLocales        同上
+#    -H:+UseCompressedReferences  32 位引用（默认在 <=32 GB 堆上开启）
+#
+# ③ 堆参数（native 镜像的默认堆按机器内存算，长驻 GUI 建议显式给上限）
+#    -R:MaxHeapSize=512m
+#    -R:MinHeapSize=64m
