@@ -295,7 +295,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | # | 风险 | 现状 | 应对 |
 |---|---|---|---|
 | R1 | JavaFX + native-image 需要一长串「运行期初始化」清单，首次跑很可能在某个类上失败 | 参数文件里已放了一批已知点（来自 Gluon Substrate 的同款处理方式），但**未验证到位** | 按失败信息把类名加进 `--initialize-at-run-time`；只改参数文件 |
-| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35、#37、#39）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException`；Glass 原生库又用 `FindClass` / `GetMethodID` 按名字查类与成员，需另一套 JNI 清单（#37 的 `FindClass` 与 #39 的平台子类成员） | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；再用 `jni-config.json` 补齐 `FindClass` 与平台实现类的 `Get*ID` 目标（85 条）；`NativeImageMetadataTest`（11 条）与工作流产物自证双层守卫 |
+| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35、#37、#39、#41）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException`；Glass 原生库又用 `FindClass` / `GetMethodID` 按名字查类与成员，需另一套 JNI 清单（#37 的 `FindClass` 与 #39 的平台子类成员）；效果渲染又用**动态类名**加载 peer（#41，`PPS<name>Peer` 等） | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；再用 `jni-config.json` 补齐 `FindClass` 与平台实现类的 `Get*ID` 目标（85 条），并登记 99 个效果 peer（共 439 条）；`NativeImageMetadataTest`（12 条）与工作流产物自证双层守卫 |
 | R3 | JavaFX 平台原生库未打进镜像 | 已把 `.so/.dylib/.dll` 纳入资源清单 | 首次真机运行若是 `UnsatisfiedLinkError`，据此调整 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 工作流用 `graalvm-community` 的对应版本号 | 该腿失败即是答案（隔离，不影响其余）；可先降到 JDK 26 或等发布 |
 | R5 | 产物体积大（把 JDK 与全部依赖编进去了） | 预期几十 MB | 后续再谈瘦身（`-H:-IncludeAllTimeZones` 等），先保证能跑 |
@@ -407,6 +407,18 @@ native 层拿到空引用继续跑就是段错误。
 `MacTimer` / `MacAccessible`；另加三平台共用的 `com.sun.glass.ui.EventLoop`），
 清单由 62 条增至 **85 条**。GTK 无需补——它经 `FindClass` 取类，#37 已覆盖。
 详见 [DevLog-20261009-05.md](../DevLog/DevLog-20261009-05.md)。
+
+**JNI 之外的第三层：效果 peer 的动态类名（issue #41，2026-10-09）**。JNI 清单补齐后，Windows 真机首次进到 GUI，
+但控件画不出：渲染到第一个用阴影效果的控件时反复报
+`Could not create peer LinearConvolveShadow for renderer …PPSRenderer`。
+根因与 #35 同源：`Renderer.getPeerInstance` 用**运行期拼出来的类名**反射加载效果 peer——
+`Class.forName(rootPkg + ".impl.prism.ps.PPS" + name + "Peer")`（内在 peer 走 `prism.Pr<name>Peer`；
+软件回退走 `sw.java.JSW<name>Peer` / `sw.sse.SSE<name>Peer`），closed-world 静态分析看不到。
+之前只登记了**渲染器工厂**与 **stock shader**，没登记**中间这一层** peer。
+修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
+用 `javap` 过滤 7 个 abstract 基类后，把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`
+（`allDeclaredConstructors`；`Class.forName` 属反射，故进这份清单而非 `jni-config.json`），
+元数据由 340 条增至 **439 条**。详见 [DevLog-20261009-06.md](../DevLog/DevLog-20261009-06.md)。
 
 ### 6.2 迭代时改哪里（只改一处）
 

@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 原生镜像可达性元数据守卫（issue #26、issue #35、issue #37、issue #39）。
+ * 原生镜像可达性元数据守卫（issue #26、issue #35、issue #37、issue #39、issue #41）。
  *
  * <p>JavaFX 的启动路径全在 native-image 的 closed-world 静态分析之外，
  * 必须在 {@code reachability-metadata.json} 里显式注册，否则运行期直接抛
@@ -51,6 +51,34 @@ class NativeImageMetadataTest {
             "com.sun.prism.j2d.J2DPipeline");
 
     private static final Pattern TYPE = Pattern.compile("\"type\"\\s*:\\s*\"([^\"]+)\"");
+
+    /**
+     * Prism 效果 peer 类（issue #41）。
+     *
+     * <p>{@code Renderer.getPeerInstance} 用**动态拼出来的类名**反射加载效果 peer：
+     * {@code Class.forName(rootPkg + ".impl.prism.Pr" + name + "Peer")} 与
+     * {@code Class.forName(rootPkg + ".impl.prism.ps.PPS" + name + "Peer")}；软件回退走
+     * {@code sw.java.JSW<name>Peer} / {@code sw.sse.SSE<name>Peer}（{@code RendererDelegate.getPlatformPeerName}）。
+     * 类名在构建期不可见，native-image 的 closed-world 看不到，未登记时渲染到该效果的控件会抛
+     * {@code Could not create peer <name> for renderer …}（issue #41 的直接报错点）。</p>
+     *
+     * <p>完整清单（99 个具体 peer，来自对 javafx-graphics 25 jar 的扫描）在
+     * {@code reachability-metadata.json}；这里守护每个包与回退路径的代表。</p>
+     */
+    private static final List<String> PRISM_EFFECT_PEERS = List.of(
+            // 直接报错点（prism.ps）
+            "com.sun.scenario.effect.impl.prism.ps.PPSLinearConvolveShadowPeer",
+            "com.sun.scenario.effect.impl.prism.ps.PPSLinearConvolvePeer",
+            "com.sun.scenario.effect.impl.prism.ps.PPSBlend_SRC_OVERPeer",
+            "com.sun.scenario.effect.impl.prism.ps.PPSColorAdjustPeer",
+            "com.sun.scenario.effect.impl.prism.ps.PPSPhongLighting_DISTANTPeer",
+            // Prism 内在 peer（prism）
+            "com.sun.scenario.effect.impl.prism.PrCropPeer",
+            "com.sun.scenario.effect.impl.prism.PrReflectionPeer",
+            // 软件回退：JSW（sw.java）与 SSE（sw.sse）
+            "com.sun.scenario.effect.impl.sw.java.JSWLinearConvolveShadowPeer",
+            "com.sun.scenario.effect.impl.sw.java.JSWBoxShadowPeer",
+            "com.sun.scenario.effect.impl.sw.sse.SSELinearConvolveShadowPeer");
 
     private static final Path METADATA = Path.of(
             System.getProperty("basedir", System.getProperty("user.dir")),
@@ -166,6 +194,17 @@ class NativeImageMetadataTest {
                     .as("%s 必须注册静态 getInstance()：GraphicsPipeline.createPipeline()"
                             + " 用 Class.forName + getMethod(\"getInstance\") 加载它", type)
                     .contains("\"getInstance\"");
+        }
+    }
+
+    @Test
+    void reachabilityMetadataRegistersPrismEffectPeers() throws IOException {
+        String json = readMetadata();
+        for (String type : PRISM_EFFECT_PEERS) {
+            assertThat(json)
+                    .as("%s 由 Renderer.getPeerInstance 用动态类名反射加载（PPS/Pr/JSW/SSE<name>Peer）；"
+                            + "未登记时渲染到该效果的控件会抛 Could not create peer（issue #41）", type)
+                    .contains("\"" + type + "\"");
         }
     }
 

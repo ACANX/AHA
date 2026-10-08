@@ -575,6 +575,10 @@ jobs:
           require_meta "com.sun.glass.ui.gtk.GtkPlatformFactory" "GtkPlatformFactory"
           require_meta "com.sun.glass.ui.mac.MacPlatformFactory" "MacPlatformFactory"
           require_meta "com.sun.prism.shader.Solid_Color_Loader" "stock shader 加载器"
+          # issue #41：Renderer.getPeerInstance 用动态类名加载效果 peer
+          # （PPS<name>Peer / Pr<name>Peer / JSW<name>Peer / SSE<name>Peer）；
+          # 未登记时渲染到该效果的控件会抛 Could not create peer，界面起来但控件画不出。
+          require_meta "com.sun.scenario.effect.impl.prism.ps.PPSLinearConvolveShadowPeer" "Prism 效果 peer（issue #41）"
           require_meta "com.acanx.module.aha.core.config.AhaConfig" "AHA 配置记录（Jackson）"
           require_meta "javafx.scene.Node" "JavaFX 运行期反射（tracing agent 采集补齐）"
           require_meta "com.sun.glass.ui.gtk.GtkView" "Glass 平台实现类（tracing agent 采集补齐）"
