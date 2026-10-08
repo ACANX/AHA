@@ -21,6 +21,28 @@
 - 常规 `./mvnw clean verify` 里**没有**这个模块；
 - 需要时显式激活：`./mvnw -Pdesktop-native -pl my-native,my-app -am package -DskipTests`。
 
+**只把模块移出 `<modules>` 还不够，要做两层**（否则「模块误入反应堆」就会要求环境装 GraalVM）：
+
+| 层 | 做法 | 作用 |
+|---|---|---|
+| ① 模块隔离 | 模块只在 profile 的 `<modules>` 里 | 默认反应堆里根本没有它 |
+| ② **内层开关给安全默认值** | 模块 POM 里 `<native.skip>true</native.skip>`，由 profile 置 `false` | 误入反应堆也不会去调用 `native-image` |
+
+```xml
+<!-- 聚合 POM：profile 同时给出模块与开关 -->
+<profile>
+    <id>my-native</id>
+    <modules><module>my-native</module></modules>
+    <properties><native.skip>false</native.skip></properties>   <!-- 唯一放开点 -->
+</profile>
+```
+
+**为什么值得这么做**：默认路径一旦依赖平台工具链，构建失败就从「代码问题」变成
+「环境问题」，而后者极难在别人的机器上复现——等于把一个可诊断的失败换成不可诊断的失败。
+
+顺带一个本机自检技巧：只想验证「依赖拷贝 → classpath 抽取 → 参数文件 → 打包」这条管线
+而不真编，就显式传 `-Dnative.skip=true`。
+
 > **注意**：父 POM 通常已经有别的 `<profiles>` 块（如按平台的 profile）。
 > **新 profile 要并进已有块**，另起一个 `<profiles>` 会报 `Duplicated tag: 'profiles'`。
 > 另外 XML 注释里禁止出现 `--`。
@@ -104,6 +126,35 @@ if: always() && needs.<版本作业>.result == 'success'   # 部分平台成功�
 5. **工具链自证**：把 `java -version`、`native-image --version`、本腿参数、
    版本号全部打印出来（「门禁必须自证」）。
 6. **构建**：走项目统一的 Maven 入口（若有「清负缓存 + 只对瞬时故障重试」的包装，就用它）。
+
+   > **重试必须每轮重建前置条件**（2026-10-08 实测）
+   >
+   > Maven 的负缓存（`*.lastUpdated`）是**首次失败时写入**的。若包装脚本只在
+   > 循环**之前**清一次，就会出现：
+   >
+   > ```
+   > 第 1 次：真的去取 → 失败 → 写下 *.lastUpdated
+   > 第 2 次：命中负缓存 → 立刻失败（日志与第 1 次逐字相同）
+   > 第 3 次：同上
+   > ```
+   >
+   > 「重试了 3 次」因此等于**没重试**。两种识别信号：
+   > **① 三次日志逐字相同；② 报的是「找不到」而不是「传输出错」**。
+   > 修法：把清理抽成函数，放进循环体每轮调用：
+   >
+   > ```bash
+   > clear_failure_cache() {
+   >   find "${HOME}/.m2/repository" -name '*.lastUpdated' -delete 2>/dev/null || true
+   > }
+   > for i in $(seq 1 "${MVN_ATTEMPTS}"); do
+   >   clear_failure_cache          # ← 关键：清理进循环体
+   >   ...
+   > done
+   > ```
+   >
+   > 判据顺序也要写进提示里：**先查「该 artifact 在仓库上是否存在」（`curl -sI` 看状态码），
+   > 再查网络/代理，最后才怀疑坐标**——因为坐标写错时 Maven 同样报「中央仓库找不到」，
+   > 与真正的仓库故障长得一模一样。
 7. **产物自证**：存在 → 体积下限 → 平台魔法数 → 关键依赖数量（见下一节）。
 8. **改名并上传制品**，命名包含「版本 + JDK 轴 + 平台标签」，用户一眼能挑对。
    - 构建产物统一输出到 `dist/`（仓库根只放源码与文档）；
