@@ -117,8 +117,8 @@
   且内层开关默认关闭（`native.skip` 默认 `true`，由 `-Pdesktop-native` 置为 `false`）。
   实测默认 `clean package`：反应堆 7 个模块、native 相关日志 0 行、原生模块 `target/` 未被触碰。
   规则写进 `BuildSpec.md` §7 与 `DesktopNativeDesign.md` §2.0。
-- **构建产物统一落 `dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
-  与 CLI 发行包一起放进 `dist/`（已在 `.gitignore` 里）；
+- **构建产物统一落 `Dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
+  与 CLI 发行包一起放进 `Dist/`（已在 `.gitignore` 里）；
   CLI 的 zip 改由工作流在临时目录打好后移入，避免把正在写入的归档自身收进去。
   规则写进 `BuildSpec.md` §7。
 
@@ -515,7 +515,7 @@
 
 #### 发行与发布
 
-- 发行包（`mvnw clean package` 产出 `dist/`）：`maven-assembly-plugin` 将 `aha-cli` 自身、
+- 发行包（`mvnw clean package` 产出 `Dist/`）：`maven-assembly-plugin` 将 `aha-cli` 自身、
   全部模块与第三方依赖收集到 `lib/`，并附带 `bin/Aha.sh` / `bin/Aha.bat` 启动脚本；
   分发方式为 JPMS 模块路径目录，与启动脚本的 `--module-path lib` 一致
 - **跨平台启动脚本**：`Aha.sh` 支持 `JAVA_HOME`、校验 `lib/` 存在并给出可读错误提示；
@@ -525,7 +525,7 @@
   的受限方法警告
 - `Release.yml` 发布完整的 `dist.zip`
 - 父 POM 补充发布元数据：`<url>`、`<licenses>`（Apache-2.0）、`<developers>`、`<scm>`
-- `mvn clean` 一并清空 `dist/` 中的构建产物（保留目录）：assembly 只覆盖同名文件，
+- `mvn clean` 一并清空 `Dist/` 中的构建产物（保留目录）：assembly 只覆盖同名文件，
   旧版本的依赖 jar 会残留，而 JPMS 下一个模块出现两个版本是致命错误
   （`java.lang.module.FindException: Two versions of module ...`），
   依赖升级后重新构建出的发行包会直接启不来

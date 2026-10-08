@@ -281,7 +281,7 @@ jobs:
             echo "::warning::runner 上没有 python，无法打独立报告包"
             exit 0
           fi
-          out="dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
+          out="Dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
           "$py" -c "import sys,zipfile,glob,os; out,work=sys.argv[1],sys.argv[2]; files=sorted(glob.glob(work+'/*build-report.*')+glob.glob(work+'/*.build_artifacts.txt')+glob.glob(work+'/reachability-metadata.json')+glob.glob('aha-cli-native/src/native/native-image-args*.txt')+glob.glob('aha-cli/target/classes/META-INF/native-image/picocli-generated/*.json')); z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [z.write(f,os.path.basename(f)) for f in files]; z.close(); print(out, len(files), 'files')" "$out" "$work"
           ls -lh "$out"
           "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
@@ -292,7 +292,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Cli-Native-Report-${{ matrix.label }}-jdk${{ matrix.jdk }}
-          path: dist/AHA-Cli-Native-*-Report.zip
+          path: Dist/AHA-Cli-Native-*-Report.zip
           if-no-files-found: warn
           retention-days: 90
 
@@ -319,8 +319,8 @@ jobs:
           echo "—— 现场：候选可执行文件 ——"
           find aha-cli-native/target -maxdepth 3 -type f \
                \( -name 'aha-cli-native' -o -name 'aha-cli-native.exe' \) 2>/dev/null || true
-          echo "—— 现场：dist/ ——"
-          ls -la dist 2>/dev/null | head -20 || true
+          echo "—— 现场：Dist/ ——"
+          ls -la Dist 2>/dev/null | head -20 || true
 
           # ① 找可执行文件：先看约定位置，再在整个 target/ 兜一遍
           bin=$(ls "$work/aha-cli-native" "$work/aha-cli-native.exe" 2>/dev/null | head -n1 || true)
@@ -403,13 +403,13 @@ jobs:
           fi
 
           # ⑦ 独立报告包是否真的生成
-          rpt_note="未检查（dist/ 下没有报告包）"
-          rpt=$(ls -t dist/AHA-Cli-Native-*-Report.zip 2>/dev/null | head -n1 || true)
+          rpt_note="未检查（Dist/ 下没有报告包）"
+          rpt=$(ls -t Dist/AHA-Cli-Native-*-Report.zip 2>/dev/null | head -n1 || true)
           if [ -n "$rpt" ]; then
             rpt_note="$(basename "$rpt")"
             echo "独立报告包：$rpt_note"
           else
-            rpt_note="**缺失**（dist/ 下没有 AHA-Cli-Native-*-Report.zip）"
+            rpt_note="**缺失**（Dist/ 下没有 AHA-Cli-Native-*-Report.zip）"
             echo "::warning::${rpt_note}——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
           fi
 
@@ -470,8 +470,8 @@ jobs:
         run: |
           set -euo pipefail
           # POM 产出的是 aha-cli-native-<版本>-<jdk>.zip，这里加上「操作系统 + 架构」。
-          src=$(ls dist/aha-cli-native-*.zip)
-          target="dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
+          src=$(ls Dist/aha-cli-native-*.zip)
+          target="Dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
@@ -483,8 +483,8 @@ jobs:
         with:
           name: Cli-Native-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
-            dist/AHA-Cli-Native-*.zip
-            !dist/AHA-Cli-Native-*-Report.zip
+            Dist/AHA-Cli-Native-*.zip
+            !Dist/AHA-Cli-Native-*-Report.zip
           if-no-files-found: warn
           retention-days: 14
 
@@ -563,7 +563,7 @@ jobs:
             解压即用，不需要本机装 JDK。
 
             > ⚠️ **试验性产物，不是正式发行包。** 正式使用请选 JVM 版
-            > （`dist/` 下的 CLI 发行包）。这里的东西用来「下载下来就能跑」。
+            > （`Dist/` 下的 CLI 发行包）。这里的东西用来「下载下来就能跑」。
 
             ## 版本
             - 本版版本号：`${{ needs.cli-native-version.outputs.version }}`

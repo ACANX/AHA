@@ -49,7 +49,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SKIP_DIRS = {"target", ".git", "dist", "node_modules", ".idea", ".vscode"}
+SKIP_DIRS = {"target", ".git", "Dist", "dist", "node_modules", ".idea", ".vscode"}
 BAT_SUFFIXES = {".bat", ".cmd"}
 SH_SUFFIXES = {".sh", ".bash"}
 PY_SUFFIXES = {".py"}
@@ -80,7 +80,7 @@ def collect() -> dict[str, list[Path]]:
                 found["yml"].append(base / name)
             elif suffix == ".xml":
                 # 只关心仓库自己的 XML（pom.xml、assembly 描述符等）。
-                # target/ 与 dist/ 已在 SKIP_DIRS 里剪掉，不会扫到生成物。
+                # target/ 与 Dist/ 已在 SKIP_DIRS 里剪掉，不会扫到生成物。
                 found["xml"].append(base / name)
     return {group: sorted(paths) for group, paths in found.items()}
 

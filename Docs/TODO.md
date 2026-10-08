@@ -1,9 +1,9 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.29.0
+**文档版本**：v0.38.0
 **状态**：草稿
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-09
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -90,9 +90,9 @@
 
 ```bash
 ./mvnw -pl aha-cli exec:java
-# 或（需先执行 ./mvnw clean package 生成 dist/）
-dist/bin/Aha.sh chat         # Linux / macOS
-dist\bin\Aha.bat chat        # Windows
+# 或（需先执行 ./mvnw clean package 生成 Dist/）
+Dist/bin/Aha.sh chat         # Linux / macOS
+Dist\bin\Aha.bat chat        # Windows
 ```
 
 与顶层 `README.md` 一致，且已注明前置条件。**无残留动作。**
@@ -224,9 +224,9 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | 项                              | 原记录        | 现状                              |
 | ------------------------------- | ------------- | --------------------------------- |
 | 父 POM `jackson.version`        | `3.1.3`       | **`3.2.3`**（已升级）             |
-| `dist/lib/jackson-annotations`  | `2.21`        | **`2.22`**                        |
-| `dist/lib/jackson-core`         | `3.1.3`       | `3.2.3`                           |
-| `dist/lib/jackson-databind`     | `3.1.3`       | `3.2.3`                           |
+| `Dist/lib/jackson-annotations`  | `2.21`        | **`2.22`**                        |
+| `Dist/lib/jackson-core`         | `3.1.3`       | `3.2.3`                           |
+| `Dist/lib/jackson-databind`     | `3.1.3`       | `3.2.3`                           |
 
 **结论**：原分析成立——`jackson-annotations` 保留 `com.fasterxml.jackson.annotation`
 坐标、版本号与核心不同步属**预期行为**，不构成缺陷；且两者均随升级同步前进。
@@ -279,7 +279,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **连带修正（本轮已落地）**：`Constitution.md` 第 1 条、`BuildSpec.md` §7、`AHA-Design-V1.md`
 第 1 条与头部、`README.md`、`AGENTS.md`、`ArchitectureOverview.md` 的「JPMS 强制启用」
 全部改为「**优先启用（非强制）**」；fat JAR 的禁用理由改述为「无法按模块追踪依赖与许可、
-无法与 `dist/{bin,lib}` 布局一致」，**不再挂在 JPMS 上**；`TestingSpec.md` 的 TestFX 行补注
+无法与 `Dist/{bin,lib}` 布局一致」，**不再挂在 JPMS 上**；`TestingSpec.md` 的 TestFX 行补注
 「与 JPMS 冲突时可在 classpath 下运行」。
 
 **残留动作**：OpenJFX 真正引入后，若发现模块化阻碍（TestFX、WebView 反射、`--add-opens`），
@@ -375,7 +375,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **已落地**：父 POM 的 `javafx-*` per-OS profile（设 `javafx.platform`）+
 `dependencyManagement`（三个工件带分类器）+ `aha-desktop` 显式声明与空壳排除。
 实测依赖树只剩本平台三个真 jar（`javafx-base` / `javafx-graphics` / `javafx-controls` 的
-`linux` 分类器），模块名均无 `[auto]`；`dist/lib` 的 18 个 jar 中 javafx 相关为 0（CLI 不受影响）。
+`linux` 分类器），模块名均无 `[auto]`；`Dist/lib` 的 18 个 jar 中 javafx 相关为 0（CLI 不受影响）。
 详见 `DesktopDesign.md` 第 5 节。
 
 **描述符已加**：`aha-desktop/src/assembly/dist-desktop.xml` 产出便携包
@@ -388,7 +388,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 （✅ 已核实）；JavaFX 的平台 classifier 机制属外部知识（⚠️），需在引入 JavaFX 后实测。
 
 **残留动作**：为桌面端另建 assembly 描述符（如 `dist-desktop.xml`），用 `<classifier>` 或
-profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再依赖 `dist/lib` 布局。
+profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再依赖 `Dist/lib` 布局。
 
 ### D-02 ✅ 已完成（2026-10-08）：桌面端独立启动脚本
 
@@ -398,6 +398,12 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 **已实现**：新增 `bin/AhaDesktop.sh`（LF）与 `bin/AhaDesktop.bat`（纯 ASCII + CRLF，经
 `bin/CheckScripts.py` 校验），**未改动** `bin/Aha.sh` / `bin/Aha.bat`（不在现有脚本里加分支）。
 两者以 JPMS 模块路径启动 `com.acanx.module.aha.desktop.AhaDesktopApp`，并随桌面端便携包一起分发。
+
+**补记（2026-10-09）**：脚本原假设「位于发行包 `bin/`、父目录有 `lib/`」，在**源码根**直接运行
+`\bin\AhaDesktop.bat` 会报「找不到 lib」，而提示的 `clean package` 并不会产出 `lib/`
+（只产出 `Dist/aha-desktop-*.zip`）。现已让脚本识别两种布局：没有 `lib/` 时按平台选
+`Dist/aha-desktop-*.zip`，解压到带时间戳的目录后启动，详见
+[DevLog-20261009-06.md](DevLog/DevLog-20261009-06.md)。
 
 ### D-03 ☐ 未完成
 
@@ -546,6 +552,9 @@ desktop 亦未列 tool 依赖。
 | v0.33.0 | 2026-10-08 | `N-21` 推进：在 WSL + GraalVM 25.0.2 上首次真跑 tracing agent（CLI 端），采集 400 类型 / 55 资源，与手写清单完成交叉验证；结论回写技能（`discovery` §2.4、`catalog` §A.2） | @ACANX |
 | v0.34.0 | 2026-10-08 | 把 agent 采集**制度化**进技能（新增 `references/agent-collection.md` + `scripts/collect-metadata.sh`）；GUI 端也跑了一轮，补进客户端原生镜像元数据 47 条（293→340）；新增 `N-22`（Win/mac 平台采集） | @ACANX |
 | v0.35.0 | 2026-10-08 | 真机暴露 issue #37（Glass 初始化处 JNI `FindClass` 失败 → segfault）；新增 `jni-config.json`（62 类，扫描 openjfx 三平台 native 源码得到）；`N-16` 进入第二轮待验证 | @ACANX |
+| v0.36.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `DevLog-20261009-06.md` | @ACANX |
+| v0.37.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
+| v0.38.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-10`（推送本分支并提 PR） | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -723,13 +732,13 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 ### E-11 ⏸ 待决策
 
 **复核（✅ 已核实）**：`BuildSpec.md` §7 仍规定「发行包固定为 JPMS 模块路径目录
-（`dist/bin` + `dist/lib`）」；native-image 单文件产物与之不兼容。
+（`Dist/bin` + `Dist/lib`）」；native-image 单文件产物与之不兼容。
 
 **残留动作**：定义**发行矩阵**并写入 `BuildSpec.md` §7：
 
 | 发行形态                        | 目标用户       | 产物            | 状态      |
 | ------------------------------- | -------------- | --------------- | --------- |
-| JPMS 模块路径目录（`dist/`）    | 需 JVM、可调优 | `aha-<版本>-cli.zip` | ✅ 已实现 |
+| JPMS 模块路径目录（`Dist/`）    | 需 JVM、可调优 | `aha-<版本>-cli.zip` | ✅ 已实现 |
 | 桌面端便携包（按平台）          | 需 JDK 25      | `aha-desktop-<版本>-<系统>-<架构>.zip` | ✅ 流水线已就位 |
 | native-image 单文件             | 免 JVM、启动快 | 平台可执行文件  | ☐ 未开工  |
 | `jpackage` 安装包（0.2 桌面端） | 普通用户       | MSI / DEB / DMG | ☐ 未开工  |
@@ -1331,6 +1340,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
 | G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
 | G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
+| G-10 | 推送本次变更分支并提 PR（`fix/issue-37-update-script` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/fix/issue-37-update-script` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 
@@ -1605,8 +1615,8 @@ native-image --version
 
 # A-03/D-01：确认发行包实际内容
 ./mvnw clean package
-ls -l dist/lib/
+ls -l Dist/lib/
 
 # C-01：确认模块边界是否真的阻止了非法引用（可故意加一条 requires 验证）
-jdeps --module-path dist/lib --module com.acanx.module.aha.core
+jdeps --module-path Dist/lib --module com.acanx.module.aha.core
 ```

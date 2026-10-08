@@ -59,9 +59,9 @@ mvn clean verify             # Maven 3.9.x 兼容验证（CI：Compat.yml）
 
 ```bash
 ./mvnw -pl aha-cli exec:java
-# 或（需先执行 ./mvnw clean package 生成 dist/）
-dist/bin/Aha.sh chat         # Linux / macOS
-dist\bin\Aha.bat chat        # Windows
+# 或（需先执行 ./mvnw clean package 生成 Dist/）
+Dist/bin/Aha.sh chat         # Linux / macOS
+Dist\bin\Aha.bat chat        # Windows
 ```
 
 ### 运行测试
@@ -176,6 +176,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 - [GettingStarted.md](Docs/Guide/GettingStarted.md) - 快速开始
 - [BuildGuide.md](Docs/Guide/BuildGuide.md) - 构建指南
+- [CommandCheatsheet.md](Docs/Guide/CommandCheatsheet.md) - 常用命令速查（编译 / 更新 / 解压 / 启动；落地为 `Dist/README.commands.md`）
 - [ConfigurationGuide.md](Docs/Guide/ConfigurationGuide.md) - 配置指南
 - [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) - 供应商设置
 - [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) - 工具使用

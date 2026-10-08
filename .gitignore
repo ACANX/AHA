@@ -1,6 +1,12 @@
 # Maven
 target/
-dist/
+
+# 构建输出目录。项目目录名用大驼峰 Dist；同时防御小写 dist（Linux/CI 上若仍有工具写小写）。
+# 必须写成 `Dist/*` 而不是 `Dist/`：被忽略**目录**内的文件无法用 `!` 重新包含。
+Dist/*
+dist/*
+!Dist/README.commands.md
+
 aha-desktop-*.zip
 pom.xml.tag
 pom.xml.releaseBackup
