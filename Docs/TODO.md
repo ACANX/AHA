@@ -557,6 +557,7 @@ desktop 亦未列 tool 依赖。
 | v0.38.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `DevLog-20261009-07.md` | @ACANX |
 | v0.39.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
 | v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
+| v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，新增 `N-24`、`G-13` | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1314,6 +1315,15 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       ；② 走一遍窗口/控件/主题相关效果路径（阴影 / 颜色调整 / 混合等）；③ 若仍缺类，
       按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与对应 `DevLog`。
       依赖：`G-11`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
+- [ ] **N-24**：真机验证原生桌面端与 JVM 模式的**字体渲染一致性**（issue #44 遗留项）。
+      背景：同机同配置下，原生镜像的字形清晰度 / 字体与 JVM（jar）模式差距明显，而 #44 的另
+      三类界面问题均已修。可能的方向：① Prism 渲染管线是否回退到软件管线（软件管线无次像素
+      抗锯齿，字会发虚）；② 原生镜像下的字体枚举 / 默认字体解析是否与 JVM 不同；③ 高分辨率
+      缩放比读取是否一致。
+      验收标准：① 日志 / 真机能确认实际使用的 Prism 管线与 LCD 文本开关；② 原生包的默认字体
+      与 JVM 模式一致；③ 字形清晰度肉眼与 JVM 模式无异；④ 定位到的缺口按同一格式补进元数据
+      或启动参数，并回写 `Docs/Design/DesktopNativeDesign.md` 与对应 `DevLog`。
+      依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1362,6 +1372,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-10 | 推送 issue #39 的修复分支并提 PR（`fix/issue-39-native-winwindow-jni` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 第三轮无法开工 | ① `git ls-remote origin refs/heads/fix/issue-39-native-winwindow-jni` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧b 条输出「已注册 JNI 可达类」 | ☐ 未完成 |
 | G-11 | 推送 issue #41 的修复分支并提 PR（`fix/issue-41-native-effect-peers` → `dev`） | 不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-23` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-41-native-effect-peers` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧ 条能看到 `PPSLinearConvolveShadowPeer` | ☐ 未完成 |
 | G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
+| G-13 | 推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 
