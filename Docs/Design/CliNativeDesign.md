@@ -202,6 +202,9 @@ POM 与工作流**不需要动**：参数文件是单一来源，且会原样打
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：**共享方法论**（隔离四面、版本规则、
   产物自证、构建报告、JDK 轴对比实验）——本文不重复
 - [CLIDesign.md](CLIDesign.md)：CLI（JVM 模式）的设计与备选方案
+- 技能 [`graalvm-reachability-metadata`](../../.agents/skills/graalvm-reachability-metadata/SKILL.md)：
+  **元数据登记**的方法论（三路发现法、来源优先级、四层守卫、常见框架经验库）——
+  本模块的元数据决策（picocli 用注解处理器、JLine Signals 补齐、资源逐项核）都遵循它
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）

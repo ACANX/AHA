@@ -147,15 +147,22 @@ metadata:
 
 ## 四类清单（原生镜像的全部难点都在这四类）
 
+> **本节只给入口。** 元数据的**发现 → 登记 → 验证 → 守卫**这条纵向链路已单独抽成技能：
+> [**graalvm-reachability-metadata**](../graalvm-reachability-metadata/SKILL.md)
+> （三条发现路径、来源优先级、精确签名、JNI、资源、四层守卫）。
+> 本节只给与你项目最相关的方向，具体做那一步时看那份技能。
+
 | 类别 | 症状 | 处理方向 |
 |---|---|---|
 | **初始化时机** | 构建期报错「构建时初始化失败 / 触碰了运行期才有的东西」 | `--initialize-at-run-time=<类或包>`（GUI、驱动、日志框架是重灾区） |
-| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reflect-config.json` / `--initialize-at-run-time` / 改用显式注册 |
-| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `-H:IncludeResources=<正则>` |
-| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError` | 让原生库作为资源进镜像 + `--enable-native-access` + 运行期初始化本地加载器类 |
+| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reachability-metadata.json` / `reflect-config.json` / 改用显式注册 |
+| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `resource-config.json` 精确清单 / `-H:IncludeResources=<正则>` |
+| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError`、原生回调失败 | 让原生库作为资源进镜像 + `--enable-native-access` + `jniAccessible` + 运行期初始化加载器类 |
 
 逐条的症状到修法对照，见 [troubleshooting](references/troubleshooting.md)；
-参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)。
+参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)；
+元数据的发现 / 登记 / 验证与常见框架经验库，见
+[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)。
 
 ## 产物自证（不要只看「构建成功」）
 
@@ -254,6 +261,9 @@ GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上�
 - [isolation-and-ci](references/isolation-and-ci.md)：四隔离的落地骨架与 CI 编排
 - [measurement-and-experiments](references/measurement-and-experiments.md)：启动速度与内存的测量口径与实验设计
 - [skill-lifecycle](references/skill-lifecycle.md)：这份技能自身的迭代方法、状态标记与迁移清单
+- **[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)**（姊妹技能）：
+  元数据的**发现 / 登记 / 验证 / 守卫**专精（反射 / JNI / 资源 / 初始化），
+  含三路发现法、来源优先级与常见框架经验库 —— 本技能只管「从 jar 到原生二进制」的工程化
 
 ## 模板资产
 

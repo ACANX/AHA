@@ -199,6 +199,8 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | `tool-authoring` | 新增工具 | [SKILL.md](.agents/skills/tool-authoring/SKILL.md) |
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
+| `java-app-graalvm-native-image-compile` | 把 jar 模式程序编成多平台原生镜像（隔离、构建、CI、参数、测量） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
+| `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 资源 / 初始化）：发现 → 登记 → 验证 → 守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 
 ## 常用命令
 

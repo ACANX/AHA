@@ -613,6 +613,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
 | `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
+| `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 文件资源 / 运行期初始化）：三路发现法、来源优先级、精确签名、四层守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 
 ## 常用命令
 

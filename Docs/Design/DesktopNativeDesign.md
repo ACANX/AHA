@@ -399,8 +399,10 @@ CLI 发行 zip）一律输出到 `dist/`：
 
 ## 6.4 技能边做边改（本项目约定的工作方式）
 
-本项目同时产出一份可复用的技能：`.agents/skills/java-app-graalvm-native-image-compile/`。
-它的用法被刻意定成**活文档**，而不是做完之后的总结：
+本项目同时产出可复用的技能：工程化全流程的
+`.agents/skills/java-app-graalvm-native-image-compile/`，以及从桌面端 / CLI 两轮实践里抽出的
+元数据专精 `.agents/skills/graalvm-reachability-metadata/`（反射 / JNI / 资源 / 运行期初始化的
+发现 → 登记 → 验证 → 守卫）。前者（本设计所属）的用法被刻意定成**活文档**，而不是做完之后的总结：
 
 - **开工前建骨架**：目标、非目标、四类清单的种子（允许大量「推断待验证」条目）；
 - **每次失败立刻补一条**：格式固定「症状 → 根因 → 修法」，并记来源（哪次运行、哪条报错）；
