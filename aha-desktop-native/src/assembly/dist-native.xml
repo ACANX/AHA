@@ -38,11 +38,14 @@
             <includes>
                 <include>README.txt</include>
                 <!--
-                    构建报告（native-image 的「emit build report」参数产出）：
-                    它是「下一步该加什么参数」的依据，
-                    也是「这个二进制是在什么配置下编出来的」的机器可读证据。
+                    构建报告（native-image 的「emit build report」参数产出，
+                    真实文件名是 <可执行名>-build-report.html）**刻意不放进镜像包**：
+                    实测它有 34~36 MB，比可执行文件本身之外的任何内容都大，
+                    塞进来会让镜像包从约 38 MB 涨到约 72 MB。
+                    它的去处是**单独的报告制品** `native-report-<平台>-jdk<版本>`（保留 90 天），
+                    要分析体积/启动时下那个小件即可。
+                    若确实想让镜像包也带上它，把下面这行换成：<include>*build-report.*</include>
                 -->
-                <include>build-report*</include>
                 <!-- 可达性元数据（真实来源在 aha-desktop，构建时复制过来一份） -->
                 <include>reachability-metadata.json</include>
             </includes>

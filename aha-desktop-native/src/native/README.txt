@@ -1,10 +1,10 @@
 AHA 桌面端 · 原生镜像（试验性产物）
 版本：${aha.native.version}
-生成方式：GraalVM native-image（参数见同目录 build-report.json / build-report.html
-    本次构建的机器可读报告（由参数里的「emit build report」产出）。
-    它是后续调优的唯一依据：镜像体积、资源占用、可达性未决项都在里面。
-    同一份报告也会作为单独的 CI 制品上传（native-report-<平台>-jdk<版本>），
-    不想下整个镜像包时，直接下那个制品即可。
+生成方式：GraalVM native-image（参数见同目录 构建报告（不在本包内）
+    本次构建的报告由参数里的「emit build report」产出，真实文件名是
+    <可执行名>-build-report.html，体积 34~36 MB。它**刻意不放进本包**（否则包会翻倍），
+    而是作为单独的 CI 制品上传：native-report-<平台>-jdk<版本>（保留 90 天）。
+    里面是「下一步该加什么参数」的依据：镜像体积、内嵌资源占用、可达性未决项。
 
 native-image-args.txt）
 

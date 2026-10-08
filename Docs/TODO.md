@@ -1206,6 +1206,13 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 - [ ] **N-10**：下一次 `DesktopNative` 运行确认「四条腿都绿、且摘要逐腿写清结论」；
       windows-x64 的工具链自证是否已因 `cmd //c` 修复；
       产物自证的诊断输出会揭示「构建成功但自证失败」的真正原因（此前不可见）。
+- [ ] **N-15**：复核「改名 / 上传制品」不再被静默跳过。
+      背景：2026-10-08 实测——**带 continue-on-error 的步骤一旦非零退出，它的 outputs
+      不会被发布**，于是 `if: steps.verify.outputs.produced == 'true'` 静默变 false，
+      「改名/上传」被跳过而作业仍为绿（macOS 腿就是这样丢掉产物的）。
+      已修：产物自证开头先写 `produced=false` 兜底、结尾强制 `exit 0`；
+      执行证据判据由 `*.build_artifacts.txt`（macOS 不产）改为 `*build-report.*`。
+      复核判据：三条 jdk25 腿都出现「改名」与「上传制品」两个 ✓（不再是 skipped）。
 - [ ] **N-13**：把资源清单从「宽通配」收窄成 `resource-config.json` 精确清单。
       背景：首次真编的镜像里 **27.69 MiB 是内嵌资源**（`byte[]`），
       来自 `.*\.(png|…|dll)$` 这种宽通配——把大量无关文件也吃了进去，

@@ -73,6 +73,31 @@
 
 ### 1.4 失败传播隔离
 
+> **步骤级容错有个致命细节：失败步骤的 outputs 不会被发布**（2026-10-08 实测）
+
+带 `continue-on-error: true` 的步骤**一旦非零退出**，它的 `outputs`
+**不会被写进 `steps.<id>.outputs`** —— 于是下游 `if: steps.<id>.outputs.x == 'true'`
+静默变成 false，那些步骤被**跳过**，而作业仍然是绿的。
+
+实测事故：macOS 腿的「产物自证」因脚本非零退出而失败（被 continue-on-error 标成绿），
+`produced` 因此为空，紧跟其后的「改名」「上传制品」被静默跳过——
+表面是「构建成功却什么都没上传」，日志里只有一条 `::warning::`。
+
+两道保险，缺一不可：
+
+```bash
+          set -uo pipefail
+          produced=false                                  # ① 先写一次兜底值
+          ...
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+          ...
+          # ② 本步只做诊断：无论发现什么都以 0 退出，保证 outputs 一定被发布
+          exit 0
+```
+
+**推论**：凡是用 outputs 驱动后续步骤的**诊断类**步骤，判据可以严格，但**退出码必须宽松**。
+
+
 > **「可选」要落到步骤级，而不是作业级**（2026-10-08 实测踩坑）
 
 把原生编译做成「可选项」时，最常见的错法是只在**作业**上写 `continue-on-error: true`：

@@ -279,22 +279,25 @@ jobs:
             -Dnative.skip=false
 
       - name: 确认 native-image 真的执行过（防「静默跳过」）
-        # 这一步专治「全绿但零产物」：native-image 只要真的跑过，就会在输出目录留下
-        # <name>.build_artifacts.txt；文件不存在基本只有两种可能：
-        #   ① native.skip 没生效（被跳过，历史上真发生过）→ 现在 CI 已显式传 false；
-        #   ② native-image 早退（参数不认、内存不足等）→ 真实原因在构建日志里。
+        # 这一步专治「全绿但零产物」。
+        #
+        # 判据用「构建报告」而不是 `<name>.build_artifacts.txt`：**实测 macOS 腿根本不产
+        # build_artifacts.txt**（一开始按它判断，结果三腿里 macOS 被误判成「没执行」），
+        # 而报告文件是稳的：只要带 emit build report 参数且 native-image 跑到收尾，
+        # 就会写出 `<可执行名>-build-report.html`（注意前缀是**可执行名**，不是 build-report）。
+        # 两个都看：报告优先，build_artifacts.txt 作为兼容信号。
         # 无论哪种都不阻塞（本管线可选），但必须**叫得响**：warning + 摘要双写。
         continue-on-error: true
         if: always() && steps.graal.outcome == 'success' && steps.native.outcome == 'success'
         run: |
           set -uo pipefail
           work=aha-desktop-native/target/native
-          marker=$(ls "$work"/*.build_artifacts.txt 2>/dev/null | head -n1 || true)
+          marker=$(ls "$work"/*build-report.* "$work"/*.build_artifacts.txt 2>/dev/null | head -n1 || true)
           if [ -n "$marker" ]; then
             echo "native-image 执行证据：$(basename "$marker")"
-            echo "- native-image：确实执行过（$(basename "$marker")）" >> "$GITHUB_STEP_SUMMARY"
+            echo "- native-image：确实执行过（证据：$(basename "$marker")）" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::warning::构建步骤成功，但没有 native-image 的执行痕迹（$work/*.build_artifacts.txt 不存在）。"
+            echo "::warning::构建步骤成功，但没有 native-image 的执行痕迹（$work 下既无 *build-report.* 也无 *.build_artifacts.txt）。"
             echo "::warning::最可能的原因：native.skip 仍然是 true（被静默跳过）；其次看构建日志里 native-image 的真实报错。"
             {
               echo ""
@@ -314,7 +317,8 @@ jobs:
         with:
           name: native-report-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
-            aha-desktop-native/target/native/build-report*
+            aha-desktop-native/target/native/*build-report.*
+            aha-desktop-native/target/native/*.build_artifacts.txt
             aha-desktop-native/target/native/reachability-metadata.json
             aha-desktop-native/src/native/native-image-args*.txt
           if-no-files-found: warn
@@ -329,13 +333,28 @@ jobs:
         run: |
           set -uo pipefail
           work=aha-desktop-native/target/native
-          report=$(ls "$work"/build-report.json 2>/dev/null | head -n1 || true)
+          report=$(ls "$work"/*build-report.* 2>/dev/null | head -n1 || true)
           if [ -z "$report" ]; then
-            echo "（没有 build-report.json，跳过摘要提取）"
+            echo "（没有构建报告，跳过摘要提取）"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "> 构建报告缺失——检查参数清单里的「emit build report」是否还在。" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
+          echo "构建报告：$(basename "$report")（$((rsize / 1024 / 1024)) MB）"
+          case "$report" in
+            *.json) : ;;   # 只有 json 才尝试解析
+            *)
+              {
+                echo ""
+                echo "### 构建报告（${{ matrix.label }}，jdk${{ matrix.jdk }}）"
+                echo ""
+                echo "- 文件：\`$(basename "$report")\`（$((rsize / 1024 / 1024)) MB，HTML，不在此处解析）"
+                echo "- 下载：制品 \`native-report-${{ matrix.label }}-jdk${{ matrix.jdk }}\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
           py=$(command -v python3 || command -v python || true)
           if [ -z "$py" ]; then
             echo "（runner 上没有 python，跳过摘要提取；报告本身已随制品上传）"
@@ -391,6 +410,13 @@ jobs:
           work=aha-desktop-native/target/native
           produced=false
           note=""
+
+          # **先把输出写出去**，后面再覆盖。原因（2026-10-08 实测事故）：
+          # 带 continue-on-error 的步骤一旦非零退出，**它的 outputs 不会被发布**，
+          # 于是下游 `if: steps.verify.outputs.produced == 'true'` 静默变成 false，
+          # 「改名」「上传制品」被跳过——表现成「构建成功、什么都没上传」。
+          # 所以：① 先写一次 false 兜底；② 脚本最后强制 exit 0（本步只做诊断，从不判死）。
+          echo "produced=false" >> "$GITHUB_OUTPUT"
 
           echo "—— 现场：$work ——"
           ls -la "$work" 2>/dev/null || echo "（目录不存在）"
@@ -466,12 +492,14 @@ jobs:
 
           # ⑥ 构建报告（native-image 的 emit build report 参数产出）：
           #    有它才谈得上「按报告调参数」，所以它缺了就告警。
-          report=$(ls "$work"/build-report* 2>/dev/null | head -n1 || true)
+          # 报告文件名是 <可执行名>-build-report.html（前缀是可执行名），
+          # 不要再按 build-report* 去匹配——实测漏掉过，结果 34 MB 的报告没进制品。
+          report=$(ls "$work"/*build-report.* 2>/dev/null | head -n1 || true)
           if [ -n "$report" ]; then
             rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
             echo "构建报告：$(basename "$report")（$((rsize / 1024)) KB）"
           else
-            echo "::warning::没有找到构建报告（$work/build-report*）——检查参数清单里的「emit build report」是否被删掉了"
+            echo "::warning::没有找到构建报告（$work/*build-report.*）——检查参数清单里的「emit build report」是否被删掉了"
           fi
 
           # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）
@@ -493,6 +521,8 @@ jobs:
             echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"
             echo "> 详见 \`Docs/Design/DesktopNativeDesign.md\` 第 2 节。"
           } >> "$GITHUB_STEP_SUMMARY"
+          # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
+          exit 0
 
       - name: 改名为发布用资产名
         continue-on-error: true
