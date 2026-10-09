@@ -20,19 +20,19 @@
 
 ### ~~G-02 分支规则集整改~~ ✗ **不做**（2026-10-10 决定）
 
-**现状（本次 API 实查，`2026-10-09`）**：
+~~**现状（本次 API 实查，`2026-10-09`）**：~~
 
-| 项 | `main` 规则集（id 24648542）现状 | 目标 |
+| ~~项~~ | ~~`main` 规则集（id 24648542）现状~~ | ~~目标~~ |
 | --- | --- | --- |
-| `required_status_checks` | 仅三条 `build (...)` | 三条 `build (...)` + `Gate` + `Compat` |
-| `required_approving_review_count` | **1** | 0 |
-| `require_last_push_approval` | **true** | false |
-| `require_code_owner_review` | **true** | 评估（单人仓库下会锁死） |
-| `code_scanning`（CodeQL） | 有 | 保留（CodeQL 已有分析结果） |
-| `code_coverage` | `minimum_coverage: 70` | 评估删除（覆盖率已由 `jacoco:check` + `Gate` 把关） |
-| `dev` 规则集 | 审批数 1 | 改为 0 |
+| ~~`required_status_checks`~~ | ~~仅三条 `build (...)`~~ | ~~三条 `build (...)` + `Gate` + `Compat`~~ |
+| ~~`required_approving_review_count`~~ | ~~**1**~~ | ~~0~~ |
+| ~~`require_last_push_approval`~~ | ~~**true**~~ | ~~false~~ |
+| ~~`require_code_owner_review`~~ | ~~**true**~~ | ~~评估（单人仓库下会锁死）~~ |
+| ~~`code_scanning`（CodeQL）~~ | ~~有~~ | ~~保留（CodeQL 已有分析结果）~~ |
+| ~~`code_coverage`~~ | ~~`minimum_coverage: 70`~~ | ~~评估删除（覆盖率已由 `jacoco:check` + `Gate` 把关）~~ |
+| ~~`dev` 规则集~~ | ~~审批数 1~~ | ~~改为 0~~ |
 
-**验收**：五项必需检查齐全；预期失败的 PR 合不进去、正常 PR 单人能合进去。
+~~**验收**：五项必需检查齐全；预期失败的 PR 合不进去、正常 PR 单人能合进去。~~
 
 ### G-03 确认每周定期扫描真的在跑 ☐
 
@@ -40,8 +40,8 @@
 
 ### ~~G-05 关闭 squash 与 rebase 合并~~ ✗ **不做**（2026-10-10 决定）
 
-**现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。
-`dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。
+~~**现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。~~
+~~`dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。~~
 
 ### G-06 处置 0.1.0 的裸 tag ☐
 

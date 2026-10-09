@@ -940,70 +940,70 @@ Docs/TODO.md
 
 ### ~~G-02~~ ✗ 不做（2026-10-10 决定）
 
-**内容**：按下面的规格**一次性**配置两条分支规则集，让门禁真正拦人，同时**不把单人维护者锁死**。
+~~**内容**：按下面的规格**一次性**配置两条分支规则集，让门禁真正拦人，同时**不把单人维护者锁死**。~~
 
-**为什么必须人工**：规则集是仓库设置（Settings → Rules → Rulesets），工作流文件里写不了；
-本环境也没有可写的凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测 `could not read Username`）。
+~~**为什么必须人工**：规则集是仓库设置（Settings → Rules → Rulesets），工作流文件里写不了；~~
+~~本环境也没有可写的凭据（`GIT_TERMINAL_PROMPT=0 git push` 实测 `could not read Username`）。~~
 
-**现状（2026-10-07 API 实查）**：`GET /repos/ACANX/AHA/rulesets` → 两条仓库级规则集：
+~~**现状（2026-10-07 API 实查）**：`GET /repos/ACANX/AHA/rulesets` → 两条仓库级规则集：~~
 
-| 规则集 | id | 适用分支 | 现有规则 |
+| ~~规则集~~ | ~~id~~ | ~~适用分支~~ | ~~现有规则~~ |
 | ---- | ---- | ---- | ---- |
-| `dev` | 24648482 | `refs/heads/dev` | `deletion`、`non_fast_forward`、`pull_request`（approvals=**1**）、`required_status_checks`（三条 `build (...)`） |
-| `main` | 24648542 | `refs/heads/main` | 上述全部，外加 **`code_scanning`（CodeQL）**、**`code_coverage`**，且 `pull_request` 带 `last_push_approval`=**true** |
+| ~~`dev`~~ | ~~24648482~~ | ~~`refs/heads/dev`~~ | ~~`deletion`、`non_fast_forward`、`pull_request`（approvals=**1**）、`required_status_checks`（三条 `build (...)`）~~ |
+| ~~`main`~~ | ~~24648542~~ | ~~`refs/heads/main`~~ | ~~上述全部，外加 **`code_scanning`（CodeQL）**、**`code_coverage`**，且 `pull_request` 带 `last_push_approval`=**true**~~ |
 
-**已造成的实际阻塞（`PR #7` `dev` → `main`）**：三条规则对「单人 + 机器」**无法满足**：
+~~**已造成的实际阻塞（`PR #7` `dev` → `main`）**：三条规则对「单人 + 机器」**无法满足**：~~
 
-1. `pull_request`（approvals=1 + `last_push_approval`）——只有一位协作者，GitHub 禁止自我批准
-   → 提示「New changes require approval from someone other than ACANX because they were the last pusher」；
-2. `code_scanning` 要求 CodeQL 结果，仓库却**没配任何 code scanning**
-   → 提示「Waiting for Code Scanning results」；
-3. `code_coverage` 需要把覆盖率上传给 GitHub 或其支持的覆盖率服务，本项目只有本地 JaCoCo 门禁
-   （尚未报错，因为它排在其它条件之后）。
+~~1. `pull_request`（approvals=1 + `last_push_approval`）——只有一位协作者，GitHub 禁止自我批准~~
+~~   → 提示「New changes require approval from someone other than ACANX because they were the last pusher」；~~
+~~2. `code_scanning` 要求 CodeQL 结果，仓库却**没配任何 code scanning**~~
+~~   → 提示「Waiting for Code Scanning results」；~~
+~~3. `code_coverage` 需要把覆盖率上传给 GitHub 或其支持的覆盖率服务，本项目只有本地 JaCoCo 门禁~~
+~~   （尚未报错，因为它排在其它条件之后）。~~
 
-**方向相反的另一处**：`main` 的必需检查只有三条快检查，而 `BuildSpec.md` §8.1 要求
-`Gate` 与 `Compat` 也必须是必需检查——**该拦的没拦，不该锁的锁死了**。
+~~**方向相反的另一处**：`main` 的必需检查只有三条快检查，而 `BuildSpec.md` §8.1 要求~~
+~~`Gate` 与 `Compat` 也必须是必需检查——**该拦的没拦，不该锁的锁死了**。~~
 
-**目标规格（逐项照此设置）**：
+~~**目标规格（逐项照此设置）**：~~
 
-| 项 | `main` | `dev` | 理由 |
+| ~~项~~ | ~~`main`~~ | ~~`dev`~~ | ~~理由~~ |
 | ---- | ---- | ---- | ---- |
-| `deletion` / `non_fast_forward` | 保留 | 保留 | 禁止删除与强推，与人数无关 |
-| 要求 PR | 保留 | 保留 | 改动走 PR 才挂得上必需检查 |
-| required_approving_review_count | **0** | **0** | 单人仓库里「1 个批准」= 禁止合并；卡点交给必需检查 |
-| require_last_push_approval | **false** | false | 同上 |
-| required_review_thread_resolution | 保留 `true` | 不适用 | 要求先解决评论，单人也能满足 |
-| required_status_checks | 三条 `build (...)` **+ `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）` + `兼容性（Maven 3.9.x 完整 verify）`** | 三条 `build (...)`（保持） | 慢检查是「合入 `main` 前」的卡点（`BuildSpec.md` §8.1）；`dev` 是集成分支，保持快反馈 |
-| `code_scanning` | **二选一**：① 开 CodeQL（推荐，见 `G-04`）并保留；② 不用就**删掉本规则** | 不适用 | 要求某工具的结果，就必须有人生产它 |
-| `code_coverage` | **建议删除** | 不适用 | 覆盖率已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关；再引外部服务属重复。若确实想要 PR 内可见覆盖率，需另行拍板（引入受支持的覆盖率服务） |
+| ~~`deletion` / `non_fast_forward`~~ | ~~保留~~ | ~~保留~~ | ~~禁止删除与强推，与人数无关~~ |
+| ~~要求 PR~~ | ~~保留~~ | ~~保留~~ | ~~改动走 PR 才挂得上必需检查~~ |
+| ~~required_approving_review_count~~ | ~~**0**~~ | ~~**0**~~ | ~~单人仓库里「1 个批准」= 禁止合并；卡点交给必需检查~~ |
+| ~~require_last_push_approval~~ | ~~**false**~~ | ~~false~~ | ~~同上~~ |
+| ~~required_review_thread_resolution~~ | ~~保留 `true`~~ | ~~不适用~~ | ~~要求先解决评论，单人也能满足~~ |
+| ~~required_status_checks~~ | ~~三条 `build (...)` **+ `门禁（Maven 4 wrapper：verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）` + `兼容性（Maven 3.9.x 完整 verify）`**~~ | ~~三条 `build (...)`（保持）~~ | ~~慢检查是「合入 `main` 前」的卡点（`BuildSpec.md` §8.1）；`dev` 是集成分支，保持快反馈~~ |
+| ~~`code_scanning`~~ | ~~**二选一**：① 开 CodeQL（推荐，见 `G-04`）并保留；② 不用就**删掉本规则**~~ | ~~不适用~~ | ~~要求某工具的结果，就必须有人生产它~~ |
+| ~~`code_coverage`~~ | ~~**建议删除**~~ | ~~不适用~~ | ~~覆盖率已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关；再引外部服务属重复。若确实想要 PR 内可见覆盖率，需另行拍板（引入受支持的覆盖率服务）~~ |
 
-**验收标准**：五项必需检查（三条 `build (...)` + `Gate` + `Compat`）都出现在 `main` 的
-必需检查里；用一个**预期失败的 PR** 验证确实合不进去；再用一个**正常 PR** 验证**单人也能合进去**
-（不再出现「等待批准」「等待 Code Scanning」）。只勾选不验证，可能因名称未完全匹配而形同虚设。
+~~**验收标准**：五项必需检查（三条 `build (...)` + `Gate` + `Compat`）都出现在 `main` 的~~
+~~必需检查里；用一个**预期失败的 PR** 验证确实合不进去；再用一个**正常 PR** 验证**单人也能合进去**~~
+~~（不再出现「等待批准」「等待 Code Scanning」）。只勾选不验证，可能因名称未完全匹配而形同虚设。~~
 
-**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）；
-改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。
+~~**维护约定**：作业名或必需腿的矩阵键一旦变更，必需检查就会失配（见 `F-08`）；~~
+~~改 `Build.yml` / `Gate.yml` / `Compat.yml` 或**规则集本身**时，必须同步刷新本条上方的两张表。~~
 
-**闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。
+~~**闭环后**：本条改 ✅，并在 `PLAN.md` §8.2.9 收口。~~
 
 ### ~~G-05~~ ✗ 不做（2026-10-10 决定）
 
-**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
-只保留 `Create a merge commit`。
+~~**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，~~
+~~只保留 `Create a merge commit`。~~
 
-**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。
+~~**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。~~
 
-**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），
-它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——
-上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。
-2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），
-只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。
+~~**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），~~
+~~它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——~~
+~~上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。~~
+~~2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），~~
+~~只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。~~
 
-**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**
-（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。
-此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。
+~~**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**~~
+~~（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。~~
+~~此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。~~
 
-**闭环后**：本条改 ✅。
+~~**闭环后**：本条改 ✅。~~
 
 ### G-04 ◐ 已提供 CodeQL 工作流，待你确认最后一处设置
 
@@ -1072,22 +1072,22 @@ PR #7 上「Code Scanning」由等待变为**给出结论**（按阈值：高危
 
 ### ~~G-05~~ ✗ 不做（2026-10-10 决定）
 
-**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，
-只保留 `Create a merge commit`。
+~~**内容**：在 Settings → General → Pull Requests 里**关闭 squash 与 rebase 合并**，~~
+~~只保留 `Create a merge commit`。~~
 
-**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。
+~~**为什么必须人工**：这是仓库设置，工作流与规则集都写不了（规则集也管不了合并方式）。~~
 
-**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），
-它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——
-上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。
-2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），
-只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。
+~~**为什么必须做**：`dependa` 是长期集成分支（Dependabot 的 `target-branch`），~~
+~~它既要被合入、又要持续往 `dev` 合。一旦某次用 squash 合入，血缘就断了——~~
+~~上游拿到内容却没有拿到分支历史，**下一次 `dependa → dev` 的 PR 必然 `dirty`**。~~
+~~2026-10-07 当天，`F-12` 记下的这个形态**已经复发过一次**（PR #8 的 `aeadec4` 是单父提交），~~
+~~只能再用一次 `-s ours` 把血缘接回（`d1de175`）。靠人记得住，不如靠平台不让做。~~
 
-**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**
-（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。
-此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。
+~~**验收标准**：设置生效后做一次 `dependa → dev`，确认合并提交有**两个父**~~
+~~（`git log -1 --format=%p <merge>`），且 `git merge-base --is-ancestor origin/dev dependa` 成立。~~
+~~此后 `F-12` / `ReleaseProcess.md` §4 的手工补救不再需要。~~
 
-**闭环后**：本条改 ✅。
+~~**闭环后**：本条改 ✅。~~
 
 ### G-04 ☐ 未完成
 
