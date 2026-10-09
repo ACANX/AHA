@@ -66,9 +66,6 @@ public final class Palette {
     /** 当前主题（{@link Theme#SYSTEM} 会被解析成实际生效的那一个）。 */
     private static Theme current = Theme.DARK;
 
-    /** 窗口 / 对话框的样式串（{@code Dialog} 有独立场景根，必须逐个套）。 */
-    private static String themeStyle = buildThemeStyle();
-
     private Palette() {
     }
 
@@ -91,10 +88,15 @@ public final class Palette {
      * 场景根，不会继承主窗口的样式。第一版只给主窗口套了主题，于是对话框是 JavaFX 默认白底，
      * 而列表文字用的是 {@link #FOREGROUND}（近白）——白底白字，看上去发灰、费眼。</p>
      *
+     * <p><strong>刻意不缓存</strong>：早先把结果存在一个静态字段里，原生镜像下出现过
+     * 「样式串仍是初始主题、而 {@link #FOREGROUND} 等字段已按新主题更新」的不同步——
+     * 表现为主窗口底色已换、控件文字却是旧主题的值。改成每次按当前字段现算，
+     * 代价只是拼几个字符串，换来的是「样式串与色表永远一致」（issue #49）。</p>
+     *
      * @return 内联样式
      */
     public static String theme() {
-        return themeStyle;
+        return buildThemeStyle();
     }
 
     /**
@@ -116,7 +118,6 @@ public final class Palette {
         } else {
             applyDark();
         }
-        themeStyle = buildThemeStyle();
         return resolved;
     }
 

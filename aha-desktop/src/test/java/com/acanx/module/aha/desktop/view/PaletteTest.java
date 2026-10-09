@@ -90,4 +90,20 @@ class PaletteTest {
         Palette.setTheme(null);
         assertThat(Palette.current()).isEqualTo(Theme.DARK);
     }
+
+    @Test
+    void themeStyleIsRecomputedFromCurrentFields() {
+        // 样式串必须与当前色表实时一致：早先它被缓存成一个静态字段，
+        // 原生镜像下出现过「底色已换暗、文字色仍是旧主题」的不同步（issue #49）
+        Palette.setTheme(Theme.DARK);
+        String dark = Palette.theme();
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.theme())
+                .as("切换到亮色后，样式串必须立刻反映新的底色与前景")
+                .isNotEqualTo(dark)
+                .contains(Palette.BASE)
+                .contains(Palette.FOREGROUND);
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.theme()).isEqualTo(dark);
+    }
 }
