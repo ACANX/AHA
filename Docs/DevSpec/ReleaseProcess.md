@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.16.0
+**文档版本**：v1.17.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -31,6 +31,7 @@
 | v1.14.0 | 2026-10-09 | §4.1 第 5 条「关闭 squash / rebase 合并」的登记处由 `TODO.md` `G-05` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 | v1.15.0 | 2026-10-09 | 第 2 节版本源口径：P3（#95）引入 `<revision>` 后 POM 侧收敛为 **1 处**（8 子模块写 `${revision}` 继承），`AppVersion.FALLBACK_VERSION` 解耦为 `"dev"`；一次性命令改用 `versions:set-property -Dproperty=revision`；§2 第 4 步与 §4.1 的版本来源改指 `<revision>` | @ACANX / CNXNC |
 | v1.16.0 | 2026-10-09 | P5（#97，父 #92）文档口径同步：§2 版本切换改为「改 `version` 文件 / 触发 `VersionBump` workflow」；§4.1 与 §4.2 的版本号来源改指根目录 `version` 文件（权威），`<revision>` 降为机器位置；§1 检查清单与 §4.2 ④ 的「8 处」改为 `ProjectVersion.py --verify` 一键校对 | @ACANX / CNXNC |
+| v1.17.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更，父 #92）：§2 新增「验证时机」——版本切换 PR 上不跑 `Build` / `Gate` / `Compat`，验证由合并到 `dev` 后的 `Build` + 三条出包线承担；§4.2 去掉「改用 PAT」选项，明确手工重建 tag 为唯一处置（`Release.yml` 无 `workflow_dispatch`） | @ACANX / CNXNC |
 
 ---
 
@@ -77,6 +78,11 @@
    - **一致性校验（强制）**：`python3 .github/Python/ProjectVersion.py --verify` 断言
      `version` 文件 / 根 POM `<revision>` / `version.properties` 的 `version` /
      产物名版本段 / `Build.yml` 的 tag 规则五处一致（已接入 `Gate.yml`）。
+   - **验证时机**：版本切换 PR 上**不跑** `Build` / `Gate` / `Compat`——`GITHUB_TOKEN` 推的
+     提交不触发下游 workflow，且后两者的 `pull_request` 只覆盖 `main` / `release/**`。
+     验证由**合并到 `dev` 后**自动触发的流水线承担：`Build.yml`（`on: [push, pull_request]`）
+     与 `BuildJVMArtifacts` / `CliNative` / `DesktopNative`（`push: branches: [dev]`）。
+     PR 侧的正确性由 `VersionBump` 自身的「自检」步骤把关。**本仓库不为此配置 PAT。**
    - **手工应急**（不走 workflow 时）：只需改 **`version` 文件与根 POM 的 `<revision>` 两处**，
      两者必须相同；子模块与文档声明由分发脚本负责。当初「为何要改 10 处」的历史口径见
      [VersionBumpGuide.md](../Guide/VersionBumpGuide.md) 第 7 节与
@@ -113,12 +119,20 @@
 ### 4.2 自动打 tag 不触发发布（务必知晓）
 
 **用 `GITHUB_TOKEN` 推送的 tag 不会触发下游工作流**——这是 GitHub 防递归的既定行为，
-不是配置错误。因此自动打出的 `V*` tag **不会**自动开跑 `Release.yml`。想让发布跟上，二选一：
+不是配置错误。因此自动打出的 `V*` tag **不会**自动开跑 `Release.yml`。
 
-| 做法 | 说明 |
-| ---- | ---- |
-| **手工触发发布** | tag 出来后，按 `Release.yml` 的触发条件手工发起（或本地 `git push` 一个 tag） |
-| **改用 PAT** | 建一个细粒度 token（仅 `contents: write`）存为仓库机密，`Build.yml` 的 tag 作业用它推送；此时 tag 事件会正常触发 `Release.yml` |
+`Release.yml` 只由 `push: tags: ['V*', 'v*']` 触发、**没有 `workflow_dispatch`**，所以唯一的
+处置是**手工重建这个 tag**，让 tag 事件真实发生一次（人推的 tag 不受防递归限制）：
+
+```
+git push origin --delete V0.1.2                                # 删掉自动打的 tag（指向同一提交，不动提交历史）
+git tag -a V0.1.2 -m "AHA V0.1.2" <发布提交>                    # 重新打同一个 tag
+git push origin V0.1.2                                         # 这次由人推送 → 触发 Release.yml
+```
+
+> **本仓库不为此配置 PAT**。备选做法是建一个细粒度 token（仅 `contents: write`）存为
+> 仓库机密、让 `Build.yml` 的 tag 作业用它推送，tag 事件便会自动触发发布——**未采用**，
+> 统一走上面的手工重建。
 
 ## 3. 制品
 
