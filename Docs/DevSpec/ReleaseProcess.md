@@ -63,13 +63,17 @@
 
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
-   - 版本号要改 **8 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
-     根部 `pom.xml` 的 `<version>` + **六个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
-     `<version>` + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
+   - 版本号要改 **10 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
+     根部 `pom.xml` 的 `<version>` + **八个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
+     `<version>`（`aha-common` / `aha-extension-api` / `aha-core` / `aha-tool` / `aha-cli` /
+     `aha-desktop` / `aha-cli-native` / `aha-desktop-native`）
+     + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
+   - 另有四处**版本声明**需同步：`README.md`、`AGENTS.md`、`Docs/AHA/AHA-Design-V1.md`
+     （头部「目标版本 / 当前版本」）、`Docs/Guide/ReferenceGuide.md`
    - 可用一条命令统一改（需联网取 maven-versions-plugin）：
 
      ```
-     ./mvnw versions:set -DnewVersion=0.1.1 -DgenerateBackupPoms=false
+     ./mvnw versions:set -DnewVersion=0.1.2 -DgenerateBackupPoms=false
      ```
 
      **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
