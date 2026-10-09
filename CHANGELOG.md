@@ -147,8 +147,11 @@
   给对话框显式底色（不再依赖 `.dialog-pane` 的 `-fx-background` 查表），7 个对话框统一改用；
   `applyTheme` 增加主题诊断日志，真机跑一次即可判断「色表没换」还是「节点没刷」。
   经真机截图像素取证（左栏按钮文字 `#000000`、搜索框与输入区纯白 `#FFFFFF`、而靠显式属性的
-  区域全部正常）确认：原生镜像下 looked-up color 查表与 `ladder()` 推导不可靠；因此搜索框 / 输入框
-  再补显式 `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
+  区域全部正常）确认：原生镜像下 looked-up color 查表与 `ladder()` 推导不可靠；**据此新增
+  `ThemePaint`，把 `-fx-text-fill` / `-fx-background-color` 用属性 API（`Labeled.setTextFill` /
+  `Region.setBackground`）再设一遍，彻底绕开 CSS 引擎**（左栏 7 个导航按钮、分组标题、会话单元格、
+  搜索框、输入框、状态栏、菜单栏与 7 个对话框全部覆盖）；搜索框 / 输入框再补显式
+  `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
   另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
   `PaletteTest` 新增两条守卫。详见 `Docs/DevLog/DevLog-20261009-11.md`。
 - **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。

@@ -1226,7 +1226,7 @@ public final class DesktopShell implements ChatView {
         dialog.setTitle("重命名会话");
         dialog.setHeaderText("给这个会话起个名字");
         dialog.setContentText("标题");
-        dialog.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
         dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
     }
@@ -1241,7 +1241,7 @@ public final class DesktopShell implements ChatView {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("删除会话");
         alert.setHeaderText("确认删除");
-        alert.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(alert.getDialogPane(), Palette.dialogTheme());
         alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         alert.showAndWait()
                 .filter(picked -> picked == ButtonType.OK)
@@ -1291,7 +1291,8 @@ public final class DesktopShell implements ChatView {
             // 单元格背景必须显式给：ListView 的 -fx-control-inner-background 未必传到 cell 上，
             // 暗色下会露出 modena 默认白底（issue #49）；选中态另行覆盖
             boolean selected = isSelected();
-            setStyle("-fx-background-color: "
+            // 用 ThemePaint：原生镜像下 CSS 文字色不一定落到 cell 上（issue #49）
+            ThemePaint.themed(this, "-fx-background-color: "
                     + (selected ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
                     + "-fx-text-fill: "
                     + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
@@ -1757,8 +1758,8 @@ public final class DesktopShell implements ChatView {
      */
     private <T extends Node> T themed(T node, Supplier<String> style) {
         // 登记「怎么重新上样式」，换主题时整屏重刷（见 restylers 的说明）
-        restylers.add(() -> node.setStyle(style.get()));
-        node.setStyle(style.get());
+        restylers.add(() -> ThemePaint.themed(node, style.get()));
+        ThemePaint.themed(node, style.get());
         return node;
     }
 
