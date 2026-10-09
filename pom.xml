@@ -5,7 +5,13 @@
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.2</version>
+    <!--
+        版本号写占位符、实体值在下方 <properties>/<revision>（CI-friendly versions）：
+        这样 8 个子模块只需写 <parent><version>${revision}</version>，改版本时只改一处。
+        注意：不 flatten 时 install/deploy 出去的 POM 里会残留字面量 ${revision}，
+        因此下方 build 区配有 flatten-maven-plugin（见 TD-00016 §A）。
+    -->
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -45,6 +51,14 @@
     </modules>
 
     <properties>
+        <!--
+            版本号：**机器侧唯一来源**（权威源将来是根目录 version 文件，见 TD-00016 §H）。
+            子模块的 <parent><version> 和本 POM 的 <version> 都引用 ${revision}，
+            因此改版本时只改这一行（不再逐个改 9 个 POM）。
+            IDE（IDEA）能解析根 POM 里的这个属性，不会出现未解析报错。
+        -->
+        <revision>0.1.2</revision>
+
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
@@ -83,6 +97,8 @@
         <jacoco.version>0.8.15</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
+        <!-- 版本占位符解析插件（CI-friendly versions），交 Dependabot 跟踪 -->
+        <flatten.plugin.version>1.8.0</flatten.plugin.version>
         <!-- 原生镜像（试验性）：两套平行管线——桌面端 aha-desktop-native（见
              Docs/Design/DesktopNativeDesign.md）与 CLI aha-cli-native（见
              Docs/Design/CliNativeDesign.md） -->
@@ -315,6 +331,43 @@
         </pluginManagement>
 
         <plugins>
+            <!--
+                版本占位符解析：把 ${revision} 落成实际版本后再 install / deploy。
+
+                不 flatten 时，装出去的 POM 里是**字面量** ${revision}，下游解析失败。
+                Maven 4 已内置 consumer POM 承担同一职责（比 flatten 更彻底：连 build 段
+                都剥离），但本仓库同时保留 Maven 3.9.x 兼容基线（Compat.yml），3.9.x 没有
+                consumer POM——只要兼容线还在，flatten 就必须留（见 TD-00016「与 Maven 4 的
+                分期决策」）。
+
+                flattenMode=resolveCiFriendliesOnly：只解析 ${revision} 这类 CI-friendly
+                属性，其余内容原样保留，不在本地磁盘上做全量最小化。
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten.plugin.version}</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

@@ -1,6 +1,6 @@
 # 版本切换指南
 
-**文档版本**：v1.0.0
+**文档版本**：v1.1.0
 **状态**：生效
 **生效日期**：2026-10-09
 **最后更新**：2026-10-09
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-09 | 初始版本：操作步骤、改动清单、检查清单、常见问题快速处置、应急预案、历史教训与维护约定 | @ACANX / CNXNC |
+| v1.1.0 | 2026-10-09 | §2.3 一次性命令改用 `versions:set-property -Dproperty=revision`；注明 P3（#95）后 POM 侧版本源收敛为 1 处、`AppVersion` 已解耦，§2.1 清单为历史口径 | @ACANX / CNXNC |
 
 ---
 
@@ -39,6 +40,11 @@
 | 构建号 | 形如 `a.b.c.PPPPP`，由 CI 工作流注入（`-Daha.build.version=…`），**不写进 POM** |
 
 ## 2. 改动清单（硬性 14 处）
+
+> **P3（#95）起口径已变**：POM 侧版本源收敛为根 `pom.xml` 的 `<properties>/<revision>` **1 处**
+> （8 个子模块写 `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION`
+> 与版本解耦（固定 `"dev"`）。下面的 §2.1 / §2.2 清单是**收敛之前的历史口径**，
+> §3~§6 的操作与检查步骤仍适用；完整口径更新见 TD-00016 §G（#97）。
 
 ### 2.1 版本号源（10 处，必须全改）
 
@@ -70,14 +76,20 @@
 
 ### 2.3 一次性命令（可选）
 
-允许联网取 `maven-versions-plugin` 时，可用一条命令改全 9 个 POM：
+允许联网取 `maven-versions-plugin` 时，可用一条命令改根 POM 的 `<revision>`：
 
 ```bash
-./mvnw versions:set -DnewVersion=x.y.z -DgenerateBackupPoms=false
+./mvnw versions:set-property -Dproperty=revision -DnewVersion=x.y.z -DgenerateBackupPoms=false
 ```
 
-> ⚠️ 该命令**不覆盖**第 10 处（`AppVersion.FALLBACK_VERSION`）与 §2.2 的 4 处文档声明。
-> 另按项目约定，**Agent 不在本地跑 Maven**（见 `AGENTS.md`），因此 Agent 执行版本切换时手工改 10 处。
+> **P3 起（已引入 `<revision>`）**：POM 侧版本只有根 POM 的 `<revision>` **一处**，8 个子模块
+> 写 `<parent><version>${revision}</version>` 继承——上面的命令改这一处即可，**不再需要**
+> 逐个改 9 个 POM（§2.1 的清单是引入 `<revision>` 之前的历史口径；完整口径更新见 TD-00016 §G）。
+>
+> ⚠️ 该命令仍**不覆盖** §2.2 的 4 处文档声明；`AppVersion.FALLBACK_VERSION` 已与版本解耦
+> （P3 起固定为 `"dev"`），无需同步。
+> 另按项目约定，**Agent 不在本地跑 Maven**（见 `AGENTS.md`），因此 Agent 执行版本切换时改
+> 根 POM 的 `<revision>` + §2.2 的 4 处文档声明。
 
 ## 3. 操作步骤
 

@@ -16,6 +16,8 @@ pom.xml.upgraded
 release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
+# CI-friendly versions 的解析产物（flatten-maven-plugin 生成，见 TD-00016 §A）
+.flattened-pom.xml
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 

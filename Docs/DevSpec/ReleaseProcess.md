@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.14.0
+**文档版本**：v1.15.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -29,6 +29,7 @@
 | v1.12.0 | 2026-10-09 | 第 2 节「构建版本（预发行）」补 `BuildJVMArtifacts.yml`：dev 的 JVM 便携包出包线同样传 `-Daha.build.version=<a.b.c.PPPPP>`（issue #63） | @ACANX |
 | v1.13.0 | 2026-10-09 | §3 与 §3.1 的 CLI 资产名统一为 `aha-cli-<版本>.zip`（前缀 `aha-cli` 与桌面端 `aha-desktop-` 对称）；dev JVM 线的 JDK 27 变体为 `aha-cli-<版本>-jdk27.zip` | @ACANX |
 | v1.14.0 | 2026-10-09 | §4.1 第 5 条「关闭 squash / rebase 合并」的登记处由 `TODO.md` `G-05` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
+| v1.15.0 | 2026-10-09 | 第 2 节版本源口径：P3（#95）引入 `<revision>` 后 POM 侧收敛为 **1 处**（8 子模块写 `${revision}` 继承），`AppVersion.FALLBACK_VERSION` 解耦为 `"dev"`；一次性命令改用 `versions:set-property -Dproperty=revision`；§2 第 4 步与 §4.1 的版本来源改指 `<revision>` | @ACANX / CNXNC |
 
 ---
 
@@ -63,17 +64,20 @@
 
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
-   - 版本号要改 **10 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
-     根部 `pom.xml` 的 `<version>` + **八个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
-     `<version>`（`aha-common` / `aha-extension-api` / `aha-core` / `aha-tool` / `aha-cli` /
-     `aha-desktop` / `aha-cli-native` / `aha-desktop-native`）
+   - **P3 起版本源已收敛**：POM 侧只有根 `pom.xml` 的 `<properties>/<revision>` **一处**
+     （8 个子模块写 `<parent><version>${revision}</version>` 继承），
+     `AppVersion.FALLBACK_VERSION` 已与版本解耦（固定 `"dev"`）。
+   - 历史口径（引入 `<revision>` 之前）：版本号要改 **10 处**（实测：只改根 POM 会
+     **BUILD SUCCESS 但产物仍是旧版本号**）：根部 `pom.xml` 的 `<version>` + **八个子模块**
+     `aha-*/pom.xml` 里 `<parent>` 下的 `<version>`（`aha-common` / `aha-extension-api` /
+     `aha-core` / `aha-tool` / `aha-cli` / `aha-desktop` / `aha-cli-native` / `aha-desktop-native`）
      + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
    - 另有四处**版本声明**需同步：`README.md`、`AGENTS.md`、`Docs/AHA/AHA-Design-V1.md`
      （头部「目标版本 / 当前版本」）、`Docs/Guide/ReferenceGuide.md`
-   - 可用一条命令统一改（需联网取 maven-versions-plugin）：
+   - 可用一条命令改根 POM 的 `<revision>`（需联网取 maven-versions-plugin）：
 
      ```
-     ./mvnw versions:set -DnewVersion=0.1.2 -DgenerateBackupPoms=false
+     ./mvnw versions:set-property -Dproperty=revision -DnewVersion=0.1.2 -DgenerateBackupPoms=false
      ```
 
      **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
@@ -86,14 +90,14 @@
      供 GUI「关于」与 CLI 启动页 / `/help` 显示，便于按版本号排查（issue #46）
 3. 执行完整构建与验收
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
-   按父 POM 的 `<version>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
+   按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
 5. 触发 `Release.yml`（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）——注意 4.2 的限制
 6. 合回 `dev`，删除 `release/*` 分支
 
 ### 4.1 tag 命名与手工补打
 
-- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<version>`，如 `V0.1.1`）。
+- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<properties>/<revision>`，如 `V0.1.1`）。
   ⚠ 历史例外：0.1.0 那次发布的 tag 是 **`0.1.0`**（无 `V` 前缀），与约定不一致；
   处置见 [TODO.md](../TODO.md) `G-06`。
   版本号的**唯一来源是根 POM**，工作流与文档都不复制它。
