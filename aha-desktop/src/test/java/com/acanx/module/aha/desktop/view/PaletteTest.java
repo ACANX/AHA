@@ -138,8 +138,13 @@ class PaletteTest {
             assertThat(css)
                     .contains(".text-input")
                     .contains(".scroll-bar > .thumb")
-                    .contains("-fx-aha-control-bg")
+                    .contains("-fx-aha-control-bg");
+            // 注释里可以提这些函数名（说明用），但**声明**里不能出现
+            String declarations = css.replaceAll("(?s)/\\*.*?\\*/", "");
+            assertThat(declarations)
+                    .as("补丁表里不得使用原生镜像下求值不可靠的 CSS 函数")
                     .doesNotContain("derive(")
+                    .doesNotContain("ladder(")
                     .doesNotContain("linear-gradient(");
         }
     }
