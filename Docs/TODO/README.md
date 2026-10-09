@@ -77,8 +77,8 @@ TD-00014-ManualAndExternalActions.md
 
 ## 3. 当前编号
 
-- 已用：`TD-00001` ~ `TD-00014`
-- **下一个可用编号：`TD-00015`**
+- 已用：`TD-00001` ~ `TD-00015`
+- **下一个可用编号：`TD-00016`**
 
 ## 4. 清单
 
@@ -106,6 +106,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00008](TD-00008-NativeExtensionModuleLayerConflict.md) | 扩展系统与 native-image 的根本冲突与降级策略（E-01） | ☐ 未开始 | [#79](https://github.com/ACANX/AHA/issues/79) | 前置决策，建议先拍板 |
 | [TD-00009](TD-00009-NativeRiskAndReleaseMatrix.md) | E-02 ~ E-11 风险登记、验收标准与发行矩阵 | ☐ 未开始 | [#80](https://github.com/ACANX/AHA/issues/80) | |
 | [TD-00010](TD-00010-NativePipelineReview.md) | 管线复核与优化（N-10 ~ N-17、N-19、N-21、N-22） | ☐ 未开始 | [#81](https://github.com/ACANX/AHA/issues/81) | |
+| [TD-00015](TD-00015-CliNativeVersionUpdateScript.md) | 补 CLI 原生镜像的自动取件脚本（`CliNativeVersionUpdate.py`） | ☐ 未开始 | —（暂未开） | 桌面端已有 `DesktopNativeVersionUpdate.py`，可作蓝本 |
 
 ### 4.4 核心 / 架构 / 记忆
 
