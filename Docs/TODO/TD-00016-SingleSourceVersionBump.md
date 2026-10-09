@@ -32,13 +32,24 @@
 
 ## 目标状态
 
-```bash
-# 切版本 = 改这一行（其余全自动）
-# pom.xml
+**权威源 = 根目录 `version` 文件**（人只改这里，或在 workflow 里输入新版本号）：
+
+```
+version            # 一行纯文本，如 0.1.3
+```
+
+其余全部由 **VersionBump workflow** 分发（§H）；机器侧版本只保留根 POM 的 `<revision>` 一处：
+
+```xml
+<!-- pom.xml（由 workflow 写入，不需人改） -->
 <properties>
   <revision>0.1.3</revision>
 </properties>
 ```
+
+> Maven **不能**直接读 `version` 文件（POM 模型阶段不支持外部文件注入，见 §H.4），
+> 所以「`version` 文件 → 根 POM 的 `<revision>`」由 workflow / 脚本完成，
+> 再由 §E 的一致性校验保证两者不漂移。
 
 ## 改造清单
 
@@ -58,7 +69,9 @@
 
 ### B. 版本读取收敛为单一入口（1 个脚本 + 4 处调用）
 
-5. 新增 `bin/ProjectVersion.py`：输出根 POM 的 `<properties>/<revision>`（兼容回退读 `<version>`）；
+5. 新增 `bin/ProjectVersion.py`：**唯一读取入口** —— 根目录 `version` 文件优先，缺失则回退
+   根 POM 的 `<properties>/<revision>`（再回退老式的 `<version>`）；另提供 `--resolve` 与
+   `--verify` 两个子命令（见 §H.1）；
 6. 四个工作流的内联解析（各一行 `ET.parse("pom.xml")`）改为调用该脚本：
    `Build.yml:89`（打 tag）、`BuildJVMArtifacts.yml:89`、`CliNative.yml:91`、`DesktopNative.yml:106`；
    - **目的**：版本**源**将来怎么变（`<version>` ↔ `<revision>`），只改这一个脚本。
@@ -97,6 +110,123 @@
 | F9 | `versions:set` 语义 | 改用 `versions:set-property -Dproperty=revision`，并更新文档 |
 | F10 | **Maven 4 下 flatten 与 consumer POM 是否冲突** | 无报错、无重复产物；`.m2` 里 POM 已解析为实际版本 |
 | F11 | **Maven 4 GA 后移除 flatten 的可行性** | 移除后构建通过，且 `.m2` / 远端 POM 仍已解析 |
+| F12 | **workflow 开出的 PR 其 checks 确实被触发** | PR 上出现 `Build` / `Gate` / `Compat` / `CodeQL` 运行记录（否则 PAT 未生效） |
+| F13 | 分发脚本的幂等与防漏 | 同版本重跑被拒；动态扫描到的 POM 数 ≥ 9 |
+
+### G. 文档与规范同步
+
+11. `ReleaseProcess.md` §2：版本切换改为「改 `version` 文件一行 / 触发 `VersionBump` workflow」；§4.2 的「8 处」修正；
+12. `VersionBumpGuide.md`：§2 改动清单由 14 处降为 **1 处**（`version` 文件）或「一键分发」，
+    §4 检查清单相应简化（校验项保留）；
+13. `BuildSpec.md` §7「版本单一来源」：来源改为「`version` 文件（权威）+ 根 POM `<revision>`（机器位置）」；
+14. `AHA-Design-V1.md` 的 POM 示例与变更日志；
+15. `CHANGELOG.md` 记录本次改造。
+
+### H. 版本分发 workflow（具体技术方案）
+
+参考已实现案例：[`ACANX/MetaOpen` 的 `UpdateProjectVersion.yml`](https://github.com/ACANX/MetaOpen/blob/dev/.github/workflows/UpdateProjectVersion.yml)。
+其骨架为：**`version` 文件作权威源 → `workflow_dispatch` 触发 → 正则改 POM 的 `<properties>`
+→ 写回 `version` → 开 PR**（配套脚本 `UpdatMeavenProperties.py` 只动 `<properties>` 块、保留注释与格式）。
+
+AHA 采用同一骨架，但**有三处必须改造**（见 H.4）。
+
+#### H.1 权威源与读取入口
+
+1. 新增根目录 `version`：纯文本一行，如 `0.1.3`（**不带 `SNAPSHOT`**——AHA 的预发行用
+   `a.b.c.PPPPP` 构建号表达，见 `ReleaseProcess.md` §2）；
+2. 新增 `bin/ProjectVersion.py` 作为**唯一读取入口**（§B）：
+   - `--resolve [<版本>]`：输入优先，否则读 `version` 文件，再回退根 POM 的 `<revision>`；
+   - `--verify`：一致性校验（§E）；
+   - 裸调用：输出当前版本号（供脚本 / 本地使用）。
+3. 四个工作流的内联 `ET.parse("pom.xml")`（`Build.yml:89` / `BuildJVMArtifacts.yml:89` /
+   `CliNative.yml:91` / `DesktopNative.yml:106`）全部改为调用它。
+
+#### H.2 workflow：`.github/workflows/VersionBump.yml`
+
+```yaml
+name: VersionBump
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '新版本号（如 0.1.3）；留空则取 version 文件当前值'
+        required: false
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: version-bump
+  cancel-in-progress: true
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '25' }
+      - name: 解析并校验版本
+        id: v
+        run: python3 bin/ProjectVersion.py --resolve "${{ inputs.version }}"
+      - name: 分发（POM / version / 代码常量 / 文档）
+        run: python3 Script/Python/VersionDistribute.py --version "${{ steps.v.outputs.version }}"
+      - name: 自检
+        run: python3 bin/CheckDocs.py && python3 bin/ProjectVersion.py --verify
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.VERSION_BUMP_TOKEN }}     # ⚠ PAT，见下
+          branch: chore/bump-${{ steps.v.outputs.version }}
+          base: dev
+          title: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
+          commit-message: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
+```
+
+两个要点：
+
+- **`token` 必须用 PAT**（`secrets.VERSION_BUMP_TOKEN`，细粒度，仅 `contents: write` +
+  `pull-requests: write`）——默认 `GITHUB_TOKEN` 推的提交**不触发下游 workflow**（本仓库已在
+  `ReleaseProcess.md` §4.2 记过这个坑），否则版本切换 PR 的 `Build` / `Gate` 不会跑；
+  若暂不想配 PAT，则退而求其次：PR 开出来后由人手动 close/reopen 或补一次 push，并在 PR 描述里写明；
+- `inputs.version` 可留空 → 取 `version` 文件当前值（幂等重放用）。
+
+#### H.3 分发脚本：`Script/Python/VersionDistribute.py`
+
+职责（**动态扫描，不硬编码清单**）：
+
+1. 校验格式 `^\d+\.\d+\.\d+$`；值与当前相同则**拒绝**（非零退出，不产生空提交）；
+2. **动态发现 POM**：根 `pom.xml` + `git ls-files '*/pom.xml'`（排除 `target/`）；
+   断言总数 ≥ **9**（防漏，新增模块时自动覆盖）；
+3. 改根 POM 的 `<properties><revision>`：**正则只动 `<properties>` 块**、保留注释与格式
+   （照 MetaOpen 的 `UpdatMeavenProperties.py`）；子 POM 无需改（引用 `${revision}`）；
+4. 写回根目录 `version` 文件；
+5. `AppVersion.FALLBACK_VERSION`：若按 §C 解耦则**不动**；否则同步为 `"<版本>-dev"`；
+6. 文档声明 4 处（§D）：若已改为不写死则**不动**；否则正则替换；
+7. **收尾断言**：全仓搜旧版本号，除白名单（`@since`、`CHANGELOG` 历史段、
+   `Troubleshooting` / `DevLog` 记录、构建号 `a.b.c.PPPPP`）外不得残留；
+8. 打印改动清单（供 PR 描述用）。
+
+> 脚本遵守项目规约：UTF-8 + LF（`bin/CheckScripts.py` 会校验）；
+> Agent 不在本地跑 Maven，因此分发**用正则改 POM**，而不是调 `mvn versions:set`。
+
+#### H.4 与 MetaOpen 的差异（为何不能照抄）
+
+| 维度 | MetaOpen | AHA | AHA 的处置 |
+|---|---|---|---|
+| 子模块版本写法 | `<properties><revision>`，子模块继承 | **各子 POM 的 `<parent><version>` 硬编码** | 引入 `${revision}`（§A） |
+| POM 清单 | **硬编码 4 个 DIRS** | 9 个 POM，且会继续加模块 | **动态扫描 + 数量断言**（H.3-2） |
+| 代码里的版本字面量 | — | `AppVersion.FALLBACK_VERSION` | 解耦（§C）或纳入分发（H.3-5） |
+| 文档版本声明 | — | 4 处 | 改为不写死（§D）或纳入分发（H.3-6） |
+| 流水线读版本 | 无（不打 tag） | **4 个工作流读 POM** | 收敛到 `bin/ProjectVersion.py`（§B） |
+| Maven 兼容线 | 单版本 | Maven 4 + **3.9.x** | 需 `flatten-maven-plugin`（§A） |
+| PR 触发下游 | 用默认 `GITHUB_TOKEN` | 有必需检查与 `Gate` | **必须用 PAT**（H.2） |
+| 一致性校验 | 无 | 无 | 新增（§E）——“守门人” |
+
+#### H.5 幂等与失败处置
+
+- 重复触发同版本：H.3-1 直接拒绝，不产生空提交；
+- 并发触发：`concurrency` 串行化（H.2）；
+- 版本写错、PR 未合并：关掉 PR 重跑 workflow（分支名不同，互不影响）；
+- workflow 失败（如 PAT 失效）：Job Summary 写明「人工按 `VersionBumpGuide.md` §3 手工分发」。
 
 ## 与 Maven 4 的分期决策
 
@@ -112,35 +242,39 @@
 > metadata 的 `release` 就是 `4.0.0-rc-7`）。rc 阶段行为可能微调，阶段二的结论应以 Maven 4 GA
 > 的官方文档为准，并用 F10 / F11 实测后再执行。
 
-### G. 文档与规范同步
-
-11. `ReleaseProcess.md` §2：版本切换改为「改根 POM 的 `<revision>` 一行」；§4.2 的「8 处」修正；
-12. `VersionBumpGuide.md`：§2 改动清单由 14 处降为 **1 处**，§4 检查清单相应简化（校验项保留）；
-13. `BuildSpec.md` §7「版本单一来源」：来源由 `<version>` 改为 `<revision>`；
-14. `AHA-Design-V1.md` 的 POM 示例与变更日志；
-15. `CHANGELOG.md` 记录本次改造。
-
 ## 落地顺序与依赖
 
 1. **先合并 PR #89**（0.1.1 → 0.1.2）——两者同改 POM，必须串行；
-2. **P1：§E 校验**（独立 PR，风险最低、收益最高）；
-3. **P2：§B 读取收敛**（独立 PR，为后续铺路）；
-4. **P3：§A / §C**（`${revision}` + flatten + fallback 改造）；
-5. **P4：§D / §G 文档**；
-6. **每步都过 §F 的验证矩阵**（编译/测试由 CI 承担，本地只跑 `bin/Check*.py`）。
+2. **P1：§E 一致性校验**（独立 PR，风险最低、收益最高）；
+3. **P2：§B 读取收敛**（`bin/ProjectVersion.py` 作为唯一入口）；
+4. **P3：§A / §C**（`${revision}` + flatten + fallback 解耦）；
+5. **P4：§H 分发器**（`version` 文件 + `VersionBump.yml` + `VersionDistribute.py`）
+   ——**必须先有 P1~P3**，否则分发器仍要维护 9 处 POM 的清单；
+6. **P5：§D / §G 文档**；
+7. **每步都过 §F 的验证矩阵**（编译/测试由 CI 承担，本地只跑 `bin/Check*.py`）。
+
+> 可先做的最小闭环：**P1 + P4 的只读部分**（`version` 文件 + `bin/ProjectVersion.py --verify`）
+> ——即使暂不动 POM 结构，也能把「版本号漂移」变成红灯。
 
 ## 验收标准
 
-- [ ] 切版本只需改 **1 行**（根 POM 的 `<revision>`），其余无人工改动；
+- [ ] 切版本只需改 **1 行**（根目录 `version` 文件），其余由 workflow 分发，无人工改动；
 - [ ] 不存在写死的版本字面量（`AppVersion.FALLBACK_VERSION` 已与版本解耦）；
 - [ ] 版本读取只有 **1 处实现**（`bin/ProjectVersion.py`），四个工作流统一调用；
-- [ ] 一致性校验上线：`<revision>` / `version.properties` / 产物名 / tag 名不一致即 CI 失败；
+- [ ] 一致性校验上线：`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 名
+      不一致即 CI 失败；
+- [ ] **VersionBump workflow** 可一键分发并开出 PR（分支名 `chore/bump-<版本>`），
+      且 **PR 上的 checks 被真实触发**（F12）；
+- [ ] 分发脚本**动态扫描 POM**（不硬编码清单），新增模块无需改脚本（F13）；
 - [ ] Maven 4 与 3.9.x 双版本构建通过；原生镜像线产物名正确；
-- [ ] `ReleaseProcess` / `VersionBumpGuide` / `BuildSpec` 口径更新为「1 处」；
+- [ ] `ReleaseProcess` / `VersionBumpGuide` / `BuildSpec` 口径更新为「1 处」（或「1 处 + 一键分发」）；
 - [ ] 切一次真实版本（如 0.1.3）验证全链路，并把结果回填本文件。
 
 ## 关联
 
+- **参考实现**：[`ACANX/MetaOpen` 的 `UpdateProjectVersion.yml`](https://github.com/ACANX/MetaOpen/blob/dev/.github/workflows/UpdateProjectVersion.yml)
+  与配套的 `.github/Python/UpdatMeavenProperties.py`（正则只改 `<properties>` 块）；
+  MetaOpen 根目录也有一个 `version` 文件（内容如 `0.9.2-SNAPSHOT`）；
 - `Docs/Guide/VersionBumpGuide.md`（操作）、`Docs/DevSpec/ReleaseProcess.md`（规范）
 - `Docs/Troubleshooting/TS-202610-VersionBumpMissedModules.md`（当初的教训）
 - 四个工作流的版本读取：`Build.yml` / `BuildJVMArtifacts.yml` / `CliNative.yml` / `DesktopNative.yml`
