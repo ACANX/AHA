@@ -187,7 +187,12 @@ jobs:
           set -uo pipefail
           f=$(find aha-common/target/classes -name '*.class' | head -n1 || true)
           if [ -z "$f" ]; then echo "::error::找不到 class 文件，无法自证"; exit 1; fi
-          major=$(od -An -tu1 -j 6 -N 2 "$f" | awk '{print $1 * 256 + $2}')
+          # 只截字节、不做偏移：od 分 GNU（Linux）与 BSD（macOS）两派，`-j`/`-N` 的
+          # 行为并不一致——macOS 上会多吐字段，把 awk 的结果变成两行，比较必然失败。
+          # 这里先用 head/tail 截出 major 的两个字节，再用两端一致的 `-A n -t x1`
+          # 取十六进制，最后交给 shell 换算，彻底绕开 od 的实现差异。
+          hex=$(head -c 8 "$f" | tail -c 2 | od -A n -t x1 | tr -d ' \n')
+          major=$((16#${hex}))
           if [ "${JDK}" = "27" ]; then expect=71; else expect=69; fi
           echo "样本：${f}  major=${major}  期望=${expect}"
           if [ "${major}" != "${expect}" ]; then
