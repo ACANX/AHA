@@ -468,6 +468,57 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
+      - name: 运行冒烟（硬断言：产物真的能起来）
+        # 为什么是**硬**断言：产物自证只看「文件像不像原生镜像」（存在 / 体积 / 魔法数 /
+        #   依赖齐全 / 元数据完整），证明不了「它真的能执行」。这一步直接跑 `--version`，
+        #   判据只有两条：退出码为 0、输出里含本次版本号（完整构建号或基线）。
+        # 不依赖图形环境，三条腿都能跑（默认 shell 已统一为 bash，Windows 上是 Git Bash）。
+        if: always() && steps.verify.outputs.produced == 'true'
+        env:
+          EXPECTED_VERSION: ${{ needs.cli-native-version.outputs.version }}
+        run: |
+          set -uo pipefail
+          work=aha-cli-native/target/native
+          bin=$(ls "$work/aha-cli-native" "$work/aha-cli-native.exe" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            bin=$(find aha-cli-native/target -type f \
+                    \( -name 'aha-cli-native' -o -name 'aha-cli-native.exe' \) 2>/dev/null | head -n1 || true)
+          fi
+          test -n "$bin" || { echo "::error::没有找到可执行文件，冒烟无法进行"; exit 1; }
+          chmod +x "$bin" 2>/dev/null || true
+          echo "可执行文件：${bin}"
+
+          echo "—— 冒烟①：--version ——"
+          out=$("$bin" --version 2>&1)
+          code=$?
+          echo "$out"
+          echo "退出码：${code}"
+          {
+            echo "### CLI 原生镜像冒烟（${{ matrix.label }} / jdk${{ matrix.jdk }}）"
+            echo
+            echo '```'
+            echo "$out"
+            echo '```'
+            echo
+            echo "- 退出码：${code}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$code" -eq 0 || { echo "::error::--version 退出码非 0（${code}）"; exit 1; }
+
+          base="${EXPECTED_VERSION%.*}"
+          if echo "$out" | grep -qF "$EXPECTED_VERSION"; then
+            echo "✅ 输出含完整版本号 ${EXPECTED_VERSION}"
+          elif echo "$out" | grep -qF "$base"; then
+            echo "✅ 输出含基线版本 ${base}（未带构建号，可接受）"
+          else
+            echo "::error::--version 输出里既没有 ${EXPECTED_VERSION} 也没有 ${base}"
+            exit 1
+          fi
+
+          echo "—— 冒烟②：--help ——"
+          "$bin" --help >/dev/null 2>&1 || { echo "::error::--help 退出码非 0"; exit 1; }
+          echo "✅ --help 正常"
+          echo "✅ 冒烟通过：原生镜像可执行、退出码正常、版本号正确"
+
       - name: 改名为发布用资产名
         continue-on-error: true
         if: steps.verify.outputs.produced == 'true'

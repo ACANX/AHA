@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.26.0
+**文档版本**：v1.27.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -40,6 +40,7 @@
 | v1.24.0 | 2026-10-09 | §7 新增「项目版本的单一来源」：权威源为根目录 `version` 文件，机器位置为根 POM 的 `<revision>`（由 `VersionDistribute.py` 写入），子模块写 `${revision}` 继承；一致性由 `ProjectVersion.py --verify` 在 `Gate.yml` 强制（P5 / #97） | @ACANX / CNXNC |
 | v1.25.0 | 2026-10-09 | §4.1 与 §7 的「分平台构建」依据由 `jpackage` 改为 **JavaFX 平台分类器**——发行形态已决策只保留「JVM JAR 聚合包」与「原生镜像二进制」两种，`jpackage` 跳过不采用（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-09 | 新增第 10 节「原生镜像产物（试验性）」：把 E-02 ~ E-09 的可达性结论固化为规范、明确 E-10 的验收边界（门禁不覆盖 native、独立冒烟测试尚未定义）；§7 新增「发行形态矩阵」（E-11）；§6 注明门禁不覆盖 native 产物（issue #80 / TD-00009） | @ACANX / CNXNC |
+| v1.27.0 | 2026-10-09 | §10.3 由「验收边界」扩为「验收边界与冒烟」：E-10 落地为**三层**（产物自证 → CLI 运行冒烟硬断言 → Windows GUI 存活冒烟非阻塞），并写明「GUI 冒烟只在 Windows、不阻塞」的理由（CI 无 GPU、覆盖不到 D3D；真实渲染与交互验证留在本地 / 真机） | @ACANX / CNXNC |
 
 ---
 
@@ -474,6 +475,30 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
 > `aha-desktop-native/src/native/native-image-args*.txt`（含 `-jdk27` 变体）；
 > 本节只记**结论**，不复制参数全文——参数以文件为准。
 
+### 10.3 验收边界与冒烟（E-10）
+
+**JaCoCo 覆盖率门禁不覆盖 native 产物**（门禁只对 JVM 字节码插桩，见第 6 节）。
+native 侧的质量保证分**三层**：
+
+| 层 | 位置 | 判据 | 阻塞？ |
+|---|---|---|---|
+| ① 产物自证 | 两条 native 工作流的「产物自证」步骤 | 存在 / 体积下限 / 平台魔法数 / 依赖齐全 / 元数据完整 | 否（诊断式，写摘要） |
+| ② **CLI 运行冒烟** | `CliNative.yml` 的「运行冒烟」步骤 | 真的执行产物：`--version` 退出码 0 且输出含本次版本号；`--help` 退出码 0 | 是（本工作流内硬断言） |
+| ③ **GUI 运行冒烟** | `DesktopNative.yml` 的「运行冒烟」步骤（**仅 Windows 腿**） | 启动进程并观察 20 秒：进程存活，或 20 秒内以 **0** 退出；启动期以非 0 退出即告警 | 否（`continue-on-error`，写摘要） |
+
+**为什么 GUI 冒烟只在 Windows、且不阻塞**：
+
+- GitHub 的 `windows-latest` runner 有**交互式桌面会话**，能创建窗口；Linux runner 无 X（需 `Xvfb`），
+  macOS 的 GUI 访问受限——所以只有 Windows 腿能做这件事；
+- CI 环境**没有 GPU**：Prism 会回退到软件渲染 / WARP，**覆盖不到真实 D3D 路径**——而桌面端原生镜像
+  的渲染坑恰恰集中在 D3D（`D3DResourceFactory.createStockShader`、`D3DShaderSource`、
+  `LinearConvolveShadow` 等）。因此这一步只证明「**进程能起来、启动期不崩**」，**不做**像素对比、
+  点击交互与窗口内容断言（脆弱，且在无 GPU 环境下的结论不可信）；
+- GUI 测试抖动大：按本节与第 7 节的要求，**可选管线不得进必需检查**，失败必须在步骤级容错。
+
+> **渲染与交互的真实验证仍留在本地 / 真机**：`aha-desktop` 的 `AhaDesktopSmokeTest`（真开 `Stage`）
+> 默认不跑，需 `-Daha.ui.tests=true` 且要求图形环境（Linux 上需 `Xvfb`）——见 `TestingSpec.md` 与
+> `TODO.md` 的 `D-04`（「何时在 CI 打开 UI 测试」与本节是同一个问题的两面）。
 ### 10.3 验收边界（E-10）
 
 - **JaCoCo 覆盖率门禁不覆盖 native 产物**（门禁只对 JVM 字节码插桩，见第 6 节）；
