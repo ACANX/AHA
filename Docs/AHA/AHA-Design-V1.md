@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.70.0
+**文档版本**：v3.71.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -488,6 +488,7 @@ aha/
 | v3.68.0 | 2026-10-09 | 新增 `Archive/`（已废弃历史资料的归档，不参与 CI 检查）并登记入目录树与附录 A；§4 技能索引补 `issue-tracking` 与 `doc-recording`；新增「记录纪律（强制）」（代码与记录同变更内完成） | @ACANX / CNXNC |
 | v3.69.0 | 2026-10-09 | 新增 `Docs/Guide/VersionBumpGuide.md`（版本切换指南：操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案 / 历史教训 / 维护约定）；`ReleaseProcess.md` §2 交叉引用；Guide 索引（目录树 + 附录 A）补齐 `ReferenceGuide` / `CommandCheatsheet` / `NativeRenderDiagnosticsGuide` / `VersionBumpGuide` | @ACANX / CNXNC |
 | v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
+| v3.71.0 | 2026-10-09 | 发行形态最终决策：打包方式表与相关小节去掉 `jpackage`，改为**两种形态**（JVM JAR 聚合包 + 原生镜像二进制）；风险表的「0.2 使用 jpackage」改为按新形态缓解。理由与口径见 `ReleaseProcess.md` §3.3 | @ACANX / CNXNC |
 
 ---
 ```
@@ -3052,8 +3053,11 @@ wrapperUrl=https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-w
 | 版本 | CLI | 桌面端 |
 |---|---|---|
 | 0.1 | JPMS 模块路径目录（`Dist/`）+ 启动脚本 | — |
-| 0.2 | 同上 | jpackage (MSI/DEB) |
-| 1.x | native-image | jpackage (MSI/DEB) |
+| 0.2 | 同上 | JVM 便携包（`aha-desktop-<版本>-<系统>-<架构>.zip`） |
+| 1.x | 同上 + `native-image` 单文件 | 同上 + `native-image` 单文件 |
+
+> **发行形态只有两种**：JVM JAR 聚合包（解压后脚本启动）与原生镜像二进制。
+> `jpackage` 安装包**已决策跳过**（2026-10-09），理由见 `ReleaseProcess.md` §3.3。
 
 ### 2.1 0.1 发行包
 
@@ -3082,7 +3086,10 @@ Dist/
 `Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
 的决策而改变**）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
-**为何不用 jpackage（0.1）**：0.1 仅需 CLI + `bin/` 脚本，jpackage 主要用于 0.2 的桌面端。
+**为何不用 jpackage（最终决策，2026-10-09）**：`jpackage` 安装包**已决策跳过**——发行形态只保留
+「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种；「免装 JDK」的目标由原生镜像覆盖，
+而它能沿用既有的产物名 / 完整性自证链路，不必再多维护一条安装器 + 签名 / 公证的链路
+（理由见 `ReleaseProcess.md` §3.3）。
 
 ## 3. 启动脚本
 
@@ -3571,7 +3578,7 @@ Closes #123
 | 版本 | 内容 | 关键里程碑 |
 |---|---|---|
 | **0.1** | Core + CLI 可运行 | AgentService + picocli + SQLite + LLM 适配器 + 远程/协议前向兼容契约 |
-| **0.2** | 桌面端 | OpenJFX **原生控件 + 进程内直调**（备选：WebView + 本地 HTTP）+ jpackage |
+| **0.2** | 桌面端 | OpenJFX **原生控件 + 进程内直调**（备选：WebView + 本地 HTTP）+ JVM 便携包 |
 | **0.3** | 扩展基础 | aha-extension-api + ExtensionRuntime + Registration |
 | 0.4 | 事件总线 | EventBus + 生命周期事件 + CLI extension 命令 |
 | 0.5 | 隔离与权限 | ModuleLayer 隔离 + 扩展权限 + 热重载探索 |
@@ -3673,7 +3680,7 @@ Closes #123
 
 | 风险 | 影响 | 缓解措施 |
 |---|---|---|
-| sqlite-jdbc 为自动模块，无法 jlink | 0.2 打包受限 | 0.1 使用 JAR 分发，0.2 使用 jpackage |
+| sqlite-jdbc 为自动模块，无法 jlink | 0.2 打包受限 | 发行只用「JVM JAR 聚合包 + 原生镜像二进制」两种形态（不用 jlink / jpackage） |
 | Maven 4 在 JPMS 多模块下有阻塞性问题 | 构建失败 | POM 语法兼容 Maven 3.9.x，可临时回退 |
 | JUnit 6 生态适配不完整 | 测试框架问题 | JUnit 6 已 GA，核心功能稳定 |
 | Anthropic / Gemini 协议变更 | 适配器失效 | 适配器隔离，仅需修改适配器实现 |

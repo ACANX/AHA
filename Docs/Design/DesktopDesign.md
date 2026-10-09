@@ -1,6 +1,6 @@
 # 桌面端设计
 
-**文档版本**：v1.12.0
+**文档版本**：v1.13.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -26,6 +26,7 @@
 | v1.10.0 | 2026-10-08 | 新增 §10「对话与供应商配置」：对话内核可测而界面薄（ChatController/ChatView/ToolSummary/DesktopToolApprover）、供应商为可编辑表单（含校验与保留未涉及字段）、以及 Windows 真机验证记录 | @ACANX |
 | v1.11.0 | 2026-10-08 | §10.2 供应商配置补充：绿灯标识（启用项与其模型）、打开即选中启用项（纯函数 + 测试）、按预设新建与可编辑模型下拉 | @ACANX |
 | v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（dev 预发行线在独立工作流 `BuildJVMArtifacts.yml`，issue #63） | @ACANX |
+| v1.13.0 | 2026-10-09 | 发行形态最终决策：§2「打包」由 `jpackage` 改为「JVM 便携包 + 原生镜像单文件」；§3 / §5 / §5.4 去掉 `jpackage`，「必须分平台构建」的依据改为 JavaFX 平台分类器；§5.6 注明 `jpackage` 已决策跳过（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
 
 ---
 
@@ -37,11 +38,12 @@
 
 - OpenJFX 25（父 POM：`javafx.version = 25`）
 - 主类：`com.acanx.module.aha.desktop.AhaDesktopApp`
-- 打包：`jpackage`（MSI / DEB / DMG）
+- 打包：**JVM 便携包**（`aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与
+  **原生镜像单文件**（`aha-desktop-native`，试验性）；`jpackage` 安装包**已决策跳过**（见 `ReleaseProcess.md` §3.3）
 - **界面路线（`D-07` 决策，2026-10-08）：进程内直调 + JavaFX 原生控件**（`GUIDesign.md` §8.1）；
   `WebView + 本地 HTTP`（§8.2）**仅在 8.1 无法满足需求时**才启用，不作默认
 - **目标平台（`D-06` 决策，2026-10-08）**：支持承诺为 **Windows + Linux**；
-  macOS **只要求能打出包**（`jpackage`，CI 分平台构建），**不要求跑测试**
+  macOS **只要求能打出包**（CI 分平台构建），**不要求跑测试**
 
 > **界面形态与技术选型见 [GUIDesign.md](GUIDesign.md)**（草案）。
 >
@@ -53,7 +55,7 @@
 
 ## 3. 约束
 
-- `jpackage` 不能交叉编译，CI 必须分平台构建（含 macOS 打包 job，但不跑 macOS 测试）
+- **JavaFX 原生库按平台分类器发布**，CI 必须分平台构建（含 macOS 打包 job，但不跑 macOS 测试）
 - **JPMS 为默认而非门槛**：与 OpenJFX（TestFX / WebView 反射）冲突时为 OpenJFX 让路（`C-01` 决策）
 - 桌面端 WebView 不支持 native-image，native-image 流水线仅覆盖 CLI + Core + Tools
 
@@ -76,8 +78,8 @@
 
 ## 5. 平台依赖与打包：JavaFX 分类器 + per-OS profile（2026-10-08 实测）
 
-JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能解析当前平台那一份；而 `jpackage`
-不能交叉编译（第 3 节），所以每个平台的包必须由该平台的 runner 产出。机制与实测结论如下。
+JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能解析当前平台那一份，所以每个平台的包
+必须由该平台的 runner 产出。机制与实测结论如下。
 
 ### 5.1 分类器清单（Maven Central 实查，版本 `25`）
 
@@ -112,14 +114,14 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 3. **必须显式声明三个工件并排掉空壳传递依赖**：带分类器的工件在依赖树里还会拉进同名 GA 的
    **0 KB 空壳 jar**（`javafx-base-25.jar` 只有 `META-INF/MANIFEST.MF`，无类、无 `module-info`）。
    它在 classpath 上无害，但在 module path 上会变成**自动模块**：
-   `javafx-base:25 -- module javafx.baseEmpty [auto]`，而 `jpackage` / `jlink` **不接受自动模块**。
+   `javafx-base:25 -- module javafx.baseEmpty [auto]`，而 `jlink` **不接受自动模块**。
    最终做法：三个工件都显式带分类器，并用 `<exclusions>` 排掉空壳——依赖树只剩本平台三个真 jar，
    模块名为 `javafx.controls` / `javafx.graphics` / `javafx.base`，均无 `[auto]`。
 
 ### 5.4 与打包的关系
 
-- profile 一开，**classpath 上只有本平台的原生库** → 桌面端自己的 assembly 描述符 / `jpackage`
-  输入天然只含一个平台，`D-01`（发行包混入多平台 native JAR）**不需要额外的 `<classifier>` 过滤**；
+- profile 一开，**classpath 上只有本平台的原生库** → 桌面端自己的 assembly 描述符输入天然只含
+  一个平台，`D-01`（发行包混入多平台 native JAR）**不需要额外的 `<classifier>` 过滤**；
 - CLI 的 `Dist` **不受影响**：`aha-cli` 与 `aha-desktop` 互不依赖（`Constitution.md` 第 4 条），
   实测 `Dist/lib` 的 18 个 jar 中 javafx 相关为 **0**；
 - 未被任何 profile 覆盖的平台（如 Windows ARM）会以默认值 `unsupported` 解析失败——失败信息
@@ -143,7 +145,8 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
   ——版本来自父 POM、平台来自 profile，没有手写常量；
 - 用户在 release 页面按「系统 + 架构」下载对应包，解包后只需 JDK 25 即可运行
   `bin/AhaDesktop.sh`（Linux / macOS）或 `bin/AhaDesktop.bat`（Windows）；
-- **自包含安装包（jpackage，内置运行时）仍待评估**——见 `TODO.md` `D-08`。
+- **自包含安装包（`jpackage`）已决策跳过**（2026-10-09）：发行形态只保留 JVM 便携包与原生镜像
+  单文件两种，理由见 `ReleaseProcess.md` §3.3。
 
 > 0.1 阶段这里的产物是「机制已就绪」：`AhaDesktopApp.main` 仍是占位实现，
 > 正式版（0.2）落地后同一条流水线直接产出可用包。

@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.24.0
+**文档版本**：v1.25.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -38,6 +38,7 @@
 | v1.22.0 | 2026-10-09 | §2 补「JDK 27 编译变体」（`-Dmaven.compiler.release=27`，仅 `BuildJVMArtifacts.yml` 的 jdk27 腿，包名带 `-jdk27`，issue #65）：不改变 JDK 25 基线与正式发版；§8.1 分层表同步补 JDK 轴 | @ACANX |
 | v1.23.0 | 2026-10-09 | §8.1 的「必需检查与审批要求」登记处由 `TODO.md` `G-02` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 | v1.24.0 | 2026-10-09 | §7 新增「项目版本的单一来源」：权威源为根目录 `version` 文件，机器位置为根 POM 的 `<revision>`（由 `VersionDistribute.py` 写入），子模块写 `${revision}` 继承；一致性由 `ProjectVersion.py --verify` 在 `Gate.yml` 强制（P5 / #97） | @ACANX / CNXNC |
+| v1.25.0 | 2026-10-09 | §4.1 与 §7 的「分平台构建」依据由 `jpackage` 改为 **JavaFX 平台分类器**——发行形态已决策只保留「JVM JAR 聚合包」与「原生镜像二进制」两种，`jpackage` 跳过不采用（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
 
 ---
 
@@ -129,16 +130,16 @@ CI 必须同时执行两条流水线，且结果一致：
 失败只体现在该腿自身，**不使整体构建失败**。第 4 节的「任一条失败即视为构建失败」
 只约束上面三条必需腿。
 
-**0.2 起（`D-06` 决策，2026-10-08）**：CI **要能产出 macOS 平台的包**（`jpackage` 分平台构建），
-但**不在 macOS 上加测试**——支持承诺仍只有 **Windows + Linux** 双平台，macOS 只到「能打包」为止。
-打包 job 的落地见 `TODO.md` `D-08`。
+**0.2 起（`D-06` 决策，2026-10-08）**：CI **要能产出 macOS 平台的包**（JavaFX 原生库按平台分类器
+发布，桌面端产物必须**分平台构建**），但**不在 macOS 上加测试**——支持承诺仍只有 **Windows + Linux**
+双平台，macOS 只到「能打包」为止。
 
 **JavaFX 平台分类器（0.2 桌面端）**：JavaFX 的原生库按平台拆成分类器工件，由父 POM 的
 `javafx-*` profile 按当前 OS / 架构设定 `javafx.platform` 属性，模块只引用属性、不写平台字面量。
 激活条件的两条硬规则——Linux 用 `<name>Linux</name>`（**不用** `<family>unix</family>`）、
 架构用 `<arch>!aarch64</arch>`（**不写** `x86_64`，Maven 的 `os.arch` 是 `amd64`）——以及
 「必须显式声明三个工件并排掉 0 KB 空壳 jar（否则 module path 上出现自动模块，
-`jpackage` / `jlink` 直接失败）」，详见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节。
+`jlink` 直接失败）」，详见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节。
 未被 profile 覆盖的平台会以 `javafx-*-25-unsupported.jar` 明确失败，可用 `-Djavafx.platform=`
 应急覆盖。
 

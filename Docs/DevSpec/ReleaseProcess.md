@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.17.0
+**文档版本**：v1.18.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -32,6 +32,7 @@
 | v1.15.0 | 2026-10-09 | 第 2 节版本源口径：P3（#95）引入 `<revision>` 后 POM 侧收敛为 **1 处**（8 子模块写 `${revision}` 继承），`AppVersion.FALLBACK_VERSION` 解耦为 `"dev"`；一次性命令改用 `versions:set-property -Dproperty=revision`；§2 第 4 步与 §4.1 的版本来源改指 `<revision>` | @ACANX / CNXNC |
 | v1.16.0 | 2026-10-09 | P5（#97，父 #92）文档口径同步：§2 版本切换改为「改 `version` 文件 / 触发 `VersionBump` workflow」；§4.1 与 §4.2 的版本号来源改指根目录 `version` 文件（权威），`<revision>` 降为机器位置；§1 检查清单与 §4.2 ④ 的「8 处」改为 `ProjectVersion.py --verify` 一键校对 | @ACANX / CNXNC |
 | v1.17.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更，父 #92）：§2 新增「验证时机」——版本切换 PR 上不跑 `Build` / `Gate` / `Compat`，验证由合并到 `dev` 后的 `Build` + 三条出包线承担；§4.2 去掉「改用 PAT」选项，明确手工重建 tag 为唯一处置（`Release.yml` 无 `workflow_dispatch`） | @ACANX / CNXNC |
+| v1.18.0 | 2026-10-09 | **发行形态最终决策**：只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，**`jpackage` 安装包跳过、不采用**；§3 制品表按新形态重写并新增 §3.3（决策与三条理由）；§3.1 / §3.2 去掉 `jpackage` 相关表述——「必须分平台构建」的依据改为 JavaFX 平台分类器 | @ACANX / CNXNC |
 
 ---
 
@@ -139,13 +140,15 @@ git push origin V0.1.2                                         # 这次由人推
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
 | 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-cli-<版本>.zip` | — |
-| 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2）；jpackage 安装包待评估 |
-| 1.x | native-image | jpackage (MSI/DEB/DMG) |
+| 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2） |
+| 1.x | 同上 + `native-image` 单文件 | 同上 + `native-image` 单文件 |
+
+> 发行形态只保留哪两种、为什么跳过 `jpackage`，见 3.3。
 
 ### 3.2 桌面端按平台出包（0.2 起）
 
-**为什么必须分平台**：OpenJFX 的原生库按平台分类器发布，且 `jpackage` 不能交叉编译
-（见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节）。所以**每个平台的包由该平台的 runner 产出**。
+**为什么必须分平台**：OpenJFX 的原生库按平台分类器发布，**每个平台的包只能由该平台的 runner 产出**
+（见 [DesktopDesign.md](../Design/DesktopDesign.md) 第 5 节）。
 
 `Release.yml` 的 `desktop` 作业按矩阵出包，用户按自己的系统与架构下载对应文件：
 
@@ -172,7 +175,7 @@ git push origin V0.1.2                                         # 这次由人推
 | 本平台 OpenJFX | 3 | `javafx-base` / `javafx-graphics` / `javafx-controls`（带平台分类器，且**只有本平台**） |
 | 第三方 | 10 | Jackson 4 件、Log4j2 3 件 + SLF4J、snakeyaml-engine、sqlite-jdbc |
 
-**不含**：JDK 运行时（用户需自备 JDK 25；自包含安装包见 `TODO.md` `D-08`）、
+**不含**：JDK 运行时（JVM 便携包要求用户自备 JDK 25；免 JDK 的场景走原生镜像单文件，见 3.3）、
 测试与构建期依赖（`test` / `provided` scope）。
 
 **完整性自证（强制）**：打包后解包，用「一个不存在的主类」触发 JVM 的模块图解析——
@@ -198,8 +201,27 @@ git push origin V0.1.2                                         # 这次由人推
 发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
-> **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。
-> **桌面端 WebView 不支持 native-image**，1.x 的 native-image 流水线仅覆盖 CLI + Core + Tools。
+> **OpenJFX 原生库按平台分类器发布**，0.2 起的桌面端产物必须分平台构建。
+> **桌面端 WebView 不支持 native-image**：原生镜像的桌面端走「JavaFX 原生控件」路线
+> （见 [DesktopNativeDesign.md](../Design/DesktopNativeDesign.md)）。
+
+### 3.3 发行形态（最终决策，2026-10-09）
+
+本项目**只支持两种发行形态**，与「平台」这条轴正交：
+
+| 形态 | 产物 | 启动方式 | 前提 |
+|---|---|---|---|
+| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `bin/Aha.sh`、`bin/AhaDesktop.sh` / `.bat` | 机器需自备 JDK 25 |
+| **原生镜像二进制** | `native-image` 单文件（`aha-cli-native` / `aha-desktop-native`，试验性） | 直接执行二进制 | 无需 JVM |
+
+**`jpackage` 安装包（MSI / DEB / DMG）已决策跳过，不采用**。理由：
+
+1. 它是**第三种**发行形态，会额外引入安装器矩阵与代码签名 / 公证的长期维护面；
+2. 「免装 JDK」这一目标已由**原生镜像二进制**覆盖，而且更彻底（连 JVM 都不需要）；
+3. 现有两种形态都沿用同一套**产物名自证 + 完整性自证**链路（见 3.2），再加安装器等于多维护一条独立校验链。
+
+> 备注：`jlink` 与 `jpackage` 的**技术限制**（不接受自动模块、不能交叉编译）仍保留在设计文档里——
+> 它们是「桌面端产物为何必须分平台构建」的依据，不因本决策而删除。
 
 ---
 

@@ -10,7 +10,15 @@
 
 ## [Unreleased]
 
-（暂无）
+### 变更
+- **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
+  `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
+  （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
+  跳过、不采用**。
+  理由：① 避免引入第三种发行形态及其安装器 / 签名 / 公证维护面；② 「免装 JDK」已由原生镜像覆盖，
+  且更彻底；③ 现有两种形态可沿用同一套产物名自证与完整性自证链路。
+  口径见 `ReleaseProcess.md` §3.3；受影响的文档已同步（`BuildSpec.md` / `AHA-Design-V1.md` /
+  `DesktopDesign.md` / `DesktopNativeDesign.md` / `TD-00007` / `TD-00009`）。
 
 ## [0.1.2] - 2026-10-09
 
