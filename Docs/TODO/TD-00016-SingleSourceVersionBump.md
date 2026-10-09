@@ -69,7 +69,7 @@ version            # 一行纯文本，如 0.1.3
 
 ### B. 版本读取收敛为单一入口（1 个脚本 + 4 处调用）
 
-5. 新增 `bin/ProjectVersion.py`：**唯一读取入口** —— 根目录 `version` 文件优先，缺失则回退
+5. 新增 `.github/Python/ProjectVersion.py`：**唯一读取入口** —— 根目录 `version` 文件优先，缺失则回退
    根 POM 的 `<properties>/<revision>`（再回退老式的 `<version>`）；另提供 `--resolve` 与
    `--verify` 两个子命令（见 §H.1）；
 6. 四个工作流的内联解析（各一行 `ET.parse("pom.xml")`）改为调用该脚本：
@@ -134,7 +134,7 @@ AHA 采用同一骨架，但**有三处必须改造**（见 H.4）。
 
 1. 新增根目录 `version`：纯文本一行，如 `0.1.3`（**不带 `SNAPSHOT`**——AHA 的预发行用
    `a.b.c.PPPPP` 构建号表达，见 `ReleaseProcess.md` §2）；
-2. 新增 `bin/ProjectVersion.py` 作为**唯一读取入口**（§B）：
+2. 新增 `.github/Python/ProjectVersion.py` 作为**唯一读取入口**（§B）：
    - `--resolve [<版本>]`：输入优先，否则读 `version` 文件，再回退根 POM 的 `<revision>`；
    - `--verify`：一致性校验（§E）；
    - 裸调用：输出当前版本号（供脚本 / 本地使用）。
@@ -167,11 +167,11 @@ jobs:
         with: { distribution: temurin, java-version: '25' }
       - name: 解析并校验版本
         id: v
-        run: python3 bin/ProjectVersion.py --resolve "${{ inputs.version }}"
+        run: python3 .github/Python/ProjectVersion.py --resolve "${{ inputs.version }}"
       - name: 分发（POM / version / 代码常量 / 文档）
         run: python3 Script/Python/VersionDistribute.py --version "${{ steps.v.outputs.version }}"
       - name: 自检
-        run: python3 bin/CheckDocs.py && python3 bin/ProjectVersion.py --verify
+        run: python3 bin/CheckDocs.py && python3 .github/Python/ProjectVersion.py --verify
       - uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.VERSION_BUMP_TOKEN }}     # ⚠ PAT，见下
@@ -216,7 +216,7 @@ jobs:
 | POM 清单 | **硬编码 4 个 DIRS** | 9 个 POM，且会继续加模块 | **动态扫描 + 数量断言**（H.3-2） |
 | 代码里的版本字面量 | — | `AppVersion.FALLBACK_VERSION` | 解耦（§C）或纳入分发（H.3-5） |
 | 文档版本声明 | — | 4 处 | 改为不写死（§D）或纳入分发（H.3-6） |
-| 流水线读版本 | 无（不打 tag） | **4 个工作流读 POM** | 收敛到 `bin/ProjectVersion.py`（§B） |
+| 流水线读版本 | 无（不打 tag） | **4 个工作流读 POM** | 收敛到 `.github/Python/ProjectVersion.py`（§B） |
 | Maven 兼容线 | 单版本 | Maven 4 + **3.9.x** | 需 `flatten-maven-plugin`（§A） |
 | PR 触发下游 | 用默认 `GITHUB_TOKEN` | 有必需检查与 `Gate` | **必须用 PAT**（H.2） |
 | 一致性校验 | 无 | 无 | 新增（§E）——“守门人” |
@@ -247,21 +247,21 @@ jobs:
 1. ~~先合并 PR #89（0.1.1 → 0.1.2）~~ ✅ **已完成**（`6e329bd`，2026-10-09）
    ——两者同改 POM，故当时必须串行；
 2. **P1：§E 一致性校验**（独立 PR，风险最低、收益最高）；
-3. **P2：§B 读取收敛**（`bin/ProjectVersion.py` 作为唯一入口）；
+3. **P2：§B 读取收敛**（`.github/Python/ProjectVersion.py` 作为唯一入口）；
 4. **P3：§A / §C**（`${revision}` + flatten + fallback 解耦）；
 5. **P4：§H 分发器**（`version` 文件 + `VersionBump.yml` + `VersionDistribute.py`）
    ——**必须先有 P1~P3**，否则分发器仍要维护 9 处 POM 的清单；
 6. **P5：§D / §G 文档**；
 7. **每步都过 §F 的验证矩阵**（编译/测试由 CI 承担，本地只跑 `bin/Check*.py`）。
 
-> 可先做的最小闭环：**P1 + P4 的只读部分**（`version` 文件 + `bin/ProjectVersion.py --verify`）
+> 可先做的最小闭环：**P1 + P4 的只读部分**（`version` 文件 + `.github/Python/ProjectVersion.py --verify`）
 > ——即使暂不动 POM 结构，也能把「版本号漂移」变成红灯。
 
 ## 验收标准
 
 - [ ] 切版本只需改 **1 行**（根目录 `version` 文件），其余由 workflow 分发，无人工改动；
 - [ ] 不存在写死的版本字面量（`AppVersion.FALLBACK_VERSION` 已与版本解耦）；
-- [ ] 版本读取只有 **1 处实现**（`bin/ProjectVersion.py`），四个工作流统一调用；
+- [ ] 版本读取只有 **1 处实现**（`.github/Python/ProjectVersion.py`），四个工作流统一调用；
 - [ ] 一致性校验上线：`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 名
       不一致即 CI 失败；
 - [ ] **VersionBump workflow** 可一键分发并开出 PR（分支名 `chore/bump-<版本>`），
