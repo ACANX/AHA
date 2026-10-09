@@ -366,6 +366,12 @@ public final class DesktopShell implements ChatView {
      */
     public Theme applyTheme(Theme theme) {
         Theme resolved = Palette.setTheme(theme);
+        // 主题诊断（issue #49）：把「色表当前值」与「是否已写入根节点」一并记账。
+        // 原生镜像下出现过「底色已换、文字未换」的混合状态，这一段日志足以区分
+        // 是色表没更新，还是节点没重刷——开发机复现不了，只能靠真机日志对账。
+        LOG.info("主题应用：请求 {} → 生效 {} | BASE={} FOREGROUND={} CONTROL_INNER={} | 根节点 {}",
+                theme, resolved, Palette.BASE, Palette.FOREGROUND, Palette.CONTROL_INNER,
+                rootNode == null ? "尚未建立" : "已建立");
         for (Runnable restyle : restylers) {
             // 逐个隔离：一个节点重刷失败，不该让其余节点停在旧主题（issue #49）
             try {
@@ -1218,7 +1224,7 @@ public final class DesktopShell implements ChatView {
         dialog.setTitle("重命名会话");
         dialog.setHeaderText("给这个会话起个名字");
         dialog.setContentText("标题");
-        dialog.getDialogPane().setStyle(Palette.theme());
+        dialog.getDialogPane().setStyle(Palette.dialogTheme());
         dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
     }
@@ -1233,7 +1239,7 @@ public final class DesktopShell implements ChatView {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("删除会话");
         alert.setHeaderText("确认删除");
-        alert.getDialogPane().setStyle(Palette.theme());
+        alert.getDialogPane().setStyle(Palette.dialogTheme());
         alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         alert.showAndWait()
                 .filter(picked -> picked == ButtonType.OK)
@@ -1510,7 +1516,7 @@ public final class DesktopShell implements ChatView {
         themed(usageLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         Label hint = new Label("[Esc] 中断");
         themed(hint, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        Label version = new Label("v" + AppVersion.version());
+        Label version = new Label("v" + AppVersion.buildVersion());
         themed(version, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         Region spacer = new Region();
