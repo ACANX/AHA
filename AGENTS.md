@@ -8,26 +8,34 @@
 
 ---
 
-## ⛔ 本地不跑慢检查（强制，已多次重申，勿再违反）
+## ⛔ 本地不跑 Maven 编译与单元测试（强制，已多次重申，勿再违反）
 
-**本机不做 `clean verify` / 覆盖率采集 / 重复率扫描 / javadoc 这类分钟级任务。**
-它们一律由 CI 承担：
+**本机不执行任何 Maven 编译 / 测试 / verify 动作**——包括但不限于
+`compile` / `test-compile` / `test` / `clean test` / `verify` / 覆盖率采集 /
+重复率扫描 / javadoc。这些**全部由 CI 承担，一次都不许在本地跑**。
+
+理由：本地跑一遍既慢又占机器，还会让 Agent 陷入长等待；CI（`Build.yml` 编译 + 单元测试，
+`Gate.yml` verify / 覆盖率 / 文档，`Compat.yml` Maven 3.9.x，`BuildJVMArtifacts.yml` 出包）
+会在每次推送 / PR 时自动跑，推送后在 PR 的 checks 里看结果即可。
 
 | 工作流 | 承担 |
 |---|---|
-| `Build.yml` | 每次 push / PR：编译 + 单元测试（`clean test -Djacoco.skip=true`） |
-| `BuildJVMArtifacts.yml` | `push` → `dev`：按「平台 × JDK（25 / 27）」构建 `aha-desktop` / `aha-cli` 便携包并发布 dev 预发行版（`build-mvn-artifact` / `build-publish`） |
+| `Build.yml` | 每次 push / PR：**自动编译 + 单元测试**（`clean test -Djacoco.skip=true`） |
+| `BuildJVMArtifacts.yml` | `push` → `dev`：按「平台 × JDK（25 / 27）」构建 `aha-desktop` / `aha-cli` 便携包并发布 dev 预发行版 |
 | `Gate.yml` | 合入 `main` 前 / 每周 / 发布前：完整 `clean verify`、覆盖率门禁、文档/技能/脚本/像素标志、重复率 |
 | `Compat.yml` | Maven 3.9.x 兼容（`mvn clean verify`） |
 | `Release.yml` | 发布：按平台出包并挂 release 页面 |
 
 规则：
 
-- 本地默认**只用**：`./mvnw -pl <模块> -am test -Djacoco.skip=true`，以及
+- **本机禁止**：`./mvnw ... compile`、`./mvnw ... test-compile`、`./mvnw ... test`、
+  `./mvnw ... clean test`、`./mvnw ... verify`、`mvn ...`，以及任何等价的构建 / 测试动作
+  （包括加 `-pl <模块> -am`、加 `-Djacoco.skip=true` 的「快检查」变体）；
+- 提交 / 推送前本地**只允许**跑静态检查脚本：
   `python3 bin/Check{Changed,Docs,Skills,Scripts}.py`；
-- **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 需要刷新实测值」就在本地补跑 verify
-  —— 推送后看 CI 结果；
-- 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Gate` 日志取**，不要在本机重跑；
+- 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Build` / `Gate` 日志取**，不要在本机重跑；
+- **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 想先确认能不能编译」
+  就本地补跑——直接推送，看 CI 结果；
 - 唯一例外：用户**明确要求**本地跑，或 CI 不可用且用户确认。
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8 节。
@@ -50,10 +58,10 @@ AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
 mvn clean verify             # Maven 3.9.x 兼容验证（CI：Compat.yml）
 ```
 
-本地验证只需要快检查：
+本地验证只需要静态检查脚本（**不跑 Maven**）：
 
 ```bash
-./mvnw -pl aha-core -am test -Djacoco.skip=true   # 改到哪个模块就换成哪个
+python3 bin/CheckChanged.py
 ```
 
 ### 运行 CLI
@@ -67,8 +75,10 @@ Dist\bin\Aha.bat chat        # Windows
 
 ### 运行测试
 
+> 单元测试一律由 CI 跑，**不要在本地执行**（见文首「本地不跑 Maven 编译与单元测试」）。
+
 ```bash
-./mvnw -pl aha-core -am test -Djacoco.skip=true   # 单模块（本地默认）
+# CI：Build.yml 每次 push / PR 自动编译 + 跑单元测试
 ```
 
 覆盖率门禁（≥ 70%）与报告由 CI 的 `Gate.yml` 产出，本地不跑。
@@ -80,11 +90,11 @@ Dist\bin\Aha.bat chat        # Windows
 
 | 场景 | 命令 |
 |---|---|
-| 日常改动（快） | `./mvnw -B clean test -Djacoco.skip=true` |
+| 日常改动（本地） | `python3 bin/CheckChanged.py`（**不跑 Maven**） |
 | 按变更选择检查 | `python3 bin/CheckChanged.py` |
-| 看覆盖率实测值 | `python3 bin/ReportCoverage.py`（门禁判定仍由 `jacoco:check` 执行） |
-| 重复率（改到 PMD 配置 / 阈值时） | `./mvnw -B pmd:cpd && python3 bin/CheckDuplication.py` |
-| 合入 `main` 前 | **由 CI 的 `Gate.yml` 跑**（本地不跑；本地只补跑 `Check*.py`） |
+| 看覆盖率实测值 | 从 CI 的 `Build` / `Gate` 日志取 |
+| 重复率（改到 PMD 配置 / 阈值时） | 由 CI 的 `Gate.yml` 跑 |
+| 合入 `main` 前 | **由 CI 的 `Gate.yml` 跑**（本地不跑） |
 | Maven 3.9.x 兼容（POM 改动时） | **由 CI 的 `Compat.yml` 承担**（本地不跑） |
 
 CI 侧的分工：`Build.yml` 每次 push/PR 只做编译与单元测试；`Gate.yml` 承载
@@ -224,10 +234,10 @@ Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景�
 | 命令 | 说明 |
 |---|---|
 | `./mvnw clean verify` | 完整构建 + 测试 + 覆盖率门禁（**仅 CI / 发布**） |
-| `./mvnw -pl aha-core test` | 单模块测试 |
-| `./mvnw -pl aha-cli exec:java` | 运行 CLI |
-| `./mvnw dependency:tree` | 查看依赖树 |
-| `./mvnw javadoc:javadoc` | 生成 Javadoc |
+| `./mvnw -pl aha-core test` | 单模块测试（**仅 CI**） |
+| `./mvnw -pl aha-cli exec:java` | 运行 CLI（**仅 CI / 用户明确要求时**） |
+| `./mvnw dependency:tree` | 查看依赖树（**仅 CI**） |
+| `./mvnw javadoc:javadoc` | 生成 Javadoc（**仅 CI**） |
 
 ## 禁止事项
 
