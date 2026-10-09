@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.25.0
+**文档版本**：v1.26.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -39,6 +39,7 @@
 | v1.23.0 | 2026-10-09 | §8.1 的「必需检查与审批要求」登记处由 `TODO.md` `G-02` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 | v1.24.0 | 2026-10-09 | §7 新增「项目版本的单一来源」：权威源为根目录 `version` 文件，机器位置为根 POM 的 `<revision>`（由 `VersionDistribute.py` 写入），子模块写 `${revision}` 继承；一致性由 `ProjectVersion.py --verify` 在 `Gate.yml` 强制（P5 / #97） | @ACANX / CNXNC |
 | v1.25.0 | 2026-10-09 | §4.1 与 §7 的「分平台构建」依据由 `jpackage` 改为 **JavaFX 平台分类器**——发行形态已决策只保留「JVM JAR 聚合包」与「原生镜像二进制」两种，`jpackage` 跳过不采用（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
+| v1.26.0 | 2026-10-09 | 新增第 10 节「原生镜像产物（试验性）」：把 E-02 ~ E-09 的可达性结论固化为规范、明确 E-10 的验收边界（门禁不覆盖 native、独立冒烟测试尚未定义）；§7 新增「发行形态矩阵」（E-11）；§6 注明门禁不覆盖 native 产物（issue #80 / TD-00009） | @ACANX / CNXNC |
 
 ---
 
@@ -180,6 +181,9 @@ POM 语法必须兼容 Maven 3.9.x：
 
 模块级参考阈值见 [TestingSpec.md](TestingSpec.md) 第 3 节。
 
+> **门禁只覆盖 JVM 字节码，不覆盖 native 产物**——`native-image` 的产物没有 JaCoCo 插桩，
+> 其质量保证另见第 10.3 节。
+
 ## 7. 依赖与产物约束
 
 **项目版本的单一来源**：项目自身的版本号以**根目录 `version` 文件**为唯一权威源
@@ -251,6 +255,17 @@ POM 语法必须兼容 Maven 3.9.x：
   - 升级若触及第 2 节工具链锁定或第 5 节 POM 兼容约束，按第 9 节规范变更程序处理
   - 被 Maven Wrapper 固定的 Maven 版本不在自动升级范围内，见第 3 节
   - `dependa` 分支必须长期保留（Dependabot 读取的是该分支上的清单文件），不得随版本发布删除
+
+**发行形态矩阵（E-11，2026-10-09 决策）**：项目只发行两种形态，与平台轴正交（口径见
+[ReleaseProcess.md](ReleaseProcess.md) §3.3，native 侧的规范见第 10 节）：
+
+| 形态 | CLI | 桌面端 | 前提 |
+|---|---|---|---|
+| **JVM JAR 聚合包** | `aha-cli-<版本>.zip` | `aha-desktop-<版本>-<系统>-<架构>.zip` | 需自备 JDK 25 |
+| **原生镜像二进制**（试验性） | `aha-cli-native` 的 `native-image` 单文件 | `aha-desktop-native` 的 `native-image` 单文件 | 无需 JVM |
+
+> `jpackage` 安装包**已决策跳过、不采用**：它是第三种发行形态，而「免装 JDK」这一目标
+> 已由原生镜像二进制覆盖（理由见 `ReleaseProcess.md` §3.3）。
 
 ## 8. 验收标准
 
@@ -424,3 +439,44 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
 2. 至少一名核心维护者批准
 3. 更新版本号与变更日志
 4. 同 PR 内同步更新 [BuildGuide.md](../Guide/BuildGuide.md)（若操作方式随之变化）
+
+---
+
+## 10. 原生镜像产物（试验性）
+
+> 本节把 GraalVM `native-image` 产物的**已知结论**固化为规范（issue #80 的 E-02 ~ E-11），
+> 供后续改动与排障引用。模块与工作流的实现见
+> [CliNativeDesign.md](../Design/CliNativeDesign.md) 与 [DesktopNativeDesign.md](../Design/DesktopNativeDesign.md)；
+> 依赖经验库见技能 `graalvm-reachability-metadata/references/catalog.md`。
+
+### 10.1 定位与流水线
+
+- 原生镜像是**旁路产物**（试验性），**不替代** JVM 形态；
+- 流水线：`CliNative.yml` / `DesktopNative.yml`，随 `dev` push 自动出包并发布**预发行**；
+- **不进默认构建**：默认构建的验收标准仍是「能编译、能打 jar、不报错」（第 7 节），
+  原生镜像只在专用 profile（`-Pcli-native` / `-Pdesktop-native`）里构建；
+- **不进必需检查**：见 10.3。
+
+### 10.2 依赖可达性结论（E-02 ~ E-09，2026-10-09 核对）
+
+| 编号 | 依赖 / 能力 | 结论 | 处理方式 |
+|---|---|---|---|
+| E-02 | `sqlite-jdbc` 的 JNI native library 嵌入 | ✅ 已实测 | 依赖自带 `native-image.properties`；加 `--initialize-at-run-time=org.sqlite` |
+| E-03 | Jackson 3 反射配置 | ✅ 已实测 | **不带** GraalVM 元数据；手写注册被 `readValue` / `treeToValue` 触碰的 POJO 与记录（漏了会在读配置、开会话时崩） |
+| E-04 | `ServiceLoader` 的 provider | ✅ 已实测 | GraalVM 对 `META-INF/services` **有内建支持**，通常无需手写；前提是服务文件进镜像（资源清单含 `META-INF/services/.*`） |
+| E-05 | picocli 反射配置 | ✅ 已实测 | 用 `picocli-codegen` 注解处理器生成（比手写可靠） |
+| E-06 | JLine 终端能力探测 | ✅ 已实测 | JLine 自带元数据；另补它**未覆盖**的 `org.jline.utils.Signals` 与 `java.lang.ProcessBuilder$RedirectPipeImpl` |
+| E-07 | Log4j2 兼容性 | ✅ 已实测 | 自带 `reflect-config.json` + `resource-config.json`；加 `--initialize-at-run-time=org.apache.logging.log4j.core.config` / `.core.util` |
+| E-08 | `java.net.http` 的 TLS / SSL | ⚠️ 实际在用、无独立结论 | `aha-core` 的 `DefaultLlmClient` 使用 `HttpClient` 且随产物发布；**未观察到**需要额外 TLS / 证书参数，但缺参数登记与结论——新增网络能力时须补测 |
+| E-09 | 虚拟线程 | ⚠️ 实际在用、无独立结论 | `LocalAgentService` / `DefaultLlmClient` / `ChatCommand` / `ChatController` / `AhaDesktopApp` 均使用，且随产物构建通过；但**支持现状未系统调研** |
+
+> 参数实体在 `aha-cli-native/src/native/native-image-args*.txt` 与
+> `aha-desktop-native/src/native/native-image-args*.txt`（含 `-jdk27` 变体）；
+> 本节只记**结论**，不复制参数全文——参数以文件为准。
+
+### 10.3 验收边界（E-10）
+
+- **JaCoCo 覆盖率门禁不覆盖 native 产物**（门禁只对 JVM 字节码插桩，见第 6 节）；
+- native 侧现有保证是「**防静默跳过**」+ **诊断式**产物自证（判不出来也不阻塞）；
+- **独立冒烟测试尚未定义**。在定义之前，原生镜像的作业**不得**写进分支保护的必需检查，
+  且必须遵守第 7 节的「可选工作流的作业不得进必需检查」与「步骤级容错」要求。
