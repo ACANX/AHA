@@ -51,13 +51,19 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 1. **黑框里看不到诊断。** `LoggingSetup` 的 console appender **只输出 `ERROR`**
    （刻意如此：INFO / WARN 写入 stdout 会打断 CLI 的对话输出）。
    诊断是 **INFO 级**，因此**只在日志文件里**。
-2. **日志位置随启动方式变化**（见 `LoggingSetup.resolveLogFile`）：
+2. **日志位置**——真机实测：默认落在 **`%USERPROFILE%\.aha\Log\AHA.log`**，
+   **不是**启动目录（第一版手册把这一点写反了，实测吃亏）。查找优先级见 `LoggingSetup.resolveLogFile`：
 
-   | 情况 | 路径 |
-   |---|---|
-   | 未设 `AHA_HOME`（默认） | `<启动目录>\Log\AHA.log` |
-   | 设了 `AHA_HOME` | `%AHA_HOME%\Log\AHA.log` |
-   | `Aha.yaml` 配置了 `Aha.Logging.File` | 以配置为准 |
+   | 优先级 | 情况 | 路径 |
+   |---|---|---|
+   | 1 | `Aha.yaml` 配了 `Aha.Logging.File`（**最常见**） | 以配置为准；默认模板为 `${AHA_HOME:-~/.aha}/Log/AHA.log` |
+   | 2 | 设了环境变量 `AHA_HOME` | `%AHA_HOME%\Log\AHA.log` |
+   | 3 | 两者都没设 | `<启动目录>\Log\AHA.log` |
+
+   **实测例子**（ACANX 的机器）：`C:\Users\ACANX\.aha\Log\AHA.log`。
+
+   > 采集脚本 `CollectRenderDiagnostics.py` 已按该顺序自动查找（含 `~/.aha/Log/AHA.log`）；
+   > 若仍找不到，用 `--log <路径>` 显式指定。
 
    双击 exe 时「启动目录」即解压目录，所以原生包的日志是
    `E:\AHA-Native\Log\AHA.log`。
