@@ -1,7 +1,7 @@
 ---
 name: release
 description: 版本发布流程：创建 release 分支、更新版本号与 CHANGELOG、双 Maven 版本验证、打 tag 并触发发布流水线。当需要准备发布、更新变更日志或核对发布清单时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25 与 Maven 4.x/3.9.x；需要对 main/dev 分支与 CI 的写权限；需可访问 Maven Central。
 metadata:
   version: "1.0.0"
@@ -23,12 +23,11 @@ metadata:
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新各 `pom.xml` 版本号（父 POM 与全部子模块）
 3. 更新 `CHANGELOG.md`：把 `[未发布]` 内容归入新版本小节，并补日期
-4. 运行双 Maven 版本验证，两者都必须通过：
+4. 确认 CI 通过（**不在本地跑 verify**）：
+   - `Gate.yml`：完整 `clean verify` + 覆盖率门禁；
+   - `Compat.yml`：Maven 3.9.x 兼容验证。
 
-   ```bash
-   ./mvnw clean verify     # Maven 4.x 运行时
-   mvn clean verify        # Maven 3.9.x 兼容基线
-   ```
+   两者都必须为绿。失败时从 CI 日志定位并修复后重新推送，**不在本地复现整套构建**。
 
 5. 合入 `main` —— tag 由 CI 自动打（`Build.yml` 的 tag 作业按根 POM 版本创建 `VX.Y.Z`；
    若被可选腿影响未打，按 ReleaseProcess.md §4.1 手工补打）
@@ -38,9 +37,9 @@ metadata:
 
 - [ ] 版本号在父 POM 与全部子模块中一致
 - [ ] `CHANGELOG.md` 已更新且无 `[未发布]` 残留
-- [ ] `./mvnw clean verify` 通过
-- [ ] `mvn clean verify` 通过
-- [ ] 覆盖率门禁通过（BUNDLE 行覆盖率 ≥ 70%）
+- [ ] CI 的 `Gate.yml`（`clean verify` + 覆盖率门禁）通过
+- [ ] CI 的 `Compat.yml`（Maven 3.9.x）通过
+- [ ] 覆盖率门禁通过（BUNDLE 行覆盖率 ≥ 70%，读 CI 日志）
 - [ ] 文档已同步（设计文档、用户指南、`AGENTS.md` 技能索引）
 - [ ] 无 SNAPSHOT 依赖残留
 

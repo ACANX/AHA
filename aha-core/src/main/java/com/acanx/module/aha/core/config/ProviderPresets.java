@@ -28,6 +28,10 @@ public final class ProviderPresets {
     public static final String BIG_MODEL_CN = "BigModelCN";
     /** 预设：通义千问。 */
     public static final String QWEN = "Qwen";
+    /** 预设：月之暗面（Moonshot / Kimi）。 */
+    public static final String MOONSHOT = "Moonshot";
+    /** 预设：MiniMax。 */
+    public static final String MINI_MAX = "MiniMax";
     /** 内置模型配置文件名。 */
     public static final String MODEL_DEFAULT_RESOURCE = "/ModelDefault.yml";
 
@@ -86,7 +90,9 @@ public final class ProviderPresets {
         if (defaultProvider == null) {
             defaultProvider = "OpenAI";
         }
-        return new LlmConfig(defaultProvider, merged,
+        return new LlmConfig(defaultProvider,
+                user != null && user.defaultTier() != null ? user.defaultTier() : builtin.defaultTier(),
+                merged,
                 user == null ? null : user.fallback(),
                 user == null ? null : user.modelFile());
     }

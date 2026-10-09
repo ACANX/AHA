@@ -17,17 +17,31 @@
 #    光换 JDK 不会有效果——因此这一条目前只记录「是否可编译 / 预览开关是否与 native-image 兼容」。
 # 3. GC 策略：native-image 侧默认是 serial；下面对比位列了 epsilon 与 G1。
 #    取舍见下：epsilon 没有运行时回收，只适合「短命进程」，不适合本应用（一次会话可能很久）。
+#
+# ── 2026-10-08 同步 ──────────────────────────────────────────────────────────
+# 基线那份按首次真编日志做过一轮调整（删弃用项、加 -H:+UnlockExperimentalVMOptions、
+# 输出改 -o、加 --emit build-report / --gc=G1 / --future-defaults=all / -R:MaxHeapSize）。
+# 本文件**逐条同步**了这些改动，且**保持行序与基线完全一致**——
+# 这样两份文件的 diff 就正好是「JDK 轴真正的差异」，不会混入无关顺序变化。
+# 逐条的处置理由写在基线那份文件里，这里不重复。
 
 # ── 与基线相同的部分（保持逐条对应，便于 diff 出真正的差异）──────────────────
---no-fallback
+-H:+UnlockExperimentalVMOptions
 -O2
 -H:+ReportExceptionStackTraces
 -J-Xmx4g
 --enable-native-access=ALL-UNNAMED
 --enable-url-protocols=http,https
 -H:+AddAllCharsets
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+--emit build-report
+--gc=G1
+--future-defaults=all
+-R:MaxHeapSize=1g
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class
 --initialize-at-run-time=com.sun.javafx.application.PlatformImpl
 --initialize-at-run-time=com.sun.javafx.application.LauncherImpl
 --initialize-at-run-time=com.sun.javafx.logging.PlatformLogger
@@ -45,6 +59,10 @@
 
 # 记录构建期 JDK 版本信息，便于事后区分产物（产物的 --version 也会带上）
 -H:+PrintClassInitialization
+
+# 关掉资源注册日志：它会把「哪些资源被注册」刷满日志，日常构建太吵。
+# ⚠ 若本腿要用来**生成** reachability metadata（-H:Log=registerResource:on 才会记录），
+#    就把这行注释掉。
 -H:Log=registerResource:off
 
 # ── 实验结果位（默认注释掉：先跑「同参数 + 换 JDK」这条最干净的对比）──────────
@@ -59,6 +77,12 @@
 #    -H:-IncludeAllLocales        同上
 #    -H:+UseCompressedReferences  32 位引用（默认在 <=32 GB 堆上开启）
 #
-# ③ 堆参数（native 镜像的默认堆按机器内存算，长驻 GUI 建议显式给上限）
+# ③ 堆参数（基线已显式给 1g；这里可对比更小的上限）
 #    -R:MaxHeapSize=512m
 #    -R:MinHeapSize=64m
+#
+# ④ CPU 特性（对外分发的产物不要用 native）
+#    -march=x86-64-v3
+#
+# ⑤ 手工 PGO（两阶段，先有典型负载样本）
+#    --pgo=default.iprof

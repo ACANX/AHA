@@ -2,6 +2,9 @@
 
 原生镜像是**旁路**：它的失败不允许挡住开发、测试与正式发版。这一节是把它做扎实的全部要点。
 
+> 本节描述的是 **CI 编排**（工作流与 profile 的写法）。其中的 `./mvnw ...` 命令均由
+> CI 执行；**本地不跑 Maven**——要验证去推送后看 PR 的 checks。
+
 ## 1. 四条隔离（缺一条就不算隔离）
 
 ### 1.1 反应堆隔离：放进 profile，不放进 `<modules>`
@@ -29,13 +32,23 @@
 | ② **内层开关给安全默认值** | 模块 POM 里 `<native.skip>true</native.skip>`，由 profile 置 `false` | 误入反应堆也不会去调用 `native-image` |
 
 ```xml
-<!-- 聚合 POM：profile 同时给出模块与开关 -->
-<profile>
-    <id>my-native</id>
-    <modules><module>my-native</module></modules>
-    <properties><native.skip>false</native.skip></properties>   <!-- 唯一放开点 -->
-</profile>
+<!-- 聚合 POM -->
+<properties>
+    <native.skip>true</native.skip>       <!-- 默认关闭：默认值的**唯一来源** -->
+</properties>
+<profiles>
+    <profile>
+        <id>my-native</id>
+        <modules><module>my-native</module></modules>
+        <properties><native.skip>false</native.skip></properties>   <!-- 唯一放开点 -->
+    </profile>
+</profiles>
 ```
+
+> ⚠ **默认值不要写进子模块的 `<properties>`**：模块自身的属性会**赢过**父 POM 里
+> profile 注入的属性，于是上面的 `false` 不生效、`native-image` 被**静默跳过**
+> ——症状是「构建成功、零产物、零报错」（2026-10-08 实测）。
+> CI 里再显式传一次 `-Dnative.skip=false` 兜底（命令行 `-D` 优先级最高）。
 
 **为什么值得这么做**：默认路径一旦依赖平台工具链，构建失败就从「代码问题」变成
 「环境问题」，而后者极难在别人的机器上复现——等于把一个可诊断的失败换成不可诊断的失败。
@@ -53,6 +66,9 @@
 - 作业名**不要复用** `build` / `gate` 这类名字 —— 分支保护的必需检查按作业名匹配，
   复用会把实验性失败变成「PR 卡住」；
 - 不把它加进必需检查列表。
+- **同一仓库有多个原生目标时，作业名之间也要错开**：桌面端 `native-image-*`、
+  CLI `cli-native-image-*`。两者都不是必需检查，但同名会让日志 / 摘要分不清是哪条管线，
+  也让日后改成必需检查时无法单独选中（实测：AHA 的 DesktopNative 与 CliNative）。
 
 ### 1.3 Tag 隔离：独立前缀，且**不要命中正式发版的过滤**
 
@@ -62,6 +78,31 @@
 - 发布为**预发行版**（prerelease），不出现在 `releases/latest`，避免被误当成正式版本。
 
 ### 1.4 失败传播隔离
+
+> **步骤级容错有个致命细节：失败步骤的 outputs 不会被发布**（2026-10-08 实测）
+
+带 `continue-on-error: true` 的步骤**一旦非零退出**，它的 `outputs`
+**不会被写进 `steps.<id>.outputs`** —— 于是下游 `if: steps.<id>.outputs.x == 'true'`
+静默变成 false，那些步骤被**跳过**，而作业仍然是绿的。
+
+实测事故：macOS 腿的「产物自证」因脚本非零退出而失败（被 continue-on-error 标成绿），
+`produced` 因此为空，紧跟其后的「改名」「上传制品」被静默跳过——
+表面是「构建成功却什么都没上传」，日志里只有一条 `::warning::`。
+
+两道保险，缺一不可：
+
+```bash
+          set -uo pipefail
+          produced=false                                  # ① 先写一次兜底值
+          ...
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+          ...
+          # ② 本步只做诊断：无论发现什么都以 0 退出，保证 outputs 一定被发布
+          exit 0
+```
+
+**推论**：凡是用 outputs 驱动后续步骤的**诊断类**步骤，判据可以严格，但**退出码必须宽松**。
+
 
 > **「可选」要落到步骤级，而不是作业级**（2026-10-08 实测踩坑）
 
@@ -178,20 +219,25 @@ if: always() && needs.<版本作业>.result == 'success'   # 部分平台成功�
 ```bash
 set -uo pipefail          # 注意：**不要**用 set -e
 work=my-native/target/native
+# 任何意外（unbound / 平台差异命令失败）都不该让本步「红 + 丢 outputs」：
+# 丢了 outputs，下游「改名 / 上传」会被静默跳过。
+trap 'exit 0' EXIT
 produced=false
 note=""
+echo "produced=false" >> "$GITHUB_OUTPUT"   # 先兜底
 
 # ① 先打现场：失败时最需要的是「到底有什么」，而不是一句 error
 echo "—— 现场 ——"
 ls -la "$work" 2>/dev/null || echo "（目录不存在）"
-find my-native/target -maxdepth 3 -type f \
+# 不要用 -maxdepth：macOS 的 BSD find 不支持它（unknown primary）
+find my-native/target -type f \
      \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null || true
 ls -la dist 2>/dev/null | head -20 || true
 
 # ② 可执行文件（Windows 带 .exe；先看约定位置，再整个 target/ 兜一遍）
 bin=$(ls "$work/my-native" "$work/my-native.exe" 2>/dev/null | head -n1 || true)
 if [ -z "$bin" ]; then
-  bin=$(find my-native/target -maxdepth 3 -type f \
+  bin=$(find my-native/target -type f \
           \( -name 'my-native' -o -name 'my-native.exe' \) 2>/dev/null | head -n1 || true)
 fi
 
@@ -207,28 +253,32 @@ else
     echo "::warning::$note"
   else
     produced=true
+    # 命中有效产物就**立刻**写 outputs：本步后面还有一串诊断，
+    # 任何一处意外退出都不能把 produced 吞掉（丢了它，改名/上传会被静默跳过）
+    echo "produced=true" >> "$GITHUB_OUTPUT"
   fi
 
-  # 平台魔法数
-  magic=$(head -c 4 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+  # 平台魔法数：只比前 2 字节（PE 的 DOS stub 后两字节随 linker 变，
+  # 4 字节比较会一直「不匹配」）
+  magic=$(head -c 2 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
   case "${RUNNER_OS}" in
-    Windows) expect="4d5a" ;;      # PE
-    Linux)   expect="7f454c46" ;;  # ELF
-    macOS)   expect="cffaedfe" ;;  # Mach-O 64 位小端
+    Windows) expect="4d5a" ;;  # PE：MZ
+    Linux)   expect="7f45" ;;  # ELF：0x7f 'E'
+    macOS)   expect="cffe" ;;  # Mach-O 64 位小端
   esac
   ok=false
   [ "$magic" = "$expect" ] && ok=true
-  if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
-  [ "$ok" = "true" ] || { note="${note:+$note；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
+  if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feed" ]; then ok=true; fi
+  [ "$ok" = "true" ] || { note="${note:+${note}；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
                           echo "::warning::$note"; }
 fi
 
 # 关键依赖：真正的不变式是「三件套齐全 + 没有 0 KB 空壳」，
 # **不是**「恰好 3 个」——带分类器与不带分类器的 jar 共用同一份 POM，多出来的条目很正常。
 jfx=$(ls "$work"/lib/*gui*-*.jar 2>/dev/null | wc -l | tr -d ' ')
-empty=$(find "$work/lib" -maxdepth 1 -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
-if [ "${jfx:-0}" -lt 3 ]; then note="${note:+$note；}本平台 GUI jar 只有 ${jfx} 个"; fi
-if [ "${empty:-0}" -ne 0 ]; then note="${note:+$note；}有 ${empty} 个 0 KB 空壳 jar"; fi
+empty=$(find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')   # 不用 -maxdepth
+if [ "${jfx:-0}" -lt 3 ]; then note="${note:+${note}；}本平台 GUI jar 只有 ${jfx} 个"; fi
+if [ "${empty:-0}" -ne 0 ]; then note="${note:+${note}；}有 ${empty} 个 0 KB 空壳 jar"; fi
 [ -z "$note" ] || echo "::warning::$note"
 
 # 交给后续步骤 + 结论进摘要（成与不成都写，避免「没消息」被误读成「没跑」）
@@ -241,12 +291,22 @@ echo "produced=${produced}" >> "$GITHUB_OUTPUT"
 } >> "$GITHUB_STEP_SUMMARY"
 ```
 
-**三个已经踩过的坑**（写进脚本前先看一遍）：
+**已经踩过的坑**（写进脚本前先看一遍）：
 
-1. `jfx=$(ls dir/*.jar | wc -l)` 放在 `set -e` 下：glob 不匹配时 `ls` 退 2，
+1. `$VAR` 后紧跟中文 / 全角字符（如 `$bin（`）：**部分平台（macOS 的 bash 3.2）会把全角字符
+   并进变量名**，`set -u` 下直接 `bin（: unbound variable` 退出；该步 outputs 随之丢失，
+   下游「改名 / 上传」被静默跳过——AHA 的 macos 镜像包就是这样丢的。→ 一律写 `${VAR}`；
+   `bin/CheckScripts.py` 已加 YAML shell 变量守卫（已反向验证）。
+2. 命中有效产物就**立刻**写 `produced=true`，并用 `trap 'exit 0' EXIT` 兜底：
+   别把 outputs 的生死押在「后面那一长串诊断都不出错」上。
+3. `find -maxdepth` 在 macOS 上不存在（BSD find），会报 unknown primary。→ 去掉 `-maxdepth`。
+4. Windows runner 的 shell 还带着 VS 开发者命令提示的环境，里面本就有 `PLATFORM` 这类变量，
+   与 step 注入互相打架（实测 `PLATFORM: unbound variable`）。→ 注入名加前缀
+   （如 `LEG_PLATFORM`）并用 `${VAR:-}` 读取；只做记录的自证步骤对命令失败加 `|| echo`。
+5. `jfx=$(ls dir/*.jar | wc -l)` 放在 `set -e` 下：glob 不匹配时 `ls` 退 2，
    **赋值语句直接让整步失败**，报错只有一行 `No such file or directory`。→ 用 `set -uo pipefail`。
-2. 「恰好 N 个」这类判据几乎一定会漂：多一个传递依赖就红，而它并不代表坏了。→ 只留不变式。
-3. Windows 上 `native-image` 是 `.cmd`，bash 不能直接执行。→ 交回 `cmd //c`。
+6. 「恰好 N 个」这类判据几乎一定会漂：多一个传递依赖就红，而它并不代表坏了。→ 只留不变式。
+7. Windows 上 `native-image` 是 `.cmd`，bash 不能直接执行。→ 交回 `cmd //c`。
 
 ## 4. 版本号：可追溯到 PR
 
@@ -280,3 +340,34 @@ version=$(printf '%s.%05d' "$base" "${pr:-0}")   # 0.1.1 + 21 → 0.1.1.00021
 
 本项目选第一种：**只有「合并即产出」才谈得上可预期**。
 另加 `concurrency`（同一分支只保留最新一次运行）避免旧运行堆积。
+
+## 6. 第二 / 第 N 个原生目标：怎么复用这一套
+
+同一仓库往多个产物（GUI 应用、CLI、服务）编原生镜像时，**不要再发明一套**，
+也不要硬塞进同一个工作流。做法是逐项复制并改名，每个目标各有一份：
+
+| 项 | 命名法 | AHA 实例 |
+|---|---|---|
+| 模块 | `<app>-native`，`packaging=pom` | `aha-desktop-native` / `aha-cli-native` |
+| Profile | `<app>-native`（各自 `<modules>`，共享 `native.skip` 开关） | `desktop-native` / `cli-native` |
+| 参数文件 | 各模块 `src/native/native-image-args*.txt` | 两份，互不影响 |
+| 工作流 | `<App>Native.yml`，作业名带前缀 | `DesktopNative.yml` / `CliNative.yml` |
+| Tag | `V<版本>-<app>-native` 预发行版 | `V<版本>-aha-desktop-native` / `…-aha-cli-native` |
+| 产物名 | `AHA-<App>-Native-…zip` | `AHA-Desktop-Native-…` / `AHA-Cli-Native-…` |
+
+**为什么不要合并成一个工作流**：两个目标的工具链依赖、失败原因、迭代节奏都不同，
+合并后「一条腿失败」会牵连另一条；分开则各自失败各自隔离，还能单独重跑。
+代价只是两份长得像的 YAML —— 可接受，因为**隔离比 DRY 重要**。
+
+**踩过的差异点（第二目标才会暴露）**：
+
+- **元数据的来源会变**：桌面端是 JavaFX 的一长串 `Class.forName`，要手写；
+  CLI 是 picocli（**用注解处理器生成**，比手写可靠）+ JLine（自带元数据，但
+  `org.jline.utils.Signals` 的 `sun.misc.Signal` 反射要自己补）。
+  → 换目标时**先查每个依赖是否自带 native-image 元数据**，再决定手写什么。
+- **产物自证的不变式会变**：桌面端查「OpenJFX 三件套齐全」；
+  CLI 查「关键依赖齐全 + 没有误入的 JavaFX + 没有 0KB 空壳」。判据要跟着目标换。
+- **资源清单会变**：新增一个资源读取点（如内置 yaml 配置）就要补正则；
+  AHA 建 CLI 时就反查发现客户端（桌面端）的正则漏了 `yaml` / `yml` ——
+  **同仓库复用一次，常能发现第一个目标遗漏的项**。
+

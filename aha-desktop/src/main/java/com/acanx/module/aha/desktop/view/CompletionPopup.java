@@ -49,9 +49,7 @@ public final class CompletionPopup {
     public CompletionPopup() {
         list.setId(LIST_ID);
         list.setFocusTraversable(false);
-        list.setStyle("-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";"
-                + "-fx-control-inner-background: " + Palette.BLOCK_BACKGROUND + ";"
-                + "-fx-border-color: #3A3A3A;");
+        list.setStyle(listStyle());
         list.setCellFactory(view -> new javafx.scene.control.ListCell<>() {
             @Override
             protected void updateItem(Item item, boolean empty) {
@@ -97,6 +95,23 @@ public final class CompletionPopup {
         if (popup.isShowing()) {
             popup.hide();
         }
+    }
+
+    /**
+     * 按当前配色重刷弹层（主题切换时由主界面调用）。
+     *
+     * <p>弹层是常驻实例、挂在输入框下方，换主题后不会自动重建，必须显式重刷，
+     * 否则切到亮色后它仍是一块暗色底板（issue #44）。</p>
+     */
+    public void refreshTheme() {
+        list.setStyle(listStyle());
+        list.refresh();
+    }
+
+    private static String listStyle() {
+        return "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";"
+                + "-fx-control-inner-background: " + Palette.BLOCK_BACKGROUND + ";"
+                + "-fx-border-color: " + Palette.BORDER + ";";
     }
 
     /**

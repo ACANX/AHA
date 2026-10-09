@@ -1,6 +1,10 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.tool.ToolKind;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -73,6 +77,110 @@ class PaletteTest {
     }
 
     @Test
+    void themeStylePinsTextColorsInsteadOfRelyingOnLadderLookup() {
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.theme())
+                .as("文字色必须显式钉死：不能依赖 modena 的 ladder(-fx-base) 推导")
+                .contains("-fx-text-base-color: #E4E4E4")
+                .contains("-fx-text-background-color: #E4E4E4");
+
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.theme())
+                .contains("-fx-text-base-color: #1F1F1F")
+                .contains("-fx-text-background-color: #1F1F1F");
+    }
+
+    @Test
+    void dialogThemeCarriesAnExplicitBackground() {
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.dialogTheme())
+                .as("对话框不能再依赖 .dialog-pane 的 -fx-background 查表")
+                .contains("-fx-background-color: #F4F4F4");
+
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.dialogTheme()).contains("-fx-background-color: #1E1E1E");
+    }
+
+    @Test
+    void themeStyleNeverUsesCssMathFunctions() {
+        // 原生镜像下 derive() / ladder() / linear-gradient() 求值不可靠，
+        // 只要样式串里出现它们，控件就可能整块没有背景（issue #49）
+        for (Theme theme : new Theme[] {Theme.DARK, Theme.LIGHT}) {
+            Palette.setTheme(theme);
+            assertThat(Palette.theme())
+                    .as("%s：主题样式串不得含 CSS 函数", theme)
+                    .doesNotContain("derive(")
+                    .doesNotContain("ladder(")
+                    .doesNotContain("linear-gradient(");
+        }
+    }
+
+    @Test
+    void lightThemeKeepsControlSurfacesLight() {
+        // 输入框 / 下拉框 / 滚动条在亮色下必须是浅色——它们发黑时用户根本看不清内容
+        Palette.setTheme(Theme.LIGHT);
+
+        assertThat(Palette.CONTROL_INNER).isEqualTo("#FFFFFF");
+        assertThat(Palette.SCROLL_TRACK).isEqualTo("#F0F0F0");
+        assertThat(Palette.SCROLL_THUMB).isEqualTo("#B8B8B8");
+        assertThat(Palette.theme())
+                .contains("-fx-text-box-border: #C8C8C8")
+                .contains("-fx-body-color: #F4F4F4");
+    }
+
+    @Test
+    void patchStylesheetsAreLiteralAndPackaged() throws Exception {
+        // 亮 / 暗两份补丁表都必须是「纯字面量」：既要在 classpath 上，
+        // 也不得出现任何变量查表或 CSS 函数——暗色下一片黑字就是变量查表失败造成的
+        // （声明里查不到值 → CSS 丢掉整条声明 → 回落 modena 默认黑）。
+        for (String theme : List.of("light", "dark")) {
+            String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
+            try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
+                assertThat(in).as("主题补丁样式表必须在 classpath 上：%s", path).isNotNull();
+                String css = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                assertThat(css)
+                        .as("%s：必须覆盖控件与文字载体", theme)
+                        .contains(".text-input")
+                        .contains(".scroll-bar > .thumb")
+                        .contains(".label");
+                // 注释里可以提函数名（说明用），但**声明**里不能出现
+                String declarations = css.replaceAll("(?s)/\\*.*?\\*/", "");
+                assertThat(declarations)
+                        .as("%s：补丁表里不得出现变量查表或原生镜像下不可靠的 CSS 函数", theme)
+                        .doesNotContain("-fx-aha-")
+                        .doesNotContain("derive(")
+                        .doesNotContain("ladder(")
+                        .doesNotContain("linear-gradient(");
+            }
+        }
+    }
+
+    @Test
+    void patchStylesheetsDifferBetweenThemes() throws IOException {
+        // 两份必须真的不同：相同就说明渲染不区分主题，暗色下必然是错的
+        String dark = stylesheet("dark");
+        String light = stylesheet("light");
+        assertThat(dark).as("暗色表要把正文色钉成浅色").contains("#E4E4E4");
+        assertThat(light).as("亮色表要把正文色钉成深色").contains("#1F1F1F");
+        assertThat(dark).isNotEqualTo(light);
+    }
+
+    /**
+     * 读一份补丁表的内容。
+     *
+     * @param theme {@code light} 或 {@code dark}
+     * @return 文件内容
+     * @throws IOException 读取失败
+     */
+    private static String stylesheet(String theme) throws IOException {
+        String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
+        try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
+            assertThat(in).as("补丁表必须在 classpath 上：%s", path).isNotNull();
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    @Test
     void toolKindMapsToSemanticColorInEitherTheme() {
         Palette.setTheme(Theme.DARK);
         assertThat(Palette.forToolKind(ToolKind.READ)).isEqualTo(Palette.READ);
@@ -89,5 +197,21 @@ class PaletteTest {
     void nullThemeFallsBackToDark() {
         Palette.setTheme(null);
         assertThat(Palette.current()).isEqualTo(Theme.DARK);
+    }
+
+    @Test
+    void themeStyleIsRecomputedFromCurrentFields() {
+        // 样式串必须与当前色表实时一致：早先它被缓存成一个静态字段，
+        // 原生镜像下出现过「底色已换暗、文字色仍是旧主题」的不同步（issue #49）
+        Palette.setTheme(Theme.DARK);
+        String dark = Palette.theme();
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.theme())
+                .as("切换到亮色后，样式串必须立刻反映新的底色与前景")
+                .isNotEqualTo(dark)
+                .contains(Palette.BASE)
+                .contains(Palette.FOREGROUND);
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.theme()).isEqualTo(dark);
     }
 }

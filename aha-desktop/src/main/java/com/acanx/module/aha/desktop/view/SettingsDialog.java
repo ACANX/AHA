@@ -77,7 +77,7 @@ public final class SettingsDialog {
         dialog.setHeaderText("界面设置（改动立即生效）");
         dialog.getDialogPane().getButtonTypes().add(
                 new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE));
-        dialog.getDialogPane().setStyle(Palette.theme());
+        ThemePaint.dialog(dialog.getDialogPane());
         dialog.getDialogPane().setPrefWidth(620);
 
         ComboBox<Theme> theme = new ComboBox<>();

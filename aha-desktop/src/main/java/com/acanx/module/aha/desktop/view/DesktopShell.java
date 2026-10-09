@@ -12,6 +12,8 @@ import com.acanx.module.aha.desktop.chat.SlashCommands;
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.geometry.Insets;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
@@ -76,6 +78,8 @@ import java.util.function.Supplier;
  * @since 0.2.0
  */
 public final class DesktopShell implements ChatView {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DesktopShell.class);
 
     /** 菜单栏 id。 */
     public static final String MENU_BAR_ID = "aha.menubar";
@@ -362,12 +366,32 @@ public final class DesktopShell implements ChatView {
      */
     public Theme applyTheme(Theme theme) {
         Theme resolved = Palette.setTheme(theme);
+        // 主题诊断（issue #49）：把「色表当前值」与「是否已写入根节点」一并记账。
+        // 原生镜像下出现过「底色已换、文字未换」的混合状态，这一段日志足以区分
+        // 是色表没更新，还是节点没重刷——开发机复现不了，只能靠真机日志对账。
+        LOG.info("主题应用：请求 {} → 生效 {} | BASE={} FOREGROUND={} CONTROL_INNER={} | 根节点 {}",
+                theme, resolved, Palette.BASE, Palette.FOREGROUND, Palette.CONTROL_INNER,
+                rootNode == null ? "尚未建立" : "已建立");
         for (Runnable restyle : restylers) {
-            restyle.run();
+            // 逐个隔离：一个节点重刷失败，不该让其余节点停在旧主题（issue #49）
+            try {
+                restyle.run();
+            } catch (RuntimeException e) {
+                LOG.warn("重刷节点主题失败（已跳过该节点）：{}", e.toString());
+            }
         }
         // 会话列表的单元格是自己画的，刷新一次就会按新配色重建
         if (sessionList != null) {
             sessionList.refresh();
+        }
+        // 候选弹层是常驻实例（挂在输入框下方），同样要按新配色重刷
+        if (completion != null) {
+            completion.refreshTheme();
+        }
+        // 补丁样式表按主题**整份替换**：两份表都是纯字面量，
+        // 于是不存在「变量查表失败 → 整条声明被丢弃」这条路（issue #49 第四轮）
+        if (rootNode != null) {
+            ThemePaint.install(rootNode.getScene());
         }
         return resolved;
     }
@@ -1022,6 +1046,9 @@ public final class DesktopShell implements ChatView {
     private MenuBar buildMenuBar() {
         MenuBar bar = new MenuBar();
         bar.setId(MENU_BAR_ID);
+        // 菜单栏是顶层容器，暗色下若不显式套主题会露出 modena 默认白底（issue #49）
+        themed(bar, () -> "-fx-background-color: " + Palette.BASE + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";");
 
         Menu file = new Menu("文件(_F)");
         MenuItem exit = new MenuItem("退出");
@@ -1085,8 +1112,13 @@ public final class DesktopShell implements ChatView {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("关于 AHA");
         alert.setHeaderText(AppVersion.DISPLAY + " 桌面端");
-        alert.setContentText(configSummary.get() + "\n\n" + System.getProperty("os.name")
-                + " / " + System.getProperty("os.arch") + " · Java " + Runtime.version());
+        // 预发行版把基线版本与构建号都写出：只用基线版本（如 0.1.1）无法定位到具体是哪次构建（issue #46）
+        String versionLine = AppVersion.isPreRelease()
+                ? "版本：" + AppVersion.buildVersion() + "（基线 " + AppVersion.version() + "）"
+                : "版本：" + AppVersion.version();
+        alert.setContentText(versionLine + "\n" + configSummary.get() + "\n\n"
+                + System.getProperty("os.name") + " / " + System.getProperty("os.arch")
+                + " · Java " + Runtime.version());
         alert.showAndWait();
     }
 
@@ -1106,11 +1138,17 @@ public final class DesktopShell implements ChatView {
         box.setMinWidth(ShellLayout.LEFT_WIDTH);
         box.setMaxWidth(ShellLayout.LEFT_WIDTH);
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
-        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
+        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 1 0 0;");
 
         TextField search = new TextField();
         search.setId(SESSION_SEARCH_ID);
         search.setPromptText("⌕ 搜索会话");
+        // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
+        themed(search, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                // 显式背景属性：只设 looked-up color 时，原生镜像下偶发不向子节点（.content / .text）传播（issue #49）
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         search.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
         // TextField 的 maxWidth 默认是「按内容算」，于是它会比左栏还宽并盖到中栏上
         // （真机截图里能看到搜索框横向溢出）。必须显式放开，让 VBox 把它收进栏内。
@@ -1170,7 +1208,11 @@ public final class DesktopShell implements ChatView {
         exportJson.setOnAction(event -> runOnSelection(id -> onSessionExport.accept(id, "json")));
         MenuItem delete = new MenuItem("删除…");
         delete.setOnAction(event -> askDeleteSession());
-        return new ContextMenu(rename, exportMd, exportJson, new SeparatorMenuItem(), delete);
+        ContextMenu menu = new ContextMenu(rename, exportMd, exportJson,
+                new SeparatorMenuItem(), delete);
+        // 上下文菜单有独立的场景根，不继承主窗口主题；在弹出前套上当前配色
+        menu.setOnShowing(event -> menu.setStyle(Palette.theme()));
+        return menu;
     }
 
     private void runOnSelection(Consumer<String> action) {
@@ -1189,7 +1231,7 @@ public final class DesktopShell implements ChatView {
         dialog.setTitle("重命名会话");
         dialog.setHeaderText("给这个会话起个名字");
         dialog.setContentText("标题");
-        dialog.getDialogPane().setStyle(Palette.theme());
+        ThemePaint.dialog(dialog.getDialogPane());
         dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
     }
@@ -1204,7 +1246,7 @@ public final class DesktopShell implements ChatView {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("删除会话");
         alert.setHeaderText("确认删除");
-        alert.getDialogPane().setStyle(Palette.theme());
+        ThemePaint.dialog(alert.getDialogPane());
         alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         alert.showAndWait()
                 .filter(picked -> picked == ButtonType.OK)
@@ -1251,7 +1293,14 @@ public final class DesktopShell implements ChatView {
             boolean current = Objects.equals(item.id(), currentSessionId);
             setText((current ? "● " : "○ ") + item.line());
             setTooltip(new Tooltip(item.tooltip()));
-            setStyle("-fx-text-fill: " + (current ? Palette.SUCCESS : Palette.FOREGROUND) + ";"
+            // 单元格背景必须显式给：ListView 的 -fx-control-inner-background 未必传到 cell 上，
+            // 暗色下会露出 modena 默认白底（issue #49）；选中态另行覆盖
+            boolean selected = isSelected();
+            // 用 ThemePaint：原生镜像下 CSS 文字色不一定落到 cell 上（issue #49）
+            ThemePaint.themed(this, "-fx-background-color: "
+                    + (selected ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
+                    + "-fx-text-fill: "
+                    + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
                     + (current ? "-fx-font-weight: bold;" : ""));
         }
     }
@@ -1270,8 +1319,11 @@ public final class DesktopShell implements ChatView {
         box.setPrefWidth(ShellLayout.RIGHT_WIDTH);
         box.setMinWidth(ShellLayout.RIGHT_WIDTH);
         box.setMaxWidth(ShellLayout.RIGHT_WIDTH);
-        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 0 0 1;");
+        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 0 0 1;");
         Label title = new Label("本轮");
+        // 标题也必须登记主题：它是裸控件，默认文字色在暗色底上对比度不足（issue #44）
+        themed(title, () -> "-fx-text-fill: " + Palette.FOREGROUND
+                + "; -fx-font-size: 12px; -fx-font-weight: bold;");
         box.getChildren().addAll(title, emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
         return box;
     }
@@ -1287,6 +1339,8 @@ public final class DesktopShell implements ChatView {
         leftToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         // 不要拉满整列高度：否则 ‹ 会飘到栏底，看不出它属于哪一栏
         leftToggle.setMaxHeight(Region.USE_PREF_SIZE);
+        themed(leftToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + ";");
 
         HBox strip = new HBox(leftToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -1307,6 +1361,8 @@ public final class DesktopShell implements ChatView {
         rightToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMaxHeight(Region.USE_PREF_SIZE);
+        themed(rightToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + ";");
 
         HBox strip = new HBox(rightToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -1326,6 +1382,9 @@ public final class DesktopShell implements ChatView {
         messages.getChildren().add(createEmptyState());
         ScrollPane scroll = new ScrollPane(messages);
         scroll.setFitToWidth(true);
+        // 滚动区底色跟随主题，避免暗色下露出 modena 默认白底（issue #49）
+        themed(scroll, () -> "-fx-background: " + Palette.BASE + ";"
+                + "-fx-background-color: " + Palette.BASE + ";");
         VBox.setVgrow(scroll, Priority.ALWAYS);
         // 关键：ScrollPane 默认最小高度由内容撑开，会把下面的输入区顶出窗口
         // （第一次启动就是只能看到消息区，输入框不见踪影）。
@@ -1338,6 +1397,13 @@ public final class DesktopShell implements ChatView {
     private VBox buildComposerBox() {
         composer.setId(COMPOSER_ID);
         composer.setPromptText(COMPOSER_PROMPT);
+        // 输入框同样显式套主题：否则暗色下是白底 + 浅色文字，看不清（issue #49）
+        themed(composer, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                // 同上：TextArea 的底色在 modena 里来自 .text-area > .content 的查表，
+                // 显式给 background-color 才能在原生镜像下稳定生效（真机截图里它是纯白底）
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         composer.setWrapText(true);
         composer.setPrefRowCount(3);
         // Enter 发送、Shift+Enter 换行（若直接放行，TextArea 会把 Enter 当换行）
@@ -1461,7 +1527,7 @@ public final class DesktopShell implements ChatView {
         themed(usageLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         Label hint = new Label("[Esc] 中断");
         themed(hint, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        Label version = new Label("v" + AppVersion.version());
+        Label version = new Label("v" + AppVersion.buildVersion());
         themed(version, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         Region spacer = new Region();
@@ -1661,7 +1727,7 @@ public final class DesktopShell implements ChatView {
      * @return 样式
      */
     private static String cardStyle(boolean success, boolean failed) {
-        String border = failed ? Palette.FAILURE : "#3A3A3A";
+        String border = failed ? Palette.FAILURE : Palette.BORDER;
         return "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";"
                 + "-fx-background-radius: 6;"
                 + "-fx-border-color: " + border + "; -fx-border-radius: 6;"
@@ -1697,8 +1763,8 @@ public final class DesktopShell implements ChatView {
      */
     private <T extends Node> T themed(T node, Supplier<String> style) {
         // 登记「怎么重新上样式」，换主题时整屏重刷（见 restylers 的说明）
-        restylers.add(() -> node.setStyle(style.get()));
-        node.setStyle(style.get());
+        restylers.add(() -> ThemePaint.themed(node, style.get()));
+        ThemePaint.themed(node, style.get());
         return node;
     }
 

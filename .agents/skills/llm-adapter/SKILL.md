@@ -1,7 +1,7 @@
 ---
 name: llm-adapter
 description: 新增 LLM 供应商适配器：实现 LlmProviderAdapter、在 module-info 与 META-INF/services 中声明、补充 ModelDefault.yml 预设与固定 JSON fixture 测试。当需要接入新供应商、适配新 API 形态或修改统一 IR 时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；仅依赖 JDK HttpClient，不引入 HTTP 客户端库；适配器必须离线可测（固定 fixture，无真实网络调用）。
 metadata:
   version: "1.0.0"

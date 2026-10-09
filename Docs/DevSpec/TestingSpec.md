@@ -77,10 +77,10 @@ aha-core/src/test/resources/
 
 ### 3.1 工具与门禁
 
-覆盖率由 `jacoco-maven-plugin 0.8.15` 采集，绑定于 `initialize` / `verify`：
+覆盖率由 `jacoco-maven-plugin 0.8.15` 采集，绑定于 `initialize` / `verify`（**由 CI 执行，本地不跑**）：
 
 ```bash
-./mvnw clean verify            # 生成报告 + 执行门禁
+./mvnw clean verify            # CI：生成报告 + 执行门禁
 ```
 
 - 报告：`<module>/target/site/jacoco/index.html`
@@ -88,12 +88,12 @@ aha-core/src/test/resources/
 - **执行时机**：门禁挂在 `verify` 上，因此只在**完整 verify** 的场景生效。
   CI 上由 `Gate.yml` 承担（合入 `main` 前 / 发布前）；每次 push 的 `Build.yml`
   跑的是 `clean test -Djacoco.skip=true`，**不采集覆盖率**（见 `BuildSpec.md` §8.1）。
-  本地在实现代码改动后也不需要每次都跑覆盖率——按变更范围选择即可。
+  本地不跑 Maven，因此也不需要在这里跑覆盖率。
 - **门禁静默**：JaCoCo 的 `check` 通过时**不打印任何百分比**，日志里只有
   `Loading execution data file` 与 `Analyzed bundle '…' with N classes`。因此
   「门禁生效」与「门禁没配」在日志上看起来一样——`Gate.yml` 在 verify 之后固定跑一步
   `python3 bin/ReportCoverage.py` 把实测值打进日志，跑到那一步即说明门禁已通过。
-  本地同理：`python3 bin/ReportCoverage.py`（数字与文档口径一致，见 §3.3）。
+  本地同理：需要数字时改读 CI 的 `Gate` 日志（口径一致，见 §3.3），**不在本机重跑**。
 
 ### 3.2 排除项
 

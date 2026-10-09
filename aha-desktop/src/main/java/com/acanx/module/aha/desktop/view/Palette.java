@@ -63,11 +63,20 @@ public final class Palette {
     /** 控件内部底色（{@code -fx-control-inner-background}）。 */
     public static String CONTROL_INNER = "#252526";
 
+    /** 悬浮态底色（按钮 / 列表项 hover）。 */
+    public static String HOVER_BACKGROUND = "#2D2D2D";
+
+    /** 滚动条轨道。 */
+    public static String SCROLL_TRACK = "#1E1E1E";
+
+    /** 滑动条滑块。 */
+    public static String SCROLL_THUMB = "#4A4A4A";
+
+    /** 强调色（{@link #FOCUS_BORDER}）上的前景色。 */
+    public static String ON_ACCENT = "#FFFFFF";
+
     /** 当前主题（{@link Theme#SYSTEM} 会被解析成实际生效的那一个）。 */
     private static Theme current = Theme.DARK;
-
-    /** 窗口 / 对话框的样式串（{@code Dialog} 有独立场景根，必须逐个套）。 */
-    private static String themeStyle = buildThemeStyle();
 
     private Palette() {
     }
@@ -91,10 +100,15 @@ public final class Palette {
      * 场景根，不会继承主窗口的样式。第一版只给主窗口套了主题，于是对话框是 JavaFX 默认白底，
      * 而列表文字用的是 {@link #FOREGROUND}（近白）——白底白字，看上去发灰、费眼。</p>
      *
+     * <p><strong>刻意不缓存</strong>：早先把结果存在一个静态字段里，原生镜像下出现过
+     * 「样式串仍是初始主题、而 {@link #FOREGROUND} 等字段已按新主题更新」的不同步——
+     * 表现为主窗口底色已换、控件文字却是旧主题的值。改成每次按当前字段现算，
+     * 代价只是拼几个字符串，换来的是「样式串与色表永远一致」（issue #49）。</p>
+     *
      * @return 内联样式
      */
     public static String theme() {
-        return themeStyle;
+        return buildThemeStyle();
     }
 
     /**
@@ -116,7 +130,6 @@ public final class Palette {
         } else {
             applyDark();
         }
-        themeStyle = buildThemeStyle();
         return resolved;
     }
 
@@ -154,6 +167,10 @@ public final class Palette {
         BORDER = "#3A3A3A";
         BASE = "#1E1E1E";
         CONTROL_INNER = "#252526";
+        HOVER_BACKGROUND = "#2D2D2D";
+        SCROLL_TRACK = "#1E1E1E";
+        SCROLL_THUMB = "#4A4A4A";
+        ON_ACCENT = "#FFFFFF";
     }
 
     /**
@@ -177,13 +194,65 @@ public final class Palette {
         BORDER = "#C8C8C8";
         BASE = "#F4F4F4";
         CONTROL_INNER = "#FFFFFF";
+        HOVER_BACKGROUND = "#E4E4E4";
+        SCROLL_TRACK = "#F0F0F0";
+        SCROLL_THUMB = "#B8B8B8";
+        ON_ACCENT = "#FFFFFF";
+    }
+
+    /**
+     * 对话框（{@code Dialog} / {@code Alert}）场景根的样式。
+     *
+     * <p>比 {@link #theme()} 多一条**显式背景**：{@code DialogPane} 的底色在 modena 里来自规则
+     * {@code .dialog-pane { -fx-background-color: -fx-background; }}——那是一次 looked-up color
+     * 查表。原生镜像下出现过该查表未生效、对话框露出深色底的现象（issue #49），所以这里不再
+     * 依赖规则，直接把底色写进内联样式。</p>
+     *
+     * @return 内联样式
+     */
+    public static String dialogTheme() {
+        return theme() + "-fx-background-color: " + BASE + ";";
     }
 
     private static String buildThemeStyle() {
         return "-fx-base: " + BASE + ";"
                 + "-fx-background: " + BASE + ";"
                 + "-fx-control-inner-background: " + CONTROL_INNER + ";"
+                + "-fx-control-inner-background-alt: " + CONTROL_INNER + ";"
+                // 以下几条把文字色**显式钉死**，不再依赖 modena 的
+                // ladder(-fx-base, 亮 45% / 暗 46%) 推导：原生镜像下出现过
+                // 「底色已换、文字仍按旧底色推导」的混合状态（issue #49）。
+                + "-fx-text-base-color: " + FOREGROUND + ";"
                 + "-fx-text-background-color: " + FOREGROUND + ";"
-                + "-fx-accent: " + FOCUS_BORDER + ";";
+                + "-fx-focused-text-base-color: " + FOREGROUND + ";"
+                + "-fx-mark-color: " + FOREGROUND + ";"
+                + "-fx-focused-mark-color: " + FOREGROUND + ";"
+                + "-fx-selection-bar: " + FOCUS_BORDER + ";"
+                + "-fx-selection-bar-non-focused: " + BORDER + ";"
+                + "-fx-selection-bar-text: " + FOREGROUND + ";"
+                + "-fx-accent: " + FOCUS_BORDER + ";"
+                // 注意：这里**不再**定义 -fx-aha-* 之类的自定义变量供补丁表查表。
+                // 早先那样做过，而原生镜像下这种查表失败会让**整条声明被丢弃**——
+                // 暗色下文字于是回落成 modena 默认的黑。现在补丁表是「亮 / 暗两份纯字面量」，
+                // 由 ThemePaint 按当前主题整份装载（issue #49 第四轮）。
+                // ---- 再把 modena 依赖的 looked-up color 全部换成字面量 ----
+                // 这些是 modena 自己 derive / ladder 出来的中间量。填成纯色后，
+                // modena 里「引用它们」的规则能重新解出值；剩下含 gradient 的规则
+                // 由 aha-theme-{dark,light}.css 直接覆盖。
+                + "-fx-color: " + BASE + ";"
+                + "-fx-hover-base: " + HOVER_BACKGROUND + ";"
+                + "-fx-pressed-base: " + BLOCK_BACKGROUND + ";"
+                + "-fx-outer-border: " + BORDER + ";"
+                + "-fx-inner-border: " + BASE + ";"
+                + "-fx-body-color: " + BASE + ";"
+                + "-fx-body-color-to-right: " + BASE + ";"
+                + "-fx-box-border: " + BORDER + ";"
+                + "-fx-text-box-border: " + BORDER + ";"
+                + "-fx-text-inner-color: " + FOREGROUND + ";"
+                + "-fx-focus-color: " + FOCUS_BORDER + ";"
+                + "-fx-faint-focus-color: " + FOCUS_BORDER + ";"
+                + "-fx-shadow-highlight-color: " + BASE + ";"
+                + "-fx-mark-highlight-color: " + FOREGROUND + ";"
+                + "-fx-default-button: " + FOCUS_BORDER + ";";
     }
 }

@@ -1,10 +1,10 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.64.0
+**文档版本**：v3.70.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
-**目标版本**：AHA 0.1.1
+**目标版本**：AHA 0.1.x（确切版本见仓库根目录 `version` 文件）
 **文档命名规范**：Markdown、SVG、图片统一大驼峰（PascalCase）；`.agents/skills/` 下技能目录及 `SKILL.md` 的 `name` 采用 kebab-case
 **YAML 字段命名规范**：AHA 自有字段统一大驼峰（PascalCase）
 **SQL 字段命名规范**：SQLite 表名（单数）与字段名统一 snake_case
@@ -178,7 +178,7 @@ common ← extension-api ← core ← desktop
 - POM 语法兼容 Maven 3.9.x
 - Maven Wrapper 固定 Maven 4 运行时
 - 双版本验证：CI 必须同时跑 Maven 4 和 Maven 3.9.x
-- `mvn clean verify` 是唯一验收标准
+- `mvn clean verify` 通过是唯一验收标准，**由 CI 判定**（`Gate.yml` / `Compat.yml`）；Agent 本地不执行 Maven
 
 ## 第 8 条：宪法修订程序
 
@@ -290,9 +290,17 @@ aha/
 │       ├── extension-authoring/
 │       ├── release/
 │       └── java-app-graalvm-native-image-compile/
+├── Archive/
+│   └── README.md                      ← 已废弃历史资料的归档（不再维护）
 └── Docs/
+    ├── Dbsx.txt                         ← 用户原始待办（已冻结）
+    ├── PLAN.md                          ← 暂缓与受限事项（已冻结）
+    ├── TODO.md                          ← 历史待办（已冻结）
     ├── AHA/
     │   └── AHA-Design-V1.md
+    ├── TODO/
+    │   ├── README.md
+    │   └── TD-00001-CliToolCallOutputRendering.md
     ├── DevSpec/
     │   ├── Constitution.md
     │   ├── BuildSpec.md
@@ -320,6 +328,7 @@ aha/
     │   ├── GUIDesign.md
     │   ├── DesktopDesign.md
     │   ├── DesktopNativeDesign.md
+    │   ├── DesktopNativeUpdateDesign.md
     │   ├── RemoteAndProtocolDesign.md
     │   ├── ExtensionSystemDesign.md
     │   ├── SelfHostingDesign.md
@@ -328,10 +337,13 @@ aha/
     │   ├── GettingStarted.md
     │   ├── ReferenceGuide.md
     │   ├── BuildGuide.md
+    │   ├── CommandCheatsheet.md
     │   ├── ConfigurationGuide.md
     │   ├── ProviderSetupGuide.md
     │   ├── ToolUsageGuide.md
     │   ├── ExtensionAuthoringGuide.md
+    │   ├── NativeRenderDiagnosticsGuide.md
+    │   ├── VersionBumpGuide.md
     │   └── TroubleshootingGuide.md
     ├── Diagrams/
         ├── ModuleArchitecture.svg
@@ -341,17 +353,20 @@ aha/
         ├── ConfigLoadingFlow.svg
         ├── ExtensionArchitecture.svg
         └── ExtensionLifecycle.svg
+    ├── Troubleshooting/
+    │   ├── README.md
+    │   ├── TS-202610-CiRequiredCheckNameMismatch.md
+    │   ├── TS-202610-CoverageGateInvisible.md
+    │   ├── TS-202610-FakeMergeDirtyPr.md
+    │   ├── TS-202610-ArtifactNotFoundInCentral.md
+    │   ├── TS-202610-RulesetBlocksSingleMaintainer.md
+    │   ├── TS-202610-VersionBumpMissedModules.md
+    │   ├── TS-202610-AtomicReplaceSilentFailure.md
+    │   ├── TS-202610-ProviderConfigDialogTraps.md
+    │   ├── TS-202610-DesktopFeatureBugs.md
+    │   └── TS-202610-NativeModuleSilentTraps.md
     └── DevLog/
-        ├── DevLog-20261007-20.md
-        ├── DevLog-20261007-21.md
-        ├── DevLog-20261007-22.md
-        ├── DevLog-20261007-23.md
-        ├── DevLog-20261007-24.md
-        ├── DevLog-20261008-00.md
-        ├── DevLog-20261008-01.md
-        ├── DevLog-20261008-02.md
-        ├── DevLog-20261008-03.md
-        └── DevLog-20261008-04.md
+        └── README.md
 ```
 
 ## 2. 命名规范
@@ -464,9 +479,15 @@ aha/
 | v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
 | v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
 | v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（621 用例 / 合计行覆盖 80.8%（4087/5061）），补 `aha-desktop` 用例数 | @ACANX |
-| v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
+| v3.62.0 | 2026-10-08 | 附录 A 收录 `TS-202610-AtomicReplaceSilentFailure.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
 | v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 | v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
+| v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
+| v3.66.0 | 2026-10-09 | §4 项目结构的 workflows 树补 `BuildJVMArtifacts.yml`（dev 的 JVM 便携包构建 + 预发行，issue #63）及 `DesktopNative.yml` / `CliNative.yml` | @ACANX |
+| v3.67.0 | 2026-10-09 | 文档结构调整：新增 `Docs/TODO/`（清单 `README.md` + `TD-PPPPP-*.md`）与 `Docs/Troubleshooting/`（`TS-yyyyMM-*.md`）；`Docs/DevLog/` 下 31 篇排查记录**全部 1:1 迁移**到 Troubleshooting，DevLog 重新定位为开发完成记录且命名改为 `yyyyMMdd-HH.md`；目录树与附录 A 同步 | @ACANX / CNXNC |
+| v3.68.0 | 2026-10-09 | 新增 `Archive/`（已废弃历史资料的归档，不参与 CI 检查）并登记入目录树与附录 A；§4 技能索引补 `issue-tracking` 与 `doc-recording`；新增「记录纪律（强制）」（代码与记录同变更内完成） | @ACANX / CNXNC |
+| v3.69.0 | 2026-10-09 | 新增 `Docs/Guide/VersionBumpGuide.md`（版本切换指南：操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案 / 历史教训 / 维护约定）；`ReleaseProcess.md` §2 交叉引用；Guide 索引（目录树 + 附录 A）补齐 `ReferenceGuide` / `CommandCheatsheet` / `NativeRenderDiagnosticsGuide` / `VersionBumpGuide` | @ACANX / CNXNC |
+| v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
 
 ---
 ```
@@ -514,7 +535,7 @@ aha/
 # AHA - Agent Harness
 
 **项目代号**：AHA
-**当前版本**：0.1.1
+**当前版本**：见仓库根目录 `version` 文件
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
 **模块化**：JPMS 优先启用（非强制；与 OpenJFX 冲突时为它让路）
@@ -529,6 +550,8 @@ AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
 ## 快速开始
 
 ### 构建
+
+> 下列命令由 **CI / 人类开发者**执行；Agent 本地不跑 Maven，以 PR 的 CI checks 为准。
 
 ```bash
 ./mvnw clean verify          # Maven 4 运行时
@@ -545,6 +568,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 ```
 
 ### 运行测试
+
+> 测试由 **CI** 承担（`Build.yml` / `Gate.yml`）；Agent 本地不跑，失败时看 PR checks 与 CI 日志。
 
 ```bash
 ./mvnw test                  # 全部测试
@@ -613,15 +638,18 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
 | `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
+| `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 文件资源 / 运行期初始化）：三路发现法、来源优先级、精确签名、四层守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
+| `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
+| `doc-recording` | 三类过程记录的时机与写法（待办 TD / 开发日志 DevLog / 排查记录 TS）：写什么、怎么命名、登记与自检 | [SKILL.md](.agents/skills/doc-recording/SKILL.md) |
 
 ## 常用命令
 
 > CLI 命令参数、配置项、环境变量的完整参考见 `Docs/Guide/ReferenceGuide.md`。
 
-| 命令 | 说明 |
+| 命令（CI / 人类开发者） | 说明 |
 |---|---|
-| `./mvnw clean verify` | 完整构建 + 测试 |
-| `./mvnw -pl aha-core test` | 单模块测试 |
+| `./mvnw clean verify` | 完整构建 + 测试（**Agent 不执行**） |
+| `./mvnw -pl aha-core test` | 单模块测试（**Agent 不执行**） |
 | `./mvnw -pl aha-cli exec:java` | 运行 CLI |
 | `./mvnw dependency:tree` | 查看依赖树 |
 | `./mvnw javadoc:javadoc` | 生成 Javadoc |
@@ -800,6 +828,7 @@ aha/
 ├── mvnw
 ├── mvnw.cmd
 ├── pom.xml
+├── version                     ← 版本号唯一权威源（一行纯文本）
 ├── .mvn/
 │   └── wrapper/
 │       └── maven-wrapper.properties
@@ -815,8 +844,14 @@ aha/
 │   ├── actions/
 │   │   └── maven-run/          ← Maven 调用统一入口：清失败标记 + 重试
 │   │       └── action.yml
+│   ├── Python/
+│   │   └── ProjectVersion.py   ← 版本唯一读取入口（--resolve / --verify）
 │   └── workflows/
 │       ├── Build.yml           ← 快检查（每次 push / PR）
+│       ├── BuildJVMArtifacts.yml ← dev 的 JVM 便携包构建 + 预发行
+│       ├── DesktopNative.yml   ← 桌面端原生镜像（试验性，预发行）
+│       ├── CliNative.yml       ← CLI 原生镜像（试验性，预发行）
+│       ├── VersionBump.yml     ← 版本分发（workflow_dispatch，开 PR 到 dev）
 │       ├── Gate.yml            ← 门禁 + 每周定期扫描
 │       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml
@@ -829,6 +864,9 @@ aha/
 ├── bin/
 │   ├── Aha.bat
 │   └── Aha.sh
+├── Script/
+│   └── Python/
+│       └── VersionDistribute.py ← 版本分发（根 POM <revision> / version 文件 / 文档声明）
 ├── aha-common/
 │   ├── pom.xml
 │   └── src/
@@ -916,7 +954,8 @@ aha/
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.1</version>
+    <!-- CI-friendly 版本：实体值在 <properties>/<revision>，子模块引用 ${revision} 继承 -->
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -932,6 +971,12 @@ aha/
     </modules>
 
     <properties>
+        <!-- 项目版本：**机器侧唯一来源**。权威源是仓库根目录的 version 文件，
+             该值由 Script/Python/VersionDistribute.py 分发写入（P4 / #96，见 TD-00016 §H）。
+             示例里写占位符，避免文档复制具体版本号（BuildSpec.md §7） -->
+        <revision>x.y.z</revision>
+
+        <!-- 默认编译目标；CI 的 jdk27 腿用 -Dmaven.compiler.release=27 覆盖（BuildJVMArtifacts.yml，issue #65） -->
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
@@ -1080,7 +1125,7 @@ aha/
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.1</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -1988,7 +2033,7 @@ messages.add(ChatMessage.text(Role.USER, input));
 **验证线上请求体**（三家一次跑完，输出即上面三段 JSON）：
 
 ```java
-// 用 dist/lib 作为 classpath，构造同样的 ChatRequest 再调各适配器
+// 用 Dist/lib 作为 classpath，构造同样的 ChatRequest 再调各适配器
 ChatRequest request = new ChatRequest("gpt-4o",
         List.of(ChatMessage.text(Role.SYSTEM, "片段1"),
                 ChatMessage.text(Role.SYSTEM, "片段2"),
@@ -3006,16 +3051,16 @@ wrapperUrl=https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-w
 
 | 版本 | CLI | 桌面端 |
 |---|---|---|
-| 0.1 | JPMS 模块路径目录（`dist/`）+ 启动脚本 | — |
+| 0.1 | JPMS 模块路径目录（`Dist/`）+ 启动脚本 | — |
 | 0.2 | 同上 | jpackage (MSI/DEB) |
 | 1.x | native-image | jpackage (MSI/DEB) |
 
 ### 2.1 0.1 发行包
 
-`./mvnw clean package` 在项目根生成 `dist/`：
+`./mvnw clean package` 在项目根生成 `Dist/`：
 
 ```
-dist/
+Dist/
 ├── bin/
 │   ├── Aha.sh
 │   └── Aha.bat
@@ -3029,12 +3074,12 @@ dist/
 
 - `dependencySet` 以 `useProjectArtifact=true` 收集 `aha-cli` 自身与全部 runtime 依赖到 `lib/`
 - `fileSet` 附带 `bin/` 启动脚本与项目文档
-- `bin/Aha.sh` 取 `$DIR/../lib`，与平铺布局一致（`outputDirectory` 指向项目根，`finalName=dist`）
+- `bin/Aha.sh` 取 `$DIR/../lib`，与平铺布局一致（`outputDirectory` 指向项目根，`finalName=Dist`）
 
-`dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
+`Dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
 **为何不用 fat JAR**：shade 合并后的单一 JAR 无法按模块追踪依赖与许可，也无法与
-`dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
+`Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
 的决策而改变**）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
 **为何不用 jpackage（0.1）**：0.1 仅需 CLI + `bin/` 脚本，jpackage 主要用于 0.2 的桌面端。
@@ -3440,7 +3485,7 @@ Closes #123
 
 - [x] `./mvnw clean verify` 通过
 - [x] `mvn clean verify` 通过
-- [x] 发行包构建与启动（`mvnw clean package` → `dist/bin/Aha.sh version|--help` 实测通过）
+- [x] 发行包构建与启动（`mvnw clean package` → `Dist/bin/Aha.sh version|--help` 实测通过）
 - [x] CLI 端到端测试（伪终端下验证 `chat` 的启动、提示符与 `exit` 退出；非交互命令已全量验证）
 - [ ] LLM 供应商接入测试（需真实 API Key，已通过 Mock HTTP 与 fixture 验证协议转换）
 - [x] 会话持久化测试（`EndToEndTest`：真实 SQLite 重建后读取）
@@ -3539,7 +3584,7 @@ Closes #123
 | 1.3 | 云原生 | `aha-cloudfn`（Lambda / 阿里云 FC / 腾讯云 SCF）+ 容器镜像 + K8s Job |
 | 1.4 | 分布式运行时 | 任务编排（DAG）+ 多实例调度 + 结果持久化 |
 | 2.0 | 可观测与生态 | OpenTelemetry + 官方扩展仓库 + 跨厂商 Agent 协作（A2A） |
-| 1.x | native-image | CLI native binary |
+| 1.x | native-image | CLI native binary（0.1.x 已先以试验模块 `aha-cli-native` + `CliNative.yml` 落地） |
 
 ### 1.1 1.0 前必须补齐的能力缺口
 
@@ -3659,12 +3704,19 @@ Closes #123
 |---|---|
 | `AHA-Design-V1.md` | 本文件：完整设计文档（唯一权威文档） |
 
+### Archive/
+
+已废弃 / 不再维护的历史资料（旧文档、旧设计稿、被取代的脚本与配置）；文件名保持原样，
+文件头注明「已废弃（YYYY-MM-DD）」与替代物。说明见 `Archive/README.md`。
+
 ### Docs/（根级）
 
 | 文档 | 说明 |
 |---|---|
-| `TODO.md` | 待办与调整项（暂存区） |
-| `PLAN.md` | 暂缓与受限事项，含「做不到」的判断依据与实测证据 |
+| `TODO.md` | 历史待办与调整项（**已冻结**，仅供追溯） |
+| `PLAN.md` | 暂缓与受限事项，含「做不到」的判断依据与实测证据（**已冻结**） |
+| `Dbsx.txt` | 用户原始待办（**已冻结**） |
+| `TODO/` | 待办清单与详情：`README.md`（清单看板）+ `TD-PPPPP-*.md`（单项详情） |
 
 ### Docs/DevSpec/
 
@@ -3700,6 +3752,8 @@ Closes #123
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
 | `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
+| `DesktopNativeUpdateDesign.md` | 桌面端原生镜像的**版本更新脚本**（试验性）：`Script/Python/DesktopNativeVersionUpdate.py` 的三条发现路径（api → atom → page）、「最新 tag ≠ 可下载」回退、续传与 sha256 校验、原子替换与状态文件 |
+| `CliNativeDesign.md` | CLI **原生镜像**（试验性）：`aha-cli-native` 模块与 `CliNative.yml` 工作流；与桌面端共享隔离 / 版本 / 自证方法论，差异在 picocli 注解处理器生成元数据、JLine Signals 缺口与无 JavaFX |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
 | `SelfHostingDesign.md` | AHA 自举里程碑（1.0 硬门槛：从依赖其他 Harness 切换到独立自举） |
@@ -3710,11 +3764,15 @@ Closes #123
 | 文档 | 说明 |
 |---|---|
 | `GettingStarted.md` | 快速开始 |
+| `ReferenceGuide.md` | CLI 命令 / 配置 / 环境变量参考 |
 | `BuildGuide.md` | 构建指南（命令、报告、构建期排错） |
+| `CommandCheatsheet.md` | 常用命令速查（编译 / 更新 / 解压 / 启动） |
 | `ConfigurationGuide.md` | 配置指南 |
 | `ProviderSetupGuide.md` | 供应商设置指南 |
 | `ToolUsageGuide.md` | 工具使用指南 |
 | `ExtensionAuthoringGuide.md` | 扩展开发指南 |
+| `NativeRenderDiagnosticsGuide.md` | 原生渲染诊断手册（真机取证步骤与判据） |
+| `VersionBumpGuide.md` | 版本切换指南（操作步骤 / 检查清单 / 常见问题 / 应急预案） |
 | `TroubleshootingGuide.md` | 排错指南 |
 
 ### Docs/Diagrams/
@@ -3729,22 +3787,28 @@ Closes #123
 | `ExtensionArchitecture.svg` | 扩展架构图 |
 | `ExtensionLifecycle.svg` | 扩展生命周期图 |
 
-### Docs/DevLog/
+### Docs/Troubleshooting/
 
-排障复盘与事故记录，按时间线命名（`DevLog-YYYYmmdd-HH.md`，见 `DocumentationSpec.md` §1）。
+问题排查与事故复盘，按 `TS-yyyyMM-大驼峰英文标题.md` 命名（见 `DocumentationSpec.md` §1）；
+完整索引见 `Docs/Troubleshooting/README.md`。
 
 | 文件 | 说明 |
 |---|---|
-| `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
-| `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
-| `DevLog-20261007-22.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
-| `DevLog-20261007-23.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
-| `DevLog-20261007-24.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
-| `DevLog-20261008-00.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
-| `DevLog-20261008-01.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
-| `DevLog-20261008-02.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
-| `DevLog-20261008-03.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
-| `DevLog-20261008-04.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
+| `TS-202610-CiRequiredCheckNameMismatch.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
+| `TS-202610-CoverageGateInvisible.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
+| `TS-202610-FakeMergeDirtyPr.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
+| `TS-202610-ArtifactNotFoundInCentral.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
+| `TS-202610-RulesetBlocksSingleMaintainer.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
+| `TS-202610-VersionBumpMissedModules.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
+| `TS-202610-AtomicReplaceSilentFailure.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
+| `TS-202610-ProviderConfigDialogTraps.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
+| `TS-202610-DesktopFeatureBugs.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
+| `TS-202610-NativeModuleSilentTraps.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
+
+### Docs/DevLog/
+
+**开发完成事项**的记录，按 `yyyyMMdd-HH.md` 命名（见 `DocumentationSpec.md` §1）；
+规范与模板见 `Docs/DevLog/README.md`。问题排查与事故复盘不写在这里，见上一节。
 
 ### .agents/skills/
 

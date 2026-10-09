@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.11.0
+**文档版本**：v1.16.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-06
+**最后更新**：2026-10-09
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -26,18 +26,23 @@
 | v1.9.0 | 2026-10-08 | §3 制品表改为「CLI 平台无关 / 桌面端按平台」；新增 §3.2「桌面端按平台出包」（命名、包布局、自证规则、如何新增平台）；CLI 资产改名 `aha-<版本>-cli.zip` | @ACANX |
 | v1.10.0 | 2026-10-08 | §3.2 补包内依赖清单（18 个 jar 的分类构成）、不含项（JDK / 测试依赖）与「模块图完整性自证」（并记录 `--validate-modules` 不能当判据的实测） | @ACANX |
 | v1.11.0 | 2026-10-08 | 第 2 节版本号清单更正枚举名与位置：`AppVersion.FALLBACK` → `AppVersion.FALLBACK_VERSION`（`aha-common`，D-10 下移） | @ACANX |
+| v1.12.0 | 2026-10-09 | 第 2 节「构建版本（预发行）」补 `BuildJVMArtifacts.yml`：dev 的 JVM 便携包出包线同样传 `-Daha.build.version=<a.b.c.PPPPP>`（issue #63） | @ACANX |
+| v1.13.0 | 2026-10-09 | §3 与 §3.1 的 CLI 资产名统一为 `aha-cli-<版本>.zip`（前缀 `aha-cli` 与桌面端 `aha-desktop-` 对称）；dev JVM 线的 JDK 27 变体为 `aha-cli-<版本>-jdk27.zip` | @ACANX |
+| v1.14.0 | 2026-10-09 | §4.1 第 5 条「关闭 squash / rebase 合并」的登记处由 `TODO.md` `G-05` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
+| v1.15.0 | 2026-10-09 | 第 2 节版本源口径：P3（#95）引入 `<revision>` 后 POM 侧收敛为 **1 处**（8 子模块写 `${revision}` 继承），`AppVersion.FALLBACK_VERSION` 解耦为 `"dev"`；一次性命令改用 `versions:set-property -Dproperty=revision`；§2 第 4 步与 §4.1 的版本来源改指 `<revision>` | @ACANX / CNXNC |
+| v1.16.0 | 2026-10-09 | P5（#97，父 #92）文档口径同步：§2 版本切换改为「改 `version` 文件 / 触发 `VersionBump` workflow」；§4.1 与 §4.2 的版本号来源改指根目录 `version` 文件（权威），`<revision>` 降为机器位置；§1 检查清单与 §4.2 ④ 的「8 处」改为 `ProjectVersion.py --verify` 一键校对 | @ACANX / CNXNC |
 
 ---
 
 ## 1. 发布前检查
 
-- [ ] `./mvnw clean verify` 通过（Maven 4）
-- [ ] `mvn clean verify` 通过（Maven 3.9.x）
-- [ ] 全部测试通过，覆盖率达标
+- [ ] CI 的 `Gate.yml`（`clean verify` + 覆盖率门禁）通过
+- [ ] CI 的 `Compat.yml`（Maven 3.9.x）通过
+- [ ] 全部测试通过，覆盖率达标（读 CI 日志，不在本地重跑）
 - [ ] 发行包可构建且可运行（见 §3.1）
 - [ ] `Docs/DevSpec/` 全部文档已审查
 - [ ] `CHANGELOG.md` 已更新
-- [ ] 版本号已更新（`pom.xml`）
+- [ ] 版本号已更新（根目录 `version` 文件为权威源，机器位置根 POM 的 `<revision>` 与之一致）
 
 ### 1.1 1.0 发布附加检查（自举硬门槛）
 
@@ -55,34 +60,46 @@
 
 ## 2. 发布步骤
 
+> 逐步操作、**检查清单**、常见问题快速处置与**应急预案**见
+> [VersionBumpGuide.md](../Guide/VersionBumpGuide.md)；本节只列硬性要求。
+
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
-   - 版本号要改 **8 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
-     根部 `pom.xml` 的 `<version>` + **六个子模块** `aha-*/pom.xml` 里 `<parent>` 下的
-     `<version>` + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
-   - 可用一条命令统一改（需联网取 maven-versions-plugin）：
-
-     ```
-     ./mvnw versions:set -DnewVersion=0.1.1 -DgenerateBackupPoms=false
-     ```
-
-     **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
-     反应堆显示 `Building AHA-Common 0.1.0`、产物名为 `aha-common-0.1.0.jar`、
-     `aha --version` 仍报旧版本，而构建**不报错**——静默发出错版本的包。
+   - **版本源（P4 起）**：唯一权威源是**根目录 `version` 文件**（一行，如 `0.1.2`）；
+     机器侧只保留根 `pom.xml` 的 `<properties>/<revision>` **一处**（8 个子模块写
+     `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION`
+     已与版本解耦（固定 `"dev"`）。
+   - **改法（推荐）**：触发 **`VersionBump` workflow**（`workflow_dispatch`，输入新版本号），
+     由 `Script/Python/VersionDistribute.py` 把 `version` 分发到根 POM 的 `<revision>`
+     与 4 处文档版本声明，并自动开 PR（`chore/bump-<版本>` → `dev`）；也可直接改
+     `version` 文件一行，再按常规 PR 流程提交。操作细节见
+     [VersionBumpGuide.md](../Guide/VersionBumpGuide.md)。
+   - **一致性校验（强制）**：`python3 .github/Python/ProjectVersion.py --verify` 断言
+     `version` 文件 / 根 POM `<revision>` / `version.properties` 的 `version` /
+     产物名版本段 / `Build.yml` 的 tag 规则五处一致（已接入 `Gate.yml`）。
+   - **手工应急**（不走 workflow 时）：只需改 **`version` 文件与根 POM 的 `<revision>` 两处**，
+     两者必须相同；子模块与文档声明由分发脚本负责。当初「为何要改 10 处」的历史口径见
+     [VersionBumpGuide.md](../Guide/VersionBumpGuide.md) 第 7 节与
+     [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)。
    - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
+   - **构建版本（预发行）**：`version.properties` 另有 `build=${aha.build.version}` 项；正式发版与
+     本地构建不传，等于基线版本；PR 合并到 `dev` 后自动出包的工作流（`DesktopNative.yml` /
+     `CliNative.yml` / `BuildJVMArtifacts.yml`）会传 `-Daha.build.version=<a.b.c.PPPPP>`（如 `0.1.1.00046`），
+     供 GUI「关于」与 CLI 启动页 / `/help` 显示，便于按版本号排查（issue #46）
 3. 执行完整构建与验收
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
-   按父 POM 的 `<version>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
+   按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
 5. 触发 `Release.yml`（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）——注意 4.2 的限制
 6. 合回 `dev`，删除 `release/*` 分支
 
 ### 4.1 tag 命名与手工补打
 
-- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<version>`，如 `V0.1.1`）。
+- 约定：**`V<版本号>`**（大写 `V`，版本号取自根目录 `version` 文件，如 `V0.1.1`）。
   ⚠ 历史例外：0.1.0 那次发布的 tag 是 **`0.1.0`**（无 `V` 前缀），与约定不一致；
   处置见 [TODO.md](../TODO.md) `G-06`。
-  版本号的**唯一来源是根 POM**，工作流与文档都不复制它。
+  版本号的**唯一权威源是根目录 `version` 文件**（机器位置是根 POM 的 `<revision>`，
+  由 `VersionDistribute.py` 写入），工作流与文档都不复制它。
 - 自动打 tag 的触发条件：**push 到 `main`**（`dev` → `main` 的 PR 合并之后）且 `Build.yml` 的
   `build` 作业成功。
 - 需要手工补打的情形：那条**可选**的 macOS 腿没有通过、连带 `build` 作业未算成功；
@@ -107,7 +124,7 @@
 
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | `dist/` 目录（`bin/` + `lib/`），发布为 `aha-<版本>-cli.zip` | — |
+| 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-cli-<版本>.zip` | — |
 | 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2）；jpackage 安装包待评估 |
 | 1.x | native-image | jpackage (MSI/DEB/DMG) |
 
@@ -155,14 +172,16 @@
 
 ### 3.1 发行包验证（发布前必做）
 
+> 发行包由 CI 构建；下面的命令**不在本地执行 Maven**。验证在 CI 或用户明确要求的发布场景中完成。
+
 ```bash
 ./mvnw clean package
-./dist/bin/Aha.sh version     # 应输出版本号
-./dist/bin/Aha.sh --help      # 应列出全部命令
+./Dist/bin/Aha.sh version     # 应输出版本号
+./Dist/bin/Aha.sh --help      # 应列出全部命令
 ```
 
-`dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
-发布流程将其打包为 `aha-<版本>-cli.zip` 并上传到 GitHub Release；`dist/` 不入库。
+`Dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
+发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
 > **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。
@@ -183,19 +202,20 @@
 2. **禁止「把内容重新落一遍」**。例如 `git merge --squash` 后再手工提交、
    把分支上全部提交 cherry-pick 到目标分支等。这类做法会让上游收下内容却没有
    把源分支变成祖先，源分支之后的**每一个** PR 都会永久冲突
-   （`mergeable_state=dirty`）。详见 [DevLog-20261007-22.md](../DevLog/DevLog-20261007-22.md)。
+   （`mergeable_state=dirty`）。详见 [TS-202610-FakeMergeDirtyPr.md](../Troubleshooting/TS-202610-FakeMergeDirtyPr.md)。
 3. **用了 squash / rebase 就必须删源分支**。这两种合并的代价就是失去血缘、补不回来；
    若源分支还要继续用，就只能真合并。
 4. **长期集成分支被误用 squash 之后，必须立刻接回血缘**：在源分支上
    `git merge -s ours <上游>`（先按第 6 条的办法证明上游内容是源分支的子集），
    把上游记为父提交、树保持不变。**不接回的后果是必然的**——下一次 `dependa → dev`
-   的 PR 又会 `dirty`，本次已实际复发过一次（见 `DevLog/DevLog-20261007-22.md` 补记）。
+   的 PR 又会 `dirty`，本次已实际复发过一次（见 `Troubleshooting/TS-202610-FakeMergeDirtyPr.md` 补记）。
    若选择**不复位也不接回**、任源分支落后于上游，则第一次整合时的实测后果是：
    两侧相对分叉点都改过的文件会冲突（本次实测 6 个文档文件），虽然取上游版本即可解决，
    但那是一次纯人工的重复劳动——所以正解是第 5 条。
 5. **更根本的预防：别让 squash 对长期集成分支可用**。仓库设置里关闭 squash 与 rebase
    合并、只留 `Create a merge commit`，血缘由平台保证，不再依赖人记得住——
-   这件事与分支规则集同属仓库设置，已登记在 [TODO.md](../TODO.md) `G-05`。
+   这件事与分支规则集同属仓库设置，已登记在
+   [Issue #85](https://github.com/ACANX/AHA/issues/85)。
 6. **合并前后用树的逐字节比对确认没丢内容**：
 
    ```
@@ -233,7 +253,8 @@ cd /tmp/merge-check && git merge --no-ff origin/<head>
 git diff --stat origin/<head> HEAD      # 输出为空 = 复议面为零（最有力的结论）
 git diff --quiet origin/<head> HEAD || echo '⚠ 合并结果与 head 不一致，逐条看过再推'
 
-# ④ 版本号 8 处逐一核对（根 POM + 六个模块 <parent><version> + AppVersion 回退值）
+# ④ 版本号一致性核对（version 文件 / <revision> / version.properties / 产物名 / tag 规则）
+python3 .github/Python/ProjectVersion.py --verify
 ```
 
 **复议面为零**（③ 输出为空）是发布前最强的自证：它同时排除了「冲突解错」、「旧内容覆盖新内容」、

@@ -1,9 +1,9 @@
 # 构建规范
 
-**文档版本**：v1.20.0
+**文档版本**：v1.24.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-09
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -34,6 +34,10 @@
 | v1.18.0 | 2026-10-08 | §7 技术栈 JPMS 改为「优先启用（非强制）」并补 classpath 例外的记录要求；fat JAR 禁用理由改述（不再依赖 JPMS 强制）；§4.1 补 macOS 打包决策（要打包、不加测试，`D-06`） | @ACANX |
 | v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
 | v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
+| v1.21.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（dev 的 JVM 构建线，与 `DesktopNative.yml` / `CliNative.yml` 同构）：`push` 到 `dev` 时构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`），补齐 JVM 模式在 dev 上的产物缺口（issue #63）；§8.1 分层表登记该层 | @ACANX |
+| v1.22.0 | 2026-10-09 | §2 补「JDK 27 编译变体」（`-Dmaven.compiler.release=27`，仅 `BuildJVMArtifacts.yml` 的 jdk27 腿，包名带 `-jdk27`，issue #65）：不改变 JDK 25 基线与正式发版；§8.1 分层表同步补 JDK 轴 | @ACANX |
+| v1.23.0 | 2026-10-09 | §8.1 的「必需检查与审批要求」登记处由 `TODO.md` `G-02` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
+| v1.24.0 | 2026-10-09 | §7 新增「项目版本的单一来源」：权威源为根目录 `version` 文件，机器位置为根 POM 的 `<revision>`（由 `VersionDistribute.py` 写入），子模块写 `${revision}` 继承；一致性由 `ProjectVersion.py --verify` 在 `Gate.yml` 强制（P5 / #97） | @ACANX / CNXNC |
 
 ---
 
@@ -50,10 +54,15 @@
 
 | 类别 | 锁定版本 | 说明 |
 |---|---|---|
-| JDK | **25 (LTS)** | 编译与运行目标，禁止降级 |
+| JDK | **25 (LTS)** | 默认编译与运行目标（`release=25`），禁止降级；另有 JDK 27 编译变体（见下） |
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
 | JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
+
+**JDK 27 编译变体（额外产物，非基线）**：dev 出包线（`BuildJVMArtifacts.yml`）在 JDK 25 之外
+额外用 **JDK 27** 编译一份产物（`-Dmaven.compiler.release=27`，包名带 `-jdk27` 后缀，issue #65），
+用于提前验证 JDK 27 下能否编译与运行。它**不改变上面的 JDK 25 基线**：默认构建仍是 `release=25`，
+正式发版（`Release.yml`）仍只用 JDK 25；只有该工作流的 jdk27 腿显式覆盖 release。
 
 **禁止事项**：
 
@@ -172,6 +181,17 @@ POM 语法必须兼容 Maven 3.9.x：
 
 ## 7. 依赖与产物约束
 
+**项目版本的单一来源**：项目自身的版本号以**根目录 `version` 文件**为唯一权威源
+（一行纯文本，如 `0.1.2`）；机器侧只保留根 POM 的 `<properties>/<revision>` 一处，
+由 `Script/Python/VersionDistribute.py` 写入（规范见 `ReleaseProcess.md` §2，操作见
+`VersionBumpGuide.md`）。8 个子模块写 `<parent><version>${revision}</version>` 继承，
+`AppVersion.FALLBACK_VERSION` 与版本解耦（固定 `"dev"`）。五处一致性
+（`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 规则）由
+`python3 .github/Python/ProjectVersion.py --verify` 在 `Gate.yml` 强制校验。
+文档**不得**复制项目版本号（同下「文档不得复制具体版本号」规则）——需要确切版本时看
+`version` 文件或根 POM 的 `<revision>`；历史注记（`@since`、实测数据标题、`CHANGELOG`
+历史段）不受此限。
+
 **版本单一来源**：依赖的确切版本集中在**父 POM 的 `<properties>`**，是唯一来源。
 文档（含 README、设计文档、选型清单）**不得复制具体版本号**，只写主版本线——
 升级由 Dependabot 每日提出，抄进文档必然漂移（曾因此出现「文档写 3.1.3、POM 已是 3.2.3」）。
@@ -184,22 +204,22 @@ POM 语法必须兼容 Maven 3.9.x：
 - 内部模块版本统一由父 POM `dependencyManagement` 管理，子模块不得硬编码版本
 - `aha-common` 保持**零外部依赖**（仅 JDK），禁止引入 Jackson 等第三方库
 - 内核模块（`aha-core`）禁止依赖任何传输 / 协议库
-- 发行包固定为 **JPMS 模块路径目录**（`dist/bin` + `dist/lib`），由 `maven-assembly-plugin`
+- 发行包固定为 **JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
   组装（`aha-cli/src/assembly/dist.xml`）：
   - **禁止**使用 `maven-shade-plugin` 打 fat JAR——合并后的单一 JAR 无法按模块追踪依赖与许可，
-  也无法与 `dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
+  也无法与 `Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
-  - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `dist/` 布局保持一致（`$DIR/../lib`）
-  - `dist/` 不入库，须在 `.gitignore` 中保持忽略
-- **构建产物一律输出到 `dist/`（仓库根只放源码与文档）**：
-  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `dist/`，**不得**在仓库根
+  - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `Dist/` 布局保持一致（`$DIR/../lib`）
+  - `Dist/` 不入库，须在 `.gitignore` 中保持忽略
+- **构建产物一律输出到 `Dist/`（仓库根只放源码与文档）**：
+  - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `Dist/`，**不得**在仓库根
     生成或暂存任何 `.zip`（根目录被构建物污染后，`git status` 与「找产物」都变得不可靠）
-  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/dist</outputDirectory>`
-  - **例外**：CLI 的 assembly 输出的是 `dist/` 内的**解包目录**（`bin/` + `lib/`），
-    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `dist/…`；
-    CLI 的 zip 由工作流在临时目录打好后移入 `dist/`（直接在 `dist/` 内写会把归档自身收进去）
+  - 各模块的 `maven-assembly-plugin` 用 `<outputDirectory>${maven.multiModuleProjectDirectory}/Dist</outputDirectory>`
+  - **例外**：CLI 的 assembly 输出的是 `Dist/` 内的**解包目录**（`bin/` + `lib/`），
+    因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `Dist/…`；
+    CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`（直接在 `Dist/` 内写会把归档自身收进去）
 - **可选工作流的作业不得进必需检查（强制）**：
-  试验性 / 非交付物管线（如 `DesktopNative.yml`）的作业名**不得**写进分支保护的必需检查，
+  试验性 / 非交付物管线（如 `DesktopNative.yml`、`CliNative.yml`）的作业名**不得**写进分支保护的必需检查，
   且其失败必须**在步骤级**容错（作业级 `continue-on-error` 只保住整次运行的颜色，
   作业本身仍显示红叉，观感上会被误读成「流程挂了」）。
   这类管线的正确形态是：步骤级容错 + Job Summary 留真相 + 无产物时不发版也不失败。
@@ -214,8 +234,9 @@ POM 语法必须兼容 Maven 3.9.x：
     误入也不会要求环境具备工具链
   - 理由：一旦默认路径依赖平台工具链，构建失败的原因会从「代码问题」变成「环境问题」，
     而后者极难在别人的机器上复现——这是把一个可诊断的失败换成不可诊断的失败
-  - 已有实现：`aha-desktop-native`（原生镜像，`-Pdesktop-native[,native-jdk27]`）；
-    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节
+  - 已有实现：`aha-desktop-native`（桌面端原生镜像，`-Pdesktop-native[,native-jdk27]`）；
+    详见 `Docs/Design/DesktopNativeDesign.md` 第 2 节；以及 `aha-cli-native`
+    （CLI 原生镜像，`-Pcli-native[,native-jdk27]`）；详见 `Docs/Design/CliNativeDesign.md` 第 2 节
 - 跨平台脚本编码与行尾约束（由 `bin/CheckScripts.py` 在 CI 中校验）：
   - `*.bat` / `*.cmd`：**纯 ASCII + CRLF + 无 BOM**——CMD 按 ANSI 代码页解析批处理，
     非 ASCII 字节会产生 `&`、`|` 等元字符并导致注释 / echo 行被当作命令执行
@@ -244,8 +265,8 @@ POM 语法必须兼容 Maven 3.9.x：
 | 仅技能（`.agents/skills/`） | `bin/CheckSkills.py`；技能内 Markdown 另需 `CheckDocs.py` | 构建 |
 | 仅脚本（`*.bat`/`*.cmd`/`*.sh`/`*.py`、`.gitattributes`） | `bin/CheckScripts.py` | 构建 |
 | 像素网格常量（`StartupPixelLogo.java` 与 `bin/GenPixelLogo.py`） | `bin/GenPixelLogo.py --verify` | 构建 |
-| 实现代码（Java / POM / YAML） | `./mvnw -pl <模块> -am test -Djacoco.skip=true` | 覆盖率门禁、文档检查 |
-| 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | `./mvnw -B pmd:cpd && bin/CheckDuplication.py` | 构建 |
+| 实现代码（Java / POM / YAML） | `bin/Check*.py`（本地）；**编译 + 单元测试由 CI 的 `Build.yml` 判定** | 覆盖率门禁、文档检查 |
+| 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | **由 CI 的 `Gate.yml` 判定** | 构建 |
 
 **本地不跑完整 `verify`（强制）**：完整 `verify`（覆盖率采集 + 打包 + javadoc + 覆盖率门禁）
 **只在 CI 跑**。即使改动触及下列内容，也一样**推送后看 CI**，不要在本机补跑：
@@ -256,9 +277,10 @@ POM 语法必须兼容 Maven 3.9.x：
   `python3 bin/ReportCoverage.py` 在 CI 的输出里取）
 - 发布前验收（见 [ReleaseProcess.md](ReleaseProcess.md)）
 
-> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息。
-> 本地唯一允许的重验证手段是 `./mvnw -pl <模块> -am test -Djacoco.skip=true`（不含覆盖率采集）
-> 与各 `bin/Check*.py`。
+> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息，
+> 而且会让 Agent 陷入长等待、掩盖「哪里才是权威验证」这一事实。
+> **本地只允许跑 `bin/Check*.py` 静态检查；所有 Maven 编译 / 测试 / verify 一律由 CI 承担。**
+> 推送后**以 PR 的 checks 结果为准**，失败再按 CI 日志排查并推送修复。
 
 ### 8.1 检查分层与门禁时机
 
@@ -268,6 +290,7 @@ POM 语法必须兼容 Maven 3.9.x：
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
 | **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿 |
+| **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：按「平台 × JDK」矩阵构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`）；JDK 轴为 25（基线，release=25）与 27（`-jdk27` 后缀，release=27，issue #65）；不影响 Build 快检查 |
 | **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |
 
@@ -294,6 +317,15 @@ POM 语法必须兼容 Maven 3.9.x：
 报告缺失时 `CheckDuplication.py` **直接失败**，不做静默跳过——否则 CI 上「没跑」
 会被误读成「通过」。
 
+**「构建成功」不是验收标准（强制）**：凡是产出物给用户 / 下游用的步骤，
+验收条件必须包含「产物存在 + 自证通过」，不能以「命令退出码为 0」收尾。
+尤其是带「开关」的管线：开关被静默跳过时构建照样成功，而且**不留任何错误**。
+做法：① 开关的默认值单一来源（见 §7 的 profile 契约）；② 检查工具链的**执行痕迹**
+（如 native-image 的 `<name>.build_artifacts.txt`）；③ 产物缺失时必须 `::warning::` 双写
+（step annotation + Job Summary），把「被跳过」与「早退」两种可能都点名。
+2026-10-08 实测事故：`native.skip` 默认值写在子模块 → profile 覆盖失效 →
+CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-202610-NativeSkipSilentOverride.md`）。
+
 **门禁必须自证（强制）**：JaCoCo 的 `check` 通过时不打印百分比，日志上与「没配门禁」
 无法区分（真实发生过：`./mvnw clean verify` 日志里只有 `Analyzed bundle`，被合理质疑
 "何来的门禁"）。因此凡是不出声的检查，都必须把实测值与判定标准写进日志：
@@ -314,7 +346,8 @@ POM 语法必须兼容 Maven 3.9.x：
 - **可选腿的开关从已有键推导**（如按 `matrix.os` 判定），不新增专用键。
 - **`Gate.yml` / `Compat.yml` 的 `name:` 同样是契约**：job 级 `name:` 就是上报的检查名，
   改动它等于改必需检查的名字。
-- 确需改名时，同一变更内必须同步更新分支保护，并在 `TODO.md` 的 `G-02` 中刷新验收清单。
+- 确需改名时，同一变更内必须同步更新分支保护，并在对应 Issue（当前
+  [#85](https://github.com/ACANX/AHA/issues/85)）中刷新验收清单。
 
 **CI 必须容忍仓库侧瞬时失败（强制）**：门禁要拦的是**代码与配置的问题**，不是网络抖动。
 GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.apache.org/maven2)`，
@@ -336,7 +369,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
   | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
 
-- 完整复盘见 [DevLog-20261007-23.md](../DevLog/DevLog-20261007-23.md)。
+- 完整复盘见 [TS-202610-ArtifactNotFoundInCentral.md](../Troubleshooting/TS-202610-ArtifactNotFoundInCentral.md)。
 
 **分支规则集必须对「单人 + 机器」可满足（强制）**：规则集（Ruleset）与门禁是**同一份契约的两端**，
 两端必须自洽。已经出现过两种把 PR 永久锁死的情形（比红色更麻烦——红色至少告诉你哪里错）：
@@ -360,11 +393,12 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   取舍时以**能否覆盖目标分支**为准（本例选工作流，因为默认设置覆盖不到 `main`）；
   覆盖率同理——本项目已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关，
   是否再把覆盖率上传给外部服务属于**待拍板**事项；
-- **必需检查与审批要求一律写进 `TODO.md` 的 `G-02`**（现状 + 目标规格两张表），
+- **必需检查与审批要求一律写进对应 Issue**（当前 [#85](https://github.com/ACANX/AHA/issues/85)，
+  含现状 + 目标规格两张表；`TODO.md` 已冻结，不再作为登记处），
   每次变更规则集或作业名后同步回写——这与「作业名是分支保护的契约」是同一条约束的两面
   （那次是作业名失配停在 `Expected`，这次是规则要的东西不存在停在 `Waiting`）。
 
-完整复盘见 [DevLog-20261007-24.md](../DevLog/DevLog-20261007-24.md)。
+完整复盘见 [TS-202610-RulesetBlocksSingleMaintainer.md](../Troubleshooting/TS-202610-RulesetBlocksSingleMaintainer.md)。
 
 **main 上的构建成功后自动打 tag（0.1.1 起）**：`Build.yml` 里有一个 `tag` 作业，
 条件为「`push` 到 `main` 且 `build` 作业成功」。它：

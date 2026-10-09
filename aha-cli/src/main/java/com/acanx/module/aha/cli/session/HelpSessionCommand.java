@@ -1,5 +1,7 @@
 package com.acanx.module.aha.cli.session;
 
+import com.acanx.module.aha.common.AppVersion;
+
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -51,6 +53,8 @@ final class HelpSessionCommand implements SessionCommand {
      */
     static String format(List<SessionCommand> commands) {
         StringBuilder text = new StringBuilder();
+        // 先报版本（预发行版带构建号），排查问题时能直接看到（issue #46）
+        text.append("AHA ").append(AppVersion.buildVersion()).append(System.lineSeparator());
         text.append("会话内命令：").append(System.lineSeparator());
         for (SessionCommand command : commands) {
             text.append(String.format("  %-12s %s%n", command.usage(), command.description()));

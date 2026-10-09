@@ -193,9 +193,9 @@ jobs:
             ok=false
             [ "$magic" = "$expect" ] && ok=true
             if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feedfacf" ]; then ok=true; fi
-            [ "$ok" = "true" ] || { note="${note:+$note；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
+            [ "$ok" = "true" ] || { note="${note:+${note}；}魔法数不符（期望 ${expect}，实际 ${magic:-取不到}）"; \
                                     echo "::warning::$note"; }
-            echo "产物：$bin（$((size / 1024)) KB，magic=${magic:-未取到}）"
+            echo "产物：${bin}（$((size / 1024)) KB，magic=${magic:-未取到}）"
           fi
 
           echo "produced=${produced}" >> "$GITHUB_OUTPUT"

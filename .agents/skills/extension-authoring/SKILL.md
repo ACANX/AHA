@@ -1,7 +1,7 @@
 ---
 name: extension-authoring
 description: 新增扩展：实现 AhaExtension、编写 AhaExtension.yaml 描述符、通过 ExtensionContext 注册可逆注销的扩展点。当需要开发扩展、注册扩展点或定义扩展权限时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；扩展以 aha-extension-api 与 aha-common 为编译期依赖；扩展运行时在 0.1 为占位实现。
 metadata:
   version: "1.0.0"

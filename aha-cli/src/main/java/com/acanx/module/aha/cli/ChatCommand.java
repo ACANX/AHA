@@ -1,5 +1,6 @@
 package com.acanx.module.aha.cli;
 
+import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.cli.render.LogoArt;
 import com.acanx.module.aha.cli.render.Renderer;
 import com.acanx.module.aha.cli.render.StartupBanner;
@@ -513,9 +514,12 @@ public final class ChatCommand implements Runnable {
     private static List<String> mastheadRows(AgentService service) {
         List<String> rows = new ArrayList<>();
         rows.add("AHA 交互式对话（/help 查看命令，exit / quit 退出）");
+        // 版本带构建号（预发行包），便于按版本号排查问题（issue #46）
+        field(rows, "版本", AppVersion.buildVersion());
         RuntimeDescriptor runtime = service.runtime();
         Map<String, String> attributes = runtime.attributes();
         field(rows, "供应商", attributes.get("Provider"));
+        field(rows, "档位", attributes.get("Tier"));
         field(rows, "模型", attributes.get("Model"));
         field(rows, "端点", attributes.get("Endpoint"));
         field(rows, "工作目录", runtime.workingDir());

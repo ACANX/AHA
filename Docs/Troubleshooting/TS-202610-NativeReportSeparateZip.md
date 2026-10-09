@@ -1,0 +1,73 @@
+# TS-202610-NativeReportSeparateZip：修复 issue #29：原生镜像的构建报告改为独立发布包
+
+> 日期：2026-10-08
+> 作者：@ACANX（与 AI 助手协作）
+> 关联分支：`fix/issue-29-native-report-in-zip`
+> 关联记录：`Docs/Design/DesktopNativeDesign.md` §5.4、`Docs/Troubleshooting/TS-202610-NativeImageArgsTuning.md`、issue #29
+
+## 1. 背景
+
+issue #29：打出的 `AHA-Desktop-Native-0.1.1.00025-windows-amd64-jdk25.zip` 里
+**没有** `aha-desktop-native-build-report.html`。
+
+而 `TS-202610-NativeImageArgsTuning.md` 与 `Docs/Dbsx.txt` 都把「随镜像包打包 build-report.\*」记为
+**已完成**，`DesktopNativeDesign.md` §5.4 的「可对账设施」也写着「随包进 zip」——
+**文档说做了、代码里却没有**：`dist-native.xml` 的 include 列表只有 `README.txt` 与
+`reachability-metadata.json`，报告被写在注释里当成了「可选项」，实际被排除。
+
+## 2. 定案（用户 2026-10-08）
+
+报告**不打进镜像包**，而是打成**独立发布包**，与镜像包同批挂到发布页：
+
+```
+AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip
+例：AHA-Desktop-Native-Report-0.1.1.00025-windows-amd64-jdk25.zip
+```
+
+- 镜像包与报告包各司其职：前者给人**运行**，后者给人**分析**；
+- 文件名与镜像包**同族**：版本号、系统、架构、JDK 轴全在名里，下载时一眼对上同一版本；
+- 报告包内含：构建报告 + 原生镜像参数 + 可达性元数据（一组对账材料）；
+- 同时作为 CI 制品保留 **90 天**（比镜像包的 14 天长）——报告是长期资产。
+
+## 3. 改动
+
+| 文件 | 改动 |
+|---|---|
+| `aha-desktop-native/src/assembly/dist-native.xml` | 明确报告不进镜像包（注释写清去处与命名），include 列表保持不含报告 |
+| `.github/workflows/DesktopNative.yml` | 新增「打独立报告包」「上传报告包制品」两步；产物自证新增「报告包是否生成」回归守卫；下载指引与 release body 同步 |
+| `aha-desktop-native/src/native/README.txt` | 「构建报告」段改为说明独立发布包名 |
+| `Docs/Design/DesktopNativeDesign.md` §5.4 | 报告作为独立发布物的定案与命名规范 |
+| `CHANGELOG.md` | 「变更」「修复（issue #29）」两条 |
+| `.agents/skills/java-app-graalvm-native-image-compile/references/args-cookbook.md`、`SKILL.md` | 技能同步：独立发布包 + 同族命名 + 回归守卫查发布物 |
+| `Docs/Dbsx.txt` | 「随镜像包打包」改为独立发布包 |
+
+## 4. 实测（本机，`-Dnative.skip=true`，不真编）
+
+1. 构造假报告 `aha-desktop-native/target/native/aha-desktop-native-build-report.html`；
+2. 跑 `-Pdesktop-native -pl aha-desktop-native,aha-desktop -am package -Dnative.skip=true`；
+3. **镜像包** `Dist/aha-desktop-native-9.9.9.00099-jdk25.zip` 内**不含** build-report，
+   证明排除正确；
+4. **报告包**按工作流同一段 python 打成
+   `Dist/AHA-Desktop-Native-Report-9.9.9.00099-windows-amd64-jdk25.zip`，
+   含报告 + 两份参数 + 可达性元数据共 4 个文件，打包与命名均符合预期；
+5. `bin/CheckScripts.py`、`bin/CheckDocs.py`、`bin/CheckSkills.py` 全绿。
+
+## 5. 教训
+
+1. **「文档说已完成」必须有可执行的自证**。这次是文档与代码两条线各走各的：
+   文档写「已随包交付」，代码里却只留了一行注释做选项。
+   回归守卫的口径也从「查 workdir」升级为「查发布物」——
+   「workdir 里有报告」不等于「发布物里有报告」。
+2. **不要把两类交付物硬塞进一个包**。镜像包给人运行、报告给人分析；
+   分开发布让下载者按需取件，报告体积（34~36 MB）也不会再影响镜像包。
+
+## 6. 涉及文件清单
+
+- `aha-desktop-native/src/assembly/dist-native.xml`
+- `.github/workflows/DesktopNative.yml`
+- `aha-desktop-native/src/native/README.txt`
+- `Docs/Design/DesktopNativeDesign.md`
+- `Docs/Dbsx.txt`
+- `CHANGELOG.md`
+- `.agents/skills/java-app-graalvm-native-image-compile/references/args-cookbook.md`
+- `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md`

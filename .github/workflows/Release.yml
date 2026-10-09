@@ -44,24 +44,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f dist/bin/Aha.sh
-          test -d dist/lib
+          test -f Dist/bin/Aha.sh
+          test -d Dist/lib
           # 版本从产物名读，作为唯一来源（不复制版本字面量）
-          cli_jar=$(ls dist/lib/aha-cli-*.jar)
+          cli_jar=$(ls Dist/lib/aha-cli-*.jar)
           version=$(basename "$cli_jar" .jar)
           version=${version#aha-cli-}
-          target="aha-${version}-cli.zip"
-          # 先在临时目录里打，再移进 dist/：
-          #   * 直接在 dist/ 里写 zip，会把正在写入的自身也收进归档；
-          #   * 只列 bin/ lib/ 与三个文档，将来 dist/ 里再放别的产物也不会被误收。
-          (cd dist && zip -qr "${RUNNER_TEMP}/${target}" bin lib README.md LICENSE CHANGELOG.md)
-          mv -- "${RUNNER_TEMP}/${target}" dist/
-          # 产物统一落 dist/：仓库根只放源码与文档
-          ls -lh "dist/${target}"
+          target="aha-cli-${version}.zip"
+          # 先在临时目录里打，再移进 Dist/：
+          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
+          #   * 只列 bin/ lib/ 与三个文档，将来 Dist/ 里再放别的产物也不会被误收。
+          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" bin lib README.md LICENSE CHANGELOG.md)
+          mv -- "${RUNNER_TEMP}/${target}" Dist/
+          # 产物统一落 Dist/：仓库根只放源码与文档
+          ls -lh "Dist/${target}"
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/aha-*-cli.zip
+          files: Dist/aha-cli-*.zip
 
   # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
   desktop:
@@ -110,15 +110,15 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # 用 [0-9] 而不是 *：这样不会把 dist/ 里可能存在的
+          # 用 [0-9] 而不是 *：这样不会把 Dist/ 里可能存在的
           # aha-desktop-native-<版本>-<jdk>.zip（原生镜像包）误当成桌面端 jar 包。
-          files=(dist/aha-desktop-[0-9]*.zip)
+          files=(Dist/aha-desktop-[0-9]*.zip)
           if [ "${#files[@]}" -ne 1 ]; then
             echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
             exit 1
           fi
-          # 文件名形如 dist/aha-desktop-<版本>-<平台分类器>.zip，先去掉目录前缀
-          rest="${files[0]#dist/}"
+          # 文件名形如 Dist/aha-desktop-<版本>-<平台分类器>.zip，先去掉目录前缀
+          rest="${files[0]#Dist/}"
           rest="${rest#aha-desktop-}"; rest="${rest%.zip}"
 
           # 分类器名里可能含 '-'（mac-aarch64 / linux-aarch64），
@@ -136,16 +136,16 @@ jobs:
 
           echo "包名解析：版本=$version 分类器=$classifier"
           if [ "$classifier" != "$EXPECTED" ]; then
-            echo "::error::平台不匹配：本腿（$LABEL）期望 $EXPECTED，实际解析到 $classifier。"
+            echo "::error::平台不匹配：本腿（${LABEL}）期望 ${EXPECTED}，实际解析到 ${classifier}。"
             echo "::error::runner 架构可能已变更，请核对本文件的 matrix。"
             exit 1
           fi
 
-          target="dist/aha-desktop-${version}-${LABEL}.zip"
+          target="Dist/aha-desktop-${version}-${LABEL}.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c '^lib/javafx' || true)
-          echo "发布产物：$target（$size，含本平台 OpenJFX jar $jars 个）"
+          echo "发布产物：${target}（${size}，含本平台 OpenJFX jar $jars 个）"
 
       - name: 便携包完整性自证（模块图 + 关键文件）
         shell: bash
@@ -157,7 +157,7 @@ jobs:
           #   - 缺依赖   → 启动阶段就报 FindException（模块未找到）
           # 实测 `java --validate-modules` **不能**当这个判据：抽掉 aha-core 后它照样退出 0、
           # 一字不说（已在本地做过反向对照）。
-          zip_path="$(pwd)/$(ls dist/aha-desktop-[0-9]*.zip)"
+          zip_path="$(pwd)/$(ls Dist/aha-desktop-[0-9]*.zip)"
           tmp=$(mktemp -d)
           (cd "$tmp" && "$JAVA_HOME/bin/jar" xf "$zip_path")
 
@@ -176,7 +176,7 @@ jobs:
             echo "::error::便携包模块图不完整（缺依赖）：$out"
             exit 1
           fi
-          echo "模块图完整（$out）"
+          echo "模块图完整（${out}）"
           echo "包内：本平台 OpenJFX $n_jfx 个，lib/ 共 $(ls "$tmp"/lib/*.jar | wc -l) 个 jar"
 
       - name: 打印本平台解析到的 OpenJFX 工件（自证）
@@ -186,4 +186,4 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/aha-desktop-[0-9]*.zip
+          files: Dist/aha-desktop-[0-9]*.zip

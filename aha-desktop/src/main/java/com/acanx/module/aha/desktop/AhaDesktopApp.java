@@ -1,5 +1,7 @@
 package com.acanx.module.aha.desktop;
 
+import java.lang.reflect.Method;
+
 import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.model.SessionConfig;
 import com.acanx.module.aha.common.tool.ToolPermission;
@@ -22,16 +24,20 @@ import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.SystemTheme;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopSettings;
 import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
+import javafx.geometry.Bounds;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.text.Font;
+import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
@@ -90,7 +96,7 @@ public final class AhaDesktopApp extends Application {
         AhaBootstrap.Result result = AhaBootstrap.boot(configFile);
         boot = result;
         LOG.info("AHA Desktop 启动：版本 {}，JVM {}，配置 {}，日志级别 {}",
-                AppVersion.version(), Runtime.version(),
+                AppVersion.buildVersion(), Runtime.version(),
                 result.fromFile() ? result.configFile().toString() : "内置默认",
                 result.loggingLevel());
         result.warnings().forEach(LOG::warn);
@@ -113,6 +119,94 @@ public final class AhaDesktopApp extends Application {
                 + " · 日志级别：" + boot.loggingLevel();
     }
 
+    /**
+     * 打印渲染与字体诊断（issue #48：原生镜像与 JVM 模式的字体渲染不一致）。
+     *
+     * <p>两者跑在同一台机器、同一份配置上，唯一的变量是二进制。要定位差异，先得把「实际用了
+     * 哪条管线、哪个字体实现、哪个字体族、多大字号、字形量出来多少」变成日志里的数字——
+     * 否则只能对着截图猜。原生包与 JVM 模式各跑一次，两份日志逐行对照即可。</p>
+     *
+     * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
+     * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
+     */
+    private static void logRenderingDiagnostics() {
+        LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
+                property("prism.order"), property("prism.lcdtext"), property("prism.text"),
+                property("glass.platform"));
+        LOG.info("渲染诊断：JavaFX 版本={} JVM={}", property("javafx.runtime.version"),
+                System.getProperty("java.vm.name", "<未知>"));
+
+        Font defaultFont = Font.getDefault();
+        LOG.info("渲染诊断：默认字体 族={} 名称={} 字号={} 可用字体族数={}",
+                defaultFont.getFamily(), defaultFont.getName(), defaultFont.getSize(),
+                Font.getFamilies().size());
+        LOG.info("渲染诊断：字体实现工厂={}（Windows 上 JVM 模式应为 WinFontFactory 一类）",
+                fontFactoryName());
+
+        // 字形度量：同一段文字在两个模式下若宽度 / 基线不同，说明字体解析或 hinting 走了不同路径。
+        // 这比「肉眼看图」靠谱——它给的是数字。
+        Text probe = new Text("Hamburgefonstiv 汉字 Wg 0123456789");
+        probe.setFont(Font.font(defaultFont.getFamily(), 14));
+        Bounds bounds = probe.getLayoutBounds();
+        LOG.info("渲染诊断：字形度量 14px 文本宽={} 高={} 基线={}",
+                round(bounds.getWidth()), round(bounds.getHeight()), round(probe.getBaselineOffset()));
+
+        Screen primary = Screen.getPrimary();
+        LOG.info("渲染诊断：屏幕 outputScale={}x{} dpi={} 视觉边界={}",
+                primary.getOutputScaleX(), primary.getOutputScaleY(), primary.getDpi(),
+                primary.getVisualBounds());
+    }
+
+    /**
+     * 读系统属性；未设置时返回「默认」。
+     *
+     * <p>刻意区分「没设」与「设成了别的值」——{@code prism.lcdtext} 的默认值由 JavaFX
+     * 内部决定，日志里出现「默认」才说明我们没有插手。</p>
+     *
+     * @param key 属性名
+     * @return 属性值或 {@code <默认>}
+     */
+    private static String property(String key) {
+        return System.getProperty(key, "<默认>");
+    }
+
+    /**
+     * 字体实现工厂的类名。
+     *
+     * <p>Windows 上 JavaFX 走 {@code WinFontFactory}（DirectWrite / GDI + ClearType hinting），
+     * Linux 走别的实现。<strong>原生镜像里这个类名若与 JVM 模式不同，基本就锁定了 #48 的根因</strong>。</p>
+     *
+     * <p>{@code com.sun.javafx.font} 是非导出包，只能用反射；失败时返回「不可用」——
+     * 诊断本身出问题不该连累启动，但也不能静默（否则真机日志里会少一行，看着像没查）。</p>
+     *
+     * @return 工厂类名，或「不可用（原因）」
+     */
+    private static String fontFactoryName() {
+        try {
+            Class<?> factory = Class.forName("com.sun.javafx.font.PrismFontFactory");
+            Method getFontFactory = factory.getMethod("getFontFactory");
+            // com.sun.javafx.font 是 javafx.graphics 的未导出包：JVM 模式下模块系统会拒绝，
+            // 要拿到这一项得加 --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED；
+            // 原生镜像里通常没有这层限制，所以这一项主要就是给原生包用的。
+            // 取不到不算失败——字体族、字形度量、管线已经够定位（见 DevLog-20261009-13）。
+            getFontFactory.setAccessible(true);
+            Object instance = getFontFactory.invoke(null);
+            return instance == null ? "<null>" : instance.getClass().getName();
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return "\u4e0d\u53ef\u7528\uff08" + e.getClass().getSimpleName() + "\uff09";
+        }
+    }
+
+    /**
+     * 保留两位小数，日志里好读也比对。
+     *
+     * @param value 数值
+     * @return 四舍五入到两位小数的值
+     */
+    private static double round(double value) {
+        return Math.round(value * 100) / 100.0;
+    }
+
     @Override
     public void start(Stage stage) {
         FxDispatcher dispatcher = new PlatformFxDispatcher();
@@ -120,6 +214,8 @@ public final class AhaDesktopApp extends Application {
         // 先定色表、再建界面：反过来不行——颜色是内联在样式串里的，界面建完再换主题
         // 只能靠逐个重刷，那条路径一旦漏了某个控件，就会出现「日志说生效亮色、界面还是暗的」
         // （真机上就是这么撞到的）。先定色的意思是：新节点天生是对的，重刷只是补充。
+        logRenderingDiagnostics();
+
         DesktopSettings settings = DesktopSettings.load(DesktopSettings.defaultFile());
         Theme effective = Palette.setTheme(settings.theme());
         LOG.info("界面设置：主题 {}（生效 {}），字号 {}px，前景 {} / 底色 {}，文件 {}",
@@ -167,6 +263,15 @@ public final class AhaDesktopApp extends Application {
             settings.save();
             shell.appendNotice("主题已切换到「" + next.label() + "」"
                     + (next == Theme.SYSTEM ? "（生效：" + resolved.label() + "）" : "") + "。");
+        });
+
+        // 「跟随系统」时，用户在系统设置里切换深色 / 浅色皮肤要实时跟上（issue #44）。
+        // 回调在界面线程触发；只有主题仍处于「跟随系统」时才应用，避免覆盖用户的手动选择。
+        SystemTheme.onColorSchemeChanged(() -> {
+            if (settings.theme() == Theme.SYSTEM) {
+                Theme resolved = shell.applyTheme(Theme.SYSTEM);
+                LOG.info("系统配色变化，跟随系统主题生效：{}", resolved.label());
+            }
         });
         shell.onOpenSettings(() -> new SettingsDialog(
                 settings,
@@ -222,6 +327,10 @@ public final class AhaDesktopApp extends Application {
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
         Parent root = shell.buildRoot();
+        // 构建期用的是「当时」的色表：这里幂等地再刷一次，保证所有登记过的节点与当前色表一致。
+        // 原生镜像里出现过「部分节点停在构建期主题」的混合状态——底色一套、文字另一套（issue #49），
+        // 这一步把「构建期取值」这个不确定性直接抹掉。
+        shell.applyTheme(settings.theme());
         stage.setTitle(AppVersion.DISPLAY + " 桌面端（0.2 开发中）");
 
         // 窗口 / 任务栏图标：Logo.svg 的位图版本（见 LogoImage 的说明）
@@ -246,7 +355,11 @@ public final class AhaDesktopApp extends Application {
         double availHeight = bounds.getHeight() / scaleY;
         double width = Math.min(ShellLayout.WINDOW_WIDTH, availWidth * SCREEN_USAGE);
         double height = Math.min(ShellLayout.WINDOW_HEIGHT, availHeight * SCREEN_USAGE);
-        stage.setScene(new Scene(root, width, height));
+        Scene scene = new Scene(root, width, height);
+        // 原生镜像下 modena 的 derive() / linear-gradient() 求值不可靠，必须挂补丁样式表，
+        // 否则输入框 / 下拉框 / 按钮 / 滚动条会没有背景（issue #49）
+        com.acanx.module.aha.desktop.view.ThemePaint.install(scene);
+        stage.setScene(scene);
         stage.setX(bounds.getMinX() / scaleX + (availWidth - width) / 2);
         stage.setY(bounds.getMinY() / scaleY + (availHeight - height) / 2);
         // 尺寸下限：否则用户把窗口拖小后，输入区与底栏会被挤没
@@ -377,7 +490,7 @@ public final class AhaDesktopApp extends Application {
                 return null;
             }
             ProviderConfig provider = config.providersOrEmpty().get(id);
-            return provider == null ? null : provider.model();
+            return provider == null ? null : provider.effectiveModel(config.defaultTier());
         } catch (RuntimeException e) {
             LOG.warn("读取 {} 失败：{}", store.path(), e.getMessage());
             return null;
@@ -425,9 +538,22 @@ public final class AhaDesktopApp extends Application {
     /**
      * 桌面端入口。
      *
+     * <p>用 {@code launch(AhaDesktopApp.class, args)} 而不是 {@code launch(args)}：
+     * 后者靠栈帧推断调用类名、再用 {@code Class.forName} 反射加载——原生镜像下
+     * 这是 closed-world 看不到的路径（issue #26）。显式传 {@code Class} 去掉这一跳，
+     * 但它内部仍用 {@code getConstructor().newInstance()} 实例化应用类，
+     * 因此 {@code reachability-metadata.json} 里的构造器注册仍不可少。</p>
+     *
      * @param args 参数
      */
     public static void main(String[] args) {
-        launch(args);
+        // 排查 issue #48（原生镜像与 JVM 模式的字体渲染不一致）：
+        // 让 JavaFX 自己把渲染管线打出来（"Prism pipeline name = …"）。
+        // 用户交上来的启动日志里就带着答案，不必再让谁去改代码加日志；
+        // 必须在 launch 之前设置——管线的选择在此之前就定了。
+        if (System.getProperty("prism.verbose") == null) {
+            System.setProperty("prism.verbose", "true");
+        }
+        launch(AhaDesktopApp.class, args);
     }
 }

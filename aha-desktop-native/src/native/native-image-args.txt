@@ -1,7 +1,7 @@
-# AHA 桌面端 · GraalVM native-image 参数清单
+# AHA 桌面端 · GraalVM native-image 参数清单（JDK 25 基线）
 #
 # 用法（由 aha-desktop-native/pom.xml 的 exec 执行）：
-#     native-image @native-image-args.txt -cp <classpath> -H:Path=<dir> -H:Name=<name> <主类>
+#     native-image @native-image-args.txt -cp <classpath> -o <输出目录>/<可执行名> <主类>
 #
 # ── 为什么单独一个文件 ────────────────────────────────────────────────────────
 # 原生镜像要反复试参数，而且试的空间很大（初始化时机、反射、资源、原生库）。
@@ -13,9 +13,50 @@
 # 而在三条清单：哪些类必须运行期初始化、哪些资源必须包含、哪些原生库需要带上。
 # 第一次跑可能会在某个类上失败——把失败信息里的类名加进下面的清单即可，
 # 这正是本模块定位为「试验性」的原因（见 Docs/Design/DesktopNativeDesign.md）。
+#
+# ── 2026-10-08：按首次真编日志（Windows + jdk25，成功产出 77.75 MiB 的 .exe）调整 ──
+# 那次构建报了 9 条警告、给了 5 条 Recommendations。逐条处置如下，
+# **每条都写明「为什么」**——这份清单要能回答「参数为什么长这样」，否则半年后没人敢动它。
+#
+# 警告的处置：
+#   ① `--no-fallback`：已弃用且**无任何效果**（日志原文 "No effect, no replacement
+#      available"），而且它顺带引出 `FallbackThreshold` 的弃用警告 → **删除**；
+#   ② `-H:IncludeResources`：被标记为实验性，将来必须显式解锁 → 加
+#      `-H:+UnlockExperimentalVMOptions`（**必须排在实验性选项之前**）；
+#   ③ `-H:Path` / `-H:Name`：被标记为实验性，并明确建议 "Use the '-o' option instead"
+#      → 输出改用 `-o`，由 POM 传参（见 aha-desktop-native/pom.xml）；
+#   ④ `--enable-url-protocols`：已弃用（提示 "Use reachability metadata instead"）
+#      → **暂时保留**，理由与退出路径见下方那条注释（本次唯一「不立刻修」的一项，原因写清）；
+#      注意 sqlite-jdbc 自己的 native-image.properties 里也带了同款弃用项，
+#      那条来自第三方 jar，本项目改不了，只能等上游更新。
+#
+# Recommendations 的处置：
+#   ⑤ GC → **采用 `--gc=G1`**：桌面 GUI 关心停顿；serial 是默认值，
+#      epsilon 没有运行时回收、只适合短命进程，都不适合「一次会话可能开很久」的本应用；
+#   ⑥ 未来默认值 → **采用 `--future-defaults=all`**：让产物提前用上未来版本的默认行为，
+#      等于给「为 JDK 29 铺路」做**早期预警**——哪天编不过了，那就是升级信号；
+#   ⑦ 堆上限 → **采用 `-R:MaxHeapSize=1g`**：原生镜像的默认最大堆按机器内存百分比算，
+#      同一个二进制在不同机器上行为不同；显式烧一个上限更可预期。
+#      （若本版本的选项拼写不同，构建会直接报「未知选项」，按报错改即可。）
+#   ⑧ PGO → **不加**：日志的 builder configuration 里已写着 "PGO: ML-inferred"，
+#      推测式 PGO 已经在生效；手工 PGO 需要两阶段（插桩编译 → 跑典型负载 → 用 profile 重编），
+#      属于「有负载样本之后」的事，放在下方实验位；
+#   ⑨ CPU 特性 `-march=native` → **不加**：它把产物绑死构建机的 CPU 特性，
+#      分发给别人可能直接非法指令崩溃。官方 runner 的基线是 x86-64-v3，
+#      真要提性能请写**可预期**的目标（如 `-march=x86-64-v3`），放在下方实验位。
+#
+# 安全报告里的 "Binary includes Java deserialization"：
+#   这是「可达性」的结论而不是某个开关——只要代码里有可达的 Java 反序列化路径，它就会被编进去。
+#   正确做法是**先确认本项目不对不可信数据做反序列化**，再考虑收窄可达性。
+#   本次不猜选项名，等 build-report 出来后按报告定位（见下方实验位 ⑤）。
+#
+# ── 每次改完参数都要做的事 ───────────────────────────────────────────────────
+#   1) 构建结束后看 target/native/ 下的 build-report（由 `--emit build-report` 产出）；
+#   2) 报告里若有未决的可达性条目（反射 / 资源 / 协议），把它补进下面的对应清单；
+#   3) 把「为什么加这条」写进本文件——参数清单是对账材料，不是噪声。
 
-# 不要退回 JVM 模式：退回会让人误以为「编出原生镜像了」
---no-fallback
+# 实验性选项的解锁开关：**必须排在所有实验性选项之前**（如 -H:IncludeResources）
+-H:+UnlockExperimentalVMOptions
 
 # 优化等级 2（构建慢一些，产物快一些；原生镜像的产物质量比构建时长重要）
 -O2
@@ -29,21 +70,57 @@
 # 走 classpath 时，JavaFX（glass / prism）与 sqlite-jdbc 的 JNI 都归在未命名模块里
 --enable-native-access=ALL-UNNAMED
 
-# 供应商调用走 HTTPS（含 SSE 流式），另外 http 用于本地调试
+# 供应商调用走 HTTPS（含 SSE 流式），另外 http 用于本地调试。
+# ⚠ 已弃用（建议改用 reachability metadata），**暂时保留**：
+#    删掉它会让原生镜像**发不出 HTTPS 请求**——这是「静默坏掉」，不是「构建失败」，
+#    比起一条警告，静默坏掉严重得多。
+#    退出路径（两条都做完才能删）：
+#      ① 真机验证：原生二进制能完成一次真实对话（即 HTTPS 请求成功）；
+#      ② build-report 里没有 http / https 协议处理器的未决条目。
+#    元数据已经先备好：aha-desktop/src/main/resources/META-INF/native-image/... 下的
+#    reachability-metadata.json（随 aha-desktop.jar 进 classpath，native-image 自动读取），
+#    它同时会被复制进 target/native/ 并打进 zip，便于事后对账。
 --enable-url-protocols=http,https
 
 # 非 UTF-8 字符集也要带上：Windows 控制台与文件编码的探测依赖它
 -H:+AddAllCharsets
 
+# 产出机器可读的构建报告：它是「下一步该加什么参数」的唯一依据
+--emit build-report
+
+# GC：桌面 GUI 关心停顿，用 G1（默认是 serial）
+--gc=G1
+
+# 提前用上未来版本的默认行为：编不过就是升级信号
+--future-defaults=all
+
+# 把运行期最大堆烧进镜像：避免「按机器内存百分比」造成的不可预期行为
+-R:MaxHeapSize=1g
+
 # ── 资源清单 ────────────────────────────────────────────────────────────────
-# 三类资源必须有：
-#   1. 图标与界面资源（logo.png、css 等）
+# 五类资源必须有：
+#   1. 图标与界面资源（logo.png、css、编译样式 .bss 等）
 #   2. 版本号与消息资源（version.properties 等）
 #   3. META-INF/services（扩展与 LLM 适配器走 ServiceLoader 发现）
 #   4. JavaFX 的平台原生库（.so / .dylib / .dll）——它们在 JavaFX 的 jar 里，
 #      运行时由 NativeLibLoader 解压加载，因此必须作为资源打进镜像
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+#   5. **内置配置与预设**：AhaDefault.yaml、ModelDefault.yml——ConfigLoader /
+#      ProviderPresets 用 getResourceAsStream 读，**漏掉的症状是启动即报
+#      CONFIG_NOT_FOUND**，不是构建失败。早期版本的正则漏了 yaml / yml，
+#      是 2026-10-08 建立 CLI 原生镜像时同批发现的（见 CliNativeDesign.md）。
+#   6. **着色器**：D3D 的内建 shader 是 .obj（HLSL 预编译字节码，
+#      D3DShaderSource 用 getResourceAsStream 读）；ES2 的是 .frag / .vert。
+#      漏掉 .obj 的症状不是构建失败，而是**首次绘制时 shader 加载不到**——
+#      「静默坏掉」，所以一开真机就先把它补上（issue #35 同批处理）。
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
+# tracing agent 采集发现的资源盲区（2026-10-08）：
+#   * JDK 的文本断行 / 双向文本数据：无扩展名（LineBreakIteratorData）或 .icu（ubidi.icu），
+#     按扩展名的正则匹不上，缺了会导致换行 / 双向文本行为异常；
+#   * JavaFX 的 NativeLibLoader 会以 .class 形式读自己。
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class
 
 # ── 必须运行期初始化的类 ────────────────────────────────────────────────────
 # 判据很简单：**构建期初始化就会去碰「运行时才存在的东西」**（屏幕、窗口、原生库、系统主题）。
@@ -62,3 +139,21 @@
 # log4j2 的配置装配在运行期按文件系统解析，构建期只会读到构建机的路径
 --initialize-at-run-time=org.apache.logging.log4j.core.config
 --initialize-at-run-time=org.apache.logging.log4j.core.util
+
+# ── 实验位（默认注释掉；一次只开一个，跑完把实测数字写进 DesktopNativeDesign §5.3）──
+#
+# ① 手工 PGO（两阶段，先有典型负载样本）
+#    --pgo=default.iprof
+#
+# ② CPU 特性：本机自用才写 native；对外分发的产物一律用可预期目标
+#    -march=x86-64-v3
+#
+# ③ 混淆（实验性）：降低逆向成本，代价是栈与诊断信息变差，
+#    与本项目「可诊断优先」的取向冲突，仅作数据点
+#    -H:AdvancedObfuscation=""
+#
+# ④ 体积：只带上用到的时区与区域设置（各自约 -1~2 MB）
+#    -H:-IncludeAllTimeZones
+#    -H:-IncludeAllLocales
+#
+# ⑤ Java 反序列化：先按 build-report 定位可达路径，再决定是否收窄——不要凭猜测加选项

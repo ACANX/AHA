@@ -1,0 +1,65 @@
+# AHA CLI · GraalVM native-image 参数清单（JDK 27 试验分支）
+#
+# 用法：由 POM 的 native-jdk27 profile 选择本文件：
+#     ./mvnw -Pcli-native,native-jdk27 -pl aha-cli-native,aha-cli -am package -DskipTests
+#
+# ── 这一份与 JDK 25 那份的关系 ────────────────────────────────────────────────
+# 基线（JDK 25）那份是**能编出来**的起点；这一份是**用来做对比实验**的。
+# 因此这里的每条改动都要能回答一个问题：「它把启动时间或内存占用改了多少？」
+# 改完把结果记到 Docs/Design/CliNativeDesign.md 的对比表里。
+#
+# 对比实验的方法与口径与桌面端一致（见 DesktopNativeDesign.md 第 5 节），
+# 只是被测对象换成 CLI：CLI 的启动时间更容易测（无 GUI），用
+# `aha --version` 或 `aha …` 的单次墙钟时间即可，不必等窗口出现。
+#
+# ── 2026-10-08 同步 ──────────────────────────────────────────────────────────
+# 基线那份与桌面端同批建立。本文件**逐条同步**了基线的行序——
+# 这样两份文件的 diff 就正好是「JDK 轴真正的差异」，不会混入无关顺序变化。
+# 逐条的处置理由写在基线那份文件里，这里不重复。
+
+# ── 与基线相同的部分（保持逐条对应，便于 diff 出真正的差异）──────────────────
+-H:+UnlockExperimentalVMOptions
+-O2
+-H:+ReportExceptionStackTraces
+-J-Xmx4g
+--enable-native-access=ALL-UNNAMED
+--enable-url-protocols=http,https
+-H:+AddAllCharsets
+--emit build-report
+--future-defaults=all
+-R:MaxHeapSize=1g
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin)$
+-H:IncludeResources=META-INF/services/.*
+--initialize-at-run-time=org.sqlite
+--initialize-at-run-time=org.apache.logging.log4j.core.config
+--initialize-at-run-time=org.apache.logging.log4j.core.util
+
+# ── JDK 27 分支的差异（逐条说明「为什么」）───────────────────────────────────
+
+# 记录构建期 JDK 版本信息，便于事后区分产物（产物的 --version 也会带上）
+-H:+PrintClassInitialization
+
+# 关掉资源注册日志：它会把「哪些资源被注册」刷满日志，日常构建太吵。
+# ⚠ 若本腿要用来**生成** reachability metadata，就把这行注释掉。
+-H:Log=registerResource:off
+
+# ── 实验结果位（默认注释掉：先跑「同参数 + 换 JDK」这条最干净的对比）──────────
+#
+# ① GC 选择（CLI 基线用 serial；这里对比 G1 / epsilon）
+#    --gc=serial       默认；单线程 GC，启动最快、体积最小
+#    --gc=G1           并发回收，堆大时更稳，但启动与静态体积更大
+#    --gc=epsilon      没有回收，只适合**确定很短命**的进程（CLI 恰好符合，可作数据点）
+#
+# ② 镜像体积 / 启动的常见取舍位
+#    -H:-IncludeAllTimeZones      只带上用到的时区
+#    -H:-IncludeAllLocales        同上
+#
+# ③ 堆参数（基线已显式给 1g；这里可对比更小的上限）
+#    -R:MaxHeapSize=512m
+#    -R:MinHeapSize=64m
+#
+# ④ CPU 特性（对外分发的产物不要用 native）
+#    -march=x86-64-v3
+#
+# ⑤ 手工 PGO（两阶段，先有典型负载样本）
+#    --pgo=default.iprof

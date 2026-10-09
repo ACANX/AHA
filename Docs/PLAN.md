@@ -1,11 +1,24 @@
 # AHA 暂缓与受限事项
 
 **文档版本**：v1.28.0
-**状态**：草稿
+**状态**：冻结
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
+
+---
+
+> ## ⛔ 本文件已冻结（2026-10-09）
+>
+> **不再追加新内容**：除非 ACANX 主动要求，任何 Agent / 流程**不得向本文件写入**。
+>
+> 本文件保留「做不到 / 已决定暂缓 / 仍未做且有阻塞」的**结论与依据**；
+> 新的待办、进展与状态变更一律改用 **GitHub Issue** 跟踪
+> （总览 [#86](https://github.com/ACANX/AHA/issues/86)）。
+>
+> 规则见 [`AGENTS.md`](../AGENTS.md) 与技能
+> [`issue-tracking`](../.agents/skills/issue-tracking/SKILL.md)。
 
 ---
 
@@ -42,6 +55,8 @@
 | v1.26.0 | 2026-10-08 | §6.3 改为「0.1.0 已发布 / 0.1.1 待执行」并记录实际 tag 为裸 `0.1.0`；§8.2.2 发布日结项 | @ACANX |
 | v1.27.0 | 2026-10-08 | §6.3 的发布产物说明改为「CLI 包 + 各平台桌面端包」 | @ACANX |
 | v1.28.0 | 2026-10-08 | §8.7 复核表：`version.properties` 注明所在模块（`aha-common`） | @ACANX |
+| v1.29.0 | 2026-10-08 | §8.2 表下补注：issue #35 的修复分支推送（`G-08`）不在 0.1.x 发版阻塞项内（原生镜像是可选管线），但它阻塞 `N-16` 真机验证 | @ACANX |
+| v1.30.0 | 2026-10-08 | §8.2 表下注补 `G-09`：CLI 原生镜像（`aha-cli-native` + `CliNative.yml`）已落地，同样属可选管线，不阻塞 0.1.x 发版，但阻塞 `N-19` 真机验证 | @ACANX |
 
 ---
 
@@ -208,8 +223,8 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 
 | 项 | 为什么这里验不了 | 怎么验 |
 |---|---|---|
-| **0.1 界面整体观感**（分隔线、状态行、工具区块色带、区块间空行） | 伪终端能验“画出来了”，验不了“好不好看” | Windows 下 `dist\bin\Aha.bat chat`，让它读一个文件 |
-| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost；能力不足时应自动降级为不显示 | Windows 下 `dist\bin\Aha.bat chat`，看是否花屏；若无线则确认降级生效 |
+| **0.1 界面整体观感**（分隔线、状态行、工具区块色带、区块间空行） | 伪终端能验“画出来了”，验不了“好不好看” | Windows 下 `Dist\bin\Aha.bat chat`，让它读一个文件 |
+| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost；能力不足时应自动降级为不显示 | Windows 下 `Dist\bin\Aha.bat chat`，看是否花屏；若无线则确认降级生效 |
 | **`Aha.bat`** 启动路径 | WSL 只能通过 `cmd.exe` 间接调用 | Windows 下直接运行 |
 | **滚动区域对原生滚动/复制的影响** | 这是选 A 时接受的代价，属于手感判断 | Windows Terminal / PowerShell 下滚动与复制 |
 | **`/memory edit`** 的编辑器接管终端 | 需要真实交互式终端与编辑器 | Windows 下 `code -w` / `notepad` |
@@ -241,7 +256,7 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 | 9~13 | 开发规范 / 设计文档 / 用户指南 / 图资源 / 项目说明 | 51 |
 | 14 | AGENT 技能 | 17 |
 
-**提交前已核对**：`dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
+**提交前已核对**：`Dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
 `pom.xml.upgraded` **均未入库**（逐项在索引层面验证过）。
 
 **仍待做（需要远端凭据）**：
@@ -276,7 +291,7 @@ git switch -c dependa && git push -u origin dependa
 `CHANGELOG.md` 的发布日期已同步由 `2026-10-06` 更正为 `2026-10-07`。
 
 **0.1.1 待执行**：开 `release/0.1.1` 分支 → 合入 `main` → 由 `Build.yml` 的 tag 作业在 main
-构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-0.1.1-cli.zip`
+构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-cli-0.1.1.zip`
 与各平台桌面端包（`aha-desktop-0.1.1-<系统>-<架构>.zip`）。版本号改动清单见
 [ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
 
@@ -351,7 +366,7 @@ git switch -c dependa && git push -u origin dependa
 | 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建，此前那批提交**已推送**（PR #6 已合入 `dev`）；现仅剩 PR #8 冲突修复的合并提交 `06c6121` **待推送**——见 [TODO.md](TODO.md) `G-01`、`F-12` |
 | 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
 | 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
-| 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `dist/`」 |
+| 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`Dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `Dist/`」 |
 
 ### 8.2 发版前必须解决
 
@@ -368,6 +383,16 @@ git switch -c dependa && git push -u origin dependa
 | 8.2.9 | **`main` 分支保护未配置**：`Gate` 与 `Compat` 尚未设为必需检查，门禁形同虚设 | ☐ 待做（步骤与验收标准见 [TODO.md](TODO.md) `G-02`） |
 | 8.2.10 | **定期扫描未经验证**：`Gate.yml` 的每周 `schedule` 只在默认分支生效，合入前无法确认其真的会跑 | ☐ 待做（见 [TODO.md](TODO.md) `G-03`） |
 | 8.2.11 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
+
+> **注（issue #35）**：修复分支 `fix/issue-35-native-quantum-toolkit` 的推送与 PR（[TODO.md](TODO.md) `G-08`）
+> **不在** 0.1.x 的发版阻塞项内——原生镜像管线是**可选**的（失败不挡合并 / 发版）。
+> 但它阻塞 `N-16`（真机验证启动链路的反射 / JNI 元数据是否完整），因此单独登记在
+> `TODO.md` 第 11 节，凡人工动作不进对话、进清单。
+>
+> **注（CLI 原生镜像）**：`aha-cli-native` 模块与 `CliNative.yml` 工作流已落地
+> （[CliNativeDesign.md](Design/CliNativeDesign.md)），它与桌面端是**平行的可选管线**，
+> 同样**不在** 0.1.x 发版阻塞项内。其推送与 PR（[TODO.md](TODO.md) `G-09`）
+> 阻塞 `N-19`（真机验证 CLI 产物）。
 
 在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
 共 15 个失败 / 错误，归为四类：
@@ -402,7 +427,7 @@ GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖
 
 `aha-plugin-api` / `aha-tools` 目录已删净；`.idea/` 已被忽略；`CheckDocs` / `CheckSkills` / `CheckScripts` 全过；
 `TODO.md` 已是干净的 656 行；CLI 冒烟（`version` / `provider list` / `tool list` / `init --no-input`）正常；
-`dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
+`Dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
 
 ### 8.5 已修复：日志文件长期不生成（2026-10-07）
 
@@ -494,12 +519,12 @@ static void install(LoggerContext context, String xml) throws IOException {
 | Maven 3.9.x | `/root/apache-maven-3.9.11` 可用（JDK 25 下可跑） | 待跑一次 ⬜ |
 | CI | `Build.yml` 含 wrapper(**Maven 4**) 与 system(**Maven 3.9.x**) 双腿 + 三项检查 | ✓ 推送后自动覆盖基线 |
 | 未勾的 0.1 验收项 | 仅验收清单里「LLM 供应商接入测试」（需真实 API Key），见 `AHA/AHA-Design-V1.md` §0.1 功能核查 | 唯一遗留 ⬜ |
-| `Aha.bat` / `dist/bin/Aha.bat` | `file`: ASCII + CRLF | ✓ |
-| `dist/` | 18 个 jar；`Aha.sh version` → `AHA 0.1.0`；`aha-core` jar 内含 `AhaDefault.yaml` / `ModelDefault.yml` | ✓ 新鲜可用 |
+| `Aha.bat` / `Dist/bin/Aha.bat` | `file`: ASCII + CRLF | ✓ |
+| `Dist/` | 18 个 jar；`Aha.sh version` → `AHA 0.1.0`；`aha-core` jar 内含 `AhaDefault.yaml` / `ModelDefault.yml` | ✓ 新鲜可用 |
 | 核心模块 `System.out/err` | 0 处（CLI 除外） | ✓ 验收项可判 |
 | `TODO` 标记 | 5 处，全部 `TODO(0.3)`（扩展系统） | ✓ 非发布阻塞 |
 | `Docs/` 四棵目录树 | Design 16 / DevSpec 11 / Guide 8 / Diagrams 7，与磁盘**逐一比对一致** | ✓（此前 Design 缺 3 份，已修） |
-| `version.properties` | `version=${project.version}` + 资源过滤（位于 `aha-common`，CLI 与桌面端共用） | ✓ |
+| `version.properties` | `version=${project.version}` + `build=${aha.build.version}` + 资源过滤（位于 `aha-common`，CLI 与桌面端共用） | ✓ |
 
 **本次因此改动的文档**：`LoggingDesign.md`（新建）、`ConfigurationGuide` / `ReferenceGuide`（`Logging.Level` 默认值 `INFO` → `DEBUG`，与 `AhaDefault.yaml` 一致）、`TroubleshootingGuide`、`Constitution`（第 10 条第 8 项）、`AHA-Design-V1`（目录树 + 清单表 + 日志小节指针）、`CHANGELOG`（滚动口径更正）。
 
@@ -510,7 +535,7 @@ static void install(LoggerContext context, String xml) throws IOException {
 
 - [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
 - [TODO.md](TODO.md)：待办与调整项
-- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
+- [DevLog/](DevLog/)：开发完成事项的记录（`yyyyMMdd-HH.md`）；排查 / 事故复盘见 [Troubleshooting/](Troubleshooting/)（`TS-yyyyMM-*.md`）
 - [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
 - [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
 

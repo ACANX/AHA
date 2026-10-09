@@ -1,0 +1,588 @@
+name: CliNative
+
+# ── 这是什么 ────────────────────────────────────────────────────────────────────
+# 把 aha-cli 的 JVM 产物再编译成 **GraalVM native-image 二进制**（终端里直接可跑的原生程序），
+# 每次合并到 dev 就出一版，挂到发布页供下载验证。
+#
+# 这是 DesktopNative.yml 的**姊妹工作流**：同一套隔离约定与发布方式，
+# 只是输入换成 aha-cli、主类换成 AhaCli、依赖里没有 JavaFX（多了 JLine / picocli）。
+# 两者刻意**分成两个工作流**：各自失败不牵连对方，参数与产物也各自独立。
+#
+# ── 为什么单独一个工作流（四条隔离）───────────────────────────────────────────
+# 1. **不参与反应堆**：aha-cli-native 只在父 POM 的 `cli-native` profile 里，
+#    `./mvnw clean verify` 根本看不到它 → 原生镜像编不出来不会挡住 Build / Gate / Compat。
+# 2. **不影响发版流程**：tag 前缀是 `V…-aha-cli-native`，**不匹配** Release.yml 的 `V*` / `v*`
+#    正式发版约定（发布为**预发行版**），也不会打乱 `V<版本号>` 的约定。
+# 3. **不是必需检查**：作业名与 Build / Gate / Compat / DesktopNative 全不同，分支保护不引用它。
+# 4. **可被打断**：原生镜像构建慢，同一分支的新一次运行会取消上一次（见 concurrency）。
+#
+# ── 关于「可选」：怎么才算真的非阻塞 ───────────────────────────────────────────
+# 同 DesktopNative：作业级 continue-on-error 只保证「整次运行」不变红，
+# **作业本身仍显示红叉**。要让作业也绿，必须把容错放到**步骤级**，
+# 再由各作业末尾的「结论」步骤把真实情况写进 Job Summary。
+# 取舍写明：**原生编译真坏了，CI 不会红**，只表现为摘要里少一版、发布页少一个包。
+# 这是刻意的——它是数据点，不是交付物（见 Docs/Design/CliNativeDesign.md）。
+#
+# ── 版本号规则 ──────────────────────────────────────────────────────────────────
+#     <基线版本>.<PR 号，补零到 5 位>
+# 基线与 PR 号都从「唯一来源」推导：基线 ← 根 pom.xml 的 <version>；
+# PR 号 ← pull_request 事件自带 / push 到 dev 时按提交 SHA 反查。
+# 例：PR #36 合进 dev，当基线是 0.1.1 → 0.1.1.00036
+#
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（用于 a.b.c.PPPPP 的版本号；留空则按当前提交反查）
+        required: false
+        default: ''
+      version:
+        description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+# 同一分支只保留最新一次：原生镜像构建慢，旧的运行没有价值。
+concurrency:
+  group: cli-native-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Windows 运行器上也有 bash（Git Bash）；统一用它，脚本只有一套。
+    shell: bash
+
+jobs:
+  # ── 1. 算版本（单独一个作业：三条腿共用同一个版本号）────────────────────────
+  cli-native-version:
+    name: cli-native-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      base: ${{ steps.compute.outputs.base }}
+      pr: ${{ steps.compute.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 计算版本（a.b.c.PPPPP）
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "base=${INPUT_VERSION%.*}" >> "$GITHUB_OUTPUT"
+            echo "pr=0" >> "$GITHUB_OUTPUT"
+            echo "使用显式版本：${INPUT_VERSION}"
+            exit 0
+          fi
+
+          # 基线经唯一读取入口解析（`version` 文件 → 根 POM 的 `<properties>/<revision>`
+          # → `<version>`），见 TD-00016 §B。
+          base=$(python3 .github/Python/ProjectVersion.py --resolve)
+
+          pr="${INPUT_PR:-}"
+          if [ -z "$pr" ]; then
+            pr=$(curl -sS --max-time 30 \
+                   -H "Authorization: Bearer ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls" \
+                 | python3 -c "import json,sys
+          d = json.load(sys.stdin)
+          print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
+          fi
+          if [ -z "$pr" ]; then
+            echo "::warning::没能确定 PR 号（直接 push 或 API 限流），版本里的 PR 段记为 00000"
+            pr=0
+          fi
+
+          version=$(printf '%s.%05d' "$base" "$pr")
+          {
+            echo "base=${base}"
+            echo "pr=${pr}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "版本 = ${version}（基线 ${base} + PR ${pr}，PR 段补零到 5 位）"
+          echo "### CLI 原生镜像版本：\`${version}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "基线 ${base}，PR #${pr}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. 三条腿各编自己平台的原生镜像 ────────────────────────────────────────
+  #    每个 runner 只能产出自己平台的二进制（native-image 不能交叉编译）。
+  cli-native-image:
+    name: cli-native-image-${{ matrix.label }}-jdk${{ matrix.jdk }}
+    needs: cli-native-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: ubuntu-amd64
+            platform: ubuntu
+            jdk: '25'
+            experimental: false
+          - os: windows-latest
+            label: windows-amd64
+            platform: win
+            jdk: '25'
+            experimental: false
+          - os: macos-latest
+            label: macos-arm64
+            platform: mac-aarch64
+            jdk: '25'
+            experimental: false
+
+          # ── JDK 27 试验分支 ────────────────────────────────────────────────
+          # 与桌面端同一目的：对比启动速度与内存占用，为明年适配 JDK 29 铺路。
+          # 试验腿失败**不算整体失败**：它是数据点，不是交付物。
+          - os: windows-latest
+            label: windows-amd64
+            platform: win
+            jdk: '27'
+            experimental: true
+          - os: ubuntu-latest
+            label: ubuntu-amd64
+            platform: ubuntu
+            jdk: '27'
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    # 整条原生镜像管线都是**可选**的：任一腿失败都不牵连其余腿与发布作业。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        # 容错原因：GraalVM 的某个 JDK 大版本可能还没发布（JDK 27 实测如此），
+        # 那是上游发布节奏，不是本项目的问题。
+        id: graal
+        continue-on-error: true
+        uses: graalvm/setup-graalvm@v1
+        with:
+          version: '25.4'
+          java-version: ${{ matrix.jdk }}
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: 工具链不可用时的说明（本腿的其余步骤都会跳过）
+        if: steps.graal.outcome != 'success'
+        run: |
+          {
+            echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
+            echo ""
+            echo "- **本腿跳过**：GraalVM（JDK ${{ matrix.jdk }}）安装失败（结论：${{ steps.graal.outcome }}）。"
+            echo "  常见原因是该 JDK 大版本的 GraalVM 尚未发布（实测 JDK 27 就是如此），属于上游发布节奏。"
+            echo "- 本腿是数据点，不是交付物：跳过不影响其它腿，也不影响发布。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 计算本腿的 Maven 参数
+        id: leg
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -euo pipefail
+          # Windows 上的可执行文件是 native-image.cmd，exec 插件不会自动补后缀
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "executable=native-image.cmd" >> "$GITHUB_OUTPUT"
+          else
+            echo "executable=native-image" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ matrix.jdk }}" = "27" ]; then
+            echo "profiles=cli-native,native-jdk27" >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=cli-native" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 工具链自证（只记录，不阻塞）
+        # 变量名一律带 LEG_ 前缀并用 `${VAR:-}` 读取：Windows runner 的环境里
+        # 本就有 `PLATFORM` 之类变量，会与注入互相打架。
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          echo "—— 本腿参数 ——"
+          echo "OS=${RUNNER_OS:-未知} 平台=${LEG_PLATFORM:-未知} 标签=${LEG_LABEL:-未知} JDK=${{ matrix.jdk }}"
+          echo "原生镜像可执行文件=${{ steps.leg.outputs.executable }}"
+          echo "Maven profile=${{ steps.leg.outputs.profiles }}"
+          echo "版本=${LEG_VERSION:-未知}"
+          echo "—— 工具链版本 ——"
+          java -version || echo "（java -version 非零退出，仅记录）"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+            cmd //c "${{ steps.leg.outputs.executable }} --version" || echo "（native-image --version 非零退出，仅记录）"
+          else
+            "${{ steps.leg.outputs.executable }}" --version || echo "（native-image --version 非零退出，仅记录）"
+          fi
+        env:
+          LEG_PLATFORM: ${{ matrix.platform }}
+          LEG_LABEL: ${{ matrix.label }}
+          LEG_VERSION: ${{ needs.cli-native-version.outputs.version }}
+
+      - name: 构建原生镜像
+        id: native
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
+        #   * `-pl aha-cli-native,aha-cli -am`：profile 加入的模块不会被 `-am` 带上游，
+        #     必须显式把 aha-cli 也列出来，让 `-am` 把五个上游一起拉进来。
+        #   * `-Dnative.skip=false` 必须显式传：默认值是 true，profile 里虽然覆盖为 false，
+        #     但命令行 -D 优先级最高，显式传一次把「静默跳过」这类坑彻底关掉。
+        # -Daha.build.version：注入 version.properties 的 build 项，供 CLI 启动页 / -V 显示（issue #46）。
+        # ⚠ 不能写成 command 折叠块内的 `#` 注释：块标量里的 `#` 不是 YAML 注释，
+        #   会被折进命令串，在 shell 里把其后所有参数注释掉（2026-10-09 实测踩过，构建号因此从未注入）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B -P${{ steps.leg.outputs.profiles }}
+            -pl aha-cli-native,aha-cli -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.native.version=${{ needs.cli-native-version.outputs.version }}
+            -Daha.build.version=${{ needs.cli-native-version.outputs.version }}
+            -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+            -Dnative.skip=false
+
+      - name: 确认 native-image 真的执行过（防「静默跳过」）
+        # 判据用「构建报告」而不是 build_artifacts.txt（macOS 腿根本不产那个文件）。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success' && steps.native.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-cli-native/target/native
+          marker=$(ls "$work"/*build-report.* "$work"/*.build_artifacts.txt 2>/dev/null | head -n1 || true)
+          if [ -n "$marker" ]; then
+            echo "native-image 执行证据：$(basename "$marker")"
+            echo "- native-image：确实执行过（证据：$(basename "$marker")）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::构建步骤成功，但没有 native-image 的执行痕迹（$work 下既无 *build-report.* 也无 *.build_artifacts.txt）。"
+            echo "::warning::最可能的原因：native.skip 仍然是 true（被静默跳过）；其次看构建日志里 native-image 的真实报错。"
+            {
+              echo ""
+              echo "> ⚠ **本腿的构建步骤「成功」，但没有 native-image 的执行痕迹**，"
+              echo "> 因此这一步什么都没产出。最可能的原因是 \`native.skip\` 仍为 \`true\`（被静默跳过）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 打独立报告包（发布物，与镜像包同族命名）
+        # 报告与「给人运行的可执行文件」是两类东西：报告单独成包（issue #29 定案）。
+        # 包内含：报告 + 参数 + 可达性元数据 + picocli 生成的反射元数据（一组对账材料）。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-cli-native/target/native
+          if ! ls "$work"/*build-report.* >/dev/null 2>&1; then
+            echo "::warning::没有构建报告，跳过独立报告包——检查参数清单里的「emit build report」是否被删掉了"
+            exit 0
+          fi
+          py=$(command -v python3 || command -v python || true)
+          if [ -z "$py" ]; then
+            echo "::warning::runner 上没有 python，无法打独立报告包"
+            exit 0
+          fi
+          out="Dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
+          "$py" -c "import sys,zipfile,glob,os; out,work=sys.argv[1],sys.argv[2]; files=sorted(glob.glob(work+'/*build-report.*')+glob.glob(work+'/*.build_artifacts.txt')+glob.glob(work+'/reachability-metadata.json')+glob.glob('aha-cli-native/src/native/native-image-args*.txt')+glob.glob('aha-cli/target/classes/META-INF/native-image/picocli-generated/*.json')); z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [z.write(f,os.path.basename(f)) for f in files]; z.close(); print(out, len(files), 'files')" "$out" "$work"
+          ls -lh "$out"
+          "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
+
+      - name: 上传报告包制品（与镜像包同路收集、同批发布）
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cli-Native-Report-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: Dist/AHA-Cli-Native-*-Report.zip
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: 产物自证（诊断式；判不出来也不阻塞）
+        # 诊断式而非硬门禁：判据只留真正的不变式（存在 / 体积 / 平台魔法数 / 依赖齐全 /
+        # 元数据完整），结论一律写摘要而**不变红叉**。
+        id: verify
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-cli-native/target/native
+          produced=false
+          note=""
+
+          # **先把输出写出去**：带 continue-on-error 的步骤一旦非零退出，outputs 不会被发布，
+          # 下游 `if: steps.verify.outputs.produced == 'true'` 会静默变 false（实测事故）。
+          echo "produced=false" >> "$GITHUB_OUTPUT"
+          # 再加一道保险：EXIT trap 无条件以 0 退出（本步只做诊断，从不判死）。
+          trap 'exit 0' EXIT
+
+          echo "—— 现场：$work ——"
+          ls -la "$work" 2>/dev/null || echo "（目录不存在）"
+          echo "—— 现场：候选可执行文件 ——"
+          find aha-cli-native/target -maxdepth 3 -type f \
+               \( -name 'aha-cli-native' -o -name 'aha-cli-native.exe' \) 2>/dev/null || true
+          echo "—— 现场：Dist/ ——"
+          ls -la Dist 2>/dev/null | head -20 || true
+
+          # ① 找可执行文件：先看约定位置，再在整个 target/ 兜一遍
+          bin=$(ls "$work/aha-cli-native" "$work/aha-cli-native.exe" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            # 不用 find -maxdepth：macOS 的 BSD find 不支持（会报 unknown primary）
+            bin=$(find aha-cli-native/target -type f \
+                    \( -name 'aha-cli-native' -o -name 'aha-cli-native.exe' \) 2>/dev/null | head -n1 || true)
+          fi
+          size=0
+          magic=""
+          if [ -z "$bin" ]; then
+            note="没有产出原生可执行文件（构建步骤结论：${{ steps.native.outcome }}）"
+            if [ "${{ steps.native.outcome }}" = "success" ]; then
+              note="${note}；最可能是 native.skip 未生效（静默跳过）或 native-image 早退"
+            fi
+            echo "::warning::$note"
+          else
+            size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+            echo "找到可执行文件：${bin}（$((size / 1024)) KB）"
+
+            # ② 体积下限 5 MB：小于它基本是「编译没真正完成却留下壳」
+            if [ "$size" -lt 5242880 ]; then
+              note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
+              echo "::warning::$note"
+            else
+              produced=true
+              echo "produced=true" >> "$GITHUB_OUTPUT"
+            fi
+
+            # ③ 平台魔法数：确认是本平台二进制。只比前 2 字节（PE 的 DOS stub 后两字节随 linker 变）。
+            magic=$(head -c 2 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+            case "${RUNNER_OS}" in
+              Windows) expect="4d5a" ;;  # PE：MZ
+              Linux)   expect="7f45" ;;  # ELF：0x7f 'E'
+              macOS)   expect="cffe" ;;  # Mach-O 64 位（小端）
+            esac
+            ok=false
+            [ "$magic" = "$expect" ] && ok=true
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feed" ]; then ok=true; fi
+            if [ "$ok" = "true" ]; then
+              echo "魔法数自证通过：$magic"
+            else
+              note="${note:+${note}；}魔法数不匹配（期望 ${expect}，实际 ${magic:-取不到}）"
+              echo "::warning::$note"
+            fi
+          fi
+
+          # ④ classpath 输入：CLI 真正的不变式是「关键依赖齐全」+「没有 0 KB 空壳」+
+          #    「没有误入的 JavaFX」（CLI 不该依赖 GUI 栈）。
+          total=$(ls "$work"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ')
+          empty=$(find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
+          missing_dep=""
+          for pat in 'picocli-*.jar' 'jline-*.jar' 'sqlite-jdbc-*.jar' 'log4j-core-*.jar' 'snakeyaml-engine-*.jar'; do
+            if ! ls "$work"/lib/$pat >/dev/null 2>&1; then
+              missing_dep="${missing_dep:+${missing_dep}、}${pat}"
+            fi
+          done
+          jfx=$(ls "$work"/lib/javafx-*.jar 2>/dev/null | wc -l | tr -d ' ')
+          if [ -n "$missing_dep" ]; then
+            note="${note:+${note}；}classpath 缺关键依赖：${missing_dep}"
+            echo "::warning::$note"
+          fi
+          if [ "${empty:-0}" -ne 0 ]; then
+            note="${note:+${note}；}lib/ 里有 ${empty} 个 0 KB 空壳 jar"
+            echo "::warning::$note"
+          fi
+          if [ "${jfx:-0}" -ne 0 ]; then
+            note="${note:+${note}；}lib/ 里有 ${jfx} 个 javafx jar（CLI 不应依赖 GUI 栈）"
+            echo "::warning::$note"
+          fi
+          echo "classpath 输入：lib/ 共 ${total} 个 jar，0 KB 空壳 ${empty} 个，javafx ${jfx} 个"
+
+          # ⑥ 构建报告
+          report=$(ls "$work"/*build-report.* 2>/dev/null | head -n1 || true)
+          if [ -n "$report" ]; then
+            rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
+            echo "构建报告：$(basename "$report")（$((rsize / 1024)) KB）"
+          else
+            echo "::warning::没有找到构建报告（$work/*build-report.*）——检查参数清单里的「emit build report」是否被删掉了"
+          fi
+
+          # ⑦ 独立报告包是否真的生成
+          rpt_note="未检查（Dist/ 下没有报告包）"
+          rpt=$(ls -t Dist/AHA-Cli-Native-*-Report.zip 2>/dev/null | head -n1 || true)
+          if [ -n "$rpt" ]; then
+            rpt_note="$(basename "$rpt")"
+            echo "独立报告包：$rpt_note"
+          else
+            rpt_note="**缺失**（Dist/ 下没有 AHA-Cli-Native-*-Report.zip）"
+            echo "::warning::${rpt_note}——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
+          fi
+
+          # ⑧ 元数据完整性：CLI 的反射来源有三处，逐一守卫
+          #    a) picocli：注解处理器生成的 reflect-config.json（在 aha-cli/target/classes 里）
+          #    b) JLine Signals：本项目的 reachability-metadata.json
+          #    c) AHA 自身的 Jackson 记录：本项目的 reachability-metadata.json
+          meta="$work/reachability-metadata.json"
+          meta_note=""
+          meta_ok=true
+          require_meta() {
+            if [ ! -f "$meta" ] || ! grep -q "$1" "$meta"; then
+              meta_ok=false
+              meta_note="${meta_note:+${meta_note}；}缺 $2"
+            fi
+          }
+          require_meta "com.acanx.module.aha.core.config.AhaConfig" "AHA 配置记录（Jackson）"
+          require_meta "sun.misc.Signal" "JLine Signals（sun.misc.Signal）"
+          picocli_cfg="aha-cli/target/classes/META-INF/native-image/picocli-generated/reflect-config.json"
+          if [ ! -f "$picocli_cfg" ] || ! grep -q "com.acanx.module.aha.cli.AhaCli" "$picocli_cfg"; then
+            meta_ok=false
+            meta_note="${meta_note:+${meta_note}；}缺 picocli 生成的命令反射元数据（AhaCli）"
+          fi
+          if [ "$meta_ok" = "true" ]; then
+            meta_note="已注册 picocli 命令、JLine Signals 与 AHA 配置记录"
+            echo "可达性元数据：$meta_note"
+          else
+            meta_note="**${meta_note}**"
+            echo "::warning::可达性元数据不完整：${meta_note}——原生镜像执行子命令 / 处理信号时会失败"
+          fi
+
+          # ⑤ 交给后续步骤 + 写摘要
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ matrix.label }}（jdk${{ matrix.jdk }}）"
+            echo ""
+            if [ "$produced" = "true" ]; then
+              echo "- 产物：\`$(basename "$bin")\`（$((size / 1024 / 1024)) MB）"
+              echo "- 魔法数：\`${magic:-未取到}\`"
+            else
+              echo "- **未产出可用二进制**"
+            fi
+            echo "- 工具链：${{ steps.graal.outcome }}；构建：${{ steps.native.outcome }}"
+            echo "- classpath：${total} 个 jar（0 KB 空壳 ${empty} 个，javafx ${jfx} 个）"
+            echo "- 构建报告：$([ -n "${report}" ] && basename "${report}" || echo '**缺失**')"
+            echo "- 独立报告包：${rpt_note}"
+            echo "- 可达性元数据：${meta_note}"
+            if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
+            echo ""
+            echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"
+            echo "> 详见 \`Docs/Design/CliNativeDesign.md\`。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: 改名为发布用资产名
+        continue-on-error: true
+        if: steps.verify.outputs.produced == 'true'
+        run: |
+          set -euo pipefail
+          # POM 产出的是 aha-cli-native-<版本>-<jdk>.zip，这里加上「操作系统 + 架构」。
+          src=$(ls Dist/aha-cli-native-*.zip)
+          target="Dist/AHA-Cli-Native-${{ needs.cli-native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
+          mv -- "$src" "$target"
+          ls -lh "$target"
+          echo "发布资产：${target}"
+
+      - name: 上传制品
+        if: steps.verify.outputs.produced == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cli-Native-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: |
+            Dist/AHA-Cli-Native-*.zip
+            !Dist/AHA-Cli-Native-*-Report.zip
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ── 3. 汇总发布（预发行版）─────────────────────────────────────────────────
+  cli-native-publish:
+    name: cli-native-publish
+    needs: [cli-native-version, cli-native-image]
+    # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
+    if: always() && needs.cli-native-version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部制品
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: 整理资产（没有产物也算正常，不失败）
+        id: collect
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          files=(artifacts/*.zip)
+          images=(); reports=()
+          for f in "${files[@]}"; do
+            case "$(basename "$f")" in
+              *-Report-*) reports+=("$f") ;;
+              *)          images+=("$f") ;;
+            esac
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::本次没有任何原生包可发布（各腿结论见各自摘要）"
+            {
+              echo "### CLI 原生镜像：本次无可发布产物"
+              echo ""
+              echo "没有任何一条腿编出二进制，因此**未创建预发行版**。"
+              echo ""
+              echo "这是可选管线：不影响 Build / Gate / Compat，也不挡合并。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          ls -lh "${files[@]}"
+          {
+            echo "### CLI 原生镜像：本次可发布 ${#files[@]} 个包"
+            echo ""
+            echo "**镜像包**（${#images[@]} 个，给人运行）"
+            for f in "${images[@]}"; do
+              echo "- \`$(basename "$f")\`（$(du -h "$f" | cut -f1)）"
+            done
+            echo ""
+            echo "**独立报告包**（${#reports[@]} 个，给人分析：构建报告 + 镜像参数 + 可达性元数据）"
+            for f in "${reports[@]}"; do
+              echo "- \`$(basename "$f")\`（$(du -h "$f" | cut -f1)）"
+            done
+            echo ""
+            echo "> 两类包**同名族**（版本 / 系统 / 架构 / JDK 轴一致），下载时按需取件、一一对应。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PreRelease-AHA-Cli-Native-VPR
+        if: steps.collect.outputs.any == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          # 与桌面端同用 native-v 语义；tag 里带 -aha-cli-native 与桌面端区分。
+          tag_name: V${{ needs.cli-native-version.outputs.version }}-aha-cli-native
+          name: V${{ needs.cli-native-version.outputs.version }}-AHA-Cli-Native-Image
+          prerelease: true
+          files: artifacts/*.zip
+          body: |
+            ## 这是什么
+
+            以 `aha-cli` 的 JVM 产物为输入，用 GraalVM native-image 编成的**平台原生可执行文件**：
+            解压即用，不需要本机装 JDK。
+
+            > ⚠️ **试验性产物，不是正式发行包。** 正式使用请选 JVM 版
+            > （`Dist/` 下的 CLI 发行包）。这里的东西用来「下载下来就能跑」。
+
+            ## 版本
+            - 本版版本号：`${{ needs.cli-native-version.outputs.version }}`
+            - 基线版本：`${{ needs.cli-native-version.outputs.base }}`（读自根 pom.xml）
+            - 来源 PR：#${{ needs.cli-native-version.outputs.pr }}
+
+            ## 怎么用
+            1. 按你的系统下载对应 zip（`jdk25` 是基线，`jdk27` 是试验分支）；
+            2. 解压后在终端运行 `aha-cli-native`（Linux / macOS 首次可能需要 `chmod +x`）；
+            3. 不带参数会进入交互式对话；配置与数据与 JVM 版共用（`AHA_HOME`，默认 `~/.aha`）。
+
+            ## 包内附带的构建参数
+            镜像包里有 `native-image-args.txt`（JDK 25 基线）与 `native-image-args-jdk27.txt`
+            （JDK 27 试验），两者 diff 就是这一版做的实验改动。
+
+            ## 独立报告包（与镜像包同族命名）
+            每腿另有一个 `AHA-Cli-Native-<版本>-<系统>-<架构>-jdk<JDK>-Report.zip`，
+            内含 native-image 构建报告、镜像参数、可达性元数据与 picocli 生成的反射元数据。

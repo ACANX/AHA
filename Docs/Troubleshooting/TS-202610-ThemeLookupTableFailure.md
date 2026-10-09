@@ -1,0 +1,137 @@
+# TS-202610-ThemeLookupTableFailure：原生桌面端主题残留：把隐式查表改成显式声明（#49）
+
+## 1. 背景
+
+#49 的修复随 PR #50 合入 `dev` 后，真机复验仍然不合格：
+
+- **暗色**模式：左栏导航按钮 / 分组标题 / 菜单栏的文字仍是深色，暗底上看不清；
+- **亮色**模式：供应商配置对话框的底色仍是深色 / 灰色，与亮色主界面不一致。
+
+上一轮（DevLog-20261009-09）的结论是「`Palette.theme()` 缓存 + looked-up color 传播不到位」，
+那一轮改掉了缓存、给几个控件显式套了主题。**这次说明还有别的成分**，因此本轮不再顺着旧结论
+加代码，而是先**取证**。
+
+## 2. 排障过程与修复链
+
+### 2.1 先把"是不是 CSS 根本没打进镜像"排除掉
+
+从真机装的那个包（`V0.1.1.00052-aha-desktop-native`）取 `-Report.zip`（即 native-image 的
+build-report），核对资源表：
+
+- `com/sun/javafx/scene/control/skin/modena/modena.css` **在资源表里**，来源
+  `~/.m2/.../javafx-controls-25-win.jar`；
+- 资源表里的 `missing`（✗）条目没有 CSS 主体（只有 `caspian/embedded.css` 这类无关项）。
+
+**结论：CSS 资源已随镜像打包，问题不在"没打进去"。**
+
+### 2.2 再用 JavaFX 探针把"代码本身对不对"证伪
+
+开发机（WSL）里有 WSLg，可以直接跑 JavaFX 25，于是写了两个探针：
+
+| 探针 | 做法 | 结果 |
+| --- | --- | --- |
+| 控件文字色 | 只给根节点套 `Palette.theme()` 的样式串 | 暗色下 Label `0xE4E4E4`、Button/Menu `0xFFFFFFFF`；亮色下 Label `0x1F1F1F`、Button/Menu `0x333333` —— **都对** |
+| 对话框 | 复刻 `ProviderDialog` 的结构（`DialogPane` 与 `content` 都 `setStyle(theme())`） | `DialogPane` 底色暗色 `0x1E1E1E`、亮色 `0xF4F4F4`；内部 Label / Button 文字色也随之正确 —— **也对** |
+
+**结论：在 JVM 上，现有代码是自洽的**；modena 的
+`ladder(-fx-base, 亮 45% / 暗 46%)` 会按 `-fx-base` 正确推出文字色。
+所以真机上的偏差来自**原生镜像**——而原生镜像里最不可靠的，恰恰是
+**looked-up color 的查表与 `ladder()` 推导**这类"运行时算出来的颜色"。
+
+### 2.3 真正的定案：真机截图的像素取证
+
+issue #49 里那张 2560×1600 的原始截图是可以直接量的。用 JDK 的 `ImageIO` 取关键区域的主色 / 最深色：
+
+| 区域 | 实测 | 判读 |
+| --- | --- | --- |
+| 左栏「＋ 新建会话」行 | 底 `#1E1E1E`，最深 `#000000` | **暗底近黑字** ✗ |
+| 左栏搜索框 | 主色 `#FFFFFF` | **纯白底** ✗ |
+| 底部输入区（`TextArea`） | 主色 `#FFFFFF` | **纯白底** ✗ |
+| 中栏、底栏、菜单栏 | `#1E1E1E` | 正常 ✓ |
+
+也就是说：色表里 `CONTROL_INNER` 是 `#252526`，控件却露出 `#FFFFFF`；
+色表里 `FOREGROUND` 是 `#E4E4E4`，按钮文字却是 `#000000`。
+而靠**真正的属性**取色的地方（中栏 / 底栏 / 菜单栏的显式 `-fx-background-color`）全部正常。
+
+**结论（定案）：原生镜像里，行内样式中的 looked-up color 查表与 `ladder()` 推导不可靠，
+直接的属性值可靠。** 修复方向由此确定：把关键颜色从「查表」改成「属性」。
+
+### 2.4 修复链：先把颜色落到属性 API 上
+
+**第一步（定案后的直接措施）**：新增 `ThemePaint`——把样式串里的 `-fx-text-fill` /
+`-fx-background-color` **用属性 API 再设一遍**（`Labeled.setTextFill`、`Region.setBackground`）。
+属性 API 不经过 CSS 引擎，因此不受原生镜像的继承 / 查表问题影响。
+`DesktopShell.themed()` 与 `SessionCell` 全部改走它：左栏 7 个导航按钮（新建会话 / 供应商 /
+工具 / 记忆 / 扩展 / 日志 / 设置）、分组标题「会话」、搜索框、输入框、状态栏、菜单栏背景一并覆盖。
+7 个对话框共 8 处 `DialogPane` 也从 `setStyle(dialogTheme())` 改为
+`ThemePaint.themed(…, dialogTheme())`。
+
+**第二步**：其余颜色仍按「显式优于查表」处理：
+
+1. **`Palette.theme()` 显式钉死文字类 looked-up color**：新增
+   `-fx-text-base-color`、`-fx-text-background-color`、`-fx-focused-text-base-color`、
+   `-fx-mark-color`、`-fx-focused-mark-color`、`-fx-selection-bar`、
+   `-fx-selection-bar-non-focused`、`-fx-selection-bar-text`、`-fx-control-inner-background-alt`。
+   这条之后，`Menu` / `Button` / `Label` 的文字色不再依赖 `ladder()` 的推导结果。
+2. **新增 `Palette.dialogTheme()`** = `theme()` + 显式 `-fx-background-color`。
+   `DialogPane` 的底色在 modena 里来自规则
+   `.dialog-pane { -fx-background-color: -fx-background; }`——那是一次查表；现在直接把底色写进
+   内联样式。**7 个对话框文件、8 处 `DialogPane` 全部改用它**
+   （`ProviderDialog` 的内容区 / 滚动区 / 根容器也一并换成它）。
+3. **`DesktopShell.applyTheme` 增加主题诊断日志**：
+   `主题应用：请求 X → 生效 Y | BASE=… FOREGROUND=… CONTROL_INNER=… | 根节点 …`。
+   开发机复现不了原生镜像的行为，只能把现场值写进日志——真机跑一次就能判断是
+   「色表没换」还是「节点没刷」。
+4. **输入类控件显式给背景属性**：`search`（`TextField`）与 `composer`（`TextArea`）在
+   `-fx-control-inner-background` 之外，再显式设 `-fx-background-color`——像素取证里
+   `TextArea` 露出的白底正是「查表值没传到 `.content`」。
+5. **构建完成后幂等重刷一次**：`AhaDesktopApp` 在 `shell.buildRoot()` 之后补一次
+   `shell.applyTheme(settings.theme())`，把「构建期用哪一版色表」这个不确定性抹掉。
+6. **顺带补一处漏合并**：状态栏版本标签改用 `AppVersion.buildVersion()`。
+   该提交（`9503caf`）是在 PR #52 合并**之后**才推到已合并分支的，没进 `dev`——
+   与 #49 当时踩的是同一个坑（见第 4 节）。
+
+## 3. 最终验证结果
+
+- **本地探针**（JavaFX 25，真实渲染）：亮 / 暗两套下 `Label` / `Button` / `Menu` / `DialogPane`
+  的底色与文字色全部正确；
+- **像素取证**：定案的直接依据（见 2.3），并确认修复方向是「属性 API」而非「再拼一遍 CSS」；
+- **`PaletteTest` 新增两条守卫**：`theme()` 必须含显式文字色；`dialogTheme()` 必须含显式底色
+  —— 以后谁把"显式"改回"查表"，测试会拦住；
+- `python3 bin/CheckDocs.py` 通过；编译与全量测试交由持续集成；
+- **真机验收标准**（合入 `dev` 出新包后）：
+  1. 暗色下左栏导航按钮 / 分组标题 / 菜单栏文字为**浅色**；
+  2. 亮色下供应商对话框底色为**浅色**、文字为**深色**；
+  3. 亮 ↔ 暗来回切换后再打开对话框，底色与主界面一致；
+  4. 日志里「主题应用」一行的 `BASE` / `FOREGROUND` 与界面所见一致。
+
+## 4. 关键教训
+
+1. **先证伪，再改代码**：本轮第一步不是改代码，而是用「构建报告排除资源问题 + JVM 探针排除
+   代码问题」把范围收到"原生镜像特性"上。上一轮直接把现象归因给"缓存"，方向对了一半，
+   但没把边界划清，于是同一条 issue 反复开门。
+2. **looked-up color / `ladder()` 属"隐式颜色"，原生镜像下不完全可靠**：凡是重要到用户会截图来
+   反馈的颜色，一律显式声明。代价是样式串长几行，收益是行为不再依赖运行时的推导。
+3. **修复要留现场证据**：`applyTheme` 那行诊断日志是刻意留的——下次再有人说"颜色不对"，
+   日志能直接回答"色表换没换"，不用再让用户口头描述。
+4. **合并之后不要再往旧分支推**：`9503caf`（状态栏构建号）就是这么丢的。
+   凡是「合并后才发现要补」的改动，一律**开新分支、走新 PR**。
+
+## 5. 涉及文件清单
+
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/ThemePaint.java`（新增）
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/Palette.java`
+  （显式文字色 + `dialogTheme()`）
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/DesktopShell.java`
+  （`applyTheme` 诊断日志；状态栏 `buildVersion()`；两处 `DialogPane` 改用 `dialogTheme()`；
+  搜索框 / 输入框补显式 `-fx-background-color`）
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/AhaDesktopApp.java`
+  （`buildRoot()` 之后幂等重刷一次主题）
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/ProviderDialog.java`
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/SettingsDialog.java`
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/LogPanel.java`
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/OutputDialog.java`
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/ApprovalDialog.java`
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/ToolListDialog.java`
+- `aha-desktop/src/test/java/com/acanx/module/aha/desktop/view/PaletteTest.java`
+- `CHANGELOG.md`、`Docs/TODO.md`、本文件

@@ -3,6 +3,7 @@ package com.acanx.module.aha.cli;
 import com.acanx.module.aha.common.model.SessionConfig;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.AgentConfig;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
 
@@ -65,8 +66,15 @@ final class CliSession {
         // 而不是拼成一整段（拼接会让模型看不出内容来自哪个文件）
         Map<String, Object> extras = new java.util.LinkedHashMap<>();
         extras.put(SystemPromptLoader.SEGMENTS_KEY, resolved.segments());
+        // --model 可传档位名（大小写敏感）或具体模型名：档位写 tier，由 LLM 客户端按配置解析
+        String modelName = model;
+        String tier = null;
+        if (model != null && ModelTier.isTierName(model)) {
+            tier = model;
+            modelName = null;
+        }
         String created = service.createSession(
-                new SessionConfig(model, resolved.text(), extras));
+                new SessionConfig(modelName, tier, resolved.text(), extras));
         return new Opened(created, resolved.source(),
                 resolved.text() == null ? 0 : resolved.text().length());
     }

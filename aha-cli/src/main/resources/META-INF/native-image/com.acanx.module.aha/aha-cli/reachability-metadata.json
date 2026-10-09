@@ -1,0 +1,24 @@
+{
+  "comment": "AHA CLI 原生镜像可达性元数据：AHA 自身被 Jackson 反射读写的记录 + JLine 未覆盖的 Signals 反射点。picocli 的反射元数据由 picocli-codegen 注解处理器生成（见 aha-cli/pom.xml），JLine 其余部分自带元数据。设计见 Docs/Design/CliNativeDesign.md。",
+  "reflection": [
+    {"type": "com.acanx.module.aha.core.config.AhaConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.AgentConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ExtensionsConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.FallbackConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.LlmConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.LoggingConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.MemoryConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ModelConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ProviderConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.RateLimitConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.SecurityConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ShellConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ToolsConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.task.TaskRequest", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.task.TaskResult", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.llm.protocol.ToolCall", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "sun.misc.Signal", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+    {"type": "sun.misc.SignalHandler", "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+    {"type": "java.lang.ProcessBuilder$RedirectPipeImpl", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredFields": true, "allPublicFields": true}
+  ]
+}

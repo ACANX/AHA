@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.1</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -76,17 +76,19 @@
         <native.image.executable>native-image</native.image.executable>
 
         <!--
-            默认 **不做** 原生编译。
+            `native.skip` **刻意不在这里定义**，默认值只放在根 POM 的 <properties> 里。
 
-            约定（强制）：**原生编译只在专用 profile 下进行**
-            （`desktop-native`，需要新 JDK 时再加 `native-jdk27`）。
-            默认构建的验收标准只有一条：**能编译、能打 jar、不报错。**
+            2026-10-08 实测踩到的坑：模块自身的 <properties> **打得过**父 POM 里
+            profile 注入的属性。曾在这里写 <native.skip>true</native.skip>、又在
+            desktop-native profile 里写 false，结果是 profile 的 false **没生效**，
+            native-image 被静默跳过——构建「成功」、没有二进制、没有报错，
+            CI 全绿却什么都没产出。
 
-            这条约定的价值在于「没有装工具链的环境」：一旦默认路径依赖 GraalVM 或
-            平台原生依赖，构建失败的原因会从「代码问题」变成「环境问题」，
-            而后者极难在别人的机器上复现。默认值是 true，由 profile 激活时置为 false。
+            所以：默认值的**唯一来源**是根 POM 的 <properties>（true），
+            由 desktop-native profile 在同一个 POM 内覆盖为 false；
+            本模块只负责使用它。CI 另外显式传 -Dnative.skip=false 兜底
+            （命令行 -D 的优先级最高）。
         -->
-        <native.skip>true</native.skip>
 
         <!-- 原生镜像的工作目录：依赖拷贝、产物与日志都落在这里，便于工作流取件 -->
         <native.image.workdir>${project.build.directory}/native</native.image.workdir>
@@ -255,6 +257,35 @@
                 <artifactId>maven-resources-plugin</artifactId>
                 <executions>
                     <execution>
+                        <id>native-metadata</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${native.image.workdir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <!--
+                                        元数据的**真实来源**在 aha-desktop 里（它会随 aha-desktop.jar
+                                        进 classpath，native-image 会自动读取，无需任何参数）。
+                                        这里只是复制一份到 workdir，好让它随 zip 一起交付——
+                                        「这个二进制是靠哪些可达性元数据编出来的」要能事后对账。
+                                        两份都要复制：
+                                          * reachability-metadata.json：反射 / 资源（schema v1.2.0）
+                                          * jni-config.json：JNI 可达类（schema v1.1.0，见 issue #37）
+                                    -->
+                                    <directory>${project.parent.basedir}/aha-desktop/src/main/resources/META-INF/native-image/com.acanx.module.aha/aha-desktop</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>reachability-metadata.json</include>
+                                        <include>jni-config.json</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>native-readme</id>
                         <phase>process-classes</phase>
                         <goals>
@@ -309,7 +340,16 @@
                         </goals>
                         <configuration>
                             <skip>${native.skip}</skip>
-                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <!--
+                                工作目录设成 workdir，而不是模块根：这样 native-image 的
+                                「emit build report」参数产出的报告会和可执行文件落在同一目录
+                                （target/native/），
+                                既方便工作流把报告单独打成独立发布包，也能被自证步骤直接检查。
+                                （报告**不打进本模块的镜像包**——理由见 dist-native.xml 的说明。）
+                                安全性：参数文件用绝对路径（@ 后面是 ${project.basedir}），
+                                -cp 与 -o 也都是绝对路径，因此不受工作目录影响。
+                            -->
+                            <workingDirectory>${native.image.workdir}</workingDirectory>
                             <executable>${native.image.executable}</executable>
                             <arguments>
                                 <!-- 参数清单：唯一的开关来源，迭代只改这个文件 -->
@@ -321,8 +361,13 @@
                                 -->
                                 <argument>-cp</argument>
                                 <argument>${native.classpath}</argument>
-                                <argument>-H:Path=${native.image.workdir}</argument>
-                                <argument>-H:Name=${aha.native.name}</argument>
+                                <!--
+                                    输出用 `-o`，不再用 `-H:Path` + `-H:Name`：
+                                    后两者在 native-image 25.x 里被标记为实验性，并明确建议
+                                    "Use the '-o' option instead"（见 2026-10-08 的真编日志）。
+                                -->
+                                <argument>-o</argument>
+                                <argument>${native.image.workdir}/${aha.native.name}</argument>
                                 <argument>com.acanx.module.aha.desktop.AhaDesktopApp</argument>
                             </arguments>
                         </configuration>
@@ -334,7 +379,7 @@
                 第 4 步：把二进制 + 说明 + 构建参数打成 zip。
 
                 产物名与桌面端 jar 包保持同一族：aha-desktop-native-<版本>.zip，
-                落到 dist/（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
+                落到 Dist/（工作流再按平台改名为 …-<os>-<arch>.zip 后上传）。
                 版本由 -Daha.native.version 决定，工作流用 <a.b.c.PPPPP> 覆盖。
             -->
             <plugin>
@@ -352,8 +397,8 @@
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
                             <finalName>${aha.native.name}-${aha.native.version}-${aha.native.jdk}</finalName>
-                            <!-- 产物统一落 dist/（与桌面端的 jar 包同一处） -->
-                            <outputDirectory>${project.parent.basedir}/dist</outputDirectory>
+                            <!-- 产物统一落 Dist/（与桌面端的 jar 包同一处） -->
+                            <outputDirectory>${project.parent.basedir}/Dist</outputDirectory>
                             <attach>false</attach>
                         </configuration>
                     </execution>

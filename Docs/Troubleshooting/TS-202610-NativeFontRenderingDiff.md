@@ -1,0 +1,215 @@
+# TS-202610-NativeFontRenderingDiff：issue #48 调研——原生镜像的字体渲染差异
+
+- **日期**：2026-10-09
+- **关联 Issue**：issue #48（原生桌面端字体渲染 / 字体与 JVM 模式不一致）
+- **关联 PR**：PR #58
+- **分支**：`feat/issue-48-render-diagnostics`
+
+---
+
+## 1. 背景
+
+ACANX 提出两个猜测，要求调研：
+
+> 「这个问题有没有解决办法，是不是 DPI 缩放或者编译受的配置的问题？」
+
+现象（#48 正文）：原生包的字**发虚、字形偏细**，肉眼明显不如 JVM 模式锐利；同机、同配置、同窗口尺寸。
+
+**本次只做调研与铺路，不改渲染行为**——先把「原生包到底走的哪条路」变成可观测的事实。
+
+## 2. 调研过程与证据
+
+### 2.1 第一步：把原生包真跑起来
+
+这是第一次能在本机验证（此前一直因为「开发机没有 Windows 图形环境」而无法复现）。
+`V0.1.1.00055-aha-desktop-native` 除了 Windows 包，**还有 `ubuntu-amd64` 包**，
+而本机 WSL 有 WSLg（`DISPLAY=:0` 可用），因此可以直接跑 Linux 原生包。
+
+在 `/tmp/n48/` 解包后执行（注意用 `--repo`，`/tmp` 不是 git 仓库）：
+
+```bash
+DISPLAY=:0 timeout 20 ./aha-desktop-native -Dprism.verbose=true -Djavafx.verbose=true
+```
+
+**拿到的真实日志**（节选）：
+
+```
+Prism pipeline init order: es2 sw
+Using Double Precision Marlin Rasterizer
+Opting in for HiDPI pixel scaling
+Prism pipeline name = com.sun.prism.es2.ES2Pipeline
+Loading ES2 native library ... prism_es2
+Loaded library /libprism_es2.so from resource
+	succeeded.
+GLFactory using com.sun.prism.es2.X11GLFactory
+Failed Graphics Hardware Qualifier check.
+System GPU doesn't meet the es2 pipe requirement
+*** Fallback to Prism SW pipeline
+Prism pipeline name = com.sun.prism.sw.SWPipeline
+Loaded library /libprism_sw.so from resource
+Loaded library /libglass.so from resource
+Loaded library /libglassgtk3.so from resource
+Loaded library /libjavafx_font.so from resource
+Loaded library /libjavafx_font_freetype.so from resource
+Loaded library /libjavafx_font_pango.so from resource
+```
+
+**已经能确认三件事**：
+
+1. **原生镜像里 JavaFX 的原生库加载链路是通的**——`NativeLibLoader` 能从镜像资源里
+   解出 `.so` 并成功加载（`Loaded library … from resource`）；
+2. 本机回退到 `SWPipeline`，**是因为 WSL 没有 GPU**（`System GPU doesn't meet the es2 pipe
+   requirement`），**属预期行为，不能据此推断 Windows**；
+3. `Opting in for HiDPI pixel scaling` 说明 HiDPI 处理是**打开**的。
+
+### 2.2 第二步：证伪「软件管线没有 LCD 文本」
+
+最初假设：#48 是「回退到软件管线 → 没有次像素抗锯齿 → 发虚」。
+这个假设**必须验证再采信**，于是写了一个最小探针（`/tmp/n48/lcd/LcdProbe.java`）：
+同一段文字、同一管线（`-Dprism.order=sw`），只改 `prism.lcdtext`，快照成 PNG 比像素。
+
+```bash
+java --module-path /tmp/jfx25lib --add-modules javafx.controls \
+  -Dprism.order=sw -Dprism.lcdtext=true  LcdProbe.java   # → sw-true.png
+  -Dprism.order=sw -Dprism.lcdtext=false LcdProbe.java   # → sw-false.png
+```
+
+**结果**：
+
+| 文件 | 大小 | md5 |
+| --- | --- | --- |
+| `sw-true.png`（lcdtext=true） | 4375 B | `d478d9708df4a35d8c72e7d37ff05b05` |
+| `sw-false.png`（lcdtext=false） | 3025 B | `78668459b11627a6d302e9fb50e16739` |
+
+**两者的渲染结果不同**，且 `lcdtext=true` 的产物更大（次像素渲染会给每个像素的
+R/G/B 留下不同值，PNG 更难压）。
+
+> **结论：软件管线同样支持 LCD 次像素抗锯齿。**
+> 「管线回退 → 没有 LCD → 发虚」这条**不成立**，不能作为 #48 的解释。
+
+顺带确认：`Font.getDefault().getFamily()` 在原生镜像里返回 **`System`**，
+与 JVM 模式一致（至少 Linux 上如此），字体族**没有**在原生镜像里退化。
+
+### 2.3 第三步：DPI 缩放
+
+从 2.1 的日志看：
+
+- `Opting in for HiDPI pixel scaling`（HiDPI 缩放已启用）；
+- `AhaDesktopApp` 的窗口尺寸**已经**按 `Screen.getOutputScaleX/Y` 换算过
+  （`StageLayout` 那段，见 `AhaDesktopApp` 第 25x 行）。
+
+**所以「DPI 缩放没读到、按 100% 渲染再被系统放大」这条也缺少证据。**
+真要说，唯一还没验证的是**字体栅格化那一侧的缩放**，而这需要真机数据。
+
+### 2.4 顺手发现的真实缺陷（与 #48 未必相关，但要记）
+
+每加载一个原生库之前，都会先报一次：
+
+```
+WARNING: java.lang.UnsatisfiedLinkError: Invalid URL for class:
+    resource://app/17!/com/sun/glass/utils/NativeLibLoader.class
+```
+
+`NativeLibLoader` 会去读**自己的 `.class`**，而在原生镜像里资源的 URL 形如
+`resource://app/17!/…`，**它按 `jar:file:` 解析失败**。随后会走另一条路径并成功
+（`Loaded library … from resource`），**所以是良性警告、不是崩溃原因**；
+但 `native-image-args.txt` 里那条 `-H:IncludeResources=com/sun/glass/utils/NativeLibLoader\.class`
+显然没达到预期效果，值得后续单独收掉。
+
+### 2.5 本地先把诊断代码跑一遍（避免真机拿到「不可用」）
+
+诊断代码写完**先用 JVM 模式实跑**，结果发现字体工厂那一项打的是「不可用」——
+`com.sun.javafx.font` 是 `javafx.graphics` 的**非导出包**，模块系统直接拒绝反射。
+补上 `setAccessible(true)` 后实测（Linux / WSL，JVM 模式）：
+
+| 启动参数 | 输出 |
+| --- | --- |
+| 无 | `渲染诊断：字体实现工厂=不可用（InaccessibleObjectException）` |
+| `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED` | `渲染诊断：字体实现工厂=com.sun.javafx.font.freetype.FTFactory` |
+
+**这一步顺带给出了本 Issue 最有希望的判据。** Windows 上 JavaFX 有**两条字体栅格化路径**：
+
+- `com.sun.javafx.font.directwrite.DWFactory` —— 走系统 **DirectWrite**，字形与系统 UI 一致；
+- `com.sun.javafx.font.freetype.FTFactory` —— 走 JavaFX **内置 FreeType**，自己的 hinting。
+
+**若原生包在该机器上打出的是 `FTFactory` 而 JVM 模式是 `DWFactory`，那就是字形走了另一条路**
+——「笔画偏细、发虚」就能直接解释，而且**可修**（让 DirectWrite 在原生镜像里可用，
+或明确接受 FreeType 并调整参数）。
+
+本地 JVM 模式下的完整输出（供对照格式）：
+
+```
+Prism pipeline name = com.sun.prism.sw.SWPipeline
+渲染诊断：属性 prism.order=sw prism.lcdtext=<默认> prism.text=<默认> glass.platform=<默认>
+渲染诊断：JavaFX 版本=25+29 JVM=Java HotSpot(TM) 64-Bit Server VM
+渲染诊断：默认字体 族=System 名称=System Regular 字号=13.0 可用字体族数=11
+渲染诊断：字体实现工厂=com.sun.javafx.font.freetype.FTFactory
+渲染诊断：字形度量 14px 文本宽=263.04 高=16.3 基线=13.0
+渲染诊断：屏幕 outputScale=1.0x1.0 dpi=96.0 视觉边界=Rectangle2D [minX=0.0, minY=0.0, maxX=2560.0, maxY=1600.0, width=2560.0, height=1600.0]
+```
+
+> JVM 模式要拿到「字体实现工厂」这一项，需加
+> `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`；
+> **原生镜像里没有这层限制，默认就能打出来**——这一项本就是给原生包用的。
+> 取不到不算失败：字体族、字形度量、管线三项已足够定位。
+
+## 3. 结论（回答 ACANX 的两个猜测）
+
+| 猜测 | 结论 | 依据 |
+| --- | --- | --- |
+| **DPI 缩放** | **基本排除** | HiDPI 缩放已 opt-in；窗口尺寸已按 `outputScale` 换算（2.1 / 2.3） |
+| **编译配置** | **有可能，但不是「管线回退到 SW」这一条** | 软件管线照样有 LCD 文本，已用像素实验证伪（2.2） |
+
+剩下的最可能方向是**字体枚举 / 字形栅格化路径**：
+Windows 上 JavaFX 走 `WinFontFinder` + GDI/ClearType 的 hinting，
+而原生镜像里若字体枚举不完整或 hinting 参数不同，就会表现出
+**「字形偏细、发虚」**——这与 #48 的文字描述（「笔画偏细」）更像，而不是纯抗锯齿问题。
+
+**但目前仍是推断。** 要把它变成结论，必须拿到原生包在**真机**上的两组数据：
+**实际管线**与**默认字体族 / 字号 / 字体族数量**。
+
+## 4. 下一步（本 PR 做的事）
+
+1. **让渲染管线自己说话**：`AhaDesktopApp.main` 里默认打开
+   `prism.verbose`（未显式设置时），JavaFX 会在启动日志里打出
+   `Prism pipeline name = …`——**用户交日志即可，不必再改代码**；
+2. **补 JavaFX 不打的项**：`start(Stage)` 里新增 `logRenderingDiagnostics()`，
+   一次打全下面这几行（都以 `渲染诊断：` 开头，方便 `grep` 与逐行对账）：
+
+   | 行 | 内容 | 它为什么能定位 #48 |
+   | --- | --- | --- |
+   | 属性 | `prism.order` / `prism.lcdtext` / `prism.text` / `glass.platform` | 区分「没设」与「设成了别的值」 |
+   | 版本 | JavaFX 版本 + JVM 名 | 先排除「两边版本不同」 |
+   | 字体 | 默认字体族 / 名称 / 字号 / 可用字体族数 | 字体枚举是否退化 |
+   | **字体工厂** | `PrismFontFactory.getFontFactory()` 的实现类（Windows 上应为 `WinFontFactory` 一类） | **两边不同即锁定根因** |
+   | **字形度量** | 同一段文字在 14px 下的宽 / 高 / 基线 | 给出数字，不靠肉眼比图 |
+   | 屏幕 | `outputScale` / `dpi` / 视觉边界 | DPI 缩放的直接证据 |
+
+   其中字体工厂走反射（`com.sun.javafx.font` 是非导出包），**已登记进
+   `reachability-metadata.json`（439 → 440 条）**，并由 `NativeImageMetadataTest`
+   新增一条守卫（12 → 13 条）看住——否则原生镜像里反射会失败、日志只打「不可用」，
+   诊断等于白做。
+3. 拿到真机数据后二选一：
+   - 若原生包的字体族与 JVM 不同 → 在元数据里补字体枚举相关登记（`WinFontFinder` 等）；
+   - 若字体族相同而字形仍细 → 比较 hinting / 抗锯齿设置，必要时显式
+     `-Dprism.lcdtext=…` 并把结论写进 `DesktopNativeDesign.md` §5.3。
+
+4. **配套材料（已就绪）**：
+   - `Docs/Guide/NativeRenderDiagnosticsGuide.md` —— 可照做的操作手册（前提、日志位置、
+     步骤、判定表、诊断行含义、常见问题）；
+   - `Script/Python/CollectRenderDiagnostics.py` —— 一键收集：自动定位 `Log/AHA.log`、
+     **只取最后一次启动**的片段、输出可直接粘贴的 Markdown 报告（已用含两次启动的假日志实测，
+     旧片段被正确排除）；
+   - `bin/AhaDesktop.{bat,sh}` 补 `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`
+     —— 否则 JVM 模式下「字体实现工厂」会因非导出包被模块系统拒绝，只打「不可用」。
+
+> 注意：诊断代码**只加日志，不改渲染行为**——在拿到真机数据之前改渲染参数属于猜测，
+> 与项目「先证伪再改」的做法不符。
+
+## 5. 涉及文件清单
+
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/AhaDesktopApp.java`
+  （`main` 默认开 `prism.verbose`；新增 `logRenderingDiagnostics()`）
+- `CHANGELOG.md`、`Docs/TODO.md`
+- 调研产物（不入库，留在 `/tmp/n48/`）：`ubuntu.zip`、`aha-desktop-native`、
+  `run.log`、`lcd/LcdProbe.java`、`lcd/sw-{true,false}.png`

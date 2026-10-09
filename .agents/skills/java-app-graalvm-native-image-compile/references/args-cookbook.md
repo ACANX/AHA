@@ -3,6 +3,70 @@
 按「必须有 / 建议有 / 实验位」三档排列，并标注**本项目是否已验证**。
 参数清单请放在**一份文本文件**里，用 `native-image @argfile` 传入 —— 集中一处才谈得上迭代。
 
+## 零、先读日志：一次真编能告诉你九成该改什么
+
+2026-10-08 在 AHA 上首次真编（GraalVM 25 + Windows），构建成功，但输出里有
+**9 条警告 + 5 条 Recommendations + 1 条 Security 报告**——它们几乎就是
+「参数清单该怎么改」的待办列表。**别忽略它们，逐条处置，并把「不采纳的理由」也写下来**，
+否则半年后没人敢动这份清单。
+
+### 0.1 弃用与实验性的处置（照这个顺序做）
+
+| 日志里的说法 | 正确处置 | 说明 |
+|---|---|---|
+| 某选项 "deprecated ... **No effect**, no replacement available" | **删除**（如 `- -no-fallback`） | 它没有作用，还常常牵出别的弃用警告（`FallbackThreshold`） |
+| 某选项 "is experimental and must be enabled via `-H:+UnlockExperimentalVMOptions`" | 加 `-H:+UnlockExperimentalVMOptions`，**且必须排在实验性选项之前** | 不解锁，将来版本直接失败 |
+| "Use the `-o` option instead"（针对 `-H:Path` / `-H:Name`） | 输出改用 `-o <路径>` | 官方给的替代品；POM 侧传参即可 |
+| "deprecated ... Use reachability metadata instead"（如 `- -enable-url-protocols`） | **先别删**，先落元数据并真机验证，再删 | 见下条：这类删除是「静默坏掉」风险 |
+
+> ⚠ **「静默坏掉」优先于「警告清零」**：`- -enable-url-protocols` 是 HTTPS 的开关。
+> 删了它，构建照样成功、进程照样启动，只是**发不出网络请求**——比一条警告严重得多。
+> 正确顺序：① 把元数据放进 `src/main/resources/META-INF/native-image/<groupId>/<artifactId>/`
+> （随 jar 进 classpath，native-image 自动读取，不需要任何参数）；
+> ② 真机跑一次真实请求；③ 确认建报告里没有相关未决条目；④ 才删弃用项。
+
+### 0.2 Recommendations 的处置（哪些该采纳、哪些不该）
+
+| 建议 | 处置 | 理由 |
+|---|---|---|
+| `- -gc=G1` | **采纳**（长驻 GUI / 服务） | serial 是默认值、epsilon 无回收；G1 换延迟，代价是体积与构建时间 |
+| `- -future-defaults=all` | **采纳**（打算长期跟进的库） | 提前用上未来默认值，等于给升级做早期预警：编不过就是信号 |
+| 设置最大堆（`-R:MaxHeapSize=`） | **采纳** | 默认堆按机器内存百分比算，同一二进制在不同机器行为不同 |
+| `- -pgo` | **先别加** | 日志里 builder configuration 若已写 `PGO: ML-inferred`，说明推测式 PGO 已在生效；手工 PGO 需要两阶段（插桩编译 → 跑典型负载 → 用 profile 重编） |
+| `-march=native` | **对外分发的产物不要用** | 绑死构建机 CPU 特性，别人可能非法指令崩溃；要提性能写可预期目标（如 `-march=x86-64-v3`） |
+| `-H:AdvancedObfuscation=""` | **默认不加** | 会污染栈与诊断信息；与「可诊断优先」冲突，只作数据点 |
+| Security: "Binary includes Java deserialization" | **不要猜选项名** | 这是可达性结论而非开关：先确认业务不对不可信数据反序列化，再按 build report 定位可达路径 |
+
+### 0.3 让报告与工作目录配合起来
+
+- 加 `emit build report`（native-image 的参数）：产出机器可读报告，**它是「下一步加什么参数」的唯一依据**；
+- 把 exec 的**工作目录设成产物目录**（如 `target/native/`），报告就与可执行文件同处一地，
+  既方便 CI 把报告单独打成发布包，也能被自证步骤直接检查。安全性前提：参数文件、`-cp`、`-o` 都用绝对路径。
+
+**然后把它当交付物，而不是临时文件**（做完这三件才算闭环）：
+
+| 做法 | 为什么 |
+|---|---|
+| **打成独立发布包**（`<产物名>-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`） | 报告与「给人运行的二进制」是两类东西，分开发布：下载者按需取件，也不必为一份报告把镜像包撑大（AHA 实测报告裸文件 34~36 MB）。**文件名要与镜像包同族** —— 版本、系统、架构、JDK 轴全带上，下载时才能一眼对上同一版本（AHA issue #29 的定案） |
+| **同时作为 CI 制品**（`<产物名>-Report-<平台>-<JDK>`） | 不发布也想在 CI 页面取报告时用；保留期给长一些（例如 90 天 vs 镜像包的 14 天）——报告是长期资产 |
+| 摘要里摘关键数字（体积、资源字节数…） | 不下载也能看到这一版的量级；提取脚本要**尽力而为**（字段名随版本变，解析失败不得阻塞） |
+
+制品建议同时带上**参数文件**与**可达性元数据**：它们和报告是一组对账材料。
+报告的保留期建议比镜像包更长（例如 90 天 vs 14 天）——它是长期资产。
+
+> 经验 2：**报告的真实文件名带可执行名前缀**（`<可执行名>-build-report.html`），不是 `build-report.*`。
+> 按后者写通配会「静默漏掉」——制品上传成功、名字也对，但里面只有参数文件
+> （AHA 实测制品只有 8 KB，而报告其实是 34 MB）。通配一律写 `*build-report.*`。
+>
+> 经验：报告里最先值得看的是「内嵌资源的字节数」。AHA 首次真编时它是 **27.69 MiB**，
+> 而它来自一条过宽的 `-H:IncludeResources` 通配——这类信息只有报告能给出来。
+
+### 0.4 本机怎么「不装 GraalVM 也能验证命令行」
+
+把可执行文件换成 `echo`（例如 Maven 的 `-Dnative.image.executable=/bin/echo`），
+构建就会把**完整的 native-image 命令行**打印出来。用于验证：
+参数文件路径、`-o` 的形式、classpath 是否含预期依赖。零成本，不需要工具链。
+
 ## 一、必须有（缺了通常直接失败或明显不对）
 
 | 参数 | 作用 | 说明 |
@@ -33,12 +97,28 @@
 按项目实际类型收窄，越窄体积越省：
 
 ```
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|xml|properties|txt|json|so|dylib|dll|dat|bin)$
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|css|bss|xml|properties|txt|json|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
 -H:IncludeResources=META-INF/services/.*
 ```
 
 注意把 **原生库扩展名**（`.so` / `.dylib` / `.dll`）纳进来：GUI 工具包与 JNI 驱动的本地库
 通常就在它们的 jar 里，运行期由加载器解压 —— 不放进镜像就会 `UnsatisfiedLinkError`。
+
+**别漏着色器资源**（来源：AHA issue #35）：JavaFX 的 D3D 内建 shader 是 **`.obj`**
+（HLSL 预编译字节码，由 `D3DShaderSource` / `D3DResourceFactory` 用 `getResourceAsStream` 读），
+ES2 的是 **`.frag` / `.vert`**。漏掉的症状**不是构建失败**，而是首次绘制时
+shader 加载不到——又一次「静默坏掉」。任何以 GUI 框架为主的产物，都应把
+该框架的资源扩展名列全（去它的 jar 里 `find` 一遍非 `*.class` 文件的扩展名最稳），
+而不是只写常见的图片 / 配置 / 原生库。
+
+**不要凭扩展名直觉列，要对着源码的读取点逐项核**（来源：AHA 建 CLI 原生镜像时反查发现）：
+把项目里所有 `getResourceAsStream(...)` / `getResource(...)` 的参数路径列出来，逐个确认正则能匹配。
+AHA 就跣过这个坑——桌面端正则里有 `properties|txt|json`，却漏了 `yaml` / `yml`，
+而 `ConfigLoader` 读的是 `/AhaDefault.yaml`、`ProviderPresets` 读 `/ModelDefault.yml`，
+症状是**启动即报 `CONFIG_NOT_FOUND`**（不是构建失败）。所以：
+
+- 资源清单里至少要有 `properties`、`yaml`、`yml`、`json`、`xml`、`txt`、`svg`；
+- 最好用一个「启动即读全部内置资源」的自检开关，让缺项在启动时就暴露。
 
 ### 3.2 运行期初始化清单（`--initialize-at-run-time`）
 
@@ -59,6 +139,41 @@
 - 手写时用 `-H:ReflectionConfigurationFiles=reflect-config.json`，条目形如
   `{"name":"a.b.C","methods":[{"name":"m","parameterTypes":[]}]}`；
 - 只出现在**运行期**的失败（构建通过、启动就炸）多半是反射或资源，优先补这两类。
+- **JavaFX 应用的入口必须注册**：`Application.launch(String...)` 用 `Class.forName` 加载主类，
+  `LauncherImpl` 用 `getConstructor().newInstance()` 实例化它——两者都在 closed-world 之外。
+- **CLI 框架：优先用它的注记处理器生成，而不是手写**（来源：AHA 建 CLI 原生镜像）：
+  picocli 不自带 native-image 元数据，但有 `picocli-codegen`——加进 `maven-compiler-plugin`
+  的 `annotationProcessorPaths`，编译期生成
+  `META-INF/native-image/picocli-generated/reflect-config.json`，随 jar 进 classpath。
+  它扫的是源码，子命令 / `@Option` 一变就跟着变，比手写清单可靠；
+  类似机制还有 Spring 的 `RuntimeHints` / Quarkus 的构建步——**先查框架有没有**。
+- **终端库也要查**（来源：同上）：JLine 4 自带完整元数据，但 `org.jline.utils.Signals`
+  仍用 `Class.forName("sun.misc.Signal")` 处理 Ctrl+C，这块**不在**它的元数据里，
+  要自己补（连同 `sun.misc.SignalHandler` 与 `ProcessBuilder$RedirectPipeImpl`）。
+  「某依赖自带元数据」不等于「没有缺口」。
+  在 `reachability-metadata.json` 注册主类构造器，并把 `main` 改成
+  `launch(YourApp.class, args)`；漏注册的典型症状是
+  `ClassNotFoundException: <你的主类>`（构建完全成功，一启动就炸）。
+- **JavaFX 的启动反射是链式的，要按「启动链路」一次补齐，而不是只补报错里那一个类**。
+  只注册主类后，下一处会换成 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`。
+  反编译 JavaFX 25 可见这条链（来源：AHA issue #35，2026-10-08）：
+
+  | 反射点 | 目标 |
+  |---|---|
+  | `Toolkit.getToolkit()` | `com.sun.javafx.tk.quantum.QuantumToolkit`（无参构造器）|
+  | `PlatformFactory.getPlatformFactory()` | `com.sun.glass.ui.<win\|gtk\|mac>.<X>PlatformFactory`（无参构造器）|
+  | `GraphicsPipeline.createPipeline()` | `com.sun.prism.<d3d\|es2\|sw\|j2d>.<X>Pipeline`（静态 `getInstance`）|
+  | `PrRenderer` / `RendererFactory` | `PPSRenderer` / `PSWRenderer` / `JSWRendererDelegate` / `SSERendererDelegate` |
+  | `PrismFontLoader` | 反射调 `GraphicsPipeline.getPipeline()` / `getFontFactory()` |
+  | `PulseLogger` / `MethodUtil` | `PrintLogger` / `JFRPulseLogger` / `com.sun.javafx.reflect.Trampoline` |
+
+- **反射 ≠ JNI**：`Class.forName` 注册只解决「找得到类」。Glass / Prism / 字体的原生库还会
+  回调 Java、读写结构体字段，这需要 `jniAccessible` + 方法 / 字段注册，否则运行期抛
+  `MissingReflectionRegistrationError`。原生库按名字查成员时，用
+  `allDeclaredMethods` / `allDeclaredFields` 比逐条列更稳（类数有限，代价可控）。
+- **多平台产物共用一份元数据**：平台专属类（Glass 工厂、Prism 管线、字体后端）在
+  别的平台缺席，只会形成一条无害的 `Could not resolve class ...` 警告；
+  但哪条腿缺自己的那条，哪条腿就一启动就炸——所以三平台的条目都要写。
 
 ### 3.4 GC 与堆（实验位，按场景选）
 
@@ -70,6 +185,29 @@
 | `-R:MaxHeapSize=512m` | 镜像内运行期堆上限；长驻程序建议显式给 |
 | `-H:-IncludeAllTimeZones` / `-H:-IncludeAllLocales` | 体积瘦身，按需 |
 
+### 3.5 运行时依赖的元数据审计（容易被忽略的第二类缺口）
+
+**反射不只发生在框架里。** 框架（JavaFX / Spring / …）之后，业务层同样会反射：
+JSON / YAML 反序列化、ORM、配置绑定…… 所以补完框架清单后，**必须再查每个运行时依赖**。
+
+先看依赖 jar 里有没有自带元数据（有就完全不用管，最多确认版本）：
+
+```bash
+unzip -l <dep>.jar | grep -E 'native-image|\.json$' | grep -iE 'reflect|reachability|native-image'  # 逐个依赖
+```
+
+判断直接、不含糊：
+
+| 情况 | 例子 | 处置 |
+|---|---|---|
+| jar 里带 `META-INF/native-image/...` | `sqlite-jdbc`（`native-image.properties`）、`log4j-core`（`reflect-config.json`） | ✅ 不用管 |
+| **不带任何元数据，但业务代码用它的反射** | **Jackson 3**（配置记录 / 会话记录的 `treeToValue` / `TypeReference`）；大多数 JSON / ORM 库 | ⚠️ 必须自己把**被反射的 POJO** 注册（`allDeclaredConstructors` / `allDeclaredMethods` / `allDeclaredFields`） |
+| 不带元数据，但实际只解析成 `Map` / `JsonNode` | `snakeyaml-engine` 当前路径 | ⚪ 无需处理 |
+
+> 经验（AHA issue #35 实测）：**这一层不查，就会「窗口开得起来、一存配置就炸」**。
+> 手工枚举永远只能做到「已知缺口已闭」，不能证明完整——
+> 要抄底就用 tracing agent（见 [troubleshooting](troubleshooting.md) 第 5 节）。
+
 ## 四、体积与启动的常见杠杆
 
 - 收窄 `-H:IncludeResources`（最大杠杆）；
@@ -77,6 +215,31 @@
 - 减少反射注册范围；
 - 换 GC（epsilon 最小最快，但语义要能接受）；
 - 优化等级（`-O2` 与更激进的优化换构建时长）。
+
+## 四点五、XML 里写参数时的一个硬坑
+
+用 Maven 时难免要在 `pom.xml` / assembly 描述符的**注释**里写选项。注意：
+
+- XML 注释体**禁止出现 `--`**，否则解析器直接报
+  `String '--' not allowed in comment`。写双短横选项（`--gc=G1`、`--no-fallback`、
+  `emit build report` 之类）时极易踩到；
+- XML 注释**不能嵌套**：外层会被内层的 `-->` 提前闭合，剩下的文字变成正文，
+  报错位置离真正的原因很远（实测踩过：模板里嵌了一层 `<!-- ... -->`，谁抄谁坏）。
+
+**三个都可以机械检查掉**（AHA 的 `bin/CheckScripts.py` 里已固化）：
+
+1. 扫 `<!--(.*?)-->`，体内含 `--` 或 `<!--` 即失败；
+2. **整体良构性**：直接 `ElementTree.parse` 一次。
+
+第 2 条是被一个真实事故逼出来的：技能里的 **POM 模板骨架**把占位符写成
+`<<< 父 groupId >>>` 这种「三个尖括号包中文」的形式——文件自己就不是合法 XML，
+`mvn` 与任何 XML 工具都会在**解析阶段**失败，而报错看起来像「文件坏了」，
+不像「有东西忘了替换」。教训有两条：
+
+- 模板/示例文件**必须自身良构**：占位符写成 `__UPPER_SNAKE__` 这类合法 XML 文本，
+  含义用文件头的对照表说明，而不是靠尖括号大喊；
+- 注释里**没有「行内注释」**这回事：想给某一行加说明，就写进注释正文；
+  不要用括号 `(...)` 冒充行内注释（那是应急 hack，读起来像残留）。
 
 ## 五、把参数当资产
 

@@ -6,10 +6,11 @@
 
 <p align="center">
   <a href="https://github.com/ACANX/AHA/actions/workflows/Build.yml"><img src="https://github.com/ACANX/AHA/actions/workflows/Build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/ACANX/AHA/actions/workflows/BuildJVMArtifacts.yml"><img src="https://github.com/ACANX/AHA/actions/workflows/BuildJVMArtifacts.yml/badge.svg" alt="Build (dev JVM)"></a>
   <img src="https://img.shields.io/badge/JDK-25%20LTS-blue.svg" alt="JDK 25 LTS">
   <img src="https://img.shields.io/badge/Maven-4.x%20%7C%203.9.x-orange.svg" alt="Maven 4.x / 3.9.x">
   <img src="https://img.shields.io/badge/JPMS-required-green.svg" alt="JPMS">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="Apache License 2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg" alt="GPL-3.0-or-later"></a>
 </p>
 
 <p align="center">支持 CLI 与桌面端双模式运行的 Agent Harness。</p>
@@ -26,7 +27,7 @@ AHA 的长期目标是成为**可独立承担研发工作的 Agent Harness**。
 
 ## 项目状态
 
-当前版本 **0.1.1**：Core 与 CLI 可运行，桌面端为占位模块。
+当前开发版本见仓库根目录的 `version` 文件（唯一权威源）：Core 与 CLI 可运行，桌面端为占位模块。
 
 逐版本的路线图（0.2 桌面端、0.3 扩展基础、……、1.0 自举达标）与能力缺口，
 以 [AHA-Design-V1.md](Docs/AHA/AHA-Design-V1.md) 为准 —— 本文件不复制该清单，避免两处漂移。
@@ -50,15 +51,15 @@ AHA 的长期目标是成为**可独立承担研发工作的 Agent Harness**。
 ./mvnw clean package                  # Linux / macOS
 mvnw.cmd clean package                # Windows
 
-dist/bin/Aha.sh init                  # 交互式初始化
-dist\bin\Aha.bat init
+Dist/bin/Aha.sh init                  # 交互式初始化
+Dist\bin\Aha.bat init
 ```
 
 非交互（脚本 / CI）：
 
 ```bash
-dist\bin\Aha.bat init --provider DeepSeek --api-key sk-xxx
-dist\bin\Aha.bat init --no-input
+Dist\bin\Aha.bat init --provider DeepSeek --api-key sk-xxx
+Dist\bin\Aha.bat init --no-input
 ```
 
 初始化生成 `~/.aha/Model.yml` 与数据目录，无需手工编写配置文件。
@@ -69,16 +70,16 @@ dist\bin\Aha.bat init --no-input
 在工作目录下直接运行即可进入交互（无需子命令）：
 
 ```bash
-dist/bin/Aha.sh              # Linux / macOS
-dist\bin\Aha.bat             # Windows
+Dist/bin/Aha.sh              # Linux / macOS
+Dist\bin\Aha.bat             # Windows
 ```
 
 启动时在右侧打印 Logo（宽终端为像素风，窄终端自动降级为线框风，可用 `--logo` 指定），
 并显示供应商、模型、端点、工作目录、项目根与会话 ID。也可显式指定子命令：
 
 ```bash
-dist/bin/Aha.sh chat
-dist\bin/Aha.bat run "用一句话介绍 AHA"
+Dist/bin/Aha.sh chat
+Dist\bin\Aha.bat run "用一句话介绍 AHA"
 ```
 
 会话内可用 `/help`、`/model`、`/memory`、`/context`、`/compact` 等命令，
@@ -87,7 +88,7 @@ dist\bin/Aha.bat run "用一句话介绍 AHA"
 发行包结构：
 
 ```
-dist/
+Dist/
 ├── bin/     Aha.sh、Aha.bat
 └── lib/     JPMS 模块路径（本项目模块 + 全部运行时依赖）
 ```
@@ -119,6 +120,9 @@ dist/
 
 ## 构建
 
+> 下面的命令供人类开发者使用。项目约定 **Agent 不在本地执行 Maven 编译 / 测试**，
+> 一律推送后以 PR 的 CI checks 为准（见 [AGENTS.md](AGENTS.md)）。
+
 ```bash
 ./mvnw clean verify          # Maven 4 运行时（含测试与覆盖率门禁）
 mvn clean verify             # Maven 3.9.x 兼容验证
@@ -135,6 +139,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) | 各供应商接入方式 |
 | [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) | 工具使用与权限规则 |
 | [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) | 常见问题排查 |
+| [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) | 原生渲染诊断（真机取证步骤与判定表，issue #48） |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
 其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、
@@ -142,4 +147,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 ## 许可证
 
-[Apache License 2.0](LICENSE)
+本项目按 **GNU General Public License v3.0 或更高版本**（GPL-3.0-or-later）发布，
+全文见 [LICENSE](LICENSE)；SPDX 标识符为 `GPL-3.0-or-later`。
+
+Copyright (C) 2026 ACANX

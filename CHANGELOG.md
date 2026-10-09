@@ -8,12 +8,70 @@
 > 0.1.0 是首个版本，即项目基线，因此**该段落**只包含「新增」——
 > 所有能力均以最终形态描述，不记录开发过程中的调整。
 
+## [Unreleased]
+
+（暂无）
+
+## [0.1.2] - 2026-10-09
+
+### 变更
+- **开源许可切换为 GPL-3.0-or-later**：仓库许可由 Apache License 2.0 改为
+  **GNU General Public License v3.0 或更高版本**——`LICENSE` 换为 GPLv3 全文，
+  `pom.xml` 的 `<licenses>`、`README.md` 的徐章与许可段、`.agents/skills/*/SKILL.md`
+  的 `license` 字段（10 处）同步；`mvnw` / `mvnw.cmd` / `.mvn/wrapper/` 保持原样
+  （Maven Wrapper 的官方脚本，许可归 Apache 软件基金会）。
+- **版本切换收敛为「改一行」（TD-00016 / issue #92~#97）**：版本号的唯一权威源改为仓库根目录的
+  `version` 文件；机器侧只保留根 `pom.xml` 的 `<properties>/<revision>`（8 个子模块写
+  `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION` 与版本解耦
+  （固定 `"dev"`）。新增 `Script/Python/VersionDistribute.py` 与 `VersionBump` workflow
+  （`workflow_dispatch`），一键把 `version` 分发到 POM 与文档声明并开 PR（分支 `chore/bump-<版本>`）；
+  新增 `.github/Python/ProjectVersion.py` 作为版本读取的**唯一入口**，并提供 `--verify` 五处一致性
+  校验（`version` 文件 / `<revision>` / `version.properties` / 产物名 / `Build.yml` 的 tag 规则，
+  已接入 `Gate.yml`）。文档口径同步：版本切换不再需要手改多处（见 `ReleaseProcess.md` §2 与
+  `VersionBumpGuide.md`）。
+
+### 新增
+- **供应商内五档模型（issue #67）**：一个供应商可配置 `Ultra` / `Pro` / `Standard` /
+  `Flash` / `Fallback` 五档；`Standard` 为唯一必填档，其余可选，缺失时回退 `Standard`。
+  - 新增 `ModelTier` 枚举；`ProviderConfig` 增加 `Models` / `DefaultTier`，并把档位解析
+    收敛为 `modelFor` / `standardModel` / `effectiveModel` / `tierOf`；
+  - 新旧规则以「是否含 `Models`」判定：老配置（只有 `Model`）行为与升级前一致；
+    新配置 `DefaultTier` 优先，`Model` 作为默认模型记录并与档位保持一致；
+  - 校验：含 `Models` 缺 `Standard`、`DefaultTier` 非法、新规则下 `Model` 不在五档内
+    均报 `ConfigException`，并纠正「以 `DefaultTier` 为准」时的不一致日志；
+  - **运行期降级**：档位模型不可用（404/422 立即、429/5xx/超时重试耗尽）时，按
+    `Standard → Fallback 档 → 全局 Llm.Fallback` 单向降级；401/403 不降级；
+    只作用于单次请求，全程 `WARN` 日志，并提供降级监听器供界面提示；
+  - 会话级新增 `SessionConfig.Tier`；
+  - CLI：`aha provider list/show` 展示五档，`aha provider add` 支持
+    `--model-ultra/--model-pro/--model-standard/--model-flash/--model-fallback`
+    （`--model` 等价 `--model-standard`）；新增 `aha model use/show`；
+    `/model <档位>` 支持会话内切档（老配置维持旧行为）；
+    `aha config get Model.Providers.<Id>.Model|DefaultTier|Models.Standard` 可读；
+    状态栏显示「供应商 · 档位 · 模型」；
+  - 桌面端：`ProviderForm` / `ProviderDialog` 支持五档录入与默认档选择，
+    含 `Models` 时 `Standard` 必填校验；
+  - 内置 `ModelDefault.yml` 刷新为 8 家五档（新增 `Moonshot` / `MiniMax`）。
+
 ## [0.1.1] - 2026-10-08
 
 **无用户可见的功能变更**：版本号由 0.1.0 切到 0.1.1；本版集中修正版本号清单、发布流程与
 **按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
+- **dev 分支 JVM 便携包自动出包（issue #63 / #65）**：新增独立工作流 `BuildJVMArtifacts.yml`
+  （与 `DesktopNative.yml` / `CliNative.yml` 同构）：每次合并到 `dev` 就按「平台 × JDK」构建
+  `aha-desktop` 与 `aha-cli` 便携包，发布预发行版（tag `V<版本>-aha-jvm`）；JDK 轴为 **25**（基线，
+  release=25）与 **27**（`-jdk27` 后缀，release=27，字节码 major=71）。此前 JVM 模式只有本地构建与
+  发版构建两条路径，dev 上每轮合并都无法产出可直接下载验证的包。
+- **预发行版显示带构建号的版本（issue #46）**：此前 GUI 与 CLI 只能查到基线版本（如 `0.1.1`），
+  而 PR 合并到 `dev` 后自动构建的包带构建号（如 `0.1.1.00046`）——它只出现在产物文件名与包内
+  README 上，程序内部查不到。现把版本拆成两层：根 POM 新增 `aha.build.version`
+  （默认 `${project.version}`），`version.properties` 增加 `build` 项，`AppVersion` 相应提供
+  `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` 与 `CliNative.yml` 在构建时传
+  `-Daha.build.version=<a.b.c.PPPPP>`（正式发版不传，等于基线版本，不做强制）。
+  展示点：桌面端「关于」与启动日志、CLI 启动页顶栏、`/help`、`aha version` / `--version`。
+  详见 `Docs/Troubleshooting/TS-202610-BuildVersionPreRelease.md`。
 - **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
   把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
   定位是「验证线」：正式交付仍是 JVM 模式。
@@ -27,6 +85,20 @@
     启动速度 / 内存占用的影响，为明年适配 JDK 29 铺路。
   - **产物自证**：工作流检查产物存在、体积下限、平台魔法数（PE / ELF / Mach-O）、
     classpath 恰好含 3 个带分类器的 OpenJFX jar；包内附带两份构建参数文件便于事后对账。
+- **CLI 原生镜像（试验性）**：新增 `aha-cli-native` 模块与 `.github/workflows/CliNative.yml`，
+  把 `aha-cli` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，终端直接可跑）。
+  与桌面端是**平行**关系：同一套隔离 / 版本 / 自证方法论，独立模块、独立工作流、独立参数文件，
+  两者互不牵连。差异在：无 JavaFX、主类为 `AhaCli`、GC 默认用 serial（短命进程）。
+  - **picocli 反射元数据用注解处理器生成**：picocli 不自带 native-image 元数据，本项目在 `aha-cli`
+    编译期用 `picocli-codegen` 生成 `META-INF/native-image/picocli-generated/reflect-config.json`
+    （实测 30 个类型），比手写清单可靠——子命令 / 选项一变，生成结果跟着源码走；
+    `NativeImageMetadataTest` 直接断言生成结果，处理器失效时 Build 阶段即红。
+  - **补 JLine 的元数据缺口**：JLine 4 自带元数据，但未覆盖 `org.jline.utils.Signals` 的
+    `Class.forName("sun.misc.Signal")`，由本项目元数据补齐（另含 AHA 自身被 Jackson 读写的记录）。
+  - **同批修复桌面端参数的一个潜在缺陷**：资源正则漏了 `yaml` / `yml` / `svg`，
+    会导致原生镜像启动即报 `CONFIG_NOT_FOUND`（内置 `AhaDefault.yaml` / `ModelDefault.yml` 缺失）；
+    两份桌面参数文件已一并修正。
+  - 试验性 / 非交付物：真机验证见 `TODO.md` `N-19`。
 - **可复用技能 `java-app-graalvm-native-image-compile`**（`.agents/skills/`）：把本项目在
   「JavaFX + JPMS + JNI + 反射 + 多平台分类器」这一复杂场景下编译原生镜像的经验沉淀成技能 ——
   隔离四条、四类清单（初始化时机 / 反射 / 资源 / JNI）、按症状排错、产物自证四项、测量口径，
@@ -34,6 +106,17 @@
   技能按「开工前建骨架、边做边改、达成目标才成熟」的方式维护：条目带**状态**（推断 / 已踩坑 /
   已验证 / 已定稿）与**来源**，未验证部分显式标注；当前 `0.1.0`（试验中），
   成熟判据见技能内「用法」一节（含「在别的项目复用过一次」）。
+- **可复用技能 `graalvm-reachability-metadata`**（`.agents/skills/`）：把原生镜像的**元数据登记**
+  （反射 / JNI / 文件资源 / 运行期初始化）从桌面端与 CLI 两轮实践里抽成**独立的纵向专精技能**：
+  三条互补的发现路径（字节码静态审计 / tracing agent / 经验库对照）、来源优先级
+  （依赖自带 > 框架生成 > 手写）、精确到方法签名的登记写法，以及四层守卫
+  （单测断言 / 产物自证 / 反向验证 / 真机走查 → tracing agent 终局），
+  并附常见框架经验库（JavaFX / picocli / JLine / Jackson / sqlite / log4j 等，区分「自带元数据 / 不带」）
+  与可复制的元数据模板。与 `java-app-graalvm-native-image-compile`（工程化全流程）互补、互相引用，
+  当前 `0.1.0`（试验中）。
+  - **tracing agent 采集已制度化**：新增 `references/agent-collection.md`（何时必须跑、自检模式契约、
+    多平台合并、过滤规则、CI 接入）与 `scripts/collect-metadata.sh`（`run` / `summarize` / `filter`）；
+    并用它对 CLI 与桌面端各采一轮——桌面端据此补进 47 条应用栈元数据（293 → 340）。
 - **桌面端 0.2 六项功能**（按用户指定顺序）：
   1. **工具卡片**：默认折叠；展开显示参数与带行号输出（前 200 行并写明总行数）；复制 / 查看全部；
      失败卡片红边、正文摊开并给「重试 / 改参数后重试」——重试交给模型判断，不在本地偷偷重放命令。
@@ -55,6 +138,32 @@
   `bin/CheckDocs.py` 新增「残留合并冲突标记」。两者都做过反向验证（该拦时拦住、清理后全绿）
 
 ### 变更
+- **修「全绿却没上传」的真因**：带 `continue-on-error` 的步骤一旦非零退出，
+  它的 `outputs` **不会被发布**，下游 `if:` 静默变 false——macOS 腿的「改名 / 上传制品」
+  因此被跳过（作业仍是绿的）。修法：诊断步骤开头先写兜底 `produced=false`、
+  结尾强制 `exit 0`；执行证据判据从 `*.build_artifacts.txt`（macOS 不产出）改为 `*build-report.*`。
+  同时修正构建报告通配——真实文件名是 `<可执行名>-build-report.html`（34~36 MB），
+  按 `build-report*` 写会静默漏掉（报告因此一直没进制品）。
+- **构建报告作为独立发布物**：native-image 的构建报告**不打进镜像包**
+  （镜像是给人运行的，报告是给人分析的），由工作流单独打成
+  `AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`，
+  与镜像包**同族命名、同批挂到发布页**，并作为 CI 制品保留 90 天。
+  包内含报告 + 镜像参数 + 可达性元数据；产物自证会检查报告包是否真的生成，
+  并把报告里的关键数字摘进 Job Summary。
+- **按首次真编日志调优 native-image 参数**：删除已弃用且无效的 `no fallback` 开关；
+  解锁实验性选项；输出由 `-H:Path` + `-H:Name` 改为 `-o`；
+  采纳日志建议的 `--gc=G1`、`--future-defaults=all`、`-R:MaxHeapSize=1g`；
+  新增 `emit build report`（打成独立报告包交付，作为后续调参依据）；
+  两份参数文件（JDK 25 / JDK 27）逐条同步且保持行序一致。
+  `--enable-url-protocols` 属「静默坏掉」风险项，保留但写明退出路径（`TODO.md` N-14）。
+- **XML 注释守卫**：`bin/CheckScripts.py` 新增 `check_xml`——注释体禁 `--`、禁嵌套注释
+  （本轮两次踩到，且守卫当场抓出技能模板里的嵌套注释）。
+- **修复原生镜像「静默跳过」**：`native.skip` 的默认值原先写在模块自身的 `<properties>` 里，
+  会**赢过**父 POM 中 profile 的覆盖，导致 `native-image` 被静默跳过——
+  构建成功、零产物、零报错、CI 全绿。现改为：默认值唯一来源放聚合 POM 的 `<properties>`，
+  同一 POM 的 profile 覆盖为 `false`，CI 再显式传 `-Dnative.skip=false` 兜底，
+  并新增「确认 `native-image` 真的执行过」（用 `<name>.build_artifacts.txt` 作执行痕迹）
+  与产物缺失时的点名告警。规则写进 `BuildSpec.md`（「构建成功不是验收标准」）与技能。
 - **原生镜像管线改为真「可选」**：容错从作业级下沉到**步骤级**
   （作业级 `continue-on-error` 只保证整次运行不变红，作业本身仍显示失败），
   产物自证改为**诊断式**（先打现场、判据只留真不变式、结论进 Job Summary），
@@ -66,12 +175,166 @@
   且内层开关默认关闭（`native.skip` 默认 `true`，由 `-Pdesktop-native` 置为 `false`）。
   实测默认 `clean package`：反应堆 7 个模块、native 相关日志 0 行、原生模块 `target/` 未被触碰。
   规则写进 `BuildSpec.md` §7 与 `DesktopNativeDesign.md` §2.0。
-- **构建产物统一落 `dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
-  与 CLI 发行包一起放进 `dist/`（已在 `.gitignore` 里）；
+- **构建产物统一落 `Dist/`**：桌面端便携包与原生镜像包不再输出到仓库根，
+  与 CLI 发行包一起放进 `Dist/`（已在 `.gitignore` 里）；
   CLI 的 zip 改由工作流在临时目录打好后移入，避免把正在写入的归档自身收进去。
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **JVM 模式渲染诊断的 `--add-opens` 目标修正（issue #48）**：`bin/AhaDesktop.bat` /
+  `bin/AhaDesktop.sh` 原写 `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`。
+  桌面端以 `--module` 启动，应用是**具名模块**，`ALL-UNNAMED` 不给它任何授权——真机实测
+  「字体实现工厂」一项打印 `不可用（InaccessibleObjectException）`，原生 / JVM 对照缺关键一条。
+  目标改为 `com.acanx.module.aha.desktop` 后即正常打印 `DWFactory`；手册示例一并更正。
+- **渲染诊断的日志定位修正（issue #48）**：真机实测日志落在 `%USERPROFILE%\.aha\Log\AHA.log`
+  （由 `Aha.Logging.File=${AHA_HOME:-~/.aha}/Log/AHA.log` 决定），**不是**启动目录——
+  采集脚本第一版的候选路径里漏了 `~/.aha/Log`，真机上会报「找不到日志」。
+  已把 `~/.aha/Log/AHA.log` 加入候选（并置于最前），手册里也把「配置优先」的查找顺序与
+  实测路径改写清楚。**这次是 ACANX 用真机输出反查出文档与脚本的错，值得记一笔。**
+- **原生桌面镜像暗色下文字仍是黑色（issue #49 第四轮）**：上一轮（PR #57）后真机反馈「亮色基本解决、
+  暗色下很多文字区域仍是黑字」。根因是那份补丁表把文字色写成了 `-fx-text-fill: -fx-aha-text;`
+  ——查的是根节点内联样式里定义的自定义 color，而**原生镜像下这种查表不可靠**：值查不到时 CSS 会
+  **丢掉整条声明**，文字色回落 modena 默认黑。**亮色下碰巧正确**（亮色本就该是深色字），暗色下暴露。
+  修法：拆成 `aha-theme-dark.css` / `aha-theme-light.css` **两份纯字面量**（零变量、零 CSS 函数），
+  由 `ThemePaint` 按主题整份装载、切换主题时整份替换；`Palette` 删掉 `-fx-aha-*` 定义；
+  另补一层「文字兜底」覆盖 `.label` / `.cell` / `.menu-item > .label` 等全部文字载体，
+  并单独处理 **`Text` 节点（走 `-fx-fill`）**。守卫 `PaletteTest` 新增两条：两表声明里不得含
+  变量查表与 CSS 函数、两表必须真的不同（暗 `#E4E4E4` / 亮 `#1F1F1F`）。
+  详见 `Docs/Troubleshooting/TS-202610-DarkTextCssPatchFailure.md`。
+- **原生桌面镜像字体渲染与 JVM 模式不一致（issue #48）——本轮先做诊断**：真机报原生包的字发虚、
+  字形偏细，明显不如 JVM 模式锐利。本轮把「原生包到底走的哪条路」变成可观测的事实：
+  ① 实测 `V0.1.1.00055` 的 **Ubuntu 原生包**（本机 WSLg 可跑），确认原生镜像里 JavaFX 的原生库
+  加载链路正常，ES2 在本机因无 GPU 回退 SW（预期行为，不能据此推断 Windows）；
+  ② 用像素实验**证伪**「软件管线没有 LCD 次像素抗锯齿」——`prism.lcdtext=true/false` 在 SW 管线
+  下的产物不同（4375 B / 3025 B，md5 不同），说明 SW 同样支持次像素抗锯齿；
+  ③ `AhaDesktopApp.main` 默认打开 `prism.verbose`（JavaFX 会打出实际管线名），`start()` 新增
+  `logRenderingDiagnostics()` 一次打全：`prism.*` / `glass.platform` 属性、JavaFX 版本、
+  默认字体族 / 名称 / 字号 / 可用字体族数、**字体实现工厂（`PrismFontFactory.getFontFactory()`
+  的实现类，反射读取）**、**同一段文字 14px 下的宽 / 高 / 基线（字形度量）**、屏幕
+  outputScale / dpi；为此新增 1 条可达性元数据（439 → 440）与 1 条测试守卫（12 → 13）。
+  **只加日志、不改渲染行为**——拿到真机两份日志（原生 / JVM）后再定修法。
+  诊断代码已先在本地 JVM 模式实跑：`字体实现工厂` 在 Windows 上应为 DirectWrite 的
+  `DWFactory`、非 Windows / 无 DirectWrite 时为内置 FreeType 的 `FTFactory`——**两边若不同，
+  即说明字形栅格化走了另一条路**，这正是「笔画偏细、发虚」最可能的解释。
+  详见 `Docs/Troubleshooting/TS-202610-NativeFontRenderingDiff.md`。
+- **原生桌面镜像渲染诊断的操作手册与收集脚本（issue #48）**：把「真机上各跑一次原生包与
+  JVM 模式、把同样的几行日志拿出来对照」落成可照做的材料——新增
+  `Docs/Guide/NativeRenderDiagnosticsGuide.md`（步骤、日志位置、判定表、诊断行含义、常见问题）
+  与 `Script/Python/CollectRenderDiagnostics.py`（自动定位 `Log/AHA.log`、**只取最后一次启动的片段**、
+  生成可直接粘贴的 Markdown 报告）；`bin/AhaDesktop.{bat,sh}` 补上
+  `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`，否则 JVM 模式下
+  「字体实现工厂」会因非导出包被模块系统拒绝、只打「不可用」，对照就少一条关键证据。
+- **原生桌面镜像暗色下控件背景与文字未适配（issue #49）**：切到暗色后，侧边栏搜索框 / 会话列表、
+  中部输入框仍是亮色（白）底，侧边栏导航按钮、菜单栏与状态栏文字仍是深色，均不可读。两处成因：
+  ① `Palette.theme()` 返回**缓存的静态字段**，与运行期更新的 `FOREGROUND` 等字段在原生镜像下
+  不同步（出现「底色已换暗、文字却是亮色主题值」的混合状态）；② 搜索框 / 列表 / 输入框依赖
+  JavaFX 默认（modena）背景，只靠根节点的 looked-up color 传不到位。修法：`theme()` 去缓存、
+  每次按当前色表现算；`applyTheme` 逐个节点异常隔离（一个失败不中断整屏重刷）；搜索框、输入框、
+  会话单元格、菜单栏、中栏滚动区改为显式套主题。守卫 `PaletteTest` 新增一条，
+  钉住「切换后样式串立即反映新色表」。详见 `Docs/Troubleshooting/TS-202610-DarkModeControlColors.md`。
+- **原生桌面镜像主题残留的第二轮修复（issue #49）**：上一轮合入后真机仍报「暗色下左栏文字深色、
+  亮色下供应商对话框底色深色」。经 build-report 核对（`modena.css` 已随镜像打包）与 JVM 探针
+  验证（`Label` / `Button` / `Menu` / `DialogPane` 两套主题下均正确）后确认：问题只在原生镜像
+  对 **looked-up color 查表 / `ladder()` 推导**的不可靠上。修法：`Palette.theme()` 显式钉死
+  `-fx-text-base-color` 等文字类颜色（不再依赖 `ladder(-fx-base)`）；新增 `Palette.dialogTheme()`
+  给对话框显式底色（不再依赖 `.dialog-pane` 的 `-fx-background` 查表），7 个对话框统一改用；
+  `applyTheme` 增加主题诊断日志，真机跑一次即可判断「色表没换」还是「节点没刷」。
+  经真机截图像素取证（左栏按钮文字 `#000000`、搜索框与输入区纯白 `#FFFFFF`、而靠显式属性的
+  区域全部正常）确认：原生镜像下 looked-up color 查表与 `ladder()` 推导不可靠；**据此新增
+  `ThemePaint`，把 `-fx-text-fill` / `-fx-background-color` 用属性 API（`Labeled.setTextFill` /
+  `Region.setBackground`）再设一遍，彻底绕开 CSS 引擎**（左栏 7 个导航按钮、分组标题、会话单元格、
+  搜索框、输入框、状态栏、菜单栏与 7 个对话框全部覆盖）；搜索框 / 输入框再补显式
+  `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
+  另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
+  `PaletteTest` 新增两条守卫。详见 `Docs/Troubleshooting/TS-202610-ThemeLookupTableFailure.md`。
+- **原生桌面镜像输入框 / 下拉框 / 按钮 / 滚动条背景发黑（issue #49 第三轮）**：亮色与暗色下，
+  文本输入框、「发送」按钮、下拉选择框与会话列表滚动条的背景都是黑的，且与主题切换无关。
+  查 `modena.css` 确认根因：这些控件的 `-fx-background-color` 写成 `derive(...)` /
+  `linear-gradient(...)`，而原生镜像下 CSS 函数求值不可靠，**CSS 的规则是一个值无效就丢弃
+  整条声明**，于是控件根本没有背景（并非「被设成了黑色」）。修法：新增纯字面量的补丁样式表
+  `aha-theme.css`，经 `Scene.getStylesheets()` 加载（排在 modena 之后）覆盖之；`Palette` 新增
+  `HOVER_BACKGROUND` / `SCROLL_TRACK` / `SCROLL_THUMB` / `ON_ACCENT`，并把 modena 依赖的中间量
+  （`-fx-body-color` / `-fx-text-box-border` / `-fx-outer-border` / `-fx-box-border` …）全换成字面量。
+  守卫 `PaletteTest` 新增三条：主题样式串与补丁表均不得含 CSS 函数、亮色下控件面色必须为浅色、
+  补丁表必须在 classpath 上。详见 `Docs/Troubleshooting/TS-202610-ModenaCssFunctionFailure.md`。
+- **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
+  ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
+  改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，
+  让「跟随系统」在用户切换系统深色 / 浅色皮肤时实时生效。
+  ② **切换到亮色后部分组件仍是暗色**：3 处边框硬编码 `#3A3A3A`、1 处背景硬编码 `#1E1E1E`
+  改为读 `Palette.BORDER` / `Palette.BASE`；常驻的候选弹层（`CompletionPopup`）与会话右键菜单
+  （`ContextMenu`）补上主题重刷（弹层有独立的场景根，不继承主窗口样式）。
+  ③ **暗色下标题文字对比度不足**：右栏「本轮」标题与左右折叠按钮此前未登记主题，
+  改用默认深色文字；现统一走 `themed(...)` 登记。
+  遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决，已另开 **issue #48** 长期跟踪
+  （`Docs/TODO.md` 的 `N-24` 只作索引），需真机对比渲染管线后才能定位。
+  详见 `Docs/Troubleshooting/TS-202610-ThemeNotFollowingSystem.md`。
+- **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
+  但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
+  com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：
+  `Renderer.getPeerInstance` 用**动态拼接的类名**反射加载效果 peer
+  （`Class.forName(rootPkg + ".impl.prism.ps.PPS" + name + "Peer")`，另含 `prism.Pr*` 与软件回退
+  `sw.java.JSW*` / `sw.sse.SSE*`），closed-world 静态分析看不到，而之前只登记了渲染器工厂与 stock shader，
+  **未登记 peer 本身**。修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
+  过滤 abstract 后把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`（340 → 439 条）。
+  守卫 `NativeImageMetadataTest` 11 → 12 条（已反向验证），产物自证第 ⑧ 条补 peer 检查。
+  详见 `Docs/Troubleshooting/TS-202610-PrismEffectPeerMissing.md`。
+- **原生桌面镜像 Windows 启动即崩：平台子类的 JNI 成员查找未登记（issue #39）**：修完 #37（JNI 可达**类**）后，
+  真机在 `WinWindow.<clinit>` 报 `NoSuchMethodError:
+  com.sun.glass.ui.win.WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。根因：`WinWindow._initIDs` 用
+  `GetMethodID(cls, …)` 查的是「Java 传入的 `jclass`」——即平台子类**自己声明**的方法；
+  而 #37 的 `FindClass` 扫描只会看到 native 里写成字面量的类名，平台子类从不经 `FindClass`，
+  因此从未入册（只在册的基类 `Window` 与它继承的方法能查到）。修法：改扫 openjfx 三平台
+  native 源码里所有 `Get*ID` 的**目标类**，把 Windows / macOS 的平台实现类逐类补进
+  `jni-config.json`（62 → 85 条），并顺带补上 `Class.forName` 现查的 `WinDnDClipboard` / `EventLoop`。
+  守卫 `NativeImageMetadataTest` 10 → 11 条（已反向验证），产物自证第 ⑧b 条补 4 项。
+  详见 `Docs/Troubleshooting/TS-202610-WinWindowJniMemberMissing.md`。
+- **原生桌面镜像启动即 segfault：JNI 可达类未注册（issue #37）**：修完 #35（JavaFX 启动链路反射）后，
+  真机在 Glass 初始化处报 `NoClassDefFoundError: java/lang/Runnable`，随后段错误。
+  根因是 native-image 只允许「JNI accessible」的类被 `FindClass` 查到——反射元数据解决「类可达」，
+  不解决「JNI 可达」。修法：新增 `jni-config.json`（62 个类，来自对 openjfx 三平台 native 源码
+  506 个文件里所有 `FindClass` 的静态扫描），并在单测与产物自证里加守卫。
+  详见 `Docs/Troubleshooting/TS-202610-JniFindClassSegfault.md`。
+- **原生镜像管线两个跨平台缺陷（run 37744912968）**：
+  ① macOS 腿的产物自证里 `$bin（` 被 bash 当成变量名 → `set -u` 下
+  `bin（: unbound variable` 退出，步骤 outputs 丢失，下游改名/上传被静默跳过——
+  **macos 镜像包因此没传上发布页**。修法：变量后跟全角字符一律写 `${VAR}`；
+  命中产物后**立刻**写 `produced=true`，并加 `trap 'exit 0' EXIT` 兜底。
+  ② Windows 腿的工具链自证里 `PLATFORM` 与 runner 自带的 VS 环境变量冲突 →
+  `unbound variable` 退出。修法：注入名改 `LEG_PLATFORM` / `LEG_LABEL` / `LEG_VERSION`，
+  一律用 `${VAR:-}` 读取，只做记录的命令失败不判死。
+  顺带修：魔法数只比前 2 字节（原先 Windows 期望 `4d5a`、实际 `4d5a9000`，永远不匹配）、
+  去掉 `find -maxdepth`（macOS BSD find 不支持），并把 `Release.yml` 同写法一并修正。
+- **跨平台 shell 守卫**：`bin/CheckScripts.py` 新增 YAML 检查——`$VAR` 后紧跟非 ASCII
+  且未用 `${}` 就报错（已反向验证）；同一条规则不再靠人盯。
+- **原生镜像桌面端启动链路反射 / JNI 缺失（issue #35）**：修完 #26 后，二进制下一处报
+  `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`——JavaFX 的工具包、
+  Glass 平台工厂、Prism 渲染管线都用 `Class.forName` + `getDeclaredConstructor().newInstance()`
+  这类反射加载，native-image 的 closed-world 看不到。经对 4878 个 JavaFX 类逐个反编译审计后，
+  把反射与 JNI 清单一次性补进 `reachability-metadata.json`（后经 tracing agent 采集补齐至 **340 条**）：工具包与日志 / 反射辅助类、
+  三平台 Glass 工厂、四条 Prism 管线、效果渲染器、ShaderSource 与**全部 212 个** stock shader 加载器、
+  Glass 原生回调（`jniAccessible`）、图片解码、字体（DirectWrite / CoreText / FreeType）；
+  审计同时发现 **Jackson 3 不随附 native-image 元数据**，而配置与会话记录靠它反射读写，
+  因此一并注册了 13 个配置记录与 `TaskRequest` / `TaskResult` / `ToolCall`。
+  另把 `-H:IncludeResources` 补上 D3D 的 `.obj` 与 ES2 的 `.frag` / `.vert` 着色器资源
+  （漏掉不会构建失败，而是首次绘制时静默坏掉）。
+  `NativeImageMetadataTest` 扩到 7 条断言（已反向验证），DesktopNative 产物自证第 ⑧ 条改为
+  逐类检查启动链路。**诚实说明**：这是手工推导的「已知缺口已闭」，不等于「证明完整」——
+  真机逐功能验证仍待 `N-05` / `N-16`，抄底方案（tracing agent）登记为 `N-17`。
+- **原生镜像桌面端启动即崩（issue #26）**：`aha-desktop-native.exe` 一启动就报
+  `ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp`——JavaFX 入口有两处反射：
+  `Application.launch(String...)` 用 `Class.forName` 加载主类，`LauncherImpl` 又用
+  `getConstructor().newInstance()` 实例化它，而 native-image 的 closed-world 看不到。
+  现补上 `reachability-metadata.json` 的主类构造器注册，`main` 改为显式
+  `launch(AhaDesktopApp.class, args)`；新增 `NativeImageMetadataTest` 在 Build / Gate 阶段守住
+  注册，DesktopNative 产物自证再查一次构建产物里的元数据。
+- **原生镜像缺独立构建报告（issue #29）**：`dist-native.xml` 原先排除
+  `<可执行名>-build-report.html`，而文档已把它记为「已随包交付」，两边对不上——
+  发布页上既看不到包内报告，也没有独立的报告发布物。现定案：报告**不进镜像包**，
+  改由工作流打成独立发布包
+  `AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`（版本、系统、
+  架构、JDK 轴全在文件名里，与镜像包一一对应），并在产物自证里新增
+  「报告包是否真的生成」的回归守卫——「workdir 里有报告」不等于「发布物里有报告」。
 - **`.gitignore` 静默吃掉源码**：不带前导斜杠的 `Log/` 在任意层级匹配，且在 Windows / macOS
   大小写不敏感，于是 `aha-desktop/.../desktop/log/` 的 8 个源文件从未进入版本控制——
   git 不报错、`git add -A` 静默跳过、`git status` 显示干净、本地测试全绿，
@@ -160,7 +423,7 @@
 - **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
   把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
   无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
-- **开发日志**：新增 `Docs/DevLog/DevLog-20261007-21.md`，记录门禁静默这一问题的核实方法
+- **开发日志**：新增 `Docs/Troubleshooting/TS-202610-CoverageGateInvisible.md`，记录门禁静默这一问题的核实方法
   （配置检查 + 抬阈值使其失败一次）与结论
 - **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
   （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；
@@ -418,7 +681,7 @@
 
 #### 发行与发布
 
-- 发行包（`mvnw clean package` 产出 `dist/`）：`maven-assembly-plugin` 将 `aha-cli` 自身、
+- 发行包（`mvnw clean package` 产出 `Dist/`）：`maven-assembly-plugin` 将 `aha-cli` 自身、
   全部模块与第三方依赖收集到 `lib/`，并附带 `bin/Aha.sh` / `bin/Aha.bat` 启动脚本；
   分发方式为 JPMS 模块路径目录，与启动脚本的 `--module-path lib` 一致
 - **跨平台启动脚本**：`Aha.sh` 支持 `JAVA_HOME`、校验 `lib/` 存在并给出可读错误提示；
@@ -428,7 +691,7 @@
   的受限方法警告
 - `Release.yml` 发布完整的 `dist.zip`
 - 父 POM 补充发布元数据：`<url>`、`<licenses>`（Apache-2.0）、`<developers>`、`<scm>`
-- `mvn clean` 一并清空 `dist/` 中的构建产物（保留目录）：assembly 只覆盖同名文件，
+- `mvn clean` 一并清空 `Dist/` 中的构建产物（保留目录）：assembly 只覆盖同名文件，
   旧版本的依赖 jar 会残留，而 JPMS 下一个模块出现两个版本是致命错误
   （`java.lang.module.FindException: Two versions of module ...`），
   依赖升级后重新构建出的发行包会直接启不来

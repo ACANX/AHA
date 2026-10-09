@@ -1,9 +1,9 @@
 # 桌面端设计
 
-**文档版本**：v1.11.0
+**文档版本**：v1.12.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-06
+**最后更新**：2026-10-09
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -25,6 +25,7 @@
 | v1.9.0 | 2026-10-08 | 新增 §9「标志与窗口图标」：Logo.svg → PNG 的生成器与三条硬要求（写死像素尺寸 / 视口比窗口矮 / 按 alpha 自检包围盒），并记下「只验尺寸格式会放过裁切图」的教训 | @ACANX |
 | v1.10.0 | 2026-10-08 | 新增 §10「对话与供应商配置」：对话内核可测而界面薄（ChatController/ChatView/ToolSummary/DesktopToolApprover）、供应商为可编辑表单（含校验与保留未涉及字段）、以及 Windows 真机验证记录 | @ACANX |
 | v1.11.0 | 2026-10-08 | §10.2 供应商配置补充：绿灯标识（启用项与其模型）、打开即选中启用项（纯函数 + 测试）、按预设新建与可编辑模型下拉 | @ACANX |
+| v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（dev 预发行线在独立工作流 `BuildJVMArtifacts.yml`，issue #63） | @ACANX |
 
 ---
 
@@ -119,8 +120,8 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 - profile 一开，**classpath 上只有本平台的原生库** → 桌面端自己的 assembly 描述符 / `jpackage`
   输入天然只含一个平台，`D-01`（发行包混入多平台 native JAR）**不需要额外的 `<classifier>` 过滤**；
-- CLI 的 `dist` **不受影响**：`aha-cli` 与 `aha-desktop` 互不依赖（`Constitution.md` 第 4 条），
-  实测 `dist/lib` 的 18 个 jar 中 javafx 相关为 **0**；
+- CLI 的 `Dist` **不受影响**：`aha-cli` 与 `aha-desktop` 互不依赖（`Constitution.md` 第 4 条），
+  实测 `Dist/lib` 的 18 个 jar 中 javafx 相关为 **0**；
 - 未被任何 profile 覆盖的平台（如 Windows ARM）会以默认值 `unsupported` 解析失败——失败信息
   直接点名 `javafx-*-25-unsupported.jar`，不会静默拿到错平台的原生库；
   应急覆盖：`-Djavafx.platform=<win|linux|mac|linux-aarch64|mac-aarch64>`。
@@ -160,6 +161,73 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 > 更正一则早期的误判：先前记为「桌面端缺 `log4j2.xml`」。实际上**全仓原本就没有**
 > 该文件——装配一直是程序化的（理由见 `LoggingDesign.md`：JPMS 下 `getResources` 不搜模块路径）。
 > 真正缺的是**类**（`LoggingSetup` 在 `aha-cli`），现已下移。
+
+本地如何产出这个包（命令、assembly 配置、版本号两层、运行期消费）见 §5.7。
+
+### 5.7 本地构建便携包（JVM 模式）
+
+发布页面上的 `aha-desktop-<version>-<platform>.zip` 与本地构建出来的是**同一个东西**：
+同一条 assembly 链路，只是触发者不同（CI runner 与开发机）。本节把本地侧的完整实现记下来，
+避免「构建产物从哪来」只能靠读 POM 反推。
+
+**触发**（在仓库根）：
+
+```bash
+./mvnw -pl aha-desktop -am package -DskipTests
+# 需要程序内显示构建号时（issue #46）：
+./mvnw -pl aha-desktop -am package -DskipTests -Daha.build.version=0.1.1.00061
+```
+
+`-am` 让 `aha-common` / `aha-extension-api` / `aha-core` / `aha-tool` 一并进入本次反应堆
+——它们是 `aha-desktop` 的 **runtime** 依赖，缺一个包里就没有对应能力。
+
+**`package` 阶段的三个动作**：
+
+| 步骤 | 插件 | 产物 |
+|---|---|---|
+| 编译 | `compiler` | `aha-desktop/target/classes` |
+| 打模块 jar | `jar:jar` | `aha-desktop-0.1.1.jar`（含 `module-info`） |
+| 打便携包 | `maven-assembly-plugin` 的 `dist-desktop` execution（绑 `package`，goal `single`） | `Dist/aha-desktop-0.1.1-win.zip` |
+
+**assembly 配置（`aha-desktop/pom.xml`）**：
+
+- `descriptors = src/assembly/dist-desktop.xml`；
+- `appendAssemblyId = false` —— 文件名不带 `-dist-desktop` 后缀；
+- `attach = false` —— zip 不进入部署流程，不污染本地 / 远程仓库；
+- `outputDirectory = ${maven.multiModuleProjectDirectory}/Dist` —— 落**仓库根 `Dist/`**
+  （`Dist/` 在 `.gitignore` 内，同时也是 CLI 发行目录的解包位置）；
+- `finalName = aha-desktop-${project.version}-${javafx.platform}` —— 文件名里的版本来自父 POM、
+  平台来自 §5.2 的 per-OS profile，**没有手写常量**。
+
+**描述符内容（`src/assembly/dist-desktop.xml`）**：
+
+- `<includeBaseDirectory>false</includeBaseDirectory>` —— 内容直接铺在 zip 根，不套一层目录，
+  与 `bin/AhaDesktop.sh` 里 `$DIR/../lib` 的布局假设一致；
+- `dependencySet`：`outputDirectory=lib`、`useProjectArtifact=true`、`scope=runtime`、
+  `unpack=false` —— 本项目 `aha-desktop` 工件 + 全部 runtime 依赖（含 §5.2 解析出的本平台三个
+  OpenJFX 分类器 jar）平铺进 `lib/`；
+- `fileSet`：父目录 `bin/` 的 `AhaDesktop.sh` / `AhaDesktop.bat` → zip 内 `bin/`（`fileMode 0755`）；
+- `fileSet`：仓库根的 `README.md` / `LICENSE` / `CHANGELOG.md` → zip 根。
+
+**版本号的两层（容易混淆）**：
+
+- zip **文件名**用 `${project.version}`（如 `0.1.1`），**不受** `aha.build.version` 影响；
+- `aha.build.version`（默认 `${project.version}`）由构建期写进 `version.properties`，只影响
+  **程序内显示**（issue #46）。因此带 `-Daha.build.version=0.1.1.00061` 构建时，包名仍是
+  `aha-desktop-0.1.1-win.zip`，而启动日志显示 `0.1.1.00061`。
+
+**运行期怎么消费这个包（源码检出场景）**：`bin/AhaDesktop.bat` / `.sh` 先找
+`Dist/aha-desktop-*-win.zip`，把它解压到以「zip 名 + 写入时间 + 大小」命名的目录
+（`aha-desktop-0.1.1-win.<stamp>`），再以该目录的 `lib/` 作为 module path 启动。
+用时间戳 / 大小做键，是为了让**重建的包落到新目录**、不被上一次的解压结果遮蔽；
+旧目录刻意不删（可能正被运行中的实例占用）。
+
+**与 CI 的关系**：`Build.yml` 每次 push / PR 只做编译与单元测试（见 [BuildSpec.md](../DevSpec/BuildSpec.md)
+第 8 节）；另有一条**独立的 dev JVM 构建线**（`BuildJVMArtifacts.yml`，与 `DesktopNative.yml` /
+`CliNative.yml` 同构）——`push` 到 `dev` 时由 `build-mvn-artifact` / `build-publish` 用**同一条命令**
+产出便携包并发布预发行版（JDK 25 基线与 JDK 27 两轴，issue #63 / #65）。正式发版仍由
+`Release.yml` 在 `V*` tag 上产出。原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
+（见 [DesktopNativeDesign.md](DesktopNativeDesign.md)），不在本节范围内。
 
 ## 6. 线程模型（0.2 实装，2026-10-08）
 
@@ -437,3 +505,10 @@ JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化�
   不该混进需要按大驼峰校验的配置体系；读坏了退回默认值；
 - 设置面板改动立即生效并立即保存（没有「应用」按钮）；记忆策略与身份文件编辑**故意不放**：
   还没实现，放一个点了没反应的项比少一个功能更糟。
+- **系统偏好读取三级回退（2026-10-09，issue #44）**：`getColorScheme()` → 系统背景色亮度 →
+  亮色。旧实现一律回退暗色，导致原生镜像（系统偏好读取失败）永远以暗黑主题启动。
+  同时订阅 `colorSchemeProperty()`，在「跟随系统」模式下实时跟随系统深浅皮肤切换；
+- **弹层也要登记主题**：候选弹层（`Popup`）与会话右键菜单（`ContextMenu`）有独立的场景根，
+  不继承主窗口样式；前者换主题时调 `refreshTheme()`，后者在 `setOnShowing` 里套当前配色；
+- **不允许硬编码颜色**：样式里出现的颜色一律取自 `Palette`，否则切换主题会留下「没变」的暗色块
+  （真机上撞到过：3 处边框与 1 处背景写死了十六进制值）。

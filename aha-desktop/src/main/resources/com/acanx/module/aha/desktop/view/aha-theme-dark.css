@@ -1,0 +1,303 @@
+/*
+ * AHA 桌面端主题补丁（暗色）：**全部是字面量，不使用任何 looked-up color**
+ *
+ * 为什么不能再用变量查表（issue #49 第四轮，真机反馈）：
+ * 上一版这份表把文字色写成「-fx-text-fill: 自定义 color」，而那个自定义 color 定义在根节点
+ * 的内联样式里。**原生镜像下这种查表不可靠**——声明里一旦查不到值，CSS 会**丢掉整条声明**，
+ * 文字颜色于是回落到 modena 的默认黑。亮色下碰巧看不出来（亮色本就该是深色字），
+ * 暗色下就成了一片黑字。
+ * 结论：**这份表里不允许出现任何变量查表 / derive() / linear-gradient() / ladder()。**
+ *
+ * 亮 / 暗两份由 `ThemePaint` 按当前主题**整份装载**，切换主题时整份替换，
+ * 因此不需要任何「变量重新绑定」的机制。
+ *
+ * 其余约定不变：
+ *   ① 由 Scene.getStylesheets() 加载，排在 modena 之后，同优先级下可覆盖之；
+ *   ② 节点自己的内联样式（node.setStyle(...)）优先级更高，已单独上色的控件不受影响；
+ *   ③ -fx-background-insets 显式归零：modena 的渐变规则常配多值 insets，
+ *      只换颜色不改 insets 会画出被裁掉一角的色块。
+ */
+
+/* ============================ 输入类控件 ============================ */
+
+.text-input,
+.text-field,
+.text-area,
+.password-field,
+.combo-box-base,
+.choice-box {
+    -fx-background-color: #252526;
+    -fx-background-insets: 0;
+    -fx-background-radius: 3;
+    -fx-border-color: #3A3A3A;
+    -fx-border-radius: 3;
+    -fx-text-fill: #E4E4E4;
+    -fx-prompt-text-fill: #9A9A9A;
+    -fx-highlight-fill: #AF87FF;
+    -fx-highlight-text-fill: #E4E4E4;
+}
+
+.text-area > .content,
+.text-area > .scroll-pane,
+.text-area > .scroll-pane > .viewport {
+    -fx-background-color: #252526;
+}
+
+.text-input:focused,
+.combo-box-base:focused,
+.choice-box:focused {
+    -fx-border-color: #AF87FF;
+}
+
+.text-input:disabled,
+.combo-box-base:disabled {
+    -fx-opacity: 0.5;
+}
+
+/* ============================ 按钮类控件 ============================ */
+
+.button,
+.toggle-button,
+.menu-button,
+.split-menu-button,
+.color-picker {
+    -fx-background-color: #252526;
+    -fx-background-insets: 0;
+    -fx-background-radius: 3;
+    -fx-border-color: #3A3A3A;
+    -fx-border-radius: 3;
+    -fx-text-fill: #E4E4E4;
+}
+
+.button:hover,
+.toggle-button:hover,
+.menu-button:hover,
+.split-menu-button:hover,
+.color-picker:hover {
+    -fx-background-color: #2D2D2D;
+}
+
+.button:armed,
+.toggle-button:selected,
+.menu-button:showing {
+    -fx-background-color: #303030;
+}
+
+.button:default {
+    -fx-background-color: #AF87FF;
+    -fx-border-color: #AF87FF;
+    -fx-text-fill: #FFFFFF;
+}
+
+.button:disabled,
+.toggle-button:disabled {
+    -fx-opacity: 0.5;
+}
+
+/* ============================ 滚动条 ============================ */
+
+.scroll-bar,
+.scroll-bar:horizontal,
+.scroll-bar:vertical,
+.scroll-bar:focused {
+    -fx-background-color: #1E1E1E;
+    -fx-background-insets: 0;
+}
+
+.scroll-bar > .track {
+    -fx-background-color: #1E1E1E;
+    -fx-border-color: #1E1E1E;
+    -fx-background-insets: 0;
+}
+
+.scroll-bar > .thumb {
+    -fx-background-color: #4A4A4A;
+    -fx-background-insets: 0;
+    -fx-background-radius: 4;
+}
+
+.scroll-bar > .thumb:hover,
+.scroll-bar > .thumb:pressed {
+    -fx-background-color: #AF87FF;
+}
+
+.scroll-bar > .increment-button,
+.scroll-bar > .decrement-button {
+    -fx-background-color: #1E1E1E;
+    -fx-background-insets: 0;
+}
+
+.scroll-bar > .increment-button > .increment-arrow,
+.scroll-bar > .decrement-button > .decrement-arrow {
+    -fx-background-color: #9A9A9A;
+}
+
+.scroll-bar > .increment-button:hover > .increment-arrow,
+.scroll-bar > .decrement-button:hover > .decrement-arrow,
+.scroll-bar > .increment-button:pressed > .increment-arrow,
+.scroll-bar > .decrement-button:pressed > .decrement-arrow {
+    -fx-background-color: #E4E4E4;
+}
+
+.corner {
+    -fx-background-color: #1E1E1E;
+}
+
+/* ============================ 滚动容器 ============================ */
+
+.scroll-pane,
+.scroll-pane > .viewport,
+.scroll-pane > .corner {
+    -fx-background-color: #252526;
+    -fx-background-insets: 0;
+}
+
+.scroll-pane {
+    -fx-border-color: transparent;
+}
+
+/* ============================ 列表 / 树 / 表格 ============================ */
+
+.list-view,
+.tree-view,
+.table-view,
+.tree-table-view {
+    -fx-background-color: #252526;
+    -fx-background-insets: 0;
+    -fx-border-color: #3A3A3A;
+    -fx-control-inner-background: #252526;
+    -fx-control-inner-background-alt: #252526;
+}
+
+.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell,
+.tree-view > .virtual-flow > .clipped-container > .sheet > .tree-cell {
+    -fx-background-color: #252526;
+    -fx-text-fill: #E4E4E4;
+}
+
+.list-cell:filled:hover,
+.tree-cell:filled:hover {
+    -fx-background-color: #2D2D2D;
+}
+
+.list-cell:filled:selected,
+.tree-cell:filled:selected {
+    -fx-background-color: #AF87FF;
+    -fx-text-fill: #FFFFFF;
+}
+
+.list-view > .virtual-flow > .corner {
+    -fx-background-color: #252526;
+}
+
+/* ============================ 下拉弹出层 ============================ */
+
+.combo-box-popup > .list-view {
+    -fx-background-color: #252526;
+    -fx-border-color: #3A3A3A;
+}
+
+/* ============================ 菜单 ============================ */
+
+.menu-bar,
+.menu-bar > .container > .menu-button {
+    -fx-background-color: #1E1E1E;
+}
+
+.menu-bar > .container > .menu-button > .label,
+.menu-bar > .container > .menu-button > .label > .text {
+    -fx-text-fill: #E4E4E4;
+}
+
+.menu-bar > .container > .menu-button:hover,
+.menu-bar > .container > .menu-button:showing {
+    -fx-background-color: #2D2D2D;
+}
+
+.context-menu,
+.menu-item {
+    -fx-background-color: #252526;
+}
+
+.menu-item > .label {
+    -fx-text-fill: #E4E4E4;
+}
+
+.menu-item:focused,
+.menu-item:hover {
+    -fx-background-color: #AF87FF;
+}
+
+.menu-item:focused > .label,
+.menu-item:hover > .label {
+    -fx-text-fill: #FFFFFF;
+}
+
+/* ============================ 文本与分隔 ============================ */
+
+.label {
+    -fx-text-fill: #E4E4E4;
+}
+
+.separator > .line {
+    -fx-border-color: #3A3A3A;
+    -fx-background-color: #3A3A3A;
+}
+
+.tooltip {
+    -fx-background-color: #303030;
+    -fx-text-fill: #E4E4E4;
+}
+
+.progress-bar > .track {
+    -fx-background-color: #1E1E1E;
+}
+
+.progress-bar > .bar {
+    -fx-background-color: #AF87FF;
+}
+
+/* ==================== 文字兜底（不依赖任何继承 / 查表）==================== */
+
+.label,
+.cell,
+.list-cell,
+.tree-cell,
+.table-cell,
+.table-view .column-header .label,
+.titled-pane > .title > .text,
+.tab-pane > .tab-header-area > .headers-region > .tab > .tab-container > .tab-label,
+.hyperlink,
+.check-box > .label,
+.radio-button > .label,
+.combo-box .list-cell,
+.menu-item > .label,
+.menu-bar > .container > .menu-button > .label {
+    -fx-text-fill: #E4E4E4;
+}
+
+/* Text 节点走 -fx-fill，不是 -fx-text-fill —— 写错一处就会留下一片黑字 */
+.text {
+    -fx-fill: #E4E4E4;
+}
+
+.text-input,
+.text-area > .content,
+.text-area .text,
+.text-field {
+    -fx-text-fill: #E4E4E4;
+    -fx-prompt-text-fill: #9A9A9A;
+}
+
+/* 选中态的文字色单独钉死：否则在强调色底上会出现同色文字 */
+.list-cell:filled:selected,
+.tree-cell:filled:selected,
+.table-row-cell:filled:selected {
+    -fx-text-fill: #FFFFFF;
+}
+
+.list-cell:filled:selected .text,
+.tree-cell:filled:selected .text,
+.table-row-cell:filled:selected .text {
+    -fx-fill: #FFFFFF;
+}

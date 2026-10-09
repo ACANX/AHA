@@ -5,7 +5,13 @@
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.1</version>
+    <!--
+        版本号写占位符、实体值在下方 <properties>/<revision>（CI-friendly versions）：
+        这样 8 个子模块只需写 <parent><version>${revision}</version>，改版本时只改一处。
+        注意：不 flatten 时 install/deploy 出去的 POM 里会残留字面量 ${revision}，
+        因此下方 build 区配有 flatten-maven-plugin（见 TD-00016 §A）。
+    -->
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -14,8 +20,8 @@
 
     <licenses>
         <license>
-            <name>Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>GNU General Public License v3.0 or later</name>
+            <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
             <distribution>repo</distribution>
         </license>
     </licenses>
@@ -45,9 +51,25 @@
     </modules>
 
     <properties>
+        <!--
+            版本号：**机器侧唯一来源**（权威源将来是根目录 version 文件，见 TD-00016 §H）。
+            子模块的 <parent><version> 和本 POM 的 <version> 都引用 ${revision}，
+            因此改版本时只改这一行（不再逐个改 9 个 POM）。
+            IDE（IDEA）能解析根 POM 里的这个属性，不会出现未解析报错。
+        -->
+        <revision>0.1.2</revision>
+
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
+
+        <!--
+            构建版本：正式发版等于 project.version；PR 合并到 dev 后由工作流传入
+            -Daha.build.version=<a.b.c.PPPPP>（如 0.1.1.00046），写进 version.properties 的 build 项，
+            供 GUI「关于」与 CLI 启动页 / -V 显示，目的是拿到精确版本便于排查（issue #46）。
+            注意：**不要**在子模块里重复定义，否则模块自身的 <properties> 会赢过父 POM。
+        -->
+        <aha.build.version>${project.version}</aha.build.version>
 
         <javafx.version>25</javafx.version>
         <!--
@@ -75,14 +97,36 @@
         <jacoco.version>0.8.15</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
-        <!-- 桌面端原生镜像（试验性）：见 aha-desktop-native 与 DesktopDesign 的姊妹篇
-             Docs/Design/DesktopNativeDesign.md -->
+        <!-- 版本占位符解析插件（CI-friendly versions），交 Dependabot 跟踪 -->
+        <flatten.plugin.version>1.8.0</flatten.plugin.version>
+        <!-- 原生镜像（试验性）：两套平行管线——桌面端 aha-desktop-native（见
+             Docs/Design/DesktopNativeDesign.md）与 CLI aha-cli-native（见
+             Docs/Design/CliNativeDesign.md） -->
         <exec.plugin.version>3.5.1</exec.plugin.version>
         <dependency.plugin.version>3.9.0</dependency.plugin.version>
         <resources.plugin.version>3.3.1</resources.plugin.version>
         <clean.plugin.version>3.4.1</clean.plugin.version>
         <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
         <pmd.plugin.version>3.28.0</pmd.plugin.version>
+
+        <!--
+            原生编译总开关：**默认关闭**，默认值的唯一来源就在这里。
+
+            约定（强制）：原生编译只在专用 profile 下进行（desktop-native / cli-native，
+            需要新 JDK 时再加 native-jdk27）。默认构建的验收标准只有一条——**能编译、能打 jar、
+            不报错**；能不能运行不属于默认构建的职责。价值在于「没装工具链的环境」：
+            默认路径一旦依赖 GraalVM，构建失败就会从「代码问题」变成「环境问题」，
+            而后者极难在别人的机器上复现。
+
+            覆盖点有两个，缺一不可：
+              ① desktop-native / cli-native profile（**同一个 POM** 内覆盖为 false，有效）；
+              ② CI 显式 -Dnative.skip=false（命令行 -D 优先级最高，兜底）。
+
+            ⚠ **不要在子模块里重复定义它**：模块自身的 <properties> 会**赢过**父 POM 里
+            profile 注入的属性，于是 profile 的 false 不生效、native-image 被静默跳过。
+            2026-10-08 的实测症状是「构建成功、零产物、零报错」，CI 全绿却什么都没编出来。
+        -->
+        <native.skip>true</native.skip>
     </properties>
 
     <dependencyManagement>
@@ -287,6 +331,43 @@
         </pluginManagement>
 
         <plugins>
+            <!--
+                版本占位符解析：把 ${revision} 落成实际版本后再 install / deploy。
+
+                不 flatten 时，装出去的 POM 里是**字面量** ${revision}，下游解析失败。
+                Maven 4 已内置 consumer POM 承担同一职责（比 flatten 更彻底：连 build 段
+                都剥离），但本仓库同时保留 Maven 3.9.x 兼容基线（Compat.yml），3.9.x 没有
+                consumer POM——只要兼容线还在，flatten 就必须留（见 TD-00016「与 Maven 4 的
+                分期决策」）。
+
+                flattenMode=resolveCiFriendliesOnly：只解析 ${revision} 这类 CI-friendly
+                属性，其余内容原样保留，不在本地磁盘上做全量最小化。
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten.plugin.version}</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -442,6 +523,26 @@
                 <native.skip>false</native.skip>
             </properties>
         </profile>
+
+        <!--
+            CLI 原生镜像（试验性，默认不在反应堆里）：见 aha-cli-native 与
+            Docs/Design/CliNativeDesign.md。常规构建看不到这个模块。
+            与 desktop-native 是**两个独立的 profile**：可以只编一个，也可以两个一起编。
+        -->
+        <profile>
+            <id>cli-native</id>
+            <modules>
+                <module>aha-cli-native</module>
+            </modules>
+            <properties>
+                <!--
+                    同 desktop-native：只有本 profile 激活时才允许调用 native-image。
+                    默认值的唯一来源仍是根 POM 的 <properties>（true），
+                    子模块不得再写自己的默认值（会赢过 profile 注入，造成静默跳过）。
+                -->
+                <native.skip>false</native.skip>
+            </properties>
+        </profile>
     </profiles>
 
     <!--
@@ -457,5 +558,16 @@
 
         工作流见 .github/workflows/DesktopNative.yml，设计与风险见
         Docs/Design/DesktopNativeDesign.md。
+    -->
+
+    <!--
+        ── CLI 原生镜像（试验性，默认不在反应堆里） ────────────────────────────────
+        把 aha-cli 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos）。
+        与桌面端那套是**平行**关系：同一套隔离约定，各自一个模块、一个工作流、一份参数文件。
+
+            ./mvnw -Pcli-native -pl aha-cli-native,aha-cli -am package -DskipTests
+
+        工作流见 .github/workflows/CliNative.yml，设计与风险见
+        Docs/Design/CliNativeDesign.md。
     -->
 </project>

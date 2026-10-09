@@ -2,8 +2,27 @@
 <!--
     原生镜像模块的 POM 骨架。
 
-    拷贝到新项目时要改的地方，全部用 <<< >>> 标出。
-    设计要点（每条都对应一个踩过的坑，见 SKILL.md「四个必须显式处理的坑」）：
+    拷贝到新项目时要改的地方，全部用 __UPPER_SNAKE__ 形式的占位符标出。
+
+    ⚠ 占位符**不得**写成尖括号形式（例如三个尖括号包住中文）：那样整个文件就不再是
+    合法 XML，`mvn` 与任何 XML 工具都会在**解析阶段**直接失败——报错还是「无效记号」，
+    看起来像文件坏了，而不是像「有东西没替换」。本文件保证自身是可解析的 XML，
+    `bin/CheckScripts.py` 的 check_xml 会强制这一点。
+
+    占位符含义（拷贝时逐个替换即可）：
+
+      __PARENT_GROUP_ID__ / __PARENT_ARTIFACT_ID__ / __PARENT_VERSION__   父 POM 坐标
+      __NATIVE_MODULE_ARTIFACT_ID__      本原生模块的 artifactId
+      __DISPLAY_NAME__                   模块显示名
+      __NATIVE_EXECUTABLE_NAME__         可执行文件基名
+      __MAIN_GROUP_ID__ / __MAIN_ARTIFACT_ID__   主模块（被编进镜像的那个应用）坐标
+      __GUI_GROUP_ID__ / __GUI_CORE_ARTIFACT_ID__ / __GUI_VERSION__
+                                         GUI 框架（如 JavaFX）的坐标与版本
+      __PLATFORM_CLASSIFIER_PROPERTY__   平台分类器属性的名字（如 javafx.platform）
+      __GUI_TRANSITIVE_ARTIFACT_ID__     需要排掉「无分类器空壳」的那个传递依赖
+      __MAIN_CLASS__                     主类全限定名
+
+    设计要点（每条都对应一个踩过的坑，见 SKILL.md「必须显式处理的坑」）：
 
       1. packaging=pom：本模块没有 Java 代码，只做打包；
       2. 依赖坐标注意 groupId 可能与父 POM 不同（子模块覆盖父 POM 是常见做法）；
@@ -20,45 +39,56 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId><<< 父 groupId >>></groupId>
-        <artifactId><<< 父 artifactId >>></artifactId>
-        <version><<< 版本 >>></version>
+        <groupId>__PARENT_GROUP_ID__</groupId>
+        <artifactId>__PARENT_ARTIFACT_ID__</artifactId>
+        <version>__PARENT_VERSION__</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId><<< 原生模块 artifactId，如 my-native >>></artifactId>
+    <artifactId>__NATIVE_MODULE_ARTIFACT_ID__</artifactId>
     <packaging>pom</packaging>
-    <name><<< 显示名 >>></name>
+    <name>__DISPLAY_NAME__</name>
     <description>原生镜像（试验性）：把主模块的 JVM 产物编译成 GraalVM native-image 二进制</description>
 
     <properties>
         <!-- 产物版本：默认跟项目走；CI 可传 -Dnative.version=<基线>.<PR 补零> 覆盖 -->
         <native.version>${project.version}</native.version>
-        <native.name><<< 可执行文件基名 >>></native.name>
+        <native.name>__NATIVE_EXECUTABLE_NAME__</native.name>
 
         <!-- native-image 可执行文件；Windows 上由 CI 传 native-image.cmd -->
         <native.image.executable>native-image</native.image.executable>
 
         <!--
-            默认 **不做** 原生编译（安全默认值）。
+            `native.skip` **刻意不在这里定义**：默认值属于聚合 POM 的 <properties>，
+            由原生 profile 在**同一个 POM** 内覆盖为 false。
 
-            约定：原生编译只在专用 profile 下进行；默认构建的验收标准只有一条
-            —— **能编译、能打 jar、不报错**（能不能运行不属于默认构建的职责）。
+            ⚠ 千万不要在模块里重复定义它：模块自身的 <properties> 会**赢过**
+            父 POM 里 profile 注入的属性，于是 profile 的 false 不生效、
+            native-image 被**静默跳过**——症状是「构建成功、零产物、零报错」，
+            叠加「失败不阻塞」的可选管线后会变成没人发现的空转（实测事故）。
 
-            所以这里的默认值是 true；由聚合 POM 的原生 profile 在激活时置为 false：
+            聚合 POM 需要这样写。两处要点：默认值只在 <properties> 里定义**一次**，
+            名为「唯一放开点」的覆盖只在 profile 里出现**一次**。
 
-                <profile>
-                    <id>my-native</id>
-                    <modules><module>my-native</module></modules>
-                    <properties><native.skip>false</native.skip></properties>
-                </profile>
+                <properties>
+                    <native.skip>true</native.skip>
+                </properties>
+                <profiles>
+                    <profile>
+                        <id>my-native</id>
+                        <modules><module>my-native</module></modules>
+                        <properties><native.skip>false</native.skip></properties>
+                    </profile>
+                </profiles>
 
-            这样两层保障齐了：① 默认反应堆里根本没有这个模块；
-            ② 即使模块误入反应堆，也不会去要求环境具备 GraalVM。
-            顺带一个本机自检技巧：想只验证「依赖拷贝 → classpath → 参数文件 → 打包」
-            这条管线而不真编，就显式传 -Dnative.skip=true。
+            注意：XML 注释里**不能写行内注释**，也不能嵌套注释标记，更不能出现双短横，
+            所以上面示例的说明一律写在注释正文里（不要在代码行尾再加「注释」）。
+            CI 里的 bin/CheckScripts.py 会拦这几类错误。
+
+            CI 再显式传 -Dnative.skip=false 兜底（命令行 -D 优先级最高）。
+            本机只想验证「依赖拷贝 → classpath → 参数文件 → 打包」而不真编时，
+            显式传 -Dnative.skip=true 即可。
         -->
-        <native.skip>true</native.skip>
 
         <!-- 工作目录：依赖、产物、说明都落在这里，便于 CI 取件 -->
         <native.image.workdir>${project.build.directory}/native</native.image.workdir>
@@ -71,8 +101,8 @@
     <dependencies>
         <!-- 输入就是主模块的 JVM 产物：主模块 + 它的全部 runtime 传递依赖 -->
         <dependency>
-            <groupId><<< 主模块 groupId（注意可能与父 POM 不同） >>></groupId>
-            <artifactId><<< 主模块 artifactId >>></artifactId>
+            <groupId>__MAIN_GROUP_ID__</groupId>
+            <artifactId>__MAIN_ARTIFACT_ID__</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>
@@ -82,16 +112,16 @@
             分类器由父 POM 的按平台 profile 解析；必须显式，别依赖「从主模块传递过来」。
         -->
         <dependency>
-            <groupId><<< 框架 groupId >>></groupId>
-            <artifactId><<< 框架核心 artifactId >>></artifactId>
-            <version><<< 框架版本 >>></version>
-            <classifier>${<<< 平台分类器属性 >>>}</classifier>
+            <groupId>__GUI_GROUP_ID__</groupId>
+            <artifactId>__GUI_CORE_ARTIFACT_ID__</artifactId>
+            <version>__GUI_VERSION__</version>
+            <classifier>${__PLATFORM_CLASSIFIER_PROPERTY__}</classifier>
             <scope>runtime</scope>
             <exclusions>
                 <!-- 排掉无分类器的同名空壳（0 KB）：它们与带分类器的工件共用同一份 POM -->
                 <exclusion>
-                    <groupId><<< 框架 groupId >>></groupId>
-                    <artifactId><<< 被传递依赖的框架 artifactId >>></artifactId>
+                    <groupId>__GUI_GROUP_ID__</groupId>
+                    <artifactId>__GUI_TRANSITIVE_ARTIFACT_ID__</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -221,7 +251,7 @@
                                 <argument>${native.classpath}</argument>
                                 <argument>-H:Path=${native.image.workdir}</argument>
                                 <argument>-H:Name=${native.name}</argument>
-                                <argument><<< 主类全限定名 >>></argument>
+                                <argument>__MAIN_CLASS__</argument>
                             </arguments>
                         </configuration>
                     </execution>

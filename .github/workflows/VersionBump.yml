@@ -1,0 +1,100 @@
+name: VersionBump
+
+# 一键切换基线版本：手动输入新版本号 → 分发到所有「版本出现位置」 → 开 PR。
+#
+# 人只改一处（根目录 `version` 文件，或在触发时输入），其余由
+# `Script/Python/VersionDistribute.py` 动态分发（POM / version 文件 / 代码常量 / 文档声明），
+# 设计见 TD-00016 §H。
+#
+# 触发：仅手动。输入留空时取 `version` 文件当前值（分发器会拒绝「与当前相同」的空提交）。
+#
+# ⚠ 与 ReleaseProcess.md §4.2 同一个坑：默认 `GITHUB_TOKEN` 推的提交**不触发下游 workflow**，
+#   于是这个 PR 上的 `Build` / `Gate` / `Compat` 不会跑。处置见下方「检查 PAT」步骤与
+#   `secrets.VERSION_BUMP_TOKEN`（细粒度 PAT，仅 contents: write + pull-requests: write）。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '新版本号（如 0.1.3）；留空则取 version 文件当前值'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# 同一时间只允许一次分发；并发触发时后到的取消先到的
+concurrency:
+  group: version-bump
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    name: 分发并开 PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 开 PR 需要能相对 base 生成 diff，取完整历史更省心
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: 解析目标版本（唯一读取入口）
+        id: v
+        run: |
+          VERSION=$(python3 .github/Python/ProjectVersion.py --resolve "${{ inputs.version }}")
+          test -n "${VERSION}"
+          echo "目标版本：${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: 分发到所有版本位置（POM / version 文件 / 代码常量 / 文档声明）
+        run: python3 Script/Python/VersionDistribute.py --version "${{ steps.v.outputs.version }}"
+
+      - name: 自检（文档围栏 / 脚本编码行尾 / 版本读取）
+        # 产物级的「五处一致」由 PR 上的 Gate（ProjectVersion.py --verify）承担；
+        # 这里刚分发完、尚未构建，读不到产物，故只做不依赖构建的检查。
+        run: |
+          python3 bin/CheckDocs.py
+          python3 bin/CheckScripts.py
+          python3 .github/Python/ProjectVersion.py --resolve
+
+      - name: 检查 PAT 是否已配置（决定下游 checks 会不会被触发）
+        env:
+          HAS_PAT: ${{ secrets.VERSION_BUMP_TOKEN != '' }}
+        run: |
+          if [ "${HAS_PAT}" = "true" ]; then
+            echo "已配置 VERSION_BUMP_TOKEN：PR 上的 Build / Gate / Compat 会被正常触发。"
+          else
+            echo "::warning::未配置 secrets.VERSION_BUMP_TOKEN（退化为 GITHUB_TOKEN 开 PR）：该 token 推的提交不触发下游 workflow，PR 上的检查需人工 close/reopen 或补一次 push 才会跑。"
+          fi
+
+      - name: 开 PR（分支 chore/bump-<版本>，base dev）
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.VERSION_BUMP_TOKEN || github.token }}
+          branch: chore/bump-${{ steps.v.outputs.version }}
+          base: dev
+          title: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
+          commit-message: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
+          body: |
+            ## 自动分发
+
+            由 `VersionBump.yml` 触发、`Script/Python/VersionDistribute.py` 分发新版本号：
+
+            **新版本**：`${{ steps.v.outputs.version }}`
+
+            分发清单（逐文件）见本次 workflow 运行的 Job Summary。
+
+            ### 检查
+
+            - 产物级「五处一致」由本 PR 上 `Gate` 的 `ProjectVersion.py --verify` 校验
+              （`Build` 负责编译与单测、`Compat` 负责 Maven 3.9.x）。
+            - 若这些 checks **没有自动出现**：说明未配置 `secrets.VERSION_BUMP_TOKEN`，
+              用默认 `GITHUB_TOKEN` 推的提交不会触发下游 workflow——手动 close/reopen 本 PR，
+              或再 push 一次即可（原因与处置见 `Docs/DevSpec/ReleaseProcess.md` §4.2）。

@@ -37,6 +37,22 @@
             <outputDirectory>.</outputDirectory>
             <includes>
                 <include>README.txt</include>
+                <!--
+                    构建报告（native-image 的「emit build report」参数产出，
+                    真实文件名是 <可执行名>-build-report.html）**不打进本包**。
+
+                    2026-10-08 定案（issue #29）：报告裸文件 34~36 MB，
+                    而且它与二进制是两类东西——报告是给人分析用的，二进制是给人运行的。
+                    因此改由工作流单独打成**独立发布包**：
+                        AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<版本>.zip
+                    与镜像包同族命名、同批挂到发布页，下载时一眼能对上同一版本。
+                    包里含报告 + 原生镜像参数 + 可达性元数据（一组对账材料）。
+
+                    通配一律写 *build-report.*：真实文件名前缀是**可执行名**，
+                    不是 build-report——按 build-report* 写会静默漏掉（实测漏过）。
+                -->
+                <!-- 可达性元数据（真实来源在 aha-desktop，构建时复制过来一份） -->
+                <include>reachability-metadata.json</include>
             </includes>
             <fileMode>0644</fileMode>
         </fileSet>

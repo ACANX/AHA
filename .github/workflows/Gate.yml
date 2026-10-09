@@ -61,6 +61,12 @@ jobs:
         uses: ./.github/actions/maven-run
         with:
           command: ./mvnw clean verify
+      - name: 版本号一致性（version / POM / version.properties / 产物名 / tag 名）
+        # 必须排在 clean verify 之后：其中两项直接读构建产物（资源过滤出的
+        # version.properties 与产物文件名），未构建时会明确失败而非静默跳过。
+        # 目的：版本号漂移即红灯（issue #93 / TD-00016 §E），失败信息点明哪一处
+        # 不一致；零依赖，纯 Python 标准库。
+        run: python3 .github/Python/ProjectVersion.py --verify
       - name: 覆盖率实测值（门禁已由上一步判定，这里把数字打进日志）
         # JaCoCo 的 check 通过时不打印任何百分比，日志上看不出门禁是否生效。
         # 跑到这一步即说明 verify 已通过；数字入日志后，「门禁在不在」可自证。

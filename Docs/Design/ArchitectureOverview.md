@@ -48,6 +48,7 @@ common ← extension-api ← core ← desktop
 | 实现层 | `aha-tool` | 内置工具（ServiceLoader） |
 | 接入层 | `aha-cli`、`aha-desktop` | CLI / 桌面端 |
 | 试验层 | `aha-desktop-native` | 桌面端原生镜像（GraalVM native-image）：**默认不在反应堆里**，由 `desktop-native` profile 加入；见 `DesktopNativeDesign.md` |
+| 试验层 | `aha-cli-native` | CLI 原生镜像（GraalVM native-image）：**默认不在反应堆里**，由 `cli-native` profile 加入；见 `CliNativeDesign.md` |
 
 ## 3. 关键设计
 
@@ -67,6 +68,7 @@ common ← extension-api ← core ← desktop
 | 接入层 | `aha-cli` | `com.acanx.module.aha.cli` | core, tool |
 | 接入层 | `aha-desktop` | `com.acanx.module.aha.desktop` | core |
 | 试验层 | `aha-desktop-native` | —（无 Java 代码，`packaging=pom`） | desktop（仅取用其 runtime 产物） |
+| 试验层 | `aha-cli-native` | —（无 Java 代码，`packaging=pom`） | cli（仅取用其 runtime 产物） |
 
 代码包名与模块名一致（`com.acanx.module.aha.<module>`）。
 

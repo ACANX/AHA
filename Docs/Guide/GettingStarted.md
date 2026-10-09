@@ -29,6 +29,9 @@
 - JDK 25 (LTS)
 - Maven 4（通过 `./mvnw` 固定）或 Maven 3.9.x（兼容验证）
 
+> **Agent 约束**：本文中的 `./mvnw` 命令供人类开发者使用；Agent 不在本地执行编译 / 测试，
+> 以 PR 的 CI checks 为准（见 [AGENTS.md](../../AGENTS.md)）。
+
 ## 2. 构建
 
 ```bash
@@ -40,8 +43,8 @@
 首次使用执行一次，生成配置与目录结构（**无需手工编写配置文件**）：
 
 ```bash
-dist/bin/Aha.sh init          # Linux / macOS
-dist\bin\Aha.bat init         # Windows
+Dist/bin/Aha.sh init          # Linux / macOS
+Dist\bin\Aha.bat init         # Windows
 ```
 
 交互模式下会列出内置供应商供选择，并可选择直接写入 API Key：
@@ -100,9 +103,9 @@ aha init --force                           # 覆盖已有配置（默认幂等�
 ### 方式二：从发行包运行（推荐）
 
 ```bash
-./mvnw clean package         # 产出项目根 dist/
-dist/bin/Aha.sh chat         # Linux / macOS
-dist\bin\Aha.bat chat        # Windows
+./mvnw clean package         # 产出项目根 Dist/
+Dist/bin/Aha.sh chat         # Linux / macOS
+Dist\bin\Aha.bat chat        # Windows
 ```
 
 发行包内 `lib/` 已包含全部运行时依赖，无需另行准备 classpath。

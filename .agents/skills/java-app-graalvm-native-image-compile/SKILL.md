@@ -1,7 +1,7 @@
 ---
 name: java-app-graalvm-native-image-compile
 description: 把已能跑的 Java jar 模式程序编译成多操作系统、多架构的 GraalVM Native Image 原生可执行文件。覆盖隔离式落地（profile + 独立工作流 + 独立 tag 命名空间）、依赖与 classpath 准备、反射/资源/JNI/初始化四类清单、JPMS 与 classpath 的取舍、平台分类器与空壳 jar 陷阱、产物自证、按 PR 号的可追溯版本号，以及启动速度与内存占用的对比实验方法。当需要为含 GUI、JPMS、JNI、反射的复杂项目引入原生镜像构建，或排查 native-image 构建与运行期失败时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 GraalVM（含 native-image）；构建必须在目标平台上执行（native-image 不能交叉编译）；JavaFX 等带原生库的 GUI 框架需要对应平台的分类器工件；若项目启用 JPMS，classpath 模式可绕开模块约束。
 metadata:
   version: "0.1.0"
@@ -123,7 +123,11 @@ metadata:
 「JPMS 优先启用但非强制」——原生镜像正是「必要时让路」的场景。
 如果你确实要走 module-path，同时**必须**把无分类器的空壳依赖排干净（见下一条）。
 
-## 四个必须显式处理的坑
+## 五个必须显式处理的坑
+
+> ⚠ 第 5 条（`native.skip` 被静默跳过）是**唯一会「全绿却零产物」**的坑，
+> 单列在 [troubleshooting](references/troubleshooting.md) §3 的「静默跳过」小节。
+
 
 1. **无分类器的空壳 jar**：带分类器的工件与无分类器工件**共用同一份 POM**，
    而那份 POM 声明的是无分类器依赖 → 0 KB 空壳（无类、无 `module-info`）会被传递进来。
@@ -143,15 +147,22 @@ metadata:
 
 ## 四类清单（原生镜像的全部难点都在这四类）
 
+> **本节只给入口。** 元数据的**发现 → 登记 → 验证 → 守卫**这条纵向链路已单独抽成技能：
+> [**graalvm-reachability-metadata**](../graalvm-reachability-metadata/SKILL.md)
+> （三条发现路径、来源优先级、精确签名、JNI、资源、四层守卫）。
+> 本节只给与你项目最相关的方向，具体做那一步时看那份技能。
+
 | 类别 | 症状 | 处理方向 |
 |---|---|---|
 | **初始化时机** | 构建期报错「构建时初始化失败 / 触碰了运行期才有的东西」 | `--initialize-at-run-time=<类或包>`（GUI、驱动、日志框架是重灾区） |
-| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reflect-config.json` / `--initialize-at-run-time` / 改用显式注册 |
-| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `-H:IncludeResources=<正则>` |
-| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError` | 让原生库作为资源进镜像 + `--enable-native-access` + 运行期初始化本地加载器类 |
+| **反射** | 构建通过但**运行期** `ClassNotFoundException` / `NoSuchMethodException` | `reachability-metadata.json` / `reflect-config.json` / 改用显式注册 |
+| **资源** | 运行期缺图标、模板、`properties`、`META-INF/services` | `resource-config.json` 精确清单 / `-H:IncludeResources=<正则>` |
+| **JNI / 原生库** | 运行期 `UnsatisfiedLinkError`、原生回调失败 | 让原生库作为资源进镜像 + `--enable-native-access` + `jniAccessible` + 运行期初始化加载器类 |
 
 逐条的症状到修法对照，见 [troubleshooting](references/troubleshooting.md)；
-参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)。
+参数清单与「哪些必须有、哪些是实验位」，见 [args-cookbook](references/args-cookbook.md)；
+元数据的发现 / 登记 / 验证与常见框架经验库，见
+[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)。
 
 ## 产物自证（不要只看「构建成功」）
 
@@ -187,6 +198,24 @@ metadata:
 | 2026-10-08 | 同一轮里四条腿全红，被人问「不是可选吗」 | §1.4：**「可选」要落到步骤级**——作业级 `continue-on-error` 只保运行颜色，作业仍是红叉 | 实测（作业级 → 步骤级 对照） |
 | 2026-10-08 | 产物自证红了但看不出原因 | §3：改成**诊断式**（先打现场 / 只留真不变式 / 结论进摘要）；并记三个坑：`set -e` 下 `ls` glob 失败、`恰好 3 个`会漂、Windows `.cmd` 不能直接执行 | 实测（本仓库 + 技能模板同步修正） |
 | 2026-10-08 | 无产物时发布作业 `exit 1` 把整次运行染红 | §1.4 第 3 条：**无产物不发版也不失败** | 实测（`native-publish` 的 `整理资产` 步骤） |
+| 2026-10-08 | **四条腿全绿，却零产物、零报错**（用户发现「二进制没编出来」） | `troubleshooting` §3「静默跳过」：默认值写在**模块自身**的 `<properties>` 里 → 模块属性赢过父 POM 的 profile 覆盖 → `native.skip` 一直是 `true` | 实测（同一指令：搬到聚合 POM 后本地立刻报 `Cannot run program "native-image"`，证明开关真的生效了） |
+| 2026-10-08 | 首次真编报 9 条警告 + 5 条 Recommendations | `args-cookbook` §0：弃用项该删的删、实验性项要解锁、`-H:Path/-H:Name` 改 `-o`；采纳 G1 / future-defaults / 显式堆；**不采纳** PGO(native) / `-march=native` / 混淆，并写明理由 | 实测（真实构建日志逐条处置） |
+| 2026-10-08 | 想「不装 GraalVM 也验证命令行」 | `args-cookbook` §0.4：把可执行文件换成 `echo`，构建会打印完整命令行 | 实测（本机验出 `-o` 已生效、classpath 正确） |
+| 2026-10-08 | 技能模板 POM 拷过去直接解析失败 | `args-cookbook` §4.5：**模板必须自身良构**——尖括号占位符（三个尖括号包中文）会让整个文件不可解析，改成 `__UPPER_SNAKE__` 并在文件头列含义表；注释里也没有行内注释，别用括号冒充 | 实测（守卫升级为「解析所有 `*.xml`」后当场验证：探针 XML 被点名） |
+| 2026-10-08 | 构建报告该不该只留在本地 | `args-cookbook` §0.3：**报告是交付物**——打成独立发布包 + 同传 CI 制品 + 摘要摘关键数字；包内连带参数文件与元数据 | 实测（AHA：`AHA-Desktop-Native-Report-<版本>-<系统>-<架构>-jdk<JDK>.zip`） |
+| 2026-10-08 | 报告曾「文档说已交付、包里却没有」（issue #29） | `args-cookbook` §0.3：报告**单独成包、与镜像包同族命名**（版本 / 系统 / 架构 / JDK 轴全在名里）；「workdir 里有报告」不等于「发布物里有报告」——回归守卫要查**发布物** | 实测（AHA issue #29：新增报告包 + 产物自证检查报告包存在） |
+| 2026-10-08 | XML 注释里写选项把 POM 改坏（两次） | `troubleshooting` §3 + `args-cookbook` §4.5：注释禁 `--`、禁嵌套；`bin/CheckScripts.py` 加正则守卫（反向验证过） | 实测（守卫当场抓出技能模板里的嵌套注释） |
+| 2026-10-08 | 无法判断 native-image 跑没跑 | 用 `<name>.build_artifacts.txt` 作执行痕迹自证；「构建成功」不算验收 | 实测（本次工作流加了「确认 native-image 真的执行过」一步） |
+| 2026-10-08 | native 二进制启动即 `ClassNotFoundException: <主类>`（issue #26） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 入口的两处反射必须注册**（`launch(String...)` 的 `Class.forName` 与 `LauncherImpl` 的 `getConstructor().newInstance()`）；`main` 改用 `launch(Class, args)`，并用单测 + 产物自证双层守卫 | 实测（AHA：注册 `AhaDesktopApp` 构造器；`NativeImageMetadataTest` 反向验证过） |
+| 2026-10-08 | macOS 腿「构建成功却没上传镜像包」（run 37744912968） | `isolation-and-ci` §3：**`$VAR` 后跟全角字符会被 bash 并进变量名**（`$bin（` → unbound），`set -u` 下退出并**丢掉 outputs**；修法：`${VAR}` + 命中产物立刻写 outputs + `trap 'exit 0' EXIT` | 实测（AHA：macos 镜像包丢失；`CheckScripts.py` 加 YAML 守卫并反向验证） |
+| 2026-10-08 | Windows 腿工具链自证 `PLATFORM: unbound variable` | `isolation-and-ci` §3：runner 自带 VS 环境变量与注入名冲突 → 注入名加前缀 + `${VAR:-}` + 只做记录的步骤对失败加 `|| echo` | 实测（run 37744912968） |
+| 2026-10-08 | native 二进制下一处 `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`（issue #35） | `troubleshooting` §2.2 + `args-cookbook` §3.3：**JavaFX 启动反射是链式的，要按「启动链路」一次补齐**（工具包 → Glass 工厂 → Prism 管线 → 渲染器 / 着色器 → 字体 / 日志 / 辅助）；且**反射 ≠ JNI**，Glass / 字体还需 `jniAccessible` + 全量方法 / 字段 | 推导 + 同类工程对照（AHA：76 条元数据、单测已反向验证；**真机待验证**→`N-05`） |
+| 2026-10-08 | 同类工程的公开配置直接照抄会错（issue #35） | `args-cookbook` §3.3：注册的是**方法签名**不是类名，跨版本后者稳、前者不一定（实测：`loadShader` 实为三参，参考配置写的是两参） | 实测（AHA：JavaFX 25 字节码 `javap` 比对） |
+| 2026-10-08 | D3D shader 资源漏进镜像（issue #35 同批发现） | `args-cookbook` §3.1：**着色器扩展名**要进 `-H:IncludeResources`（D3D `.obj`、ES2 `.frag`/`.vert`）；漏掉不是构建失败，是首次绘制静默坏掉 | 推导 + JavaFX jar 扫描（AHA：262 个 `.obj` + 224 个 `.png`） |
+| 2026-10-08 | 手写反射清单「看起来补完了」但实际不完整（issue #35） | `args-cookbook` §3.5：**审计要覆盖整个运行时依赖，不只框架**——`sqlite-jdbc` / `log4j-core` 自带 native-image 元数据，而 **Jackson 3 不带**，业务层的配置 / 会话记录会反射读写失败；「启动链路」只是反射的一部分 | 实测（AHA：293 条元数据；Jackson 缺口靠依赖 jar 扫描发现） |
+| 2026-10-08 | 想回答「还会不会再报别的类找不到」 | `troubleshooting` §5：**手工清单只能做到「已知缺口已闭」，不能证明完整**；要抄底只能 tracing agent 或真机逐功能跑——把这句话写进交付说明，不要过度承诺 | 自述（据本次用户追问） |
+| 2026-10-08 | 同一仓库要编第二个原生目标（CLI，`aha-cli-native`） | `isolation-and-ci` §6：**逐项复制并改名**（模块 / profile / 参数 / 工作流 / tag / 产物），不要合并成一个工作流；**元数据来源会变**——picocli 用 `picocli-codegen` 注解处理器生成（比手写可靠）、JLine 自带但 `Signals` 的 `sun.misc.Signal` 要补 | 实测（AHA：CLI 管线跑通 `native.skip=true`，picocli 生成 30 个类型，单测守卫生成结果） |
+| 2026-10-08 | 建第二个目标时反查发现第一个目标漏了资源（yaml/yml） | `args-cookbook` §3.1：资源正则要**逐项对源码里的 `getResourceAsStream` 路径**，别只凭扩展名直觉；桌面端漏了 `yaml`/`yml` → 启动即 `CONFIG_NOT_FOUND` | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`；两份桌面参数已修） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
 | 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
 
@@ -202,7 +231,7 @@ metadata:
 | **native-image 能编出二进制**（编译期） | **已踩坑→已验证（部分平台）**：2026-10-08 在 AHA 首次真跑，**linux-x64 与 macos-arm64 编译成功**（win-x64 卡在工具链/`.cmd`，见 `references/troubleshooting.md`）。 |
 | Windows 腿的工具链自证（`native-image.cmd`） | **已踩坑**：bash 不能直接执行 `.cmd`，要 `cmd //c`。修法已合入，**待下一次运行确认** |
 | 容器/依赖清单的「真不变式」 | **已踩坑**：`恰好 N 个` 会随传递依赖漂移（不代表坏）；真正的不变式是「三件套齐全 + 无 0 KB 空壳」 |
-| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论 |
+| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论；已知启动链路的反射 / JNI 清单已按静态分析补齐（issue #26/#35），但**未真机确认** |
 | 首次真编 → 三平台真机可运行 → 在别的项目复用一次 | **部分完成**：首次真编已在 Linux/macOS 达成；剩「三平台真机可运行」与「在别的项目复用一次」（见 metadata.maturity） |
 
 这条「验证状态」是技能的一部分，不是免责声明：原生镜像的参数清单与平台行为随
@@ -232,6 +261,9 @@ GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上�
 - [isolation-and-ci](references/isolation-and-ci.md)：四隔离的落地骨架与 CI 编排
 - [measurement-and-experiments](references/measurement-and-experiments.md)：启动速度与内存的测量口径与实验设计
 - [skill-lifecycle](references/skill-lifecycle.md)：这份技能自身的迭代方法、状态标记与迁移清单
+- **[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)**（姊妹技能）：
+  元数据的**发现 / 登记 / 验证 / 守卫**专精（反射 / JNI / 资源 / 初始化），
+  含三路发现法、来源优先级与常见框架经验库 —— 本技能只管「从 jar 到原生二进制」的工程化
 
 ## 模板资产
 
