@@ -50,7 +50,7 @@ jobs:
           cli_jar=$(ls Dist/lib/aha-cli-*.jar)
           version=$(basename "$cli_jar" .jar)
           version=${version#aha-cli-}
-          target="aha-${version}-cli.zip"
+          target="aha-cli-${version}.zip"
           # 先在临时目录里打，再移进 Dist/：
           #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
           #   * 只列 bin/ lib/ 与三个文档，将来 Dist/ 里再放别的产物也不会被误收。
@@ -61,7 +61,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: Dist/aha-*-cli.zip
+          files: Dist/aha-cli-*.zip
 
   # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
   desktop:

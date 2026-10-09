@@ -237,7 +237,8 @@ jobs:
           test -f Dist/bin/Aha.sh
           test -d Dist/lib
           if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
-          target="Dist/aha-${VERSION}-cli${suffix}.zip"
+          # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
+          target="Dist/aha-cli-${VERSION}${suffix}.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
           (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
@@ -250,7 +251,7 @@ jobs:
           name: Mvn-Artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
             Dist/aha-desktop-${{ needs.build-version.outputs.version }}-${{ matrix.label }}*.zip
-            Dist/aha-${{ needs.build-version.outputs.version }}-cli*.zip
+            Dist/aha-cli-${{ needs.build-version.outputs.version }}*.zip
           if-no-files-found: warn
           retention-days: 14
 
@@ -326,9 +327,9 @@ jobs:
             - 来源 PR：#${{ needs.build-version.outputs.pr }}
 
             ## 包含什么
-            - `aha-desktop-<版本>-<平台>.zip` / `aha-<版本>-cli.zip`：**JDK 25 基线**，
+            - `aha-desktop-<版本>-<平台>.zip` / `aha-cli-<版本>.zip`：**JDK 25 基线**，
               Java 25 字节码，需 JDK 25；
-            - `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-<版本>-cli-jdk27.zip`：**JDK 27**，
+            - `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-cli-<版本>-jdk27.zip`：**JDK 27**，
               Java 27 字节码（major=71），需 JDK 27。
 
             ## 怎么用

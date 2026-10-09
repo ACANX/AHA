@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.12.0
+**文档版本**：v1.13.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -27,6 +27,7 @@
 | v1.10.0 | 2026-10-08 | §3.2 补包内依赖清单（18 个 jar 的分类构成）、不含项（JDK / 测试依赖）与「模块图完整性自证」（并记录 `--validate-modules` 不能当判据的实测） | @ACANX |
 | v1.11.0 | 2026-10-08 | 第 2 节版本号清单更正枚举名与位置：`AppVersion.FALLBACK` → `AppVersion.FALLBACK_VERSION`（`aha-common`，D-10 下移） | @ACANX |
 | v1.12.0 | 2026-10-09 | 第 2 节「构建版本（预发行）」补 `BuildJVMArtifacts.yml`：dev 的 JVM 便携包出包线同样传 `-Daha.build.version=<a.b.c.PPPPP>`（issue #63） | @ACANX |
+| v1.13.0 | 2026-10-09 | §3 与 §3.1 的 CLI 资产名统一为 `aha-cli-<版本>.zip`（前缀 `aha-cli` 与桌面端 `aha-desktop-` 对称）；dev JVM 线的 JDK 27 变体为 `aha-cli-<版本>-jdk27.zip` | @ACANX |
 
 ---
 
@@ -112,7 +113,7 @@
 
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-<版本>-cli.zip` | — |
+| 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-cli-<版本>.zip` | — |
 | 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2）；jpackage 安装包待评估 |
 | 1.x | native-image | jpackage (MSI/DEB/DMG) |
 
@@ -167,7 +168,7 @@
 ```
 
 `Dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
-发布流程将其打包为 `aha-<版本>-cli.zip` 并上传到 GitHub Release；`Dist/` 不入库。
+发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
 > **jpackage 不能交叉编译**，0.2 起的桌面端产物必须分平台构建。

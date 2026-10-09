@@ -25,7 +25,7 @@
 3. **参数会反复改**：这是一份「起点」，不是终稿。
 
 > **JVM 模式自己的 dev 出包线**见 `BuildJVMArtifacts.yml`（`push` → `dev` 产出
-> `aha-<版本>-cli.zip` 与 `aha-desktop-<版本>-<平台>.zip` 的预发行版）——它与本工作流
+> `aha-cli-<版本>.zip` 与 `aha-desktop-<版本>-<平台>.zip` 的预发行版）——它与本工作流
 > **并列**、互不牵连，共用同一套 `a.b.c.PPPPP` 版本规则。该 JVM 线还含一份 **JDK 27 编译产物**
 > （包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的 **JVM 字节码**，与本工作流里用
 > GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。

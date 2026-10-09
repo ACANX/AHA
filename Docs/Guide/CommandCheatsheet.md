@@ -120,8 +120,8 @@ Dist\aha-desktop-native.exe                                     :: 运行
 **dev 分支的 JVM 便携包**由 CI 的 `BuildJVMArtifacts.yml` 在每次合并到 `dev` 后产出，
 挂到发布页（预发行 tag `V<版本>-aha-jvm`），每个平台出 **JDK 25** 与 **JDK 27** 两份：
 
-- `aha-desktop-<版本>-<平台>.zip` / `aha-<版本>-cli.zip`：**JDK 25 基线**（Java 25 字节码，需 JDK 25）；
-- `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-<版本>-cli-jdk27.zip`：**JDK 27**（Java 27 字节码，需 JDK 27）。
+- `aha-desktop-<版本>-<平台>.zip` / `aha-cli-<版本>.zip`：**JDK 25 基线**（Java 25 字节码，需 JDK 25）；
+- `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-cli-<版本>-jdk27.zip`：**JDK 27**（Java 27 字节码，需 JDK 27）。
 
 > 这是**验证 dev 最新合并**用的预发行产物；正式版本仍用 Release 页的 `V<版本号>` 资产。
 
