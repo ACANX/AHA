@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+（暂无）
+
+## [0.1.2] - 2026-10-09
+
 ### 变更
 - **开源许可切换为 GPL-3.0-or-later**：仓库许可由 Apache License 2.0 改为
   **GNU General Public License v3.0 或更高版本**——`LICENSE` 换为 GPLv3 全文，
