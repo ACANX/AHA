@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.23.0
+**文档版本**：v1.24.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -37,6 +37,7 @@
 | v1.21.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（dev 的 JVM 构建线，与 `DesktopNative.yml` / `CliNative.yml` 同构）：`push` 到 `dev` 时构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`），补齐 JVM 模式在 dev 上的产物缺口（issue #63）；§8.1 分层表登记该层 | @ACANX |
 | v1.22.0 | 2026-10-09 | §2 补「JDK 27 编译变体」（`-Dmaven.compiler.release=27`，仅 `BuildJVMArtifacts.yml` 的 jdk27 腿，包名带 `-jdk27`，issue #65）：不改变 JDK 25 基线与正式发版；§8.1 分层表同步补 JDK 轴 | @ACANX |
 | v1.23.0 | 2026-10-09 | §8.1 的「必需检查与审批要求」登记处由 `TODO.md` `G-02` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
+| v1.24.0 | 2026-10-09 | §7 新增「项目版本的单一来源」：权威源为根目录 `version` 文件，机器位置为根 POM 的 `<revision>`（由 `VersionDistribute.py` 写入），子模块写 `${revision}` 继承；一致性由 `ProjectVersion.py --verify` 在 `Gate.yml` 强制（P5 / #97） | @ACANX / CNXNC |
 
 ---
 
@@ -179,6 +180,17 @@ POM 语法必须兼容 Maven 3.9.x：
 模块级参考阈值见 [TestingSpec.md](TestingSpec.md) 第 3 节。
 
 ## 7. 依赖与产物约束
+
+**项目版本的单一来源**：项目自身的版本号以**根目录 `version` 文件**为唯一权威源
+（一行纯文本，如 `0.1.2`）；机器侧只保留根 POM 的 `<properties>/<revision>` 一处，
+由 `Script/Python/VersionDistribute.py` 写入（规范见 `ReleaseProcess.md` §2，操作见
+`VersionBumpGuide.md`）。8 个子模块写 `<parent><version>${revision}</version>` 继承，
+`AppVersion.FALLBACK_VERSION` 与版本解耦（固定 `"dev"`）。五处一致性
+（`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 规则）由
+`python3 .github/Python/ProjectVersion.py --verify` 在 `Gate.yml` 强制校验。
+文档**不得**复制项目版本号（同下「文档不得复制具体版本号」规则）——需要确切版本时看
+`version` 文件或根 POM 的 `<revision>`；历史注记（`@since`、实测数据标题、`CHANGELOG`
+历史段）不受此限。
 
 **版本单一来源**：依赖的确切版本集中在**父 POM 的 `<properties>`**，是唯一来源。
 文档（含 README、设计文档、选型清单）**不得复制具体版本号**，只写主版本线——

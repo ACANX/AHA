@@ -2,7 +2,7 @@
 
 > 待办编号：TD-00016
 > 标题：版本切换收敛为「改一行」——引入 `${revision}` + 单一读取入口 + 一致性校验
-> 状态：☐ 未开始
+> 状态：✅ 已完成（2026-10-09）
 > 跟踪 Issue：父 [#92](https://github.com/ACANX/AHA/issues/92)；子任务 [#93](https://github.com/ACANX/AHA/issues/93)（P1 校验）/ [#94](https://github.com/ACANX/AHA/issues/94)（P2 读取收敛）/ [#95](https://github.com/ACANX/AHA/issues/95)（P3 `${revision}`）/ [#96](https://github.com/ACANX/AHA/issues/96)（P4 分发器）/ [#97](https://github.com/ACANX/AHA/issues/97)（P5 文档）
 > 创建日期：2026-10-09
 > 最后更新：2026-10-09
@@ -12,8 +12,11 @@
 ## 来源
 
 来自 ACANX 的批评与要求：**改版本号本该是一行参数的事**（Spring 项目即如此），
-当前却要手改 **10 处版本号源 + 4 处文档声明**，且清单靠人记——已经漂移过一次
+当前却要手改多处，且清单靠人记——已经漂移过一次
 （`ReleaseProcess.md` 写「8 处 / 六个子模块」，实际 10 处 / 八个；PR #89 修正 §2 时还漏了 §4.2 第 249 行）。
+
+> 本文描述的是**改造前**的状态与目标；落地的最终口径见文末「落地结果」，
+> 以及 `ReleaseProcess.md` §2 / `VersionBumpGuide.md` §2。
 
 ## 根因（如实记录）
 
@@ -259,17 +262,55 @@ jobs:
 
 ## 验收标准
 
-- [ ] 切版本只需改 **1 行**（根目录 `version` 文件），其余由 workflow 分发，无人工改动；
-- [ ] 不存在写死的版本字面量（`AppVersion.FALLBACK_VERSION` 已与版本解耦）；
-- [ ] 版本读取只有 **1 处实现**（`.github/Python/ProjectVersion.py`），四个工作流统一调用；
-- [ ] 一致性校验上线：`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 名
+- [x] 切版本只需改 **1 行**（根目录 `version` 文件），其余由 workflow 分发，无人工改动；
+- [x] 不存在写死的版本字面量（`AppVersion.FALLBACK_VERSION` 已与版本解耦）；
+- [x] 版本读取只有 **1 处实现**（`.github/Python/ProjectVersion.py`），四个工作流统一调用；
+- [x] 一致性校验上线：`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 名
       不一致即 CI 失败；
 - [ ] **VersionBump workflow** 可一键分发并开出 PR（分支名 `chore/bump-<版本>`），
-      且 **PR 上的 checks 被真实触发**（F12）；
-- [ ] 分发脚本**动态扫描 POM**（不硬编码清单），新增模块无需改脚本（F13）；
-- [ ] Maven 4 与 3.9.x 双版本构建通过；原生镜像线产物名正确；
-- [ ] `ReleaseProcess` / `VersionBumpGuide` / `BuildSpec` 口径更新为「1 处」（或「1 处 + 一键分发」）；
-- [ ] 切一次真实版本（如 0.1.3）验证全链路，并把结果回填本文件。
+      且 **PR 上的 checks 被真实触发**（F12）——分发与开 PR 已验证（#106）；
+      下游 checks 的**自动触发**依赖 `secrets.VERSION_BUMP_TOKEN`，尚未配置；
+- [x] 分发脚本**动态扫描 POM**（不硬编码清单），新增模块无需改脚本（F13）；
+- [x] Maven 4 与 3.9.x 双版本构建通过；原生镜像线产物名正确；
+- [x] `ReleaseProcess` / `VersionBumpGuide` / `BuildSpec` 口径更新为「1 处」（或「1 处 + 一键分发」）；
+- [x] 切一次真实版本（0.1.1 → 0.1.2）验证全链路，并把结果回填本文件。
+
+## 落地结果（回填，2026-10-09）
+
+### 各阶段与 PR
+
+| 阶段 | Issue | PR | 状态 |
+|---|---|---|---|
+| P1 一致性校验 | #93 | #98 | ✅ 已合并 |
+| P2 读取收敛 | #94 | #99 | ✅ 已合并 |
+| P3 `${revision}` + flatten | #95 | #100 | ✅ 已合并 |
+| P4 分发器（`version` + `VersionBump` + 脚本） | #96 | #103（落地）/ #105（修断言范围） | ✅ 已合并 |
+| P5 文档与规范同步 | #97 | 本次 PR | ✅ 本次交付 |
+
+### §F 验证矩阵实测
+
+| # | 验证点 | 结果 |
+|---|---|---|
+| F1 | Maven 4（wrapper）完整构建 | ✅ `Build` 绿（4 腿） |
+| F2 | Maven 3.9.x（`Compat.yml`） | ✅ `Compat` 绿 |
+| F3 | 资源过滤 | ✅ `version.properties` 得到实体版本（`Gate` 的 `--verify` 覆盖） |
+| F4 | 产物名 | ✅ `0.1.2` 出包线产物名带版本 |
+| F5 | install/deploy 的 POM 已解析 | ⚠️ 无自动验证（需本地 `.m2` 或远端仓库抽查） |
+| F6 | 四个工作流的版本读取 | ✅ 统一走 `ProjectVersion.py --resolve` |
+| F7 | 原生镜像线 | ✅ `DesktopNative` / `CliNative` 产物名正确 |
+| F8 | IDE（IDEA）导入与运行 | ⚠️ 待人工确认（不阻塞） |
+| F9 | `versions:set` 语义 | ✅ 文档改用 `versions:set-property -Dproperty=revision` |
+| F10 | Maven 4 下 flatten 与 consumer POM | ✅ 无报错、无重复产物 |
+| F11 | Maven 4 GA 后移除 flatten 的可行性 | ⏸ 阶段二，待 GA 后实测 |
+| F12 | workflow 开出的 PR 其 checks 被触发 | ⚠️ 需配置 `secrets.VERSION_BUMP_TOKEN`；未配置时退化为 `GITHUB_TOKEN`，PR 的 checks 不会自动触发 |
+| F13 | 分发脚本幂等与防漏 | ✅ 同版本重跑被拒；动态扫描 9 个 POM（下限 9） |
+
+### 真实切换验证
+
+- **0.1.1 → 0.1.2**：由 `VersionBump` workflow 分发并开 PR（#106），CI 全绿后合并 ✓；
+- 期间修掉一个真实缺陷：收尾断言曾**全仓搜旧版本号**，导致历史文档里的旧版本号
+  成片误报（实测 60+ 处）——#105 改为「只动声明行 + 受控自证」；
+- 演练中出现的版本回退（先切到 0.1.1 再升回 0.1.2）已记入 #104 / #106，属人工操作。
 
 ## 关联
 
