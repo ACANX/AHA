@@ -73,14 +73,18 @@
 | `aha --version` / `-V` | 版本 | ✅ |
 
 > **版本号**：`-V` 输出的版本在构建时由 Maven 注入（`AhaCli` 的 `@Command(version=...)`）——
-> 由资源过滤写入 `version.properties`（位于 `aha-common`，CLI 与桌面端共用），运行时读取，
-> **根 `pom.xml` 是唯一来源**。
+> 由资源过滤写入 `version.properties`（位于 `aha-common`，CLI 与桌面端共用），运行时读取。
+> **唯一权威源是仓库根目录的 `version` 文件**；机器位置是根 `pom.xml` 的 `<properties>/<revision>`
+> （由 `Script/Python/VersionDistribute.py` 分发写入，见 [VersionBumpGuide.md](VersionBumpGuide.md)），
+> 子模块写作 `<parent><version>${revision}</version>` 继承。
 > 其中 `version` 是基线版本（如 `0.1.1`）；`build` 是构建版本（如 `0.1.1.00046`），
 > 正式发版与本地构建时与基线相同，**PR 合并到 `dev` 后自动构建的预发行包**会带上构建号。
 > CLI 的启动页与 `/help`、桌面端「关于」都显示构建版本，便于按版本号排查问题（issue #46）。
-> 已发行的版本见 release 页（当前最新为 `0.1.0`，tag `0.1.0`；`dev` 上工作在 `0.1.2`）。
-> 改版本号时**不止根 POM**：六个子模块的 `<parent><version>` 也要同步，
-> 否则构建会成功但产物仍是旧版本号（详见 [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节）。
+> 已发行的版本见 release 页（0.1.0 的 tag 为裸 `0.1.0`，与约定 `V*` 不一致）；`dev` 上工作在
+> `version` 文件所记的版本（`cat version`）。
+> 改版本号只需改 `version` 文件一行（或在 Actions 里触发 `VersionBump` workflow），
+> **不要**逐个改 POM——子模块已统一写 `${revision}`，其余位置由分发脚本负责
+> （详见 [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节）。
 
 ---
 

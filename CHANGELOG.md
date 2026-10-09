@@ -16,6 +16,15 @@
   `pom.xml` 的 `<licenses>`、`README.md` 的徐章与许可段、`.agents/skills/*/SKILL.md`
   的 `license` 字段（10 处）同步；`mvnw` / `mvnw.cmd` / `.mvn/wrapper/` 保持原样
   （Maven Wrapper 的官方脚本，许可归 Apache 软件基金会）。
+- **版本切换收敛为「改一行」（TD-00016 / issue #92~#97）**：版本号的唯一权威源改为仓库根目录的
+  `version` 文件；机器侧只保留根 `pom.xml` 的 `<properties>/<revision>`（8 个子模块写
+  `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION` 与版本解耦
+  （固定 `"dev"`）。新增 `Script/Python/VersionDistribute.py` 与 `VersionBump` workflow
+  （`workflow_dispatch`），一键把 `version` 分发到 POM 与文档声明并开 PR（分支 `chore/bump-<版本>`）；
+  新增 `.github/Python/ProjectVersion.py` 作为版本读取的**唯一入口**，并提供 `--verify` 五处一致性
+  校验（`version` 文件 / `<revision>` / `version.properties` / 产物名 / `Build.yml` 的 tag 规则，
+  已接入 `Gate.yml`）。文档口径同步：版本切换不再需要手改多处（见 `ReleaseProcess.md` §2 与
+  `VersionBumpGuide.md`）。
 
 ### 新增
 - **供应商内五档模型（issue #67）**：一个供应商可配置 `Ultra` / `Pro` / `Standard` /
