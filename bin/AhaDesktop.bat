@@ -70,10 +70,11 @@ set "LIB=%BUNDLE%\lib"
 
 :launch
 rem --add-opens below serves the render diagnostics (issue #48): reading the font
-rem factory (com.sun.javafx.font.PrismFontFactory) needs reflection, and the
-rem module system blocks it unless that package is opened. Harmless otherwise.
+rem factory (com.sun.javafx.font.PrismFontFactory) needs reflection. The target
+rem must name the app's module: launched via --module it is a named module, so
+rem ALL-UNNAMED grants it nothing. Harmless otherwise.
 "%JAVA%" --enable-native-access=org.xerial.sqlitejdbc ^
-    --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED ^
+    --add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop ^
     --module-path "%LIB%" ^
     --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.AhaDesktopApp %*
 

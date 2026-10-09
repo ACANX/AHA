@@ -1,6 +1,6 @@
 # 原生渲染诊断操作手册
 
-**文档版本**：v1.0.0
+**文档版本**：v1.0.1
 **状态**：冻结
 **生效日期**：2026-10-09
 **最后更新**：2026-10-09
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-09 | 初始版本：原生包与 JVM 模式各跑一次、收集渲染诊断并对照的步骤（issue #48） | @ACANX / CNXNC |
+| v1.0.1 | 2026-10-09 | 更正 JVM 模式的 `--add-opens` 目标：必须写应用具名模块 `com.acanx.module.aha.desktop`，`ALL-UNNAMED` 对 `--module` 启动无效（issue #48） | @ACANX / CNXNC |
 
 ---
 
@@ -87,9 +88,12 @@ bin\AhaDesktop.bat
 同样等窗口出现、跑十几秒再关闭；日志在**仓库根**的 `Log\AHA.log`。
 
 > `AhaDesktop.bat` / `AhaDesktop.sh` 已经带上
-> `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`。
+> `--add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop`。
 > 少了它，`com.sun.javafx.font` 这个**非导出包**会被模块系统拒绝，
 > 「字体实现工厂」一项只会打「不可用」，对照就**少一条关键证据**。
+>
+> 目标必须写**应用的具名模块**：桌面端以 `--module` 启动，应用是具名模块，
+> 写 `ALL-UNNAMED` 不会给它任何授权（真机上会打「不可用」）。
 
 ### 4.3 收集
 
@@ -153,8 +157,9 @@ Loaded library /libprism_es2.so from resource
 （诊断是 INFO 级）。
 
 **`字体实现工厂=不可用（InaccessibleObjectException）`？**
-JVM 模式下没带 `--add-opens`。用仓库的 `bin\AhaDesktop.bat`（已带），或自行加上
-`--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`。
+JVM 模式下没带 `--add-opens`，或目标写错。用仓库的 `bin\AhaDesktop.bat`（已带），或自行加上
+`--add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop`
+——目标必须是**应用的具名模块**；写 `ALL-UNNAMED` 对以 `--module` 启动的具名模块无效。
 原生包里没有这层模块限制，正常能打出来。
 
 **日志文件很大？**
