@@ -18,7 +18,7 @@
 
 ## 一、仓库设置类（需管理员在 GitHub 上操作）
 
-### G-02 分支规则集整改 ☐
+### ~~G-02 分支规则集整改~~ ✗ **不做**（2026-10-10 决定）
 
 **现状（本次 API 实查，`2026-10-09`）**：
 
@@ -38,7 +38,7 @@
 
 `Gate.yml` 的 `schedule`（每周一 03:00 UTC）只在默认分支生效。**验收**：合入后先 `workflow_dispatch` 手动跑通一次，随后 Actions 出现 `schedule` 触发的运行记录。
 
-### G-05 关闭 squash 与 rebase 合并 ☐
+### ~~G-05 关闭 squash 与 rebase 合并~~ ✗ **不做**（2026-10-10 决定）
 
 **现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。
 `dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。
