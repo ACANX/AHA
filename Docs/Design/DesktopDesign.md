@@ -25,7 +25,7 @@
 | v1.9.0 | 2026-10-08 | 新增 §9「标志与窗口图标」：Logo.svg → PNG 的生成器与三条硬要求（写死像素尺寸 / 视口比窗口矮 / 按 alpha 自检包围盒），并记下「只验尺寸格式会放过裁切图」的教训 | @ACANX |
 | v1.10.0 | 2026-10-08 | 新增 §10「对话与供应商配置」：对话内核可测而界面薄（ChatController/ChatView/ToolSummary/DesktopToolApprover）、供应商为可编辑表单（含校验与保留未涉及字段）、以及 Windows 真机验证记录 | @ACANX |
 | v1.11.0 | 2026-10-08 | §10.2 供应商配置补充：绿灯标识（启用项与其模型）、打开即选中启用项（纯函数 + 测试）、按预设新建与可编辑模型下拉 | @ACANX |
-| v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（含 dev 预发行线 `build-mvn-artifact` / `build-publish`，issue #63） | @ACANX |
+| v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（dev 预发行线在独立工作流 `BuildJVMArtifacts.yml`，issue #63） | @ACANX |
 
 ---
 
@@ -223,9 +223,10 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 旧目录刻意不删（可能正被运行中的实例占用）。
 
 **与 CI 的关系**：`Build.yml` 每次 push / PR 只做编译与单元测试（见 [BuildSpec.md](../DevSpec/BuildSpec.md)
-第 8 节）；另有一条**与 `tag` 平级**的 dev 构建线——`push` 到 `dev` 时由 `build-mvn-artifact` /
-`build-publish` 用**同一条命令**产出便携包并发布预发行版（issue #63）。正式发版仍由 `Release.yml`
-在 `V*` tag 上产出。原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
+第 8 节）；另有一条**独立的 dev JVM 构建线**（`BuildJVMArtifacts.yml`，与 `DesktopNative.yml` /
+`CliNative.yml` 同构）——`push` 到 `dev` 时由 `build-mvn-artifact` / `build-publish` 用**同一条命令**
+产出便携包并发布预发行版（issue #63）。正式发版仍由 `Release.yml` 在 `V*` tag 上产出。
+原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
 （见 [DesktopNativeDesign.md](DesktopNativeDesign.md)），不在本节范围内。
 
 ## 6. 线程模型（0.2 实装，2026-10-08）
