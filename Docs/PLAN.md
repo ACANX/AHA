@@ -278,7 +278,7 @@ git switch -c dependa && git push -u origin dependa
 `CHANGELOG.md` 的发布日期已同步由 `2026-10-06` 更正为 `2026-10-07`。
 
 **0.1.1 待执行**：开 `release/0.1.1` 分支 → 合入 `main` → 由 `Build.yml` 的 tag 作业在 main
-构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-0.1.1-cli.zip`
+构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-cli-0.1.1.zip`
 与各平台桌面端包（`aha-desktop-0.1.1-<系统>-<架构>.zip`）。版本号改动清单见
 [ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
 

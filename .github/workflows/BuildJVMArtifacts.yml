@@ -187,7 +187,12 @@ jobs:
           set -uo pipefail
           f=$(find aha-common/target/classes -name '*.class' | head -n1 || true)
           if [ -z "$f" ]; then echo "::error::找不到 class 文件，无法自证"; exit 1; fi
-          major=$(od -An -tu1 -j 6 -N 2 "$f" | awk '{print $1 * 256 + $2}')
+          # 只截字节、不做偏移：od 分 GNU（Linux）与 BSD（macOS）两派，`-j`/`-N` 的
+          # 行为并不一致——macOS 上会多吐字段，把 awk 的结果变成两行，比较必然失败。
+          # 这里先用 head/tail 截出 major 的两个字节，再用两端一致的 `-A n -t x1`
+          # 取十六进制，最后交给 shell 换算，彻底绕开 od 的实现差异。
+          hex=$(head -c 8 "$f" | tail -c 2 | od -A n -t x1 | tr -d ' \n')
+          major=$((16#${hex}))
           if [ "${JDK}" = "27" ]; then expect=71; else expect=69; fi
           echo "样本：${f}  major=${major}  期望=${expect}"
           if [ "${major}" != "${expect}" ]; then
@@ -213,7 +218,9 @@ jobs:
           fi
           # JDK 25 保持原名（不带 JDK 段），JDK 27 加 -jdk27 区分两类产物。
           if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
-          target="Dist/aha-desktop-${VERSION}${suffix}-${LABEL}.zip"
+          # 命名序：<版本>-<平台>-<JDK>，JDK 段一律放最后，与原生线
+          # （AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip）保持一致，便于按平台归堆取件。
+          target="Dist/aha-desktop-${VERSION}-${LABEL}${suffix}.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c 'lib/javafx' || true)
@@ -230,7 +237,8 @@ jobs:
           test -f Dist/bin/Aha.sh
           test -d Dist/lib
           if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
-          target="Dist/aha-${VERSION}${suffix}-cli.zip"
+          # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
+          target="Dist/aha-cli-${VERSION}${suffix}.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
           (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
@@ -242,8 +250,8 @@ jobs:
           # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
           name: Mvn-Artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
-            Dist/aha-desktop-${{ needs.build-version.outputs.version }}*-${{ matrix.label }}.zip
-            Dist/aha-${{ needs.build-version.outputs.version }}*-cli.zip
+            Dist/aha-desktop-${{ needs.build-version.outputs.version }}-${{ matrix.label }}*.zip
+            Dist/aha-cli-${{ needs.build-version.outputs.version }}*.zip
           if-no-files-found: warn
           retention-days: 14
 
@@ -319,9 +327,9 @@ jobs:
             - 来源 PR：#${{ needs.build-version.outputs.pr }}
 
             ## 包含什么
-            - `aha-desktop-<版本>-<平台>.zip` / `aha-<版本>-cli.zip`：**JDK 25 基线**，
+            - `aha-desktop-<版本>-<平台>.zip` / `aha-cli-<版本>.zip`：**JDK 25 基线**，
               Java 25 字节码，需 JDK 25；
-            - `aha-desktop-<版本>-jdk27-<平台>.zip` / `aha-<版本>-jdk27-cli.zip`：**JDK 27**，
+            - `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-cli-<版本>-jdk27.zip`：**JDK 27**，
               Java 27 字节码（major=71），需 JDK 27。
 
             ## 怎么用
