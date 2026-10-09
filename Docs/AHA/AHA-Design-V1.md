@@ -337,10 +337,13 @@ aha/
     │   ├── GettingStarted.md
     │   ├── ReferenceGuide.md
     │   ├── BuildGuide.md
+    │   ├── CommandCheatsheet.md
     │   ├── ConfigurationGuide.md
     │   ├── ProviderSetupGuide.md
     │   ├── ToolUsageGuide.md
     │   ├── ExtensionAuthoringGuide.md
+    │   ├── NativeRenderDiagnosticsGuide.md
+    │   ├── VersionBumpGuide.md
     │   └── TroubleshootingGuide.md
     ├── Diagrams/
         ├── ModuleArchitecture.svg
@@ -483,6 +486,7 @@ aha/
 | v3.66.0 | 2026-10-09 | §4 项目结构的 workflows 树补 `BuildJVMArtifacts.yml`（dev 的 JVM 便携包构建 + 预发行，issue #63）及 `DesktopNative.yml` / `CliNative.yml` | @ACANX |
 | v3.67.0 | 2026-10-09 | 文档结构调整：新增 `Docs/TODO/`（清单 `README.md` + `TD-PPPPP-*.md`）与 `Docs/Troubleshooting/`（`TS-yyyyMM-*.md`）；`Docs/DevLog/` 下 31 篇排查记录**全部 1:1 迁移**到 Troubleshooting，DevLog 重新定位为开发完成记录且命名改为 `yyyyMMdd-HH.md`；目录树与附录 A 同步 | @ACANX / CNXNC |
 | v3.68.0 | 2026-10-09 | 新增 `Archive/`（已废弃历史资料的归档，不参与 CI 检查）并登记入目录树与附录 A；§4 技能索引补 `issue-tracking` 与 `doc-recording`；新增「记录纪律（强制）」（代码与记录同变更内完成） | @ACANX / CNXNC |
+| v3.69.0 | 2026-10-09 | 新增 `Docs/Guide/VersionBumpGuide.md`（版本切换指南：操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案 / 历史教训 / 维护约定）；`ReleaseProcess.md` §2 交叉引用；Guide 索引（目录树 + 附录 A）补齐 `ReferenceGuide` / `CommandCheatsheet` / `NativeRenderDiagnosticsGuide` / `VersionBumpGuide` | @ACANX / CNXNC |
 
 ---
 ```
@@ -3746,11 +3750,15 @@ Closes #123
 | 文档 | 说明 |
 |---|---|
 | `GettingStarted.md` | 快速开始 |
+| `ReferenceGuide.md` | CLI 命令 / 配置 / 环境变量参考 |
 | `BuildGuide.md` | 构建指南（命令、报告、构建期排错） |
+| `CommandCheatsheet.md` | 常用命令速查（编译 / 更新 / 解压 / 启动） |
 | `ConfigurationGuide.md` | 配置指南 |
 | `ProviderSetupGuide.md` | 供应商设置指南 |
 | `ToolUsageGuide.md` | 工具使用指南 |
 | `ExtensionAuthoringGuide.md` | 扩展开发指南 |
+| `NativeRenderDiagnosticsGuide.md` | 原生渲染诊断手册（真机取证步骤与判据） |
+| `VersionBumpGuide.md` | 版本切换指南（操作步骤 / 检查清单 / 常见问题 / 应急预案） |
 | `TroubleshootingGuide.md` | 排错指南 |
 
 ### Docs/Diagrams/

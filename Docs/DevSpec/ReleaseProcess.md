@@ -58,6 +58,9 @@
 
 ## 2. 发布步骤
 
+> 逐步操作、**检查清单**、常见问题快速处置与**应急预案**见
+> [VersionBumpGuide.md](../Guide/VersionBumpGuide.md)；本节只列硬性要求。
+
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
    - 版本号要改 **8 处**（实测：只改根 POM 会 **BUILD SUCCESS 但产物仍是旧版本号**）：
