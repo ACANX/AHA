@@ -10,6 +10,13 @@
 
 ## [Unreleased]
 
+### 变更
+- **开源许可切换为 GPL-3.0-or-later**：仓库许可由 Apache License 2.0 改为
+  **GNU General Public License v3.0 或更高版本**——`LICENSE` 换为 GPLv3 全文，
+  `pom.xml` 的 `<licenses>`、`README.md` 的徐章与许可段、`.agents/skills/*/SKILL.md`
+  的 `license` 字段（10 处）同步；`mvnw` / `mvnw.cmd` / `.mvn/wrapper/` 保持原样
+  （Maven Wrapper 的官方脚本，许可归 Apache 软件基金会）。
+
 ### 新增
 - **供应商内五档模型（issue #67）**：一个供应商可配置 `Ultra` / `Pro` / `Standard` /
   `Flash` / `Fallback` 五档；`Standard` 为唯一必填档，其余可选，缺失时回退 `Standard`。

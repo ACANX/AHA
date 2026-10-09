@@ -1,7 +1,7 @@
 ---
 name: release
 description: 版本发布流程：创建 release 分支、更新版本号与 CHANGELOG、双 Maven 版本验证、打 tag 并触发发布流水线。当需要准备发布、更新变更日志或核对发布清单时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25 与 Maven 4.x/3.9.x；需要对 main/dev 分支与 CI 的写权限；需可访问 Maven Central。
 metadata:
   version: "1.0.0"

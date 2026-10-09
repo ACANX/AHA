@@ -1,7 +1,7 @@
 ---
 name: graalvm-reachability-metadata
 description: 为 GraalVM Native Image 系统性地发现、登记、验证「反射 / JNI / 文件资源 / 运行期初始化」四类可达性元数据，解决「构建成功、一启动就 ClassNotFoundException / MissingReflectionRegistrationError / 缺资源 / UnsatisfiedLinkError」的打地鼠问题。覆盖三条互补的发现路径（字节码静态审计、tracing agent 采集、经验库对照）、元数据来源优先级（依赖自带 > 框架生成 > 手写）、精确到方法签名的登记写法、以及「单测断言 + 构建产物自证 + 反向验证 + 真机走查」的多层守卫。当需要为原生镜像补 reachability-metadata.json / reflect-config.json / jni-config.json / resource-config.json，或产物在运行期报找不到类、找不到方法、找不到资源时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 适用于 GraalVM Native Image（JDK 21+；本技能条目在 GraalVM for JDK 25 上验证）。不涉及 cross-compile —— native-image 不能交叉编译，元数据虽与平台无关，但验证必须在目标平台做。
 metadata:
   version: "0.1.0"

@@ -1,7 +1,7 @@
 ---
 name: doc-recording
 description: 文档记录的时机与写法：待办（Docs/TODO）、开发日志（Docs/DevLog）、问题排查记录（Docs/Troubleshooting）三类——何时写、写什么、命名规则、登记动作与收尾自检。完成一项改动、排查完一个问题、产生一个新待办或决定暂缓某事时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 在仓库根目录执行；本地只需 python3 跑 bin/CheckDocs.py，无需 Maven。
 metadata:
   version: "1.0.0"

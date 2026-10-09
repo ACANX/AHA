@@ -1,7 +1,7 @@
 ---
 name: tool-authoring
 description: 新增内置工具：实现 Tool 接口、注册 ToolProvider、声明 requiredPermission 并添加测试。当需要实现新工具、注册工具提供者或调整工具权限时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；工具实现位于 aha-tool 模块；必须通过 JPMS provides 与 META-INF/services 双路注册。
 metadata:
   version: "1.0.0"
