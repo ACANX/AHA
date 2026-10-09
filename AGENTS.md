@@ -105,31 +105,41 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8.1 节。
 
-### 待人工执行的动作必须留痕
+### ⛔ `Docs/TODO.md` 已冻结（强制）
 
-凡是**自动化做不到、必须由人完成**才能收口的事项——推送提交、仓库 / 分支保护设置、
-平台侧配置、需要外部环境的验收——一律登记到
-[TODO.md](Docs/TODO.md) 第 11 节（`G-xx`），写明**验收标准**（怎么算做完），
-并在 [PLAN.md](Docs/PLAN.md) 的阻塞项中交叉引用。
+**不得自动往 [TODO.md](Docs/TODO.md) 写入内容**，除非 ACANX **主动要求**。
+该文件与 [PLAN.md](Docs/PLAN.md)、[Dbsx.txt](Docs/Dbsx.txt) 一并转为**只读历史记录**：
+保留既有内容与索引，新的待办、进展与状态**不再写进去**。
+
+新的遗留事项一律走下面两条路径，不再进 `TODO.md`。
+
+### 遗留事项一律开 Issue 跟踪（强制）
+
+凡是**本次未能闭环**的问题（查不动、需外部环境、需后续迭代）、**需要拍板**的取舍项、
+以及**自动化做不到、必须由人完成**才能收口的事项（推送提交、仓库 / 分支保护设置、
+平台侧配置、外部环境验收），一律在仓库 Issue 区开一条对应 Issue 作为长期跟踪载体，
+写明**来源、现象、背景、待排查方向与验收标准**。
 
 **不得只在对话里交代。** 对话会滚走：漏掉之后既没有闭环，也无从判断「到底做过没有」，
-事后连责任边界都说不清。同理，需要拍板的取舍项记在第 7 节并排优先级。
-
-排障 / 事故类事项另有留痕去处：写一篇 [Docs/DevLog/](Docs/DevLog/) 下的
-`DevLog-YYYYmmdd-HH.md`，必备「背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 /
-涉及文件清单」五个小节，并在 `TODO.md` 的相关条目里交叉引用（见 `DocumentationSpec.md` §4）。
-
-### 未闭环问题必须开 Issue 长期跟踪
-
-凡是**本次未能闭环**的问题（查不动、需外部环境、需后续迭代），一律在仓库
-Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景、待排查方向与**验收标准**；
-`TODO.md` 只保留索引（`N-xx` 指向 Issue 编号），不再作为唯一记录。
+事后连责任边界都说不清。判定标准：一个遗留问题如果**不适合下一轮立即动手**，
+就应该是一条 Issue。写法与命令见技能
+[issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
 
 **理由**：`TODO.md` 定位是「暂存区」，条目消化完即标记废弃或删除，长期问题放进去
 会被后续条目淹没而遗忘；Issue 有编号、状态、可被引用与检索，才能让「直到解决」有闭环。
-判定标准：一个遗留问题如果**不适合下一轮立即动手**，就应该是一条 Issue，而不是一条待办。
 
-实例：#48（原生桌面端字体渲染与 JVM 模式不一致，由 #44 遗留）。
+实例：遗留事项总览 #86（并逐条拆分到 #72~#85）。
+
+### 排障 / 事故类事项的留痕
+
+排障 / 事故类事项写一篇 [Docs/DevLog/](Docs/DevLog/) 下的 `DevLog-YYYYmmdd-HH.md`，
+必备「背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单」五个小节
+（见 `DocumentationSpec.md` §4）。**不再**要求回写 `TODO.md`；需要长期跟踪时另开 Issue。
+
+### 「做不到 / 已暂缓」的结论去哪
+
+`Docs/PLAN.md` 只追加**结论与依据**（期望是什么、试过什么、证据是什么、为什么受阻、
+将来在什么前提下可以再做），不追加待办；待办一律是 Issue。
 
 ## 模块结构
 
@@ -210,9 +220,14 @@ Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景�
 
 ## 待办与计划
 
-- [TODO.md](Docs/TODO.md) - 待办与调整项（暂存区）
-- [DevLog/](Docs/DevLog/) - 排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
-- [PLAN.md](Docs/PLAN.md) - 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据
+> **`TODO.md` / `PLAN.md` / `Dbsx.txt` 均已冻结为只读历史**：新的待办与进展一律走
+> GitHub Issue（总览 #86），不再写入这三个文件。
+
+- **GitHub Issue** — 遗留事项、待决策项、需人工 / 平台执行的事项（总览 #86）
+- [TODO.md](Docs/TODO.md) — 历史待办与调整项（冻结，仅供追溯）
+- [PLAN.md](Docs/PLAN.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）
+- [Dbsx.txt](Docs/Dbsx.txt) — 用户原始待办（冻结）
+- [DevLog/](Docs/DevLog/) — 排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
 
 ## 技能索引
 
@@ -228,6 +243,7 @@ Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景�
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
 | `java-app-graalvm-native-image-compile` | 把 jar 模式程序编成多平台原生镜像（隔离、构建、CI、参数、测量） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
 | `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 资源 / 初始化）：发现 → 登记 → 验证 → 守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
+| `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
 
 ## 常用命令
 

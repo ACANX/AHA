@@ -1,6 +1,13 @@
 AHA 待办事项
 ============
 
+【本文件已冻结（2026-10-09）】
+本文件不再追加新内容；除非 ACANX 主动要求，任何 Agent / 流程不得向本文件写入。
+存量条目仅供追溯；新的待办、待决策与需人工 / 平台执行的事项一律改用 GitHub Issue 跟踪：
+  遗留事项总览  https://github.com/ACANX/AHA/issues/86
+  主题拆分      #72~#85
+规则见 AGENTS.md 与技能 .agents/skills/issue-tracking/SKILL.md。
+
 （由用户于 Windows 终端提交，逐条保留原文）
 
 状态标记：
