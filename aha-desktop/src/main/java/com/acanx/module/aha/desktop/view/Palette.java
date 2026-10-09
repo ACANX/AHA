@@ -180,11 +180,36 @@ public final class Palette {
         CONTROL_INNER = "#FFFFFF";
     }
 
+    /**
+     * 对话框（{@code Dialog} / {@code Alert}）场景根的样式。
+     *
+     * <p>比 {@link #theme()} 多一条**显式背景**：{@code DialogPane} 的底色在 modena 里来自规则
+     * {@code .dialog-pane { -fx-background-color: -fx-background; }}——那是一次 looked-up color
+     * 查表。原生镜像下出现过该查表未生效、对话框露出深色底的现象（issue #49），所以这里不再
+     * 依赖规则，直接把底色写进内联样式。</p>
+     *
+     * @return 内联样式
+     */
+    public static String dialogTheme() {
+        return theme() + "-fx-background-color: " + BASE + ";";
+    }
+
     private static String buildThemeStyle() {
         return "-fx-base: " + BASE + ";"
                 + "-fx-background: " + BASE + ";"
                 + "-fx-control-inner-background: " + CONTROL_INNER + ";"
+                + "-fx-control-inner-background-alt: " + CONTROL_INNER + ";"
+                // 以下几条把文字色**显式钉死**，不再依赖 modena 的
+                // ladder(-fx-base, 亮 45% / 暗 46%) 推导：原生镜像下出现过
+                // 「底色已换、文字仍按旧底色推导」的混合状态（issue #49）。
+                + "-fx-text-base-color: " + FOREGROUND + ";"
                 + "-fx-text-background-color: " + FOREGROUND + ";"
+                + "-fx-focused-text-base-color: " + FOREGROUND + ";"
+                + "-fx-mark-color: " + FOREGROUND + ";"
+                + "-fx-focused-mark-color: " + FOREGROUND + ";"
+                + "-fx-selection-bar: " + FOCUS_BORDER + ";"
+                + "-fx-selection-bar-non-focused: " + BORDER + ";"
+                + "-fx-selection-bar-text: " + FOREGROUND + ";"
                 + "-fx-accent: " + FOCUS_BORDER + ";";
     }
 }

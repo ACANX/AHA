@@ -139,6 +139,15 @@
   每次按当前色表现算；`applyTheme` 逐个节点异常隔离（一个失败不中断整屏重刷）；搜索框、输入框、
   会话单元格、菜单栏、中栏滚动区改为显式套主题。守卫 `PaletteTest` 新增一条，
   钉住「切换后样式串立即反映新色表」。详见 `Docs/DevLog/DevLog-20261009-09.md`。
+- **原生桌面镜像主题残留的第二轮修复（issue #49）**：上一轮合入后真机仍报「暗色下左栏文字深色、
+  亮色下供应商对话框底色深色」。经 build-report 核对（`modena.css` 已随镜像打包）与 JVM 探针
+  验证（`Label` / `Button` / `Menu` / `DialogPane` 两套主题下均正确）后确认：问题只在原生镜像
+  对 **looked-up color 查表 / `ladder()` 推导**的不可靠上。修法：`Palette.theme()` 显式钉死
+  `-fx-text-base-color` 等文字类颜色（不再依赖 `ladder(-fx-base)`）；新增 `Palette.dialogTheme()`
+  给对话框显式底色（不再依赖 `.dialog-pane` 的 `-fx-background` 查表），7 个对话框统一改用；
+  `applyTheme` 增加主题诊断日志，真机跑一次即可判断「色表没换」还是「节点没刷」。
+  另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
+  `PaletteTest` 新增两条守卫。详见 `Docs/DevLog/DevLog-20261009-11.md`。
 - **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
   ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
   改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，

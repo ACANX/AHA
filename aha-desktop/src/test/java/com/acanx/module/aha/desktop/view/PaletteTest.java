@@ -73,6 +73,31 @@ class PaletteTest {
     }
 
     @Test
+    void themeStylePinsTextColorsInsteadOfRelyingOnLadderLookup() {
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.theme())
+                .as("文字色必须显式钉死：不能依赖 modena 的 ladder(-fx-base) 推导")
+                .contains("-fx-text-base-color: #E4E4E4")
+                .contains("-fx-text-background-color: #E4E4E4");
+
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.theme())
+                .contains("-fx-text-base-color: #1F1F1F")
+                .contains("-fx-text-background-color: #1F1F1F");
+    }
+
+    @Test
+    void dialogThemeCarriesAnExplicitBackground() {
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.dialogTheme())
+                .as("对话框不能再依赖 .dialog-pane 的 -fx-background 查表")
+                .contains("-fx-background-color: #F4F4F4");
+
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.dialogTheme()).contains("-fx-background-color: #1E1E1E");
+    }
+
+    @Test
     void toolKindMapsToSemanticColorInEitherTheme() {
         Palette.setTheme(Theme.DARK);
         assertThat(Palette.forToolKind(ToolKind.READ)).isEqualTo(Palette.READ);
