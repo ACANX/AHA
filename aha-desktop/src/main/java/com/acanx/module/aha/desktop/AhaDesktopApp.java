@@ -91,7 +91,7 @@ public final class AhaDesktopApp extends Application {
         AhaBootstrap.Result result = AhaBootstrap.boot(configFile);
         boot = result;
         LOG.info("AHA Desktop 启动：版本 {}，JVM {}，配置 {}，日志级别 {}",
-                AppVersion.version(), Runtime.version(),
+                AppVersion.buildVersion(), Runtime.version(),
                 result.fromFile() ? result.configFile().toString() : "内置默认",
                 result.loggingLevel());
         result.warnings().forEach(LOG::warn);

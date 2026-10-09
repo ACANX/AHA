@@ -559,6 +559,7 @@ desktop 亦未列 tool 依赖。
 | v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
 | v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，**另开 issue #48 长期跟踪**（本文件留索引 `N-24`），新增 `G-13` | @ACANX / CNXNC |
 | v0.42.0 | 2026-10-09 | 真机暴露 issue #49（暗色下搜索框 / 会话列表 / 输入框仍是亮色底，导航按钮 / 菜单栏 / 状态栏文字仍是深色）；修掉两处成因：`Palette.theme()` 去缓存（原生镜像下样式串与色表不同步）、`applyTheme` 逐个节点异常隔离；搜索框 / 输入框 / 会话单元格 / 菜单栏 / 滚动区改为显式套主题；新增 `N-25` | @ACANX / CNXNC |
+| v0.43.0 | 2026-10-09 | 落地 issue #46（预发行版显示带构建号的版本）：根 POM 新增 `aha.build.version`（默认 `${project.version}`）、`version.properties` 增加 `build` 项、`AppVersion` 提供 `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` / `CliNative.yml` 构建时传 `-Daha.build.version=<a.b.c.PPPPP>`；展示点：桌面端「关于」与启动日志、CLI 启动页 / `/help` / `version`；新增 `N-26`、`G-14` | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1325,6 +1326,12 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       修复由 PR #50 提交：`Palette.theme()` 去缓存、逐个节点重刷异常隔离、搜索框 / 输入框 /
       会话单元格 / 菜单栏 / 滚动区显式套主题（见 [DevLog-20261009-09.md](DevLog/DevLog-20261009-09.md)）。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
+- [ ] **N-26**：真机验证预发行包显示带构建号的版本（issue #46）。
+      长期跟踪载体：**issue #46**；本条目只作索引。
+      修复由本次 PR 提交（见 [DevLog-20261009-10.md](DevLog/DevLog-20261009-10.md)）。
+      验收标准：① 桌面端「关于」显示形如 `0.1.1.000XX` 的构建版本；② CLI 启动页顶栏与 `/help`
+      显示同一构建号；③ `aha --version` 同样显示；④ 正式发版（`Release.yml`）仍显示基线版本。
+      依赖：`G-14`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 #46 验证。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
@@ -1374,6 +1381,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-11 | 推送 issue #41 的修复分支并提 PR（`fix/issue-41-native-effect-peers` → `dev`） | 不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-23` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-41-native-effect-peers` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧ 条能看到 `PPSLinearConvolveShadowPeer` | ☐ 未完成 |
 | G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
 | G-13 | 推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ☐ 未完成 |
+| G-14 | 推送 issue #46 的修复分支并提 PR（`feat/issue-46-build-version` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-26` 也拿不到带构建号的包 | ① `git ls-remote origin refs/heads/feat/issue-46-build-version` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 `N-26` 验证构建号显示 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 

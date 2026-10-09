@@ -1101,8 +1101,13 @@ public final class DesktopShell implements ChatView {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("关于 AHA");
         alert.setHeaderText(AppVersion.DISPLAY + " 桌面端");
-        alert.setContentText(configSummary.get() + "\n\n" + System.getProperty("os.name")
-                + " / " + System.getProperty("os.arch") + " · Java " + Runtime.version());
+        // 预发行版把基线版本与构建号都写出：只用基线版本（如 0.1.1）无法定位到具体是哪次构建（issue #46）
+        String versionLine = AppVersion.isPreRelease()
+                ? "版本：" + AppVersion.buildVersion() + "（基线 " + AppVersion.version() + "）"
+                : "版本：" + AppVersion.version();
+        alert.setContentText(versionLine + "\n" + configSummary.get() + "\n\n"
+                + System.getProperty("os.name") + " / " + System.getProperty("os.arch")
+                + " · Java " + Runtime.version());
         alert.showAndWait();
     }
 

@@ -49,6 +49,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
+        <!--
+            构建版本：正式发版等于 project.version；PR 合并到 dev 后由工作流传入
+            -Daha.build.version=<a.b.c.PPPPP>（如 0.1.1.00046），写进 version.properties 的 build 项，
+            供 GUI「关于」与 CLI 启动页 / --version 显示——目的是拿到精确版本便于排查（issue #46）。
+            注意：**不要**在子模块里重复定义，否则模块自身的 <properties> 会赢过父 POM。
+        -->
+        <aha.build.version>${project.version}</aha.build.version>
+
         <javafx.version>25</javafx.version>
         <!--
             OpenJFX 平台分类器。取值由下方 javafx-* profile 按当前操作系统/架构设定，模块里

@@ -75,6 +75,9 @@
 > **版本号**：`-V` 输出的版本在构建时由 Maven 注入（`AhaCli` 的 `@Command(version=...)`）——
 > 由资源过滤写入 `version.properties`（位于 `aha-common`，CLI 与桌面端共用），运行时读取，
 > **根 `pom.xml` 是唯一来源**。
+> 其中 `version` 是基线版本（如 `0.1.1`）；`build` 是构建版本（如 `0.1.1.00046`），
+> 正式发版与本地构建时与基线相同，**PR 合并到 `dev` 后自动构建的预发行包**会带上构建号。
+> CLI 的启动页与 `/help`、桌面端「关于」都显示构建版本，便于按版本号排查问题（issue #46）。
 > 已发行的版本见 release 页（当前最新为 `0.1.0`，tag `0.1.0`；`dev` 上工作在 `0.1.1`）。
 > 改版本号时**不止根 POM**：六个子模块的 `<parent><version>` 也要同步，
 > 否则构建会成功但产物仍是旧版本号（详见 [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节）。
