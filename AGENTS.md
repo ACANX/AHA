@@ -111,6 +111,11 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 该文件与 [PLAN.md](Docs/PLAN.md)、[Dbsx.txt](Docs/Dbsx.txt) 一并转为**只读历史记录**：
 保留既有内容与索引，新的待办、进展与状态**不再写进去**。
 
+待办改为：每项一个 `Docs/TODO/TD-PPPPP-大驼峰英文标题.md`（五位数字从 `00001` 全局自增），
+并在 [`Docs/TODO/README.md`](Docs/TODO/README.md) 的清单里登记一行（状态、跟踪 Issue）：
+状态变化时同变更内更新 TD 文件头部与清单，已完成需在备注写明依据；详规见该文件与
+`DocumentationSpec.md` §4。
+
 新的遗留事项一律走下面两条路径，不再进 `TODO.md`。
 
 ### 遗留事项一律开 Issue 跟踪（强制）
@@ -132,9 +137,13 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 ### 排障 / 事故类事项的留痕
 
-排障 / 事故类事项写一篇 [Docs/DevLog/](Docs/DevLog/) 下的 `DevLog-YYYYmmdd-HH.md`，
-必备「背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单」五个小节
-（见 `DocumentationSpec.md` §4）。**不再**要求回写 `TODO.md`；需要长期跟踪时另开 Issue。
+排障 / 事故类事项写一篇 [Docs/Troubleshooting/](Docs/Troubleshooting/) 下的
+`TS-yyyyMM-大驼峰英文标题.md`（模板：[TS-Template.md](Docs/Troubleshooting/TS-Template.md)），
+必备「现象 / 排查过程（含取证）/ 根因 / 修复 / 验证 / 教训 / 涉及文件」各节
+（见 `DocumentationSpec.md` §4）。需要长期跟踪时另开 Issue。
+
+[Docs/DevLog/](Docs/DevLog/) 只记**已完成事项**的开发记录（做了什么、如何验证、影响面），
+**不写排查过程**；命名 `yyyyMMdd-HH.md`，规范与模板见 [README.md](Docs/DevLog/README.md)。
 
 ### 「做不到 / 已暂缓」的结论去哪
 
@@ -224,10 +233,12 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 > GitHub Issue（总览 #86），不再写入这三个文件。
 
 - **GitHub Issue** — 遗留事项、待决策项、需人工 / 平台执行的事项（总览 #86）
+- [Docs/TODO/README.md](Docs/TODO/README.md) — 待办清单与进度看板；待办详情为同目录的 `TD-PPPPP-*.md`（每轮工作结束前扫一遍）
+- [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyyyMM-标题.md`）
+- [Docs/DevLog/](Docs/DevLog/) — 已完成事项的开发记录（`yyyyMMdd-HH.md`，规范见该目录 README）
 - [TODO.md](Docs/TODO.md) — 历史待办与调整项（冻结，仅供追溯）
 - [PLAN.md](Docs/PLAN.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）
 - [Dbsx.txt](Docs/Dbsx.txt) — 用户原始待办（冻结）
-- [DevLog/](Docs/DevLog/) — 排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
 
 ## 技能索引
 

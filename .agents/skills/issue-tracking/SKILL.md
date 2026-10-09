@@ -34,7 +34,8 @@ metadata:
 | 场景 | 去处 |
 |---|---|
 | 本轮就能改完的缺陷 | 直接改，不必开 Issue |
-| 排障 / 事故复盘 | `Docs/DevLog/DevLog-YYYYmmdd-HH.md`（必备五小节），必要时再开 Issue 长期跟踪 |
+| 排障 / 事故复盘 | `Docs/Troubleshooting/`（`TS-yyyyMM-PascalCaseTitle.md`），必要时再开 Issue 长期跟踪 |
+| 已完成事项的记录 | `Docs/DevLog/`（`yyyyMMdd-HH.md`，规范与模板见该目录 `README.md`） |
 | 「做不到 / 已暂缓」的**结论**及其依据 | `Docs/PLAN.md`（只追加结论，不追加待办） |
 | 已定方案的详细设计 | `Docs/Design/` 对应文档 |
 
