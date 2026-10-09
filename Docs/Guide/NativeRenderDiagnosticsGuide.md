@@ -27,7 +27,7 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 本手册给出可照做的步骤；**拿到数据后怎么判**见第 6 节的判定表。
 
 - 跟踪载体：issue #48
-- 调研过程与证据链：[DevLog-20261009-13.md](../DevLog/DevLog-20261009-13.md)
+- 调研过程与证据链：[TS-202610-NativeFontRenderingDiff.md](../Troubleshooting/TS-202610-NativeFontRenderingDiff.md)
 
 ## 2. 前提
 

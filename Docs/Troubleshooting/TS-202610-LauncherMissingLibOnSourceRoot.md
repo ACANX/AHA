@@ -1,0 +1,76 @@
+# TS-202610-LauncherMissingLibOnSourceRoot：桌面端启动脚本在源码根误报「找不到 lib」
+
+> 类型：排障（启动脚本可用性）
+> 关联：`TODO.md` `D-02`（桌面端独立启动脚本）、`DesktopDesign.md` §5.6
+
+## 1. 背景
+
+在源码仓库根执行 `.\bin\AhaDesktop.bat`：
+
+```
+[ERROR] Module directory not found: "E:\...\AHA\lib"
+[ERROR] Build the distribution first:  mvnw.cmd clean package
+```
+
+但按提示跑 `clean package` 也**永远不会**出现 `<仓库根>\lib`：桌面端的 Maven assembly
+只产出 `Dist/aha-desktop-<版本>-<平台>.zip`，`lib/` 是解压之后才有的。脚本的报错把用户
+引向了一条走不通的路。
+
+## 2. 排障过程与修复链
+
+### 2.1 取证：布局对照
+
+| 脚本的假设 | 实际 |
+|---|---|
+| `<BASE>\lib\aha-desktop-*.jar` 存在 | 源码根没有 `lib/`；`Dist/lib` 是 **CLI** 的产物 |
+| 脚本位于发行包的 `bin/` | 脚本被 git 跟踪在源码根 `bin/`，用户自然在源码根运行 |
+| `clean package` 会产出 `lib/` | `clean package` 只产出 `Dist/aha-desktop-*-<平台>.zip` |
+
+依据：`aha-desktop/src/assembly/dist-desktop.xml` 把 `bin/` + `lib/` 铺进 **zip**；
+只有 CLI 的 assembly 才是解包到 `Dist/`。
+
+### 2.2 修复：脚本识别两种布局
+
+`bin/AhaDesktop.bat` 与 `bin/AhaDesktop.sh` 改为：
+
+1. **发行包布局**：`<BASE>/lib` 内有 `aha-desktop-*.jar` → 原逻辑不变；
+2. **源码检出布局**：没有 `lib/` 但存在 `pom.xml` → 在 `Dist/`（sh 兼容 `Dist/`）找
+   `aha-desktop-<版本>-<平台>.zip`，解压到「zip 名 + 写入时间 + 大小」命名的目录后，
+   以其 `lib/` 作为 JPMS 模块路径启动。
+
+平台选择：bat 优先 `*-win.zip`；sh 用 `uname` 选 `linux[-aarch64]` / `mac[-aarch64]`，
+命中不到再退回任意桌面端包（`[0-9]` 通配排除 `aha-desktop-native-*.zip`）。
+
+关键设计：
+
+- 解压目录名带**时间戳 + 大小**——同版本重建也会落到新目录，**不会被旧解压结果遮蔽**；
+- 旧目录**不删**——可能正被已运行的实例占用（Windows 上删除会失败）；
+- 解压用 JDK 自带的 `jar --extract`，不引入 `unzip` 依赖（JDK 25 本就是前置条件）。
+
+## 3. 最终验证结果
+
+- `python3 bin/CheckScripts.py`：全部脚本通过（`.bat` 纯 ASCII + CRLF，`.sh` LF）。
+- **Windows**：`bin/AhaDesktop.bat` 命中 `Dist\aha-desktop-0.1.1-win.zip`，解压出 18 个 jar
+  （含 `aha-desktop-0.1.1.jar` 与 3 个 `javafx-*-25-win.jar`）并进入启动；
+  第二次运行**跳过**解压（复用同一目录）。
+- **模块图自证**（CI 同款探针）：
+  `java --module-path <解压后的 lib> --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.__CompletenessProbe__`
+  → 只报「找不到主类」，无 `FindException`，模块图完整。
+- **Linux**：以假 `java` / `jar` 注入 `JAVA_HOME` 驱动 `AhaDesktop.sh`，确认按平台选中
+  `aha-desktop-0.1.1-linux.zip`、解压路径与传给 JVM 的参数正确。
+
+## 4. 关键教训
+
+1. **报错里给出的「下一步命令」必须真能到达目标状态。** 原提示让用户 `clean package`，
+   而该命令不会产生脚本要找的 `lib/`——这类「指向死路的提示」比没有提示更糟。
+2. **同一个脚本同时存在于源码与发行包两个位置时，必须显式区分两种布局**，不能只按
+   发行包假设。
+3. **解压 / 缓存目录要带唯一键（时间 + 大小）**，否则「同名版本重建」会被旧产物遮蔽；
+   同时不要删除可能正被占用的旧目录。
+
+## 5. 涉及文件清单
+
+- `bin/AhaDesktop.bat`
+- `bin/AhaDesktop.sh`
+- `Docs/TODO.md`（`D-02` 补记）
+- `Docs/Troubleshooting/TS-202610-LauncherMissingLibOnSourceRoot.md`（本文件）

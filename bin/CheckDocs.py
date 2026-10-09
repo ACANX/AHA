@@ -5,6 +5,7 @@
   1. Markdown 代码围栏是否正确闭合（含外层加长围栏的嵌套场景）
   2. 文档内相对链接是否指向存在的文件（排除代码块内的示例链接）
   3. 文本是否可解码且不含 NUL（防止内容被写坏后静默混进仓库）
+  4. 按约定命名的目录（`Docs/TODO` / `Docs/Troubleshooting` / `Docs/DevLog`）文件名是否符合 `DocumentationSpec.md` §1
 
 用法：
     python3 bin/CheckDocs.py            # 从仓库根执行
@@ -203,6 +204,51 @@ def check_conflict_markers() -> list[str]:
     return problems
 
 
+def check_naming() -> list[str]:
+    """检查按命名规范建立的目录里的文件名（`DocumentationSpec.md` §1）。
+
+    这几条命名规则光写在规范里是不会执行的：`TD-PPPPP-*.md`（待办详情）、
+    `TS-yyyyMM-*.md`（问题排查）、`yyyyMMdd-HH.md`（开发日志）都有固定的机器可判形式，
+    所以在这里变成检查——否则一旦写错就只能靠人偶然发现，而文件名是检索的入口。
+
+    `Archive/` 不参与：归档资料保留原名，且不再维护。
+    """
+    rules = {
+        "Docs/TODO": re.compile(r"^TD-\d{5}-[A-Za-z0-9]+\.md$"),
+        "Docs/Troubleshooting": re.compile(r"^TS-\d{6}-[A-Za-z0-9]+\.md$"),
+        "Docs/DevLog": re.compile(r"^\d{8}-\d{2}\.md$"),
+    }
+    # 目录内允许的固定名（目录说明与模板）
+    allowed = {
+        "Docs/TODO": {"README.md"},
+        "Docs/Troubleshooting": {"README.md", "TS-Template.md"},
+        "Docs/DevLog": {"README.md"},
+    }
+    problems: list[str] = []
+    for rel, pattern in rules.items():
+        directory = ROOT / rel
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.iterdir()):
+            if not path.is_file() or path.name in allowed[rel]:
+                continue
+            if not pattern.fullmatch(path.name):
+                problems.append(f"{rel}/{path.name} 命名不合规（应为 {pattern.pattern}）")
+
+    # 待办编号不允许重复（同一编号只能对应一个待办）
+    td_dir = ROOT / "Docs/TODO"
+    if td_dir.is_dir():
+        seen: dict[str, list[str]] = {}
+        for path in sorted(td_dir.glob("TD-*.md")):
+            matched = re.match(r"^TD-(\d{5})-", path.name)
+            if matched:
+                seen.setdefault(matched.group(1), []).append(path.name)
+        for number, names in sorted(seen.items()):
+            if len(names) > 1:
+                problems.append(f"Docs/TODO/ 编号 TD-{number} 重复：{'、'.join(names)}")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 文档一致性检查")
     parser.add_argument("--verbose", action="store_true", help="输出检查详情")
@@ -234,8 +280,14 @@ def main() -> int:
     print("\n".join(f"  ❌ {p}" for p in conflict_problems) if conflict_problems
           else "  ✅ 无残留合并冲突标记")
 
-    if fence_problems or link_problems or conflict_problems:
-        print(f"\n共 {len(fence_problems) + len(link_problems) + len(conflict_problems)} 个问题")
+    naming_problems = check_naming()
+    print("\n[命名规范检查]")
+    print("\n".join(f"  ❌ {p}" for p in naming_problems) if naming_problems
+          else "  ✅ 目录内文件名符合规范")
+
+    total = len(fence_problems) + len(link_problems) + len(conflict_problems) + len(naming_problems)
+    if total:
+        print(f"\n共 {total} 个问题")
         return 1
     print("\n✅ 文档一致性检查通过")
     return 0

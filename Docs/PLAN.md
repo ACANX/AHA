@@ -1,11 +1,24 @@
 # AHA 暂缓与受限事项
 
 **文档版本**：v1.28.0
-**状态**：草稿
+**状态**：冻结
 **生效日期**：2026-10-07
 **最后更新**：2026-10-07
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
+
+---
+
+> ## ⛔ 本文件已冻结（2026-10-09）
+>
+> **不再追加新内容**：除非 ACANX 主动要求，任何 Agent / 流程**不得向本文件写入**。
+>
+> 本文件保留「做不到 / 已决定暂缓 / 仍未做且有阻塞」的**结论与依据**；
+> 新的待办、进展与状态变更一律改用 **GitHub Issue** 跟踪
+> （总览 [#86](https://github.com/ACANX/AHA/issues/86)）。
+>
+> 规则见 [`AGENTS.md`](../AGENTS.md) 与技能
+> [`issue-tracking`](../.agents/skills/issue-tracking/SKILL.md)。
 
 ---
 
@@ -522,7 +535,7 @@ static void install(LoggerContext context, String xml) throws IOException {
 
 - [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
 - [TODO.md](TODO.md)：待办与调整项
-- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
+- [DevLog/](DevLog/)：开发完成事项的记录（`yyyyMMdd-HH.md`）；排查 / 事故复盘见 [Troubleshooting/](Troubleshooting/)（`TS-yyyyMM-*.md`）
 - [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
 - [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
 
