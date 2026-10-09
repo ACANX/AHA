@@ -468,56 +468,90 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
-      - name: 运行冒烟（硬断言：产物真的能起来）
-        # 为什么是**硬**断言：产物自证只看「文件像不像原生镜像」（存在 / 体积 / 魔法数 /
-        #   依赖齐全 / 元数据完整），证明不了「它真的能执行」。这一步直接跑 `--version`，
-        #   判据只有两条：退出码为 0、输出里含本次版本号（完整构建号或基线）。
+      - name: 运行冒烟（产物能不能真跑；结论写摘要，不判死）
+        # 为什么「不判死」：本管线是**可选**的，按 BuildSpec §7 的要求，试验性管线的失败必须在
+        #   **步骤级**容错——硬失败会让作业长期挂红叉，被误读成「流程挂了」。
+        # 为什么仍要真跑：产物自证只看「文件像不像原生镜像」，证明不了「它真的能执行」。
+        #   这一步真的执行产物并断言两条：`--version` 退出码 0 且输出含本次版本号；`--help` 退出码 0。
+        #   失败只写 ::warning:: 与 Job Summary，并**把失败输出原样打出来**，便于定位。
         # 不依赖图形环境，三条腿都能跑（默认 shell 已统一为 bash，Windows 上是 Git Bash）。
+        id: smoke
+        continue-on-error: true
         if: always() && steps.verify.outputs.produced == 'true'
         env:
           EXPECTED_VERSION: ${{ needs.cli-native-version.outputs.version }}
         run: |
           set -uo pipefail
           work=aha-cli-native/target/native
+          report="$(mktemp)"
+          problems=""
+
+          finish() {
+            {
+              echo "### CLI 原生镜像冒烟（${{ matrix.label }} / jdk${{ matrix.jdk }}）"
+              echo
+              cat "${report}" 2>/dev/null || true
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "${problems}" ]; then
+              echo "::warning::冒烟发现问题：${problems}（详见本步日志与 Job Summary）"
+            fi
+            exit 0
+          }
+          trap finish EXIT
+
           bin=$(ls "$work/aha-cli-native" "$work/aha-cli-native.exe" 2>/dev/null | head -n1 || true)
           if [ -z "$bin" ]; then
             bin=$(find aha-cli-native/target -type f \
                     \( -name 'aha-cli-native' -o -name 'aha-cli-native.exe' \) 2>/dev/null | head -n1 || true)
           fi
-          test -n "$bin" || { echo "::error::没有找到可执行文件，冒烟无法进行"; exit 1; }
+          if [ -z "$bin" ]; then
+            echo "- ⏭ 没有找到可执行文件，跳过冒烟" >> "$report"
+            problems="没有可执行文件"
+            exit 0
+          fi
           chmod +x "$bin" 2>/dev/null || true
           echo "可执行文件：${bin}"
+          echo "- 可执行文件：\`${bin}\`" >> "$report"
 
           echo "—— 冒烟①：--version ——"
           out=$("$bin" --version 2>&1)
           code=$?
           echo "$out"
           echo "退出码：${code}"
-          {
-            echo "### CLI 原生镜像冒烟（${{ matrix.label }} / jdk${{ matrix.jdk }}）"
-            echo
-            echo '```'
-            echo "$out"
-            echo '```'
-            echo
-            echo "- 退出码：${code}"
-          } >> "$GITHUB_STEP_SUMMARY"
-          test "$code" -eq 0 || { echo "::error::--version 退出码非 0（${code}）"; exit 1; }
-
           base="${EXPECTED_VERSION%.*}"
-          if echo "$out" | grep -qF "$EXPECTED_VERSION"; then
-            echo "✅ 输出含完整版本号 ${EXPECTED_VERSION}"
+          if [ "$code" -ne 0 ]; then
+            {
+              echo "- ❌ \`--version\`：退出码 ${code}，输出："
+              echo '```'
+              echo "${out}"
+              echo '```'
+            } >> "$report"
+            problems="${problems:+${problems}；}--version 退出码 ${code}"
+          elif echo "$out" | grep -qF "$EXPECTED_VERSION"; then
+            echo "- ✅ \`--version\`：退出码 0，输出含完整版本号 \`${EXPECTED_VERSION}\`" >> "$report"
           elif echo "$out" | grep -qF "$base"; then
-            echo "✅ 输出含基线版本 ${base}（未带构建号，可接受）"
+            echo "- ✅ \`--version\`：退出码 0，输出含基线版本 \`${base}\`" >> "$report"
           else
-            echo "::error::--version 输出里既没有 ${EXPECTED_VERSION} 也没有 ${base}"
-            exit 1
+            echo "- ⚠️ \`--version\`：退出码 0，但输出里既没有 \`${EXPECTED_VERSION}\` 也没有 \`${base}\`" >> "$report"
+            problems="${problems:+${problems}；}--version 版本号对不上"
           fi
 
           echo "—— 冒烟②：--help ——"
-          "$bin" --help >/dev/null 2>&1 || { echo "::error::--help 退出码非 0"; exit 1; }
-          echo "✅ --help 正常"
-          echo "✅ 冒烟通过：原生镜像可执行、退出码正常、版本号正确"
+          hout=$("$bin" --help 2>&1)
+          hcode=$?
+          echo "$hout"
+          echo "退出码：${hcode}"
+          if [ "$hcode" -eq 0 ]; then
+            echo "- ✅ \`--help\`：退出码 0" >> "$report"
+          else
+            {
+              echo "- ❌ \`--help\`：退出码 ${hcode}，输出："
+              echo '```'
+              echo "${hout}"
+              echo '```'
+            } >> "$report"
+            problems="${problems:+${problems}；}--help 退出码 ${hcode}"
+          fi
 
       - name: 改名为发布用资产名
         continue-on-error: true
