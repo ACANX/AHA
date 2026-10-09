@@ -123,6 +123,18 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
+  ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
+  改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，
+  让「跟随系统」在用户切换系统深色 / 浅色皮肤时实时生效。
+  ② **切换到亮色后部分组件仍是暗色**：3 处边框硬编码 `#3A3A3A`、1 处背景硬编码 `#1E1E1E`
+  改为读 `Palette.BORDER` / `Palette.BASE`；常驻的候选弹层（`CompletionPopup`）与会话右键菜单
+  （`ContextMenu`）补上主题重刷（弹层有独立的场景根，不继承主窗口样式）。
+  ③ **暗色下标题文字对比度不足**：右栏「本轮」标题与左右折叠按钮此前未登记主题，
+  改用默认深色文字；现统一走 `themed(...)` 登记。
+  遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决，已另开 **issue #48** 长期跟踪
+  （`Docs/TODO.md` 的 `N-24` 只作索引），需真机对比渲染管线后才能定位。
+  详见 `Docs/DevLog/DevLog-20261009-08.md`。
 - **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
   但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
   com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：

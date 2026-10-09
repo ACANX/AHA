@@ -369,6 +369,10 @@ public final class DesktopShell implements ChatView {
         if (sessionList != null) {
             sessionList.refresh();
         }
+        // 候选弹层是常驻实例（挂在输入框下方），同样要按新配色重刷
+        if (completion != null) {
+            completion.refreshTheme();
+        }
         return resolved;
     }
 
@@ -1106,7 +1110,7 @@ public final class DesktopShell implements ChatView {
         box.setMinWidth(ShellLayout.LEFT_WIDTH);
         box.setMaxWidth(ShellLayout.LEFT_WIDTH);
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
-        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 1 0 0;");
+        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 1 0 0;");
 
         TextField search = new TextField();
         search.setId(SESSION_SEARCH_ID);
@@ -1170,7 +1174,11 @@ public final class DesktopShell implements ChatView {
         exportJson.setOnAction(event -> runOnSelection(id -> onSessionExport.accept(id, "json")));
         MenuItem delete = new MenuItem("删除…");
         delete.setOnAction(event -> askDeleteSession());
-        return new ContextMenu(rename, exportMd, exportJson, new SeparatorMenuItem(), delete);
+        ContextMenu menu = new ContextMenu(rename, exportMd, exportJson,
+                new SeparatorMenuItem(), delete);
+        // 上下文菜单有独立的场景根，不继承主窗口主题；在弹出前套上当前配色
+        menu.setOnShowing(event -> menu.setStyle(Palette.theme()));
+        return menu;
     }
 
     private void runOnSelection(Consumer<String> action) {
@@ -1270,8 +1278,11 @@ public final class DesktopShell implements ChatView {
         box.setPrefWidth(ShellLayout.RIGHT_WIDTH);
         box.setMinWidth(ShellLayout.RIGHT_WIDTH);
         box.setMaxWidth(ShellLayout.RIGHT_WIDTH);
-        themed(box, () -> "-fx-border-color: #3A3A3A; -fx-border-width: 0 0 0 1;");
+        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 0 0 1;");
         Label title = new Label("本轮");
+        // 标题也必须登记主题：它是裸控件，默认文字色在暗色底上对比度不足（issue #44）
+        themed(title, () -> "-fx-text-fill: " + Palette.FOREGROUND
+                + "; -fx-font-size: 12px; -fx-font-weight: bold;");
         box.getChildren().addAll(title, emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
         return box;
     }
@@ -1287,6 +1298,8 @@ public final class DesktopShell implements ChatView {
         leftToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         // 不要拉满整列高度：否则 ‹ 会飘到栏底，看不出它属于哪一栏
         leftToggle.setMaxHeight(Region.USE_PREF_SIZE);
+        themed(leftToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + ";");
 
         HBox strip = new HBox(leftToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -1307,6 +1320,8 @@ public final class DesktopShell implements ChatView {
         rightToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
         rightToggle.setMaxHeight(Region.USE_PREF_SIZE);
+        themed(rightToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + ";");
 
         HBox strip = new HBox(rightToggle);
         strip.setAlignment(Pos.TOP_CENTER);
@@ -1661,7 +1676,7 @@ public final class DesktopShell implements ChatView {
      * @return 样式
      */
     private static String cardStyle(boolean success, boolean failed) {
-        String border = failed ? Palette.FAILURE : "#3A3A3A";
+        String border = failed ? Palette.FAILURE : Palette.BORDER;
         return "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";"
                 + "-fx-background-radius: 6;"
                 + "-fx-border-color: " + border + "; -fx-border-radius: 6;"

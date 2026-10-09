@@ -22,6 +22,7 @@ import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.SystemTheme;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopSettings;
 import com.acanx.module.aha.desktop.view.LogPanel;
@@ -167,6 +168,15 @@ public final class AhaDesktopApp extends Application {
             settings.save();
             shell.appendNotice("主题已切换到「" + next.label() + "」"
                     + (next == Theme.SYSTEM ? "（生效：" + resolved.label() + "）" : "") + "。");
+        });
+
+        // 「跟随系统」时，用户在系统设置里切换深色 / 浅色皮肤要实时跟上（issue #44）。
+        // 回调在界面线程触发；只有主题仍处于「跟随系统」时才应用，避免覆盖用户的手动选择。
+        SystemTheme.onColorSchemeChanged(() -> {
+            if (settings.theme() == Theme.SYSTEM) {
+                Theme resolved = shell.applyTheme(Theme.SYSTEM);
+                LOG.info("系统配色变化，跟随系统主题生效：{}", resolved.label());
+            }
         });
         shell.onOpenSettings(() -> new SettingsDialog(
                 settings,

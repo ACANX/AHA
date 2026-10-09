@@ -204,7 +204,7 @@ public final class ProviderDialog {
 
         ScrollPane scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.setStyle(Palette.theme() + "-fx-background: #1E1E1E;");
+        scroll.setStyle(Palette.theme() + "-fx-background: " + Palette.BASE + ";");
         VBox root = new VBox(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
         root.setStyle(Palette.theme());
