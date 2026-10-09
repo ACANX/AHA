@@ -117,6 +117,14 @@ Dist\aha-desktop-native.exe                                     :: 运行
 > 原生镜像由 CI 的 `DesktopNative.yml` 按平台产出并挂到发布页，本脚本只负责取件。
 > 自己编需 GraalVM 与 `-Pdesktop-native`，不属于日常流程。
 
+**dev 分支的 JVM 便携包**由 CI 的 `BuildJVMArtifacts.yml` 在每次合并到 `dev` 后产出，
+挂到发布页（预发行 tag `V<版本>-aha-jvm`）：
+
+- `aha-desktop-<版本>-<平台>.zip`：桌面端便携包（需 JDK 25，包内含本平台 OpenJFX）；
+- `aha-<版本>-cli.zip`：CLI 发行包（平台无关）。
+
+> 这是**验证 dev 最新合并**用的预发行产物；正式版本仍用 Release 页的 `V<版本号>` 资产。
+
 ## 5. 日常检查
 
 ```bat

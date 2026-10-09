@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/ACANX/AHA/actions/workflows/Build.yml"><img src="https://github.com/ACANX/AHA/actions/workflows/Build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/ACANX/AHA/actions/workflows/BuildJVMArtifacts.yml"><img src="https://github.com/ACANX/AHA/actions/workflows/BuildJVMArtifacts.yml/badge.svg" alt="Build (dev JVM)"></a>
   <img src="https://img.shields.io/badge/JDK-25%20LTS-blue.svg" alt="JDK 25 LTS">
   <img src="https://img.shields.io/badge/Maven-4.x%20%7C%203.9.x-orange.svg" alt="Maven 4.x / 3.9.x">
   <img src="https://img.shields.io/badge/JPMS-required-green.svg" alt="JPMS">
