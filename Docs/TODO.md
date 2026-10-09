@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.50.0
+**文档版本**：v0.51.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -87,6 +87,7 @@
 | v0.46.0 | 2026-10-09 | 真机（版本 `0.1.1.00054`）确认原生桌面端的启动链路与渲染期元数据已完整：issue **#35**（`QuantumToolkit` 反射）、**#37**（JNI `FindClass`）、**#39**（平台类 JNI 成员）、**#41**（效果 peer）四个 issue 全部修复并关闭（均附验证备注）；同步 `N-16` / `N-23` 为已验证、`G-08` / `G-10` / `G-11` 为已完成 | @ACANX / CNXNC |
 | v0.49.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（issue #63）：dev 的 JVM 便携包出包线（`aha-desktop` + `aha-cli` → 预发行），补齐 JVM 模式在 dev 上没有产物的缺口；`D-08` 复核表述同步更正 | @ACANX |
 | v0.50.0 | 2026-10-09 | 在 `BuildJVMArtifacts.yml` 增加 **JDK 27 编译产物轴**（issue #65）：矩阵扩为「平台 × JDK（25 / 27）」，JDK 27 腿用 `-Dmaven.compiler.release=27` 编出 `-jdk27` 包；新增 `N-27` | @ACANX |
+| v0.51.0 | 2026-10-09 | **例外更新（ACANX 主动要求，本文件虽已冻结）**：`D-04` 结项——UI 测试口径定案（CI 只做冒烟：CLI 硬断言 + Windows GUI 存活检查；完整 UI 测试留给本地 / 真机），见 `TestingSpec.md` §5.2 与 `BuildSpec.md` §10.3；`D-06` / `D-08` / `D-13` 与发行矩阵里的 `jpackage` 表述同步为「已决策跳过」（issue #78 / #80 / #112 / #114） | @ACANX / CNXNC |
 
 ---
 
@@ -280,10 +281,10 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
-| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ◐ 门禁方式已定 | `TestingSpec.md` §1                |
+| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ✅ 已定案（2026-10-09） | `TestingSpec.md` §5.2              |
 | D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
-| D-08 | `jpackage` 不可交叉编译 → CI 需分平台   | 风险     | ✅    | P2     | ◐ 流水线已就位 | `Build.yml`、`DesktopDesign.md` §3 |
-| D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线 / `jpackage`） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
+| D-08 | 打包流水线已就位；`jpackage` 已决策跳过 | 风险     | ✅    | P2     | ✅ 结项（2026-10-09） | `ReleaseProcess.md` §3.3           |
+| D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 | N-04 | 增加 JDK 27 编译分支（对比 Leyden AOT / 原始类型 / GC 对启动与内存的影响），**先只开 Windows**，为 JDK 29 铺路 | 需求 | ✅ | P2 | ◐ 机制已就位，数据待采集 | `aha-desktop-native/pom.xml`（`native-jdk27` profile）、`native-image-args-jdk27.txt`、`DesktopNativeDesign.md` §5 |
 | N-05 | 首次真机验证三条腿的下载产物（双击即用、能开窗、能对话） | 验证 | ☐ | P1 | ☐ 待工作流首跑 | `DesktopNativeDesign.md` §7 N-1 |
@@ -302,7 +303,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 > 注：`GUIDesign.md` §8.1 建议采用「进程内直调 + JavaFX 原生控件」，若最终仍用 FXML，
 > 本条适用；若完全转为代码构建 UI 则本条可降级。
 
-### D-04 ◐ 门禁方式已定（2026-10-08），TestFX 选型与 CI 启用待定
+### D-04 ✅ 已定案（2026-10-09）：CI 只做冒烟，深度 UI 测试留给本地 / 真机
 
 **要定的事**：UI 测试怎么跑、在哪里跑。
 
@@ -312,18 +313,24 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 （`TestingSpec.md` §5.1）——而 CI 的 ubuntu runner 无显示、本机 WSL **连 GTK 都没有**
 （实测 `libgtk-3` 命中数为 0），开成默认只会满地红。
 
-**待定**：
+**定案（2026-10-09）**：
 
-1. 用 TestFX 还是纯 JUnit 驱动？当前冒烟测试是**纯 JUnit**（`Platform.startup` + `runLater`
-   断言 + 轮询等待状态更新），**没有引入任何新依赖**；
-2. 何时在 CI 打开：Linux 需 Xvfb 并装 GTK 依赖，Windows / macOS runner 通常有会话；
-3. 打开的开关应是**独立可选 job**，不进必需检查——否则又是一次「必需检查永久挂起」。
+1. **维持纯 JUnit 驱动**，不引入 TestFX——当前冒烟测试用 `Platform.startup` + `runLater` 断言 +
+   轮询等待状态，零新依赖；TestFX 只在其「真实交互模拟」有明确需求时再评估；
+2. **CI 不做完整 UI 测试**，改做**两层冒烟**（口径见 `BuildSpec.md` §10.3）：
+   - CLI 原生镜像：`--version` 退出码 0 且输出含本次版本号、`--help` 退出码 0（三平台，硬断言）；
+   - 桌面端原生镜像：Windows 腿启动进程、观察 20 秒存活（非阻塞，只证明「能起不崩」）；
+3. 已按「独立可选 job、不进必需检查」落地：两条 native 工作流本就是可选管线，新增的冒烟步骤
+   遵守 `BuildSpec` §7 的「可选管线不得进必需检查 + 步骤级容错」。
 
-**验收标准**：至少一条平台（建议 Windows）在 CI 上**真实跑过**窗口冒烟测试并留下日志。
+**验收标准（口径已调整）**：原定「至少一条平台在 CI 上真实跑过窗口冒烟测试」**不再追求**——
+CI 无 GPU，Prism 回退到软件渲染 / WARP，覆盖不到真实 D3D 路径，跑完整 UI 测试性价比低且结论不可信。
+`AhaDesktopSmokeTest`（JVM 下的真窗口冒烟）继续**只在本地 / 真机**按 `-Daha.ui.tests=true` 运行；
+CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口径见 `TestingSpec.md` §5.2。
 
 ### D-06 ◐ 已决策（2026-10-08），文档待回填
 
-**决策**：**支持承诺只有 Windows + Linux 双平台**；macOS **要求 CI 能打出包**（`jpackage`），
+**决策**：**支持承诺只有 Windows + Linux 双平台**；macOS **要求 CI 能打出包**，
 但**不要求跑测试**——开发资源有限，不在 macOS 上投入测试维护。
 
 **复核（✅ 已核实）**：`DesktopDesign.md` v1.1.0 §2 已改为指向 `GUIDesign.md` 并标注
@@ -334,7 +341,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
 
-### D-08 ◐ 打包流水线已就位（2026-10-08），jpackage 安装包待评估
+### D-08 ✅ 结项（2026-10-09）：打包流水线已就位，jpackage 已决策跳过
 
 **复核（✅ 已核实）**：`Build.yml` 仍无打包 job（dev 的 JVM 便携包已由独立工作流
 `BuildJVMArtifacts.yml` 承担，见 issue #63）；`Release.yml` 仍只上传 `dist.zip`。
@@ -351,8 +358,9 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 `aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住
 且不动物件）。
 
-**残留动作**：`jpackage` 自包含安装包（内置运行时，用户无需自备 JDK）仍需评估——
-`jlink` 受 `sqlite-jdbc`（自动模块）限制，可行路径是非模块化 app image。
+**已决策跳过（2026-10-09）**：`jpackage` 自包含安装包（MSI / DEB / DMG）**不采用**——发行形态最终
+只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，「免装 JDK」由后者覆盖，
+也不必再维护安装器 + 签名 / 公证链路。理由与口径见 `ReleaseProcess.md` §3.3（issue #78 / #112）。
 
 ### F-17 ☐ 新增（2026-10-08）：`-Djavafx.platform=win` 时构建输出 `recursive variable reference: javafx.platform`
 
@@ -465,14 +473,15 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 **复核（✅ 已核实）**：`BuildSpec.md` §7 仍规定「发行包固定为 JPMS 模块路径目录
 （`Dist/bin` + `Dist/lib`）」；native-image 单文件产物与之不兼容。
 
-**残留动作**：定义**发行矩阵**并写入 `BuildSpec.md` §7：
+**已落地（2026-10-09）**：发行矩阵已写入 `BuildSpec.md` §7「发行形态矩阵」，口径见
+`ReleaseProcess.md` §3.3：
 
 | 发行形态                        | 目标用户       | 产物            | 状态      |
 | ------------------------------- | -------------- | --------------- | --------- |
 | JPMS 模块路径目录（`Dist/`）    | 需 JVM、可调优 | `aha-cli-<版本>.zip` | ✅ 已实现 |
 | 桌面端便携包（按平台）          | 需 JDK 25      | `aha-desktop-<版本>-<系统>-<架构>.zip` | ✅ 流水线已就位 |
-| native-image 单文件             | 免 JVM、启动快 | 平台可执行文件  | ☐ 未开工  |
-| `jpackage` 安装包（0.2 桌面端） | 普通用户       | MSI / DEB / DMG | ☐ 未开工  |
+| native-image 单文件             | 免 JVM、启动快 | 平台可执行文件  | ✅ 流水线已就位（试验性，随 `dev` push 出包） |
+| ~~`jpackage` 安装包~~           | —             | —              | ❌ 已决策跳过（2026-10-09） |
 
 ### E-12 ⏸ 待决策（新增条目）
 
