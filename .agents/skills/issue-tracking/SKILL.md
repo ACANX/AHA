@@ -24,7 +24,9 @@ metadata:
 ## 硬性约定
 
 1. **不得把上述内容写进 `Docs/TODO.md`**——除非 ACANX 明确要求。
-   `TODO.md` 已冻结为历史记录，不再是待办的存储位置。
+   `TODO.md` 已冻结为历史记录；待办一律登记到 **`Docs/TODO/`**：
+   建一个 `TD-PPPPP-大驼峰英文标题.md`（五位编号从 `00001` 全局自增），
+   并在 [`Docs/TODO/README.md`](../../../Docs/TODO/README.md) 的清单里加一行（状态 + Issue 编号）。
 2. **不得只在对话里交代**。对话会滚走：漏掉之后既没有闭环，也无从判断「到底做过没有」。
 3. 开 Issue 前先**搜索是否已有同类 Issue**（`gh issue list --search`），避免重复；已有则补充评论而不是新开。
 4. 关闭 Issue **需要 ACANX 授权**；Agent 不自行关闭，除非用户明确要求。
@@ -34,10 +36,15 @@ metadata:
 | 场景 | 去处 |
 |---|---|
 | 本轮就能改完的缺陷 | 直接改，不必开 Issue |
+| 待办清单登记 | `Docs/TODO/`：`TD-PPPPP-*.md`（详情）+ `README.md`（清单与进度） |
 | 排障 / 事故复盘 | `Docs/Troubleshooting/`（`TS-yyyyMM-PascalCaseTitle.md`），必要时再开 Issue 长期跟踪 |
 | 已完成事项的记录 | `Docs/DevLog/`（`yyyyMMdd-HH.md`，规范与模板见该目录 `README.md`） |
 | 「做不到 / 已暂缓」的**结论**及其依据 | `Docs/PLAN.md`（只追加结论，不追加待办） |
+| 已废弃的历史资料 | `Archive/`（保持原名，头部注明「已废弃」） |
 | 已定方案的详细设计 | `Docs/Design/` 对应文档 |
+
+> 三类记录（待办 / 开发日志 / 排查记录）的**写法、时机与验收自检**见技能
+> [doc-recording](../doc-recording/SKILL.md)。
 
 ## 写法
 
