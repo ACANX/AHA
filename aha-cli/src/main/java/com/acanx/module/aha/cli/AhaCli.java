@@ -21,6 +21,7 @@ import picocli.CommandLine.Help;
                 RunCommand.class,
                 ToolCommand.class,
                 ProviderCommand.class,
+                ModelCommand.class,
                 ExtensionCommand.class,
                 ConfigCommand.class,
                 SecretCommand.class,

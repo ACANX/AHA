@@ -95,7 +95,7 @@ public final class InitCommand implements Callable<Integer> {
 
         try {
             createDirectories(home);
-            store.save(new ModelConfig(selected, providers));
+            store.save(new ModelConfig(selected, builtin.defaultTier(), providers));
             restrictPermissions(modelFile);
         } catch (IOException e) {
             System.err.println("[error] 初始化失败: " + Exceptions.message(e));
@@ -127,7 +127,7 @@ public final class InitCommand implements Callable<Integer> {
             String id = ids.get(i);
             ProviderConfig p = providers.get(id);
             System.out.printf("  %d) %-18s %-22s %s%n",
-                    i + 1, id, p.model() == null ? "-" : p.model(), apiKeyPlaceholder(id, p));
+                    i + 1, id, p.effectiveModel(null), apiKeyPlaceholder(id, p));
         }
         System.out.println();
         System.out.printf("请选择默认供应商 [1-%d]（直接回车使用 %s）: ", ids.size(), fallback);
@@ -207,15 +207,8 @@ public final class InitCommand implements Callable<Integer> {
     }
 
     private static ProviderConfig withApiKey(ProviderConfig provider, String key) {
-        return new ProviderConfig(
-                provider.adapter(),
-                provider.baseUrl(),
-                key,
-                provider.model(),
-                provider.timeoutSeconds(),
-                provider.maxRetries(),
-                provider.rateLimit(),
-                provider.extra());
+        // 用 withApiKey 保留档位表 / 默认档等新字段，避免「改一个字段丢掉其余」
+        return provider.withApiKey(key);
     }
 
     /**

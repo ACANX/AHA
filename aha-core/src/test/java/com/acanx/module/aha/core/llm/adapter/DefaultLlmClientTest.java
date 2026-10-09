@@ -72,14 +72,15 @@ class DefaultLlmClientTest {
 
     private MiniHttpServer server;
     private DefaultLlmClient client;
+    private String chatUrl;
 
     @BeforeEach
     void setUp() throws IOException {
         server = new MiniHttpServer();
-        String url = "http://127.0.0.1:" + server.port() + "/v1/chat/completions";
+        chatUrl = "http://127.0.0.1:" + server.port() + "/v1/chat/completions";
         LlmAdapterRegistry registry = new LlmAdapterRegistry();
         registry.register(new OpenAiAdapter());
-        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID, url, "test-key",
+        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID, chatUrl, "test-key",
                 "gpt-4o", 10, 1, new RateLimitConfig(0, 0), Map.of());
         client = new DefaultLlmClient(registry,
                 new LlmConfig("OpenAI", Map.of("OpenAI", provider), null, null));
@@ -179,6 +180,83 @@ class DefaultLlmClientTest {
         } finally {
             other.close();
         }
+    }
+
+    @Test
+    void degradesFromStandardToFallbackTierOnModelNotFound() {
+        server.responder((out, call) -> {
+            if (call == 1) {
+                MiniHttpServer.respond(out, 404, "application/json", "{\"error\":\"model not found\"}");
+            } else {
+                MiniHttpServer.respond(out, 200, "application/json", CHAT_RESPONSE);
+            }
+        });
+        DefaultLlmClient tiered = tieredClient(Map.of(
+                "Standard", "std-model",
+                "Fallback", "fallback-model"), "Standard");
+        try {
+            ChatResponse response = tiered.chat(new ChatRequest("std-model",
+                    List.of(ChatMessage.text(Role.USER, "hi")), List.of(), 0.0, 0, false,
+                    Map.of())).join();
+
+            assertThat(response.choices()).hasSize(1);
+            assertThat(server.callCount()).isEqualTo(2);
+            assertThat(server.bodies().get(1)).contains("\"model\":\"fallback-model\"");
+        } finally {
+            tiered.close();
+        }
+    }
+
+    @Test
+    void degradesToStandardBeforeFallback() {
+        server.responder((out, call) -> {
+            if (call == 1) {
+                MiniHttpServer.respond(out, 404, "application/json", "{\"error\":\"model not found\"}");
+            } else {
+                MiniHttpServer.respond(out, 200, "application/json", CHAT_RESPONSE);
+            }
+        });
+        DefaultLlmClient tiered = tieredClient(Map.of(
+                "Ultra", "ultra-model",
+                "Standard", "std-model",
+                "Fallback", "fallback-model"), "Ultra");
+        try {
+            tiered.chat(new ChatRequest("ultra-model",
+                    List.of(ChatMessage.text(Role.USER, "hi")), List.of(), 0.0, 0, false,
+                    Map.of())).join();
+
+            assertThat(server.bodies().get(1)).contains("\"model\":\"std-model\"");
+        } finally {
+            tiered.close();
+        }
+    }
+
+    @Test
+    void authFailureDoesNotDegradeTier() {
+        server.responder((out, call) ->
+                MiniHttpServer.respond(out, 401, "application/json", "{\"error\":\"unauthorized\"}"));
+        DefaultLlmClient tiered = tieredClient(Map.of(
+                "Standard", "std-model",
+                "Fallback", "fallback-model"), "Standard");
+        try {
+            assertThatThrownBy(() -> tiered.chat(new ChatRequest("std-model",
+                    List.of(ChatMessage.text(Role.USER, "hi")), List.of(), 0.0, 0, false,
+                    Map.of())).join())
+                    .hasRootCauseInstanceOf(LlmException.class);
+            // 401 不降级模型，只尝试一次
+            assertThat(server.callCount()).isEqualTo(1);
+        } finally {
+            tiered.close();
+        }
+    }
+
+    private DefaultLlmClient tieredClient(Map<String, String> models, String defaultTier) {
+        LlmAdapterRegistry registry = new LlmAdapterRegistry();
+        registry.register(new OpenAiAdapter());
+        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID, chatUrl, "test-key",
+                models, defaultTier, models.get("Standard"), 10, 0, new RateLimitConfig(0, 0), Map.of());
+        return new DefaultLlmClient(registry,
+                new LlmConfig("OpenAI", Map.of("OpenAI", provider), null, null));
     }
 
     private static ChatRequest request() {
@@ -304,6 +382,8 @@ class DefaultLlmClientTest {
             return switch (status) {
                 case 200 -> "OK";
                 case 400 -> "Bad Request";
+                case 401 -> "Unauthorized";
+                case 404 -> "Not Found";
                 case 500 -> "Internal Server Error";
                 default -> "Status";
             };

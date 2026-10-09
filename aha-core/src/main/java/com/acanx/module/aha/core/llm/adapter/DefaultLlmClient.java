@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.exception.LlmException;
 import com.acanx.module.aha.common.tool.CancellationToken;
 import com.acanx.module.aha.core.config.ConfigLoader;
 import com.acanx.module.aha.core.config.LlmConfig;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.llm.LlmClient;
 import com.acanx.module.aha.core.llm.LlmProviderAdapter;
@@ -23,8 +24,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -35,7 +40,19 @@ import java.util.concurrent.TimeUnit;
  * 默认 LLM 客户端实现。
  *
  * <p>职责：选择适配器、构建并发送 HTTP 请求、指数退避重试、连接/读取超时、
- * 令牌桶限流、SSE 事件解析、取消传播。</p>
+ * 令牌桶限流、SSE 事件解析、取消传播，以及<b>档位降级重试链</b>（§3.1）。</p>
+ *
+ * <p>降级链单向、有终态、无循环：</p>
+ * <ol>
+ *   <li>同一模型内先按 {@code MaxRetries} 指数退避重试；</li>
+ *   <li>失败后先降 {@link ModelTier#STANDARD}（当前已是则跳过）；</li>
+ *   <li>再降 {@link ModelTier#FALLBACK} 档（已配置时）；</li>
+ *   <li>仍失败走全局 {@code Llm.Fallback}（跨供应商）；</li>
+ *   <li>最终抛<b>原始错误</b>，不被降级过程掩盖。</li>
+ * </ol>
+ *
+ * <p>401/403 与欠费类错误不触发档位降级（换档无用），直接走全局兜底 / 报错；
+ * 流式在首个事件到达后中断不自动重放，避免用户看到重复内容。</p>
  *
  * @since 0.1.0
  */
@@ -44,12 +61,35 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(DefaultLlmClient.class);
 
     private static final String EXT_PROVIDER = "Provider";
+    private static final String EXT_TIER = "Tier";
 
     private final LlmAdapterRegistry registry;
     private final LlmConfig llmConfig;
     private final HttpClient httpClient;
     private final ExecutorService executor;
     private final Map<String, RateLimiter> limiters = new ConcurrentHashMap<>();
+
+    /**
+     * 降级监听器：在档位 / 供应商发生降级时回调，供 CLI / 桌面端给出用户可见提示。
+     *
+     * @since 0.1.0
+     */
+    @FunctionalInterface
+    public interface DegradationListener {
+
+        /**
+         * 降级发生。
+         *
+         * @param fromTier  起始档位名
+         * @param fromModel 起始模型
+         * @param toTier    目标档位名
+         * @param toModel   目标模型
+         * @param reason    原因
+         */
+        void onDegraded(String fromTier, String fromModel, String toTier, String toModel, String reason);
+    }
+
+    private volatile DegradationListener degradationListener;
 
     /**
      * 构造客户端。
@@ -76,6 +116,15 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
         return registry;
     }
 
+    /**
+     * 设置降级监听器。
+     *
+     * @param listener 监听器；{@code null} 时清除
+     */
+    public void setDegradationListener(DegradationListener listener) {
+        this.degradationListener = listener;
+    }
+
     @Override
     public CompletableFuture<ChatResponse> chat(ChatRequest request) {
         return CompletableFuture.supplyAsync(() -> chatSync(request), executor);
@@ -83,48 +132,43 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
 
     @Override
     public void streamChat(ChatRequest request, StreamEventListener listener, CancellationToken token) {
-        ProviderConfig provider = resolveProvider(request);
-        LlmProviderAdapter adapter = resolveAdapter(provider);
-        String url = streamUrl(adapter, provider);
-        String body = adapter.convertRequest(withStream(request, true), provider);
-
-        HttpRequest httpRequest = newRequest(url, adapter.buildHeaders(provider), body, provider);
-        try {
-            LOG.debug("LLM stream -> {} ({})", url, adapter.providerId());
-            HttpResponse<java.util.stream.Stream<String>> response =
-                    httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-            if (response.statusCode() >= 400) {
-                // 服务端返回的具体原因（模型不存在、额度不足、内容审核等）就在响应体里。
-                // 早期只报状态码，导致用户只能看到“HTTP 422”而无从排查。
-                String detail;
-                try (java.util.stream.Stream<String> errLines = response.body()) {
-                    detail = errLines.limit(ERROR_BODY_MAX_LINES)
-                            .collect(java.util.stream.Collectors.joining(" "))
-                            .trim();
-                }
-                throw new LlmException("LLM_HTTP_" + response.statusCode(),
-                        "流式请求失败: HTTP " + response.statusCode() + formatDetail(detail));
-            }
-            Map<Integer, StringBuilder> toolArguments = new LinkedHashMap<>();
-            try (java.util.stream.Stream<String> lines = response.body()) {
-                var iterator = lines.iterator();
-                while (iterator.hasNext()) {
-                    if (token.isCancelled()) {
-                        break;
-                    }
-                    String line = iterator.next();
-                    if (line == null || line.isBlank()) {
-                        continue;
-                    }
-                    dispatchLine(adapter, provider, line, listener, toolArguments);
-                }
-            }
-        } catch (IOException e) {
-            throw new LlmException("LLM_STREAM_IO", "流式请求 I/O 失败", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new LlmException("LLM_STREAM_INTERRUPTED", "流式请求被中断", e);
+        if (llmConfig == null || llmConfig.providers() == null || llmConfig.providers().isEmpty()) {
+            throw new LlmException("NO_PROVIDER", "未配置任何 LLM 供应商");
         }
+        String providerKey = providerKey(request);
+        ProviderConfig provider = providerKey == null ? null : llmConfig.providers().get(providerKey);
+        if (provider == null) {
+            streamGlobalFallback(providerKey, request, listener, token, null);
+            return;
+        }
+        provider = withResolvedSecret(provider);
+        String globalTier = llmConfig.defaultTier();
+        ModelTier tier = resolveTier(request, provider, globalTier);
+        String model = resolveModel(request, provider, tier, globalTier);
+
+        LlmException original = null;
+        boolean[] emitted = {false};
+        for (Attempt attempt : candidates(provider, tier, model)) {
+            try {
+                streamAttempt(request, provider, attempt, listener, token, emitted);
+                notifyDegraded(tier, model, attempt, null);
+                return;
+            } catch (LlmException e) {
+                if (original == null) {
+                    original = e;
+                }
+                if (emitted[0]) {
+                    // 首个事件已到达：不自动重放，避免重复内容
+                    throw e;
+                }
+                if (!isDegradable(e)) {
+                    break;
+                }
+                LOG.warn("档位 {} 模型 {} 不可用（{}），尝试下一档 {}", attempt.tier().configName(),
+                        attempt.model(), rootMessage(e), "降级");
+            }
+        }
+        streamGlobalFallback(providerKey, request, listener, token, original);
     }
 
     @Override
@@ -135,10 +179,51 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
     // ------------------------------------------------------------------
 
     private ChatResponse chatSync(ChatRequest request) {
-        ProviderConfig provider = resolveProvider(request);
+        if (llmConfig == null || llmConfig.providers() == null || llmConfig.providers().isEmpty()) {
+            throw new LlmException("NO_PROVIDER", "未配置任何 LLM 供应商");
+        }
+        String providerKey = providerKey(request);
+        ProviderConfig provider = providerKey == null ? null : llmConfig.providers().get(providerKey);
+        if (provider == null) {
+            return chatGlobalFallback(providerKey, request, null);
+        }
+        provider = withResolvedSecret(provider);
+        String globalTier = llmConfig.defaultTier();
+        ModelTier tier = resolveTier(request, provider, globalTier);
+        String model = resolveModel(request, provider, tier, globalTier);
+
+        LlmException original = null;
+        for (Attempt attempt : candidates(provider, tier, model)) {
+            try {
+                ChatResponse response = chatAttempt(request, provider, attempt.model());
+                notifyDegraded(tier, model, attempt, null);
+                return response;
+            } catch (LlmException e) {
+                if (original == null) {
+                    original = e;
+                }
+                if (!isDegradable(e)) {
+                    break;
+                }
+                LOG.warn("档位 <{}> 模型 <{}> 不可用（{}），尝试下一档 {}", attempt.tier().configName(),
+                        attempt.model(), rootMessage(e), "降级");
+            }
+        }
+        return chatGlobalFallback(providerKey, request, original);
+    }
+
+    /**
+     * 单次（含同模型重试）非流式调用。
+     *
+     * @param request  请求
+     * @param provider 供应商
+     * @param model    本次模型
+     * @return 响应
+     */
+    private ChatResponse chatAttempt(ChatRequest request, ProviderConfig provider, String model) {
         LlmProviderAdapter adapter = resolveAdapter(provider);
         String url = adapter.buildUrl(provider);
-        String body = adapter.convertRequest(withStream(request, false), provider);
+        String body = adapter.convertRequest(withModel(withStream(request, false), model), provider);
 
         int maxRetries = provider.maxRetries() > 0 ? provider.maxRetries() : 3;
         LlmException last = null;
@@ -146,11 +231,17 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             try {
                 limiter(provider).acquire();
                 HttpRequest httpRequest = newRequest(url, adapter.buildHeaders(provider), body, provider);
-                LOG.debug("LLM chat -> {} ({}) attempt={}", url, adapter.providerId(), attempt);
+                LOG.debug("LLM chat -> {} ({}) model={} attempt={}", url, adapter.providerId(),
+                        model, attempt);
                 HttpResponse<String> response =
                         httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 int status = response.statusCode();
-                if (status >= 500 && attempt < maxRetries) {
+                if (isImmediateModelFailure(status, response.body())) {
+                    // 模型不存在 / 参数不接受：立即降级，不再同模型重试
+                    throw new LlmException("LLM_HTTP_" + status,
+                            "请求失败: HTTP " + status + formatDetail(response.body()));
+                }
+                if ((status >= 500 || status == 429) && attempt < maxRetries) {
                     backoff(attempt);
                     continue;
                 }
@@ -173,6 +264,224 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             }
         }
         throw last != null ? last : new LlmException("LLM_FAILED", "请求失败");
+    }
+
+    /**
+     * 单次（含同模型重试）流式调用。
+     *
+     * @param request  请求
+     * @param provider 供应商
+     * @param attempt  本次档位与模型
+     * @param listener 监听器
+     * @param token    取消令牌
+     * @param emitted  是否已产出事件（跨尝试共享）
+     */
+    private void streamAttempt(ChatRequest request, ProviderConfig provider, Attempt attempt,
+                               StreamEventListener listener, CancellationToken token, boolean[] emitted) {
+        LlmProviderAdapter adapter = resolveAdapter(provider);
+        String url = streamUrl(adapter, provider);
+        String body = adapter.convertRequest(withModel(withStream(request, true), attempt.model()), provider);
+
+        HttpRequest httpRequest = newRequest(url, adapter.buildHeaders(provider), body, provider);
+        StreamEventListener guarded = event -> {
+            emitted[0] = true;
+            listener.onEvent(event);
+        };
+        try {
+            LOG.debug("LLM stream -> {} ({}) model={}", url, adapter.providerId(), attempt.model());
+            HttpResponse<java.util.stream.Stream<String>> response =
+                    httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() >= 400) {
+                String detail;
+                try (java.util.stream.Stream<String> errLines = response.body()) {
+                    detail = errLines.limit(ERROR_BODY_MAX_LINES)
+                            .collect(java.util.stream.Collectors.joining(" "))
+                            .trim();
+                }
+                throw new LlmException("LLM_HTTP_" + response.statusCode(),
+                        "流式请求失败: HTTP " + response.statusCode() + formatDetail(detail));
+            }
+            Map<Integer, StringBuilder> toolArguments = new LinkedHashMap<>();
+            try (java.util.stream.Stream<String> lines = response.body()) {
+                var iterator = lines.iterator();
+                while (iterator.hasNext()) {
+                    if (token.isCancelled()) {
+                        break;
+                    }
+                    String line = iterator.next();
+                    if (line == null || line.isBlank()) {
+                        continue;
+                    }
+                    dispatchLine(adapter, provider, line, guarded, toolArguments);
+                }
+            }
+        } catch (IOException e) {
+            throw new LlmException("LLM_STREAM_IO", "流式请求 I/O 失败", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LlmException("LLM_STREAM_INTERRUPTED", "流式请求被中断", e);
+        }
+    }
+
+    /**
+     * 全局兜底的跨供应商调用（非流式）。
+     *
+     * @param providerKey 原供应商标识（日志用）
+     * @param request     请求
+     * @param original    原始错误，可为 {@code null}
+     * @return 响应
+     */
+    private ChatResponse chatGlobalFallback(String providerKey, ChatRequest request, LlmException original) {
+        Attempt fallback = globalFallbackAttempt();
+        if (fallback != null) {
+            try {
+                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.providerId());
+                ChatResponse response = chatAttempt(request, fallback.provider(), fallback.model());
+                notifyDegraded(null, null, fallback, null);
+                return response;
+            } catch (LlmException e) {
+                LOG.warn("全局兜底供应商仍失败: {}", rootMessage(e));
+            }
+        }
+        if (original != null) {
+            throw original;
+        }
+        throw new LlmException("PROVIDER_NOT_FOUND", "未找到供应商配置: " + providerKey);
+    }
+
+    /**
+     * 全局兜底的跨供应商调用（流式）。
+     *
+     * @param providerKey 原供应商标识
+     * @param request     请求
+     * @param listener    监听器
+     * @param token       取消令牌
+     * @param original    原始错误，可为 {@code null}
+     */
+    private void streamGlobalFallback(String providerKey, ChatRequest request,
+                                      StreamEventListener listener, CancellationToken token,
+                                      LlmException original) {
+        Attempt fallback = globalFallbackAttempt();
+        if (fallback != null) {
+            boolean[] emitted = {false};
+            try {
+                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.providerId());
+                streamAttempt(request, fallback.provider(), fallback, listener, token, emitted);
+                return;
+            } catch (LlmException e) {
+                LOG.warn("全局兜底供应商仍失败: {}", rootMessage(e));
+                if (original == null) {
+                    original = e;
+                }
+            }
+        }
+        if (original != null) {
+            throw original;
+        }
+        throw new LlmException("PROVIDER_NOT_FOUND", "未找到供应商配置: " + providerKey);
+    }
+
+    private Attempt globalFallbackAttempt() {
+        String fallbackKey = llmConfig.fallbackProvider();
+        ProviderConfig fallback = fallbackKey == null ? null : llmConfig.providers().get(fallbackKey);
+        if (fallback == null) {
+            return null;
+        }
+        fallback = withResolvedSecret(fallback);
+        String fallbackModel = llmConfig.fallbackModel() != null
+                ? llmConfig.fallbackModel()
+                : fallback.effectiveModel(llmConfig.defaultTier());
+        return new Attempt(fallbackKey, ModelTier.FALLBACK, fallback, fallbackModel);
+    }
+
+    /**
+     * 构造降级候选链（去重、单向、不回头）。
+     *
+     * @param provider 供应商
+     * @param tier     当前档位
+     * @param model    当前模型
+     * @return 候选链
+     */
+    private static List<Attempt> candidates(ProviderConfig provider, ModelTier tier, String model) {
+        List<Attempt> list = new ArrayList<>();
+        list.add(new Attempt(provider.adapter(), tier, provider, model));
+        // 当前不是 Standard 且不是 Fallback：先降 Standard
+        if (tier != ModelTier.STANDARD && tier != ModelTier.FALLBACK) {
+            String standard = provider.modelFor(ModelTier.STANDARD);
+            if (standard != null && !standard.equals(model)) {
+                list.add(new Attempt(provider.adapter(), ModelTier.STANDARD, provider, standard));
+            }
+        }
+        // 再降供应商 Fallback 档
+        if (tier != ModelTier.FALLBACK) {
+            String fallbackModel = provider.configuredModel(ModelTier.FALLBACK);
+            if (fallbackModel != null && !containsModel(list, fallbackModel)) {
+                list.add(new Attempt(provider.adapter(), ModelTier.FALLBACK, provider, fallbackModel));
+            }
+        }
+        return list;
+    }
+
+    private static boolean containsModel(List<Attempt> attempts, String model) {
+        return attempts.stream().anyMatch(attempt -> model.equals(attempt.model()));
+    }
+
+    /**
+     * 解析供应商级 / 会话级 / 请求级档位。
+     *
+     * @param request    请求
+     * @param provider   供应商
+     * @param globalTier 全局默认档
+     * @return 生效档位
+     */
+    private static ModelTier resolveTier(ChatRequest request, ProviderConfig provider, String globalTier) {
+        Optional<ModelTier> byModel = ModelTier.fromConfigName(request.model());
+        if (byModel.isPresent()) {
+            return byModel.get();
+        }
+        Object extTier = request.extensions() == null ? null : request.extensions().get(EXT_TIER);
+        if (extTier != null) {
+            Optional<ModelTier> parsed = ModelTier.fromConfigName(extTier.toString());
+            if (parsed.isPresent()) {
+                return parsed.get();
+            }
+        }
+        Optional<ModelTier> byConfiguredModel = provider.tierOf(request.model());
+        if (byConfiguredModel.isPresent()) {
+            return byConfiguredModel.get();
+        }
+        return provider.effectiveTier(globalTier);
+    }
+
+    /**
+     * 解析本次请求实际使用的模型。
+     *
+     * @param request    请求
+     * @param provider   供应商
+     * @param tier       生效档位
+     * @param globalTier 全局默认档
+     * @return 模型名
+     */
+    private static String resolveModel(ChatRequest request, ProviderConfig provider, ModelTier tier,
+                                       String globalTier) {
+        if (request.model() != null && !request.model().isBlank()) {
+            Optional<ModelTier> byModel = ModelTier.fromConfigName(request.model());
+            if (byModel.isPresent()) {
+                String mapped = provider.modelFor(byModel.get());
+                return mapped != null ? mapped : request.model();
+            }
+            return request.model();
+        }
+        String byTier = provider.modelFor(tier);
+        return byTier != null ? byTier : provider.effectiveModel(globalTier);
+    }
+
+    private String providerKey(ChatRequest request) {
+        Object extProvider = request.extensions() == null ? null : request.extensions().get(EXT_PROVIDER);
+        if (extProvider != null) {
+            return extProvider.toString();
+        }
+        return llmConfig.defaultProvider();
     }
 
     /** 错误响应体的最大字符数，避免超长报文淹没终端与日志。 */
@@ -198,6 +507,54 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             trimmed = trimmed.substring(0, ERROR_BODY_MAX_CHARS) + "…（已截断）";
         }
         return " " + trimmed;
+    }
+
+    /**
+     * 是否属于「模型不可用、换模型即可解决」的立即降级错误。
+     *
+     * @param status HTTP 状态码
+     * @param body   响应体
+     * @return 立即降级返回 {@code true}
+     */
+    private static boolean isImmediateModelFailure(int status, String body) {
+        if (status == 404 || status == 422 || status == 400) {
+            return true;
+        }
+        if (body == null) {
+            return false;
+        }
+        String lower = body.toLowerCase(Locale.ROOT);
+        return lower.contains("model not found") || lower.contains("invalid model")
+                || lower.contains("unknown model") || lower.contains("does not exist");
+    }
+
+    /**
+     * 该错误是否允许档位降级（401/403 换档无用，不降级）。
+     *
+     * @param e 异常
+     * @return 可降级返回 {@code true}
+     */
+    private static boolean isDegradable(LlmException e) {
+        String code = e.code();
+        return !"LLM_HTTP_401".equals(code) && !"LLM_HTTP_403".equals(code);
+    }
+
+    private static String rootMessage(Throwable e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    private void notifyDegraded(ModelTier fromTier, String fromModel, Attempt attempt, String reason) {
+        // 未发生档位变化时不提示
+        if (fromTier == attempt.tier() && fromModel != null && fromModel.equals(attempt.model())) {
+            return;
+        }
+        DegradationListener listener = degradationListener;
+        if (listener != null) {
+            listener.onDegraded(fromTier == null ? "-" : fromTier.configName(),
+                    fromModel == null ? "-" : fromModel,
+                    attempt.tier().configName(), attempt.model(),
+                    reason == null ? "" : reason);
+        }
     }
 
     private void dispatchLine(LlmProviderAdapter adapter, ProviderConfig provider, String line,
@@ -231,26 +588,6 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
         listener.onEvent(event);
     }
 
-    private ProviderConfig resolveProvider(ChatRequest request) {
-        if (llmConfig == null || llmConfig.providers() == null || llmConfig.providers().isEmpty()) {
-            throw new LlmException("NO_PROVIDER", "未配置任何 LLM 供应商");
-        }
-        String key = llmConfig.defaultProvider();
-        if (request.extensions() != null && request.extensions().get(EXT_PROVIDER) != null) {
-            key = request.extensions().get(EXT_PROVIDER).toString();
-        }
-        ProviderConfig provider = key == null ? null : llmConfig.providers().get(key);
-        if (provider == null) {
-            ProviderConfig fallback = fallbackProvider();
-            if (fallback != null) {
-                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", key, llmConfig.fallbackProvider());
-                return withResolvedSecret(fallback);
-            }
-            throw new LlmException("PROVIDER_NOT_FOUND", "未找到供应商配置: " + key);
-        }
-        return withResolvedSecret(provider);
-    }
-
     /**
      * 解析供应商凭据中的占位符。
      *
@@ -269,18 +606,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
         if (resolved.equals(provider.apiKey())) {
             return provider;
         }
-        return new ProviderConfig(provider.adapter(), provider.baseUrl(), resolved, provider.model(),
-                provider.timeoutSeconds(), provider.maxRetries(), provider.rateLimit(), provider.extra());
-    }
-
-    /**
-     * 解析兜底（降级回退）供应商。
-     *
-     * @return 兜底供应商配置，未配置时为 {@code null}
-     */
-    private ProviderConfig fallbackProvider() {
-        String fallbackKey = llmConfig.fallbackProvider();
-        return fallbackKey == null ? null : llmConfig.providers().get(fallbackKey);
+        return provider.withApiKey(resolved);
     }
 
     private LlmProviderAdapter resolveAdapter(ProviderConfig provider) {
@@ -314,6 +640,14 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
                 request.temperature(), request.maxTokens(), stream, request.extensions());
     }
 
+    private static ChatRequest withModel(ChatRequest request, String model) {
+        if (model == null || model.equals(request.model())) {
+            return request;
+        }
+        return new ChatRequest(model, request.messages(), request.tools(),
+                request.temperature(), request.maxTokens(), request.stream(), request.extensions());
+    }
+
     private RateLimiter limiter(ProviderConfig provider) {
         int rpm = provider.rateLimit() == null ? 0 : provider.rateLimit().rpm();
         return limiters.computeIfAbsent(provider.adapter() + "@" + rpm, k -> new RateLimiter(rpm));
@@ -327,6 +661,18 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             Thread.currentThread().interrupt();
             throw new LlmException("LLM_INTERRUPTED", "退避等待被中断", e);
         }
+    }
+
+    /**
+     * 一次尝试的档位 / 供应商 / 模型。
+     *
+     * @param providerId 供应商标识
+     * @param tier       档位
+     * @param provider   供应商配置
+     * @param model      模型
+     * @since 0.1.0
+     */
+    private record Attempt(String providerId, ModelTier tier, ProviderConfig provider, String model) {
     }
 
     /**

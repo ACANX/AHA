@@ -105,7 +105,7 @@ public final class AgentEngine {
         String content = null;
         String finishReason = null;
         Usage usage = new Usage(0, 0, 0, null);
-        String effectiveModel = config != null && config.model() != null ? config.model() : model;
+        String effectiveModel = effectiveModel(config, model);
 
         for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
             if (token.isCancelled()) {
@@ -159,7 +159,7 @@ public final class AgentEngine {
                        String input, AgentEventListener listener, CancellationToken token) {
         List<ChatMessage> messages = prepare(sessionId, config, input);
         List<ToolDefinition> tools = toolDefinitions();
-        String effectiveModel = config != null && config.model() != null ? config.model() : model;
+        String effectiveModel = effectiveModel(config, model);
 
         String finishReason = null;
 
@@ -378,7 +378,40 @@ public final class AgentEngine {
     }
 
     private static Map<String, Object> extensions(SessionConfig config) {
-        return config == null || config.extras() == null ? Map.of() : config.extras();
+        if (config == null) {
+            return Map.of();
+        }
+        Map<String, Object> values = config.extras() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(config.extras());
+        // 会话级档位通过扩展参数传给 LLM 客户端解析（无会话级显式模型名时生效）
+        if (config.tier() != null && !config.tier().isBlank()) {
+            values.put("Tier", config.tier());
+        }
+        return values;
+    }
+
+    /**
+     * 解析本轮实际使用的模型。
+     *
+     * <p>优先级：会话级显式模型名 → 会话级档位（交由 LLM 客户端解析，此处返回
+     * {@code null}）→ 运行时默认模型。</p>
+     *
+     * @param config 会话配置
+     * @param model  运行时默认模型
+     * @return 模型名；返回 {@code null} 表示由 LLM 客户端按档位解析
+     */
+    private static String effectiveModel(SessionConfig config, String model) {
+        if (config == null) {
+            return model;
+        }
+        if (config.model() != null && !config.model().isBlank()) {
+            return config.model();
+        }
+        if (config.tier() != null && !config.tier().isBlank()) {
+            return null;
+        }
+        return model;
     }
 
     private static void accumulate(Map<Integer, AccumulatedToolCall> toolCalls, ToolCallDelta delta) {

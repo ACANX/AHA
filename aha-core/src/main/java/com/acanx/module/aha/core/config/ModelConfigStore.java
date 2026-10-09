@@ -100,6 +100,62 @@ public final class ModelConfigStore {
     }
 
     /**
+     * 设置全局默认档（写入 {@code Model.DefaultTier}）。
+     *
+     * @param tier 档位
+     * @return 更新后的配置
+     */
+    public ModelConfig setGlobalDefaultTier(ModelTier tier) {
+        ModelConfig next = load().withDefaultTier(tier);
+        save(next);
+        return next;
+    }
+
+    /**
+     * 把供应商的默认档设为指定档位，并把 {@code Model} 同步为该档模型。
+     *
+     * <p>写盘约定：{@code Model} 与 {@code DefaultTier} 保持一致，这样旧客户端
+     * 读 {@code Model} 也拿到同一个模型。</p>
+     *
+     * @param providerId 供应商键名
+     * @param tier       目标档位
+     * @return 更新后的配置
+     */
+    public ModelConfig useTier(String providerId, ModelTier tier) {
+        ModelConfig current = load();
+        ProviderConfig provider = current.providersOrEmpty().get(providerId);
+        if (provider == null) {
+            throw new ConfigException("PROVIDER_NOT_FOUND", "未找到供应商: " + providerId);
+        }
+        if (provider.modelFor(tier) == null) {
+            throw new ConfigException("MODEL_TIER_NOT_CONFIGURED",
+                    "供应商 " + providerId + " 未配置 " + tier.configName() + " 档");
+        }
+        ModelConfig next = current.withProvider(providerId, provider.withDefaultTier(tier));
+        save(next);
+        return next;
+    }
+
+    /**
+     * 按模型名反查所属档位并设为默认（仅限五档内的模型名）。
+     *
+     * @param providerId 供应商键名
+     * @param modelName  模型名
+     * @return 更新后的配置
+     */
+    public ModelConfig useModelName(String providerId, String modelName) {
+        ModelConfig current = load();
+        ProviderConfig provider = current.providersOrEmpty().get(providerId);
+        if (provider == null) {
+            throw new ConfigException("PROVIDER_NOT_FOUND", "未找到供应商: " + providerId);
+        }
+        ModelTier tier = provider.tierOf(modelName)
+                .orElseThrow(() -> new ConfigException("MODEL_NOT_IN_TIERS",
+                        "模型 " + modelName + " 不在供应商 " + providerId + " 的五档内"));
+        return useTier(providerId, tier);
+    }
+
+    /**
      * 新增或覆盖供应商。
      *
      * @param providerId 供应商键名

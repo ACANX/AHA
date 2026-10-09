@@ -13,6 +13,7 @@ import java.util.Map;
  * {@code Providers}/{@code DefaultProvider} 保留用于内联覆盖与向后兼容。</p>
  *
  * @param defaultProvider 默认供应商键名（内联兼容；通常由 {@code Model.yml} 的 {@code Default} 提供）
+ * @param defaultTier     全局默认档位（通常由 {@code Model.yml} 的 {@code DefaultTier} 提供）
  * @param providers       内联供应商表（兼容用；与 {@code Model.yml} 合并，后者优先）
  * @param fallback        兜底（降级回退）模型配置
  * @param modelFile       模型供应商配置文件路径，支持 {@code ${ENV}} 占位
@@ -21,10 +22,24 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record LlmConfig(
         @JsonProperty("DefaultProvider") String defaultProvider,
+        @JsonProperty("DefaultTier") String defaultTier,
         @JsonProperty("Providers") Map<String, ProviderConfig> providers,
         @JsonProperty("Fallback") FallbackConfig fallback,
         @JsonProperty("ModelFile") String modelFile
 ) {
+
+    /**
+     * 兼容构造：未声明全局默认档。
+     *
+     * @param defaultProvider 默认供应商键名
+     * @param providers       内联供应商表
+     * @param fallback        兜底模型配置
+     * @param modelFile       模型配置文件路径
+     */
+    public LlmConfig(String defaultProvider, Map<String, ProviderConfig> providers,
+                     FallbackConfig fallback, String modelFile) {
+        this(defaultProvider, null, providers, fallback, modelFile);
+    }
 
     /**
      * 兜底供应商键名。
@@ -42,5 +57,14 @@ public record LlmConfig(
      */
     public String fallbackModel() {
         return fallback == null ? null : fallback.model();
+    }
+
+    /**
+     * 全局默认档（非法或未设置时回退到 {@link ModelTier#DEFAULT Standard}）。
+     *
+     * @return 全局默认档
+     */
+    public ModelTier effectiveDefaultTier() {
+        return ModelTier.fromConfigName(defaultTier).orElse(ModelTier.DEFAULT);
     }
 }

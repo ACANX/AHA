@@ -23,6 +23,7 @@ import com.acanx.module.aha.core.agent.ToolRegistry;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.ConfigLoader;
 import com.acanx.module.aha.core.config.LlmConfig;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.ProviderPresets;
 import com.acanx.module.aha.core.config.ToolsConfig;
@@ -209,8 +210,11 @@ public final class LocalAgentService implements AgentService {
                 ? null
                 : llmConfig.providers().get(providerId);
         if (provider != null) {
+            ModelTier tier = provider.effectiveTier(llmConfig.defaultTier());
+            String effective = provider.effectiveModel(llmConfig.defaultTier());
             attributes.put("Provider", providerId);
-            attributes.put("Model", provider.model() == null ? "" : provider.model());
+            attributes.put("Tier", tier.configName());
+            attributes.put("Model", effective == null ? "" : effective);
             attributes.put("Adapter", provider.adapter() == null ? "" : provider.adapter());
             String endpoint = resolveEndpoint(provider);
             if (endpoint != null) {
@@ -431,15 +435,18 @@ public final class LocalAgentService implements AgentService {
         }
         ProviderConfig provider = llmConfig.providers().get(llmConfig.defaultProvider());
         if (provider != null) {
-            return provider.model();
+            String model = provider.effectiveModel(llmConfig.defaultTier());
+            if (model != null) {
+                return model;
+            }
         }
         // 默认供应商不可用：降级到兜底模型
-        ProviderConfig fallback = llmConfig.fallbackProvider() == null
-                ? null
-                : llmConfig.providers().get(llmConfig.fallbackProvider());
         if (llmConfig.fallbackModel() != null) {
             return llmConfig.fallbackModel();
         }
-        return fallback == null ? null : fallback.model();
+        ProviderConfig fallback = llmConfig.fallbackProvider() == null
+                ? null
+                : llmConfig.providers().get(llmConfig.fallbackProvider());
+        return fallback == null ? null : fallback.effectiveModel(llmConfig.defaultTier());
     }
 }
