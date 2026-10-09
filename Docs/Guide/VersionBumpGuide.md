@@ -1,6 +1,6 @@
 # 版本切换指南
 
-**文档版本**：v1.4.0
+**文档版本**：v1.5.0
 **状态**：生效
 **生效日期**：2026-10-09
 **最后更新**：2026-10-09
@@ -18,6 +18,7 @@
 | v1.2.0 | 2026-10-09 | P5（#97）：§2 改动清单由 14 处降为 **1 处**（根目录 `version` 文件，其余由 `VersionBump` / `VersionDistribute.py` 分发）；§2.3 改为「一键分发 + 手工应急」；§3 步骤与 §4 检查清单按新口径重写（一致性校验项保留）；§5 第 1/2/3/8 项更新 | @ACANX / CNXNC |
 | v1.3.0 | 2026-10-09 | §5 新增第 10 条：版本切换 PR 上为什么没有 `Gate` / `Compat` 的 checks（触发范围只覆盖 `main`，而 PR base 是 `dev`）与处置 | @ACANX / CNXNC |
 | v1.4.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更）：§2.2 补「验证时机」（PR 上不跑 checks，验证归口到合并后的 `dev` 流水线）；§5 第 6 条的处置去掉 PAT、改为「手工重建 tag」；第 10 条按「不配 PAT」口径重写 | @ACANX / CNXNC |
+| v1.5.0 | 2026-10-09 | `G-06` 收口：§5 第 4 条与 §6.5 的「0.1.0 裸 tag」示例更新为**已处置**（已补指向同一提交 `9138847` 的别名 tag `V0.1.0`，`CHANGELOG` 链接不再 404） | @ACANX / CNXNC |
 
 ---
 
@@ -152,7 +153,7 @@ python3 .github/Python/ProjectVersion.py --verify
 | 1 | 构建 **BUILD SUCCESS**，但产物名 / 反应堆仍是旧版本 | `version` 文件与根 POM 的 `<revision>` 不一致；或子模块 `<parent><version>` 被写死 | 跑 `python3 .github/Python/ProjectVersion.py --verify` 定位，再按 §2.2 补跑分发脚本 |
 | 2 | `aha --version` 仍报旧版本 | 同上；`version.properties` 取的是**模块**的 `project.version` | 同 1 |
 | 3 | 文档里还能搜到旧版本 | 声明行未更新；或它本来就是**历史标注** | 先按 §4.2 判断：历史叙述里的旧版本号是合法内容；确属声明行未更新时，补跑分发脚本 |
-| 4 | `CHANGELOG` 的版本链接 404 | tag 实际写法与文档约定不符（历史 0.1.0 是裸 `0.1.0`，约定是 `V*`） | 用 `git ls-remote --tags origin` 核实真实 tag 再改链接；别名 tag 见 Issue #85 |
+| 4 | `CHANGELOG` 的版本链接 404 | tag 实际写法与文档约定不符 | 用 `git ls-remote --tags origin` 核实真实 tag 再改链接。**历史例外已处置**：0.1.0 已补指向同一提交（`9138847`）的别名 tag `V0.1.0`，两种写法都可用（见 §6.5） |
 | 5 | 推送 tag 时提示已存在 | 同版本 tag 已打过 | `Build.yml` 的 tag 作业**幂等跳过**，属正常；需重打见 `ReleaseProcess.md` §4.1 |
 | 6 | 自动打的 `V*` tag 没触发发布 | `GITHUB_TOKEN` 推送的 tag 不触发下游工作流（GitHub 防递归） | **手工重建该 tag**（删除后由人重推，`ReleaseProcess.md` §4.2）。`Release.yml` 没有 `workflow_dispatch`，只能这样产生一次真实的 tag 事件；本仓库不配置 PAT |
 | 7 | 发版 PR 卡在必需检查 / 审批 | 分支规则集要求（审批数、`Gate`/`Compat` 必需检查、`last_push_approval`） | 见 `ReleaseProcess.md` §4.2 与 Issue #85 |
@@ -195,9 +196,11 @@ git checkout -- .          # 丢弃工作区改动，重新按 §2 执行
 
 ### 6.5 tag 与约定不符（历史遗留）
 
-例：0.1.0 的实际 tag 是裸 `0.1.0`，而约定是 `V*`。
+**现成范例（已处置，2026-10-09）**：0.1.0 的原始 tag 是裸 `0.1.0`，而约定是 `V*`——
+补了一个指向**同一提交**（`9138847`）的 `V0.1.0` 别名 tag 后，两种写法都可用，
+`CHANGELOG` 的 `releases/tag/V0.1.0` 链接不再 404。
 
-处置选项：① 补一个指向**同一提交**的 `V0.1.0` 别名 tag（最省事，两写法都可用）；
+处置选项：① 补一个指向**同一提交**的**别名 tag**（最省事，两写法都可用——见上例）；
 ② 在 `CHANGELOG` 中明确写出兼容策略。**不要**删除原 tag——已发布的引用会失效。
 
 ### 6.6 需要回滚一个已合并的版本切换
