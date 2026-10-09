@@ -36,8 +36,8 @@ import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
-# 仓库根：本脚本位于 bin/ 下
-ROOT = Path(__file__).resolve().parent.parent
+# 仓库根：本脚本位于 .github/Python/ 下（与 MetaOpen 的组织方式一致）
+ROOT = Path(__file__).resolve().parents[2]
 
 # 基线版本号格式：a.b.c（AHA 的预发行用 a.b.c.PPPPP 构建号表达，
 # 不含 SNAPSHOT，见 Docs/DevSpec/ReleaseProcess.md 第 2 节）
