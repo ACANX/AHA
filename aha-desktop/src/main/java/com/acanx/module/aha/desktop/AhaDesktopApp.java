@@ -1,5 +1,7 @@
 package com.acanx.module.aha.desktop;
 
+import java.lang.reflect.Method;
+
 import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.model.SessionConfig;
 import com.acanx.module.aha.common.tool.ToolPermission;
@@ -182,7 +184,13 @@ public final class AhaDesktopApp extends Application {
     private static String fontFactoryName() {
         try {
             Class<?> factory = Class.forName("com.sun.javafx.font.PrismFontFactory");
-            Object instance = factory.getMethod("getFontFactory").invoke(null);
+            Method getFontFactory = factory.getMethod("getFontFactory");
+            // com.sun.javafx.font 是 javafx.graphics 的未导出包：JVM 模式下模块系统会拒绝，
+            // 要拿到这一项得加 --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED；
+            // 原生镜像里通常没有这层限制，所以这一项主要就是给原生包用的。
+            // 取不到不算失败——字体族、字形度量、管线已经够定位（见 DevLog-20261009-13）。
+            getFontFactory.setAccessible(true);
+            Object instance = getFontFactory.invoke(null);
             return instance == null ? "<null>" : instance.getClass().getName();
         } catch (ReflectiveOperationException | RuntimeException e) {
             return "\u4e0d\u53ef\u7528\uff08" + e.getClass().getSimpleName() + "\uff09";
