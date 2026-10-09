@@ -12,6 +12,8 @@ import com.acanx.module.aha.desktop.chat.SlashCommands;
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.geometry.Insets;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
@@ -76,6 +78,8 @@ import java.util.function.Supplier;
  * @since 0.2.0
  */
 public final class DesktopShell implements ChatView {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DesktopShell.class);
 
     /** 菜单栏 id。 */
     public static final String MENU_BAR_ID = "aha.menubar";
@@ -363,7 +367,12 @@ public final class DesktopShell implements ChatView {
     public Theme applyTheme(Theme theme) {
         Theme resolved = Palette.setTheme(theme);
         for (Runnable restyle : restylers) {
-            restyle.run();
+            // 逐个隔离：一个节点重刷失败，不该让其余节点停在旧主题（issue #49）
+            try {
+                restyle.run();
+            } catch (RuntimeException e) {
+                LOG.warn("重刷节点主题失败（已跳过该节点）：{}", e.toString());
+            }
         }
         // 会话列表的单元格是自己画的，刷新一次就会按新配色重建
         if (sessionList != null) {
@@ -1026,6 +1035,9 @@ public final class DesktopShell implements ChatView {
     private MenuBar buildMenuBar() {
         MenuBar bar = new MenuBar();
         bar.setId(MENU_BAR_ID);
+        // 菜单栏是顶层容器，暗色下若不显式套主题会露出 modena 默认白底（issue #49）
+        themed(bar, () -> "-fx-background-color: " + Palette.BASE + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";");
 
         Menu file = new Menu("文件(_F)");
         MenuItem exit = new MenuItem("退出");
@@ -1115,6 +1127,10 @@ public final class DesktopShell implements ChatView {
         TextField search = new TextField();
         search.setId(SESSION_SEARCH_ID);
         search.setPromptText("⌕ 搜索会话");
+        // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
+        themed(search, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         search.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
         // TextField 的 maxWidth 默认是「按内容算」，于是它会比左栏还宽并盖到中栏上
         // （真机截图里能看到搜索框横向溢出）。必须显式放开，让 VBox 把它收进栏内。
@@ -1259,7 +1275,13 @@ public final class DesktopShell implements ChatView {
             boolean current = Objects.equals(item.id(), currentSessionId);
             setText((current ? "● " : "○ ") + item.line());
             setTooltip(new Tooltip(item.tooltip()));
-            setStyle("-fx-text-fill: " + (current ? Palette.SUCCESS : Palette.FOREGROUND) + ";"
+            // 单元格背景必须显式给：ListView 的 -fx-control-inner-background 未必传到 cell 上，
+            // 暗色下会露出 modena 默认白底（issue #49）；选中态另行覆盖
+            boolean selected = isSelected();
+            setStyle("-fx-background-color: "
+                    + (selected ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
+                    + "-fx-text-fill: "
+                    + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
                     + (current ? "-fx-font-weight: bold;" : ""));
         }
     }
@@ -1341,6 +1363,9 @@ public final class DesktopShell implements ChatView {
         messages.getChildren().add(createEmptyState());
         ScrollPane scroll = new ScrollPane(messages);
         scroll.setFitToWidth(true);
+        // 滚动区底色跟随主题，避免暗色下露出 modena 默认白底（issue #49）
+        themed(scroll, () -> "-fx-background: " + Palette.BASE + ";"
+                + "-fx-background-color: " + Palette.BASE + ";");
         VBox.setVgrow(scroll, Priority.ALWAYS);
         // 关键：ScrollPane 默认最小高度由内容撑开，会把下面的输入区顶出窗口
         // （第一次启动就是只能看到消息区，输入框不见踪影）。
@@ -1353,6 +1378,10 @@ public final class DesktopShell implements ChatView {
     private VBox buildComposerBox() {
         composer.setId(COMPOSER_ID);
         composer.setPromptText(COMPOSER_PROMPT);
+        // 输入框同样显式套主题：否则暗色下是白底 + 浅色文字，看不清（issue #49）
+        themed(composer, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         composer.setWrapText(true);
         composer.setPrefRowCount(3);
         // Enter 发送、Shift+Enter 换行（若直接放行，TextArea 会把 Enter 当换行）

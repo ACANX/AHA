@@ -558,6 +558,7 @@ desktop 亦未列 tool 依赖。
 | v0.39.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
 | v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
 | v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，**另开 issue #48 长期跟踪**（本文件留索引 `N-24`），新增 `G-13` | @ACANX / CNXNC |
+| v0.42.0 | 2026-10-09 | 真机暴露 issue #49（暗色下搜索框 / 会话列表 / 输入框仍是亮色底，导航按钮 / 菜单栏 / 状态栏文字仍是深色）；修掉两处成因：`Palette.theme()` 去缓存（原生镜像下样式串与色表不同步）、`applyTheme` 逐个节点异常隔离；搜索框 / 输入框 / 会话单元格 / 菜单栏 / 滚动区改为显式套主题；新增 `N-25` | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1319,6 +1320,11 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       长期跟踪载体：**issue #48**（现象、背景、待排查方向、验收标准均以该 Issue 为准）。
       本条目只作索引，不在这里维护细节；#48 关闭后把本条目改为「已完成」并回填结论。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #48 验证。
+- [ ] **N-25**：真机验证暗色模式下控件背景与文字的适配（issue #49）。
+      长期跟踪载体：**issue #49**（现象、截图与验收标准以该 Issue 为准）；本条目只作索引。
+      修复已随 PR #47 提交：`Palette.theme()` 去缓存、逐个节点重刷异常隔离、搜索框 / 输入框 /
+      会话单元格 / 菜单栏 / 滚动区显式套主题（见 [DevLog-20261009-09.md](DevLog/DevLog-20261009-09.md)）。
+      依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 
