@@ -4,7 +4,7 @@
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
-**目标版本**：AHA 0.1.1
+**目标版本**：AHA 0.1.2
 **文档命名规范**：Markdown、SVG、图片统一大驼峰（PascalCase）；`.agents/skills/` 下技能目录及 `SKILL.md` 的 `name` 采用 kebab-case
 **YAML 字段命名规范**：AHA 自有字段统一大驼峰（PascalCase）
 **SQL 字段命名规范**：SQLite 表名（单数）与字段名统一 snake_case
@@ -534,7 +534,7 @@ aha/
 # AHA - Agent Harness
 
 **项目代号**：AHA
-**当前版本**：0.1.1
+**当前版本**：0.1.2
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
 **模块化**：JPMS 优先启用（非强制；与 OpenJFX 冲突时为它让路）
@@ -946,7 +946,7 @@ aha/
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -1111,7 +1111,7 @@ aha/
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.1</version>
+        <version>0.1.2</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 

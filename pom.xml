@@ -57,7 +57,7 @@
             因此改版本时只改这一行（不再逐个改 9 个 POM）。
             IDE（IDEA）能解析根 POM 里的这个属性，不会出现未解析报错。
         -->
-        <revision>0.1.1</revision>
+        <revision>0.1.2</revision>
 
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
