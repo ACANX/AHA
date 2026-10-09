@@ -88,9 +88,10 @@ if ! command -v "$JAVA" >/dev/null 2>&1; then
 fi
 
 # --add-opens 是渲染诊断（issue #48）用的：字体实现工厂探针要反射读
-# com.sun.javafx.font.PrismFontFactory，而模块系统默认拒绝该包。
+# com.sun.javafx.font.PrismFontFactory。目标必须写应用的具名模块——以
+# --module 启动时应用是具名模块，写 ALL-UNNAMED 对它无效。
 exec "$JAVA" \
      --enable-native-access=org.xerial.sqlitejdbc \
-     --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED \
+     --add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop \
      --module-path "$LIB" \
      --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.AhaDesktopApp "$@"

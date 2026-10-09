@@ -131,6 +131,11 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **JVM 模式渲染诊断的 `--add-opens` 目标修正（issue #48）**：`bin/AhaDesktop.bat` /
+  `bin/AhaDesktop.sh` 原写 `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`。
+  桌面端以 `--module` 启动，应用是**具名模块**，`ALL-UNNAMED` 不给它任何授权——真机实测
+  「字体实现工厂」一项打印 `不可用（InaccessibleObjectException）`，原生 / JVM 对照缺关键一条。
+  目标改为 `com.acanx.module.aha.desktop` 后即正常打印 `DWFactory`；手册示例一并更正。
 - **渲染诊断的日志定位修正（issue #48）**：真机实测日志落在 `%USERPROFILE%\.aha\Log\AHA.log`
   （由 `Aha.Logging.File=${AHA_HOME:-~/.aha}/Log/AHA.log` 决定），**不是**启动目录——
   采集脚本第一版的候选路径里漏了 `~/.aha/Log`，真机上会报「找不到日志」。
