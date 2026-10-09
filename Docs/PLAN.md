@@ -284,16 +284,16 @@ git switch -c dependa && git push -u origin dependa
 **顺带澄清**：wrapper 固定 `4.0.0-rc-7` 并**不是**疏忽。实测 Maven 4 尚无 GA——
 `apache-maven-4.0.0-bin.zip` 返回 404，官方 `maven-metadata.xml` 的 `release` 就是 `4.0.0-rc-7`。
 
-### 6.3 发布流程（0.1.0 已发布，0.1.1 待执行）
+### 6.3 发布流程（0.1.0 / 0.1.1 / 0.1.2 已发布）
 
 **0.1.0 已发布**（2026-10-07，`main` 上的 `9138847` `Release:V0.1.0`）。实际 tag 是 **`0.1.0`**
 （无 `V` 前缀），与后续约定不一致——处置见 [TODO.md](TODO.md) `G-06`。
 `CHANGELOG.md` 的发布日期已同步由 `2026-10-06` 更正为 `2026-10-07`。
 
-**0.1.1 待执行**：开 `release/0.1.1` 分支 → 合入 `main` → 由 `Build.yml` 的 tag 作业在 main
-构建成功后自动创建 tag `V0.1.1` → 由 `Release.yml` 产出 CLI 包 `aha-cli-0.1.1.zip`
-与各平台桌面端包（`aha-desktop-0.1.1-<系统>-<架构>.zip`）。版本号改动清单见
-[ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
+**0.1.1 / 0.1.2 已发布**（2026-10-10 结项）：tag `V0.1.1`（`0c10896`）、`V0.1.2`（`474ebe2`）
+均已存在于远端，并已建对应**正式 Release 条目**。发行包（`aha-cli-<版本>.zip` 与各平台
+`aha-desktop-<版本>-<系统>-<架构>.zip`）**不作强制要求**——完成条件为「有 tag + 正式 Release 条目」。
+版本号改动清单见 [ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
 
 **依赖**：6.1（无提交就没有 tag 可打）。
 
