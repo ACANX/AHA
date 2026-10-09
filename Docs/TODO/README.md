@@ -121,7 +121,7 @@ TD-00014-ManualAndExternalActions.md
 |---|---|---|---|---|
 | [TD-00013](TD-00013-EngineeringAndDocHygiene.md) | CI 日志噪音、工作流与文档检查、脚本目录、暂存区文档去留 | ☐ 未开始 | [#84](https://github.com/ACANX/AHA/issues/84) | |
 | [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ⏸ 阻塞 | [#85](https://github.com/ACANX/AHA/issues/85) | 需仓库 / 平台权限或外部环境 |
-| [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | 待确认 | 含根因反思；依赖 PR #89 先合并 |
+| [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | [#92](https://github.com/ACANX/AHA/issues/92) | 含根因反思；分 5 阶段实施（P1~P5）；PR #89 已合并 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）
 
