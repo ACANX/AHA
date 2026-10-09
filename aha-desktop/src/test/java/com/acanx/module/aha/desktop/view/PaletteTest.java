@@ -1,8 +1,10 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.tool.ToolKind;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -122,30 +124,59 @@ class PaletteTest {
         assertThat(Palette.SCROLL_TRACK).isEqualTo("#F0F0F0");
         assertThat(Palette.SCROLL_THUMB).isEqualTo("#B8B8B8");
         assertThat(Palette.theme())
-                .contains("-fx-aha-control-bg: #FFFFFF")
                 .contains("-fx-text-box-border: #C8C8C8")
                 .contains("-fx-body-color: #F4F4F4");
     }
 
     @Test
-    void patchStylesheetIsPackagedAndAlsoFreeOfCssMathFunctions() throws Exception {
-        // 这份表是原生镜像下控件背景的唯一来源（见 aha-theme.css 头部说明），
-        // 既要在 classpath 上，也不能再引入 derive / gradient
-        String path = "/com/acanx/module/aha/desktop/view/aha-theme.css";
+    void patchStylesheetsAreLiteralAndPackaged() throws Exception {
+        // 亮 / 暗两份补丁表都必须是「纯字面量」：既要在 classpath 上，
+        // 也不得出现任何变量查表或 CSS 函数——暗色下一片黑字就是变量查表失败造成的
+        // （声明里查不到值 → CSS 丢掉整条声明 → 回落 modena 默认黑）。
+        for (String theme : List.of("light", "dark")) {
+            String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
+            try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
+                assertThat(in).as("主题补丁样式表必须在 classpath 上：%s", path).isNotNull();
+                String css = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                assertThat(css)
+                        .as("%s：必须覆盖控件与文字载体", theme)
+                        .contains(".text-input")
+                        .contains(".scroll-bar > .thumb")
+                        .contains(".label");
+                // 注释里可以提函数名（说明用），但**声明**里不能出现
+                String declarations = css.replaceAll("(?s)/\\*.*?\\*/", "");
+                assertThat(declarations)
+                        .as("%s：补丁表里不得出现变量查表或原生镜像下不可靠的 CSS 函数", theme)
+                        .doesNotContain("-fx-aha-")
+                        .doesNotContain("derive(")
+                        .doesNotContain("ladder(")
+                        .doesNotContain("linear-gradient(");
+            }
+        }
+    }
+
+    @Test
+    void patchStylesheetsDifferBetweenThemes() throws IOException {
+        // 两份必须真的不同：相同就说明渲染不区分主题，暗色下必然是错的
+        String dark = stylesheet("dark");
+        String light = stylesheet("light");
+        assertThat(dark).as("暗色表要把正文色钉成浅色").contains("#E4E4E4");
+        assertThat(light).as("亮色表要把正文色钉成深色").contains("#1F1F1F");
+        assertThat(dark).isNotEqualTo(light);
+    }
+
+    /**
+     * 读一份补丁表的内容。
+     *
+     * @param theme {@code light} 或 {@code dark}
+     * @return 文件内容
+     * @throws IOException 读取失败
+     */
+    private static String stylesheet(String theme) throws IOException {
+        String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
         try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
-            assertThat(in).as("主题补丁样式表必须在 classpath 上：%s", path).isNotNull();
-            String css = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            assertThat(css)
-                    .contains(".text-input")
-                    .contains(".scroll-bar > .thumb")
-                    .contains("-fx-aha-control-bg");
-            // 注释里可以提这些函数名（说明用），但**声明**里不能出现
-            String declarations = css.replaceAll("(?s)/\\*.*?\\*/", "");
-            assertThat(declarations)
-                    .as("补丁表里不得使用原生镜像下求值不可靠的 CSS 函数")
-                    .doesNotContain("derive(")
-                    .doesNotContain("ladder(")
-                    .doesNotContain("linear-gradient(");
+            assertThat(in).as("补丁表必须在 classpath 上：%s", path).isNotNull();
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 

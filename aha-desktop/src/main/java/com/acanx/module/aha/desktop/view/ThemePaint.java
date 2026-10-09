@@ -38,10 +38,21 @@ public final class ThemePaint {
     private static final Logger LOG = LoggerFactory.getLogger(ThemePaint.class);
 
     /**
-     * 主题补丁样式表：把 modena 里依赖 {@code derive()} / {@code linear-gradient()} 的规则
-     * 换成字面量（见该文件头部说明）。原生镜像下没有它，输入框 / 下拉框 / 按钮 / 滚动条会没有背景。
+     * 主题补丁样式表：**纯字面量**，用来盖掉 modena 里依赖 {@code derive()} /
+     * {@code linear-gradient()} 以及自定义 color 查表的规则。
+     *
+     * <p><strong>为什么是「亮 / 暗两份」而不是「一份 + 变量」</strong>：早先试过一份表 + 在根节点
+     * 内联样式里定义自定义 color，由表里的规则去查。而**原生镜像下这个查表不可靠**——
+     * 声明里一旦查不到值，CSS 会**丢掉整条声明**，文字色于是回落到 modena 的默认黑：
+     * 亮色下碰巧看不出来（亮色本就该是深色字），暗色下就成了一片黑字（issue #49 第四轮）。
+     * 换成两份字面量、按主题整份装载，就不存在「查表」这一步（见两份 css 的头部说明）。</p>
      */
-    private static final String STYLESHEET = "/com/acanx/module/aha/desktop/view/aha-theme.css";
+    private static final String DARK_SHEET =
+            "/com/acanx/module/aha/desktop/view/aha-theme-dark.css";
+
+    /** 亮色主题补丁样式表，与 {@link #DARK_SHEET} 一一对应。 */
+    private static final String LIGHT_SHEET =
+            "/com/acanx/module/aha/desktop/view/aha-theme-light.css";
 
     private ThemePaint() {
     }
@@ -62,7 +73,10 @@ public final class ThemePaint {
     }
 
     /**
-     * 把补丁样式表挂到场景上（幂等）。
+     * 把当前主题的补丁样式表挂到场景上（幂等，且会移除另一主题的那份）。
+     *
+     * <p><strong>切换主题时也要调用</strong>：补丁表是纯字面量，换主题就是整份替换，
+     * 没有需要「重新绑定」的变量。调用点有两个——窗口建好时，以及 {@code applyTheme}。</p>
      *
      * @param scene 场景；{@code null} 时直接返回
      */
@@ -70,16 +84,34 @@ public final class ThemePaint {
         if (scene == null) {
             return;
         }
-        URL url = ThemePaint.class.getResource(STYLESHEET);
-        if (url == null) {
-            // 打包漏了资源时不该让整个界面挂掉，但要能查出来
-            LOG.warn("主题补丁样式表缺失，控件可能没有背景：{}", STYLESHEET);
+        // Palette.current() 已经把 SYSTEM 解析成实际生效的那个
+        boolean light = Palette.current() == Theme.LIGHT;
+        String wanted = light ? LIGHT_SHEET : DARK_SHEET;
+        String stale = light ? DARK_SHEET : LIGHT_SHEET;
+
+        String external = external(wanted);
+        if (external == null) {
+            LOG.warn("主题补丁样式表缺失，控件颜色可能回落到 modena 默认值：{}", wanted);
             return;
         }
-        String external = url.toExternalForm();
+        String staleExternal = external(stale);
+        if (staleExternal != null) {
+            scene.getStylesheets().remove(staleExternal);
+        }
         if (!scene.getStylesheets().contains(external)) {
             scene.getStylesheets().add(external);
         }
+    }
+
+    /**
+     * 资源路径转 URL 字符串。
+     *
+     * @param path 资源路径
+     * @return URL；资源不在 classpath 上时返回 {@code null}
+     */
+    private static String external(String path) {
+        URL url = ThemePaint.class.getResource(path);
+        return url == null ? null : url.toExternalForm();
     }
 
     /**
