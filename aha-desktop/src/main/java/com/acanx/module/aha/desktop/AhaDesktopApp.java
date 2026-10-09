@@ -29,11 +29,13 @@ import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.LogoImage;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Application;
+import javafx.geometry.Bounds;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.text.Font;
+import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
@@ -118,23 +120,83 @@ public final class AhaDesktopApp extends Application {
     /**
      * 打印渲染与字体诊断（issue #48：原生镜像与 JVM 模式的字体渲染不一致）。
      *
-     * <p>两者跑在同一台机器、同一份配置上，唯一的变量是二进制。要定位差异，先得拿到
-     * 「实际用了哪条管线、哪个字体族、多大字号、屏幕缩放多少」——否则只能猜。
-     * 渲染管线由 JavaFX 自己输出（启动时已默认打开 {@code prism.verbose}）；
-     * 字体与缩放 JavaFX 不打，所以在这里补上。JVM 模式下同样会打，正好用来对照。</p>
+     * <p>两者跑在同一台机器、同一份配置上，唯一的变量是二进制。要定位差异，先得把「实际用了
+     * 哪条管线、哪个字体实现、哪个字体族、多大字号、字形量出来多少」变成日志里的数字——
+     * 否则只能对着截图猜。原生包与 JVM 模式各跑一次，两份日志逐行对照即可。</p>
      *
      * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
      * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
      */
     private static void logRenderingDiagnostics() {
+        LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
+                property("prism.order"), property("prism.lcdtext"), property("prism.text"),
+                property("glass.platform"));
+        LOG.info("渲染诊断：JavaFX 版本={} JVM={}", property("javafx.runtime.version"),
+                System.getProperty("java.vm.name", "<未知>"));
+
         Font defaultFont = Font.getDefault();
         LOG.info("渲染诊断：默认字体 族={} 名称={} 字号={} 可用字体族数={}",
                 defaultFont.getFamily(), defaultFont.getName(), defaultFont.getSize(),
                 Font.getFamilies().size());
+        LOG.info("渲染诊断：字体实现工厂={}（Windows 上 JVM 模式应为 WinFontFactory 一类）",
+                fontFactoryName());
+
+        // 字形度量：同一段文字在两个模式下若宽度 / 基线不同，说明字体解析或 hinting 走了不同路径。
+        // 这比「肉眼看图」靠谱——它给的是数字。
+        Text probe = new Text("Hamburgefonstiv 汉字 Wg 0123456789");
+        probe.setFont(Font.font(defaultFont.getFamily(), 14));
+        Bounds bounds = probe.getLayoutBounds();
+        LOG.info("渲染诊断：字形度量 14px 文本宽={} 高={} 基线={}",
+                round(bounds.getWidth()), round(bounds.getHeight()), round(probe.getBaselineOffset()));
+
         Screen primary = Screen.getPrimary();
         LOG.info("渲染诊断：屏幕 outputScale={}x{} dpi={} 视觉边界={}",
                 primary.getOutputScaleX(), primary.getOutputScaleY(), primary.getDpi(),
                 primary.getVisualBounds());
+    }
+
+    /**
+     * 读系统属性；未设置时返回「默认」。
+     *
+     * <p>刻意区分「没设」与「设成了别的值」——{@code prism.lcdtext} 的默认值由 JavaFX
+     * 内部决定，日志里出现「默认」才说明我们没有插手。</p>
+     *
+     * @param key 属性名
+     * @return 属性值或 {@code <默认>}
+     */
+    private static String property(String key) {
+        return System.getProperty(key, "<默认>");
+    }
+
+    /**
+     * 字体实现工厂的类名。
+     *
+     * <p>Windows 上 JavaFX 走 {@code WinFontFactory}（DirectWrite / GDI + ClearType hinting），
+     * Linux 走别的实现。<strong>原生镜像里这个类名若与 JVM 模式不同，基本就锁定了 #48 的根因</strong>。</p>
+     *
+     * <p>{@code com.sun.javafx.font} 是非导出包，只能用反射；失败时返回「不可用」——
+     * 诊断本身出问题不该连累启动，但也不能静默（否则真机日志里会少一行，看着像没查）。</p>
+     *
+     * @return 工厂类名，或「不可用（原因）」
+     */
+    private static String fontFactoryName() {
+        try {
+            Class<?> factory = Class.forName("com.sun.javafx.font.PrismFontFactory");
+            Object instance = factory.getMethod("getFontFactory").invoke(null);
+            return instance == null ? "<null>" : instance.getClass().getName();
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return "\u4e0d\u53ef\u7528\uff08" + e.getClass().getSimpleName() + "\uff09";
+        }
+    }
+
+    /**
+     * 保留两位小数，日志里好读也比对。
+     *
+     * @param value 数值
+     * @return 四舍五入到两位小数的值
+     */
+    private static double round(double value) {
+        return Math.round(value * 100) / 100.0;
     }
 
     @Override

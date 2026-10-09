@@ -12,6 +12,7 @@
     {"type": "com.sun.javafx.reflect.Trampoline", "methods": [{"name": "invoke", "parameterTypes": ["java.lang.reflect.Method", "java.lang.Object", "java.lang.Object[]"]}]},
     {"type": "com.sun.javafx.scene.control.skin.Utils", "methods": [{"name": "getResource", "parameterTypes": ["java.lang.String"]}]},
     {"type": "com.sun.prism.GraphicsPipeline", "methods": [{"name": "getPipeline", "parameterTypes": []}, {"name": "getFontFactory", "parameterTypes": []}]},
+    {"type": "com.sun.javafx.font.PrismFontFactory", "methods": [{"name": "getFontFactory", "parameterTypes": []}]},
     {"type": "com.sun.javafx.iio.java2d.J2DImageLoaderFactory", "methods": [{"name": "<init>", "parameterTypes": []}]},
     {"type": "com.sun.javafx.property.adapter.JavaBeanQuickAccessor", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "com.sun.glass.ui.win.WinPlatformFactory", "jniAccessible": true, "methods": [{"name": "<init>", "parameterTypes": []}, {"name": "createApplication", "parameterTypes": []}]},

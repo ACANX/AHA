@@ -138,7 +138,10 @@
   ② 用像素实验**证伪**「软件管线没有 LCD 次像素抗锯齿」——`prism.lcdtext=true/false` 在 SW 管线
   下的产物不同（4375 B / 3025 B，md5 不同），说明 SW 同样支持次像素抗锯齿；
   ③ `AhaDesktopApp.main` 默认打开 `prism.verbose`（JavaFX 会打出实际管线名），`start()` 新增
-  `logRenderingDiagnostics()` 打印默认字体族 / 名称 / 字号 / 可用字体族数与屏幕 outputScale / dpi。
+  `logRenderingDiagnostics()` 一次打全：`prism.*` / `glass.platform` 属性、JavaFX 版本、
+  默认字体族 / 名称 / 字号 / 可用字体族数、**字体实现工厂（`PrismFontFactory.getFontFactory()`
+  的实现类，反射读取）**、**同一段文字 14px 下的宽 / 高 / 基线（字形度量）**、屏幕
+  outputScale / dpi；为此新增 1 条可达性元数据（439 → 440）与 1 条测试守卫（12 → 13）。
   **只加日志、不改渲染行为**——拿到真机两份日志（原生 / JVM）后再定修法。
   详见 `Docs/DevLog/DevLog-20261009-13.md`。
 - **原生桌面镜像暗色下控件背景与文字未适配（issue #49）**：切到暗色后，侧边栏搜索框 / 会话列表、
