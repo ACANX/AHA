@@ -8,6 +8,31 @@
 > 0.1.0 是首个版本，即项目基线，因此**该段落**只包含「新增」——
 > 所有能力均以最终形态描述，不记录开发过程中的调整。
 
+## [Unreleased]
+
+### 新增
+- **供应商内五档模型（issue #67）**：一个供应商可配置 `Ultra` / `Pro` / `Standard` /
+  `Flash` / `Fallback` 五档；`Standard` 为唯一必填档，其余可选，缺失时回退 `Standard`。
+  - 新增 `ModelTier` 枚举；`ProviderConfig` 增加 `Models` / `DefaultTier`，并把档位解析
+    收敛为 `modelFor` / `standardModel` / `effectiveModel` / `tierOf`；
+  - 新旧规则以「是否含 `Models`」判定：老配置（只有 `Model`）行为与升级前一致；
+    新配置 `DefaultTier` 优先，`Model` 作为默认模型记录并与档位保持一致；
+  - 校验：含 `Models` 缺 `Standard`、`DefaultTier` 非法、新规则下 `Model` 不在五档内
+    均报 `ConfigException`，并纠正「以 `DefaultTier` 为准」时的不一致日志；
+  - **运行期降级**：档位模型不可用（404/422 立即、429/5xx/超时重试耗尽）时，按
+    `Standard → Fallback 档 → 全局 Llm.Fallback` 单向降级；401/403 不降级；
+    只作用于单次请求，全程 `WARN` 日志，并提供降级监听器供界面提示；
+  - 会话级新增 `SessionConfig.Tier`；
+  - CLI：`aha provider list/show` 展示五档，`aha provider add` 支持
+    `--model-ultra/--model-pro/--model-standard/--model-flash/--model-fallback`
+    （`--model` 等价 `--model-standard`）；新增 `aha model use/show`；
+    `/model <档位>` 支持会话内切档（老配置维持旧行为）；
+    `aha config get Model.Providers.<Id>.Model|DefaultTier|Models.Standard` 可读；
+    状态栏显示「供应商 · 档位 · 模型」；
+  - 桌面端：`ProviderForm` / `ProviderDialog` 支持五档录入与默认档选择，
+    含 `Models` 时 `Standard` 必填校验；
+  - 内置 `ModelDefault.yml` 刷新为 8 家五档（新增 `Moonshot` / `MiniMax`）。
+
 ## [0.1.1] - 2026-10-08
 
 **无用户可见的功能变更**：版本号由 0.1.0 切到 0.1.1；本版集中修正版本号清单、发布流程与

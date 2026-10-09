@@ -159,7 +159,11 @@ public final class ConfigLoader {
         if (defaultProvider == null) {
             defaultProvider = "OpenAI";
         }
-        LlmConfig mergedLlm = new LlmConfig(defaultProvider, merged,
+        LlmConfig mergedLlm = new LlmConfig(defaultProvider,
+                model != null && model.defaultTier() != null
+                        ? model.defaultTier()
+                        : (llm == null ? null : llm.defaultTier()),
+                merged,
                 llm == null ? null : llm.fallback(),
                 llm == null ? null : llm.modelFile());
         return new AhaConfig(mergedLlm,
@@ -393,7 +397,91 @@ public final class ConfigLoader {
         JsonNode root = YAML_MAPPER.readTree(yaml);
         JsonNode model = root.has("Model") ? root.get("Model") : root;
         validateFieldNames(model);
+        validateModelTiers(model, errorPrefix);
         return YAML_MAPPER.treeToValue(model, ModelConfig.class);
+    }
+
+    /**
+     * 校验档位配置（与 {@link #validateFieldNames} 同层）。
+     *
+     * <p>规则：含 {@code Models} 的供应商即为新规则，其中 {@code Standard} 是唯一必填档，
+     * 缺失或为空一律报配置错误——不允许静默使用其它档或空模型。老配置（只有 {@code Model}）
+     * 不校验档位，行为与升级前一致。</p>
+     *
+     * @param model       模型配置节点
+     * @param errorPrefix 错误前缀
+     */
+    private static void validateModelTiers(JsonNode model, String errorPrefix) {
+        JsonNode globalTier = model.get("DefaultTier");
+        if (globalTier != null && !globalTier.isNull() && !globalTier.isString()) {
+            throw new ConfigException("MODEL_TIER_INVALID",
+                    errorPrefix + "：全局默认档必须为文本: " + globalTier);
+        }
+        if (globalTier != null && globalTier.isString()
+                && ModelTier.fromConfigName(globalTier.asString()).isEmpty()) {
+            throw new ConfigException("MODEL_TIER_INVALID",
+                    errorPrefix + "：全局默认档不是合法档位: " + globalTier.asString());
+        }
+        JsonNode providers = model.get("Providers");
+        if (providers == null || !providers.isObject()) {
+            return;
+        }
+        for (Map.Entry<String, JsonNode> entry : providers.properties()) {
+            validateProviderTiers(entry.getKey(), entry.getValue(), errorPrefix);
+        }
+    }
+
+    private static void validateProviderTiers(String id, JsonNode provider, String errorPrefix) {
+        JsonNode models = provider.get("Models");
+        boolean newStyle = models != null && models.isObject() && !models.isEmpty();
+        if (!newStyle) {
+            // 老配置：只有 Model，按老规矩解析，不做档位校验
+            return;
+        }
+        JsonNode standard = models.get(ModelTier.STANDARD.configName());
+        if (standard == null || standard.isNull() || !standard.isString()
+                || standard.asString().isBlank()) {
+            throw new ConfigException("MODEL_TIER_STANDARD_REQUIRED",
+                    errorPrefix + "：供应商 " + id + " 缺少必填的 Standard 档");
+        }
+        for (Map.Entry<String, JsonNode> tier : models.properties()) {
+            if (ModelTier.fromConfigName(tier.getKey()).isEmpty()) {
+                throw new ConfigException("MODEL_TIER_INVALID",
+                        errorPrefix + "：供应商 " + id + " 的档位名非法: " + tier.getKey());
+            }
+            if (!tier.getValue().isString() || tier.getValue().asString().isBlank()) {
+                throw new ConfigException("MODEL_TIER_MODEL_EMPTY",
+                        errorPrefix + "：供应商 " + id + " 的 " + tier.getKey() + " 档模型名为空");
+            }
+        }
+        JsonNode defaultTier = provider.get("DefaultTier");
+        if (defaultTier != null && !defaultTier.isNull() && defaultTier.isString()
+                && ModelTier.fromConfigName(defaultTier.asString()).isEmpty()) {
+            throw new ConfigException("MODEL_TIER_INVALID",
+                    errorPrefix + "：供应商 " + id + " 的默认档不是合法档位: " + defaultTier.asString());
+        }
+        JsonNode model = provider.get("Model");
+        if (model != null && !model.isNull() && model.isString() && !model.asString().isBlank()) {
+            String modelName = model.asString();
+            boolean inTiers = false;
+            for (Map.Entry<String, JsonNode> tier : models.properties()) {
+                if (modelName.equals(tier.getValue().asString())) {
+                    inTiers = true;
+                    break;
+                }
+            }
+            if (!inTiers) {
+                throw new ConfigException("MODEL_TIER_MODEL_NOT_IN_TIERS",
+                        errorPrefix + "：供应商 " + id + " 的 Model 不在五档内: " + modelName);
+            }
+            if (defaultTier != null && defaultTier.isString()) {
+                String tierModel = models.get(defaultTier.asString()).asString();
+                if (!modelName.equals(tierModel)) {
+                    LOG.warn("供应商 {} 的 Model（{}）与 DefaultTier（{} → {}）不一致，以 DefaultTier 为准",
+                            id, modelName, defaultTier.asString(), tierModel);
+                }
+            }
+        }
     }
 
     private static void validateFieldNames(JsonNode node) {

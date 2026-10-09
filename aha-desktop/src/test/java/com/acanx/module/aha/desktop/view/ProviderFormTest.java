@@ -194,12 +194,14 @@ class ProviderFormTest {
     void presetsMatchRepositoryDefaults() {
         // 预设内容必须与 aha-core/src/main/resources/ModelDefault.yml 一致（模型名不得编造）
         assertThat(ProviderForm.preset("DeepSeek").baseUrl()).isEqualTo("https://api.deepseek.com/v1");
-        assertThat(ProviderForm.preset("DeepSeek").model()).isEqualTo("deepseek-chat");
-        assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-4o");
+        assertThat(ProviderForm.preset("DeepSeek").model()).isEqualTo("deepseek-v4-flash");
+        assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-6-sol");
         assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic");
         assertThat(ProviderForm.preset("Gemini").adapter()).isEqualTo("gemini");
-        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-4.6");
-        assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen-max");
+        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.3");
+        assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen3.7-plus");
+        assertThat(ProviderForm.preset("Moonshot").model()).isEqualTo("kimi-k2.7-code");
+        assertThat(ProviderForm.preset("MiniMax").model()).isEqualTo("MiniMax-M2.7");
     }
 
     @Test
@@ -246,10 +248,38 @@ class ProviderFormTest {
 
     @Test
     void modelCandidatesAreAvailableForKnownProviders() {
-        assertThat(ProviderForm.modelsFor("DeepSeek")).contains("deepseek-chat");
-        assertThat(ProviderForm.modelsFor("OpenAI")).contains("gpt-4o");
+        assertThat(ProviderForm.modelsFor("DeepSeek")).contains("deepseek-v4-pro");
+        assertThat(ProviderForm.modelsFor("OpenAI")).contains("gpt-6-sol");
         assertThat(ProviderForm.modelsFor(null)).isEmpty();
-        assertThat(ProviderForm.knownProviders()).contains("DeepSeek", "Qwen");
+        assertThat(ProviderForm.knownProviders()).contains("DeepSeek", "Qwen", "Moonshot", "MiniMax");
+    }
+
+    @Test
+    void tieredDraftRequiresStandardTier() {
+        ProviderForm.Draft draft = new ProviderForm.Draft(
+                "X", "openai-compatible", "https://x/v1", "", "",
+                Map.of("Ultra", "u1"), "Ultra", "60", "2");
+
+        assertThat(ProviderForm.validate(draft)).containsKey("tierStandard");
+    }
+
+    @Test
+    void tieredConfigKeepsTiersAndSyncsModelWithDefaultTier() {
+        ProviderForm.Draft draft = new ProviderForm.Draft(
+                "X", "openai-compatible", "https://x/v1", "", "",
+                Map.of("Ultra", "u1", "Standard", "s1", "Fallback", "f1"),
+                "Fallback", "60", "2");
+
+        ProviderConfig config = ProviderForm.toConfig(draft, null);
+
+        assertThat(config.hasModels()).isTrue();
+        assertThat(config.configuredModel(com.acanx.module.aha.core.config.ModelTier.ULTRA))
+                .isEqualTo("u1");
+        assertThat(config.defaultTier()).isEqualTo("Fallback");
+        assertThat(config.model()).isEqualTo("f1");
+        assertThat(config.effectiveModel(null)).isEqualTo("f1");
+        // 未配置的档位回退 Standard
+        assertThat(config.modelFor(com.acanx.module.aha.core.config.ModelTier.PRO)).isEqualTo("s1");
     }
 
     @Test

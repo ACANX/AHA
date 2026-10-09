@@ -418,7 +418,8 @@ class LocalAgentServiceTest {
             var attributes = local.runtime().attributes();
             assertThat(attributes)
                     .containsEntry("Provider", "DeepSeek")
-                    .containsEntry("Model", "deepseek-chat")
+                    .containsEntry("Tier", "Standard")
+                    .containsEntry("Model", "deepseek-v4-flash")
                     .containsEntry("Adapter", "openai-compatible");
             // 端点必须与传输层一致（含 /chat/completions）
             assertThat(attributes.get("Endpoint"))

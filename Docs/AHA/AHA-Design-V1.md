@@ -178,7 +178,7 @@ common ← extension-api ← core ← desktop
 - POM 语法兼容 Maven 3.9.x
 - Maven Wrapper 固定 Maven 4 运行时
 - 双版本验证：CI 必须同时跑 Maven 4 和 Maven 3.9.x
-- `mvn clean verify` 是唯一验收标准
+- `mvn clean verify` 通过是唯一验收标准，**由 CI 判定**（`Gate.yml` / `Compat.yml`）；Agent 本地不执行 Maven
 
 ## 第 8 条：宪法修订程序
 
@@ -533,6 +533,8 @@ AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
 
 ### 构建
 
+> 下列命令由 **CI / 人类开发者**执行；Agent 本地不跑 Maven，以 PR 的 CI checks 为准。
+
 ```bash
 ./mvnw clean verify          # Maven 4 运行时
 mvn clean verify             # Maven 3.9.x 兼容验证
@@ -548,6 +550,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 ```
 
 ### 运行测试
+
+> 测试由 **CI** 承担（`Build.yml` / `Gate.yml`）；Agent 本地不跑，失败时看 PR checks 与 CI 日志。
 
 ```bash
 ./mvnw test                  # 全部测试
@@ -622,10 +626,10 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 > CLI 命令参数、配置项、环境变量的完整参考见 `Docs/Guide/ReferenceGuide.md`。
 
-| 命令 | 说明 |
+| 命令（CI / 人类开发者） | 说明 |
 |---|---|
-| `./mvnw clean verify` | 完整构建 + 测试 |
-| `./mvnw -pl aha-core test` | 单模块测试 |
+| `./mvnw clean verify` | 完整构建 + 测试（**Agent 不执行**） |
+| `./mvnw -pl aha-core test` | 单模块测试（**Agent 不执行**） |
 | `./mvnw -pl aha-cli exec:java` | 运行 CLI |
 | `./mvnw dependency:tree` | 查看依赖树 |
 | `./mvnw javadoc:javadoc` | 生成 Javadoc |

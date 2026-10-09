@@ -490,7 +490,7 @@ public final class AhaDesktopApp extends Application {
                 return null;
             }
             ProviderConfig provider = config.providersOrEmpty().get(id);
-            return provider == null ? null : provider.model();
+            return provider == null ? null : provider.effectiveModel(config.defaultTier());
         } catch (RuntimeException e) {
             LOG.warn("读取 {} 失败：{}", store.path(), e.getMessage());
             return null;
