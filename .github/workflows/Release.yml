@@ -71,7 +71,7 @@ jobs:
       # 一条腿失败不要取消其余：三个平台的包是并列的交付物，缺哪一个都要看得见。
       fail-fast: false
       matrix:
-        # jpackage 不能交叉编译，JavaFX 原生库也按平台分类器发布
+        # JavaFX 原生库按平台分类器发布
         # （见 DesktopDesign.md 第 5 节），所以每个平台只能由自己的 runner 产出。
         #
         # `label` 同时是作业名与下载文件名的组成部分，供用户辨认

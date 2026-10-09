@@ -97,7 +97,7 @@ TD-00014-ManualAndExternalActions.md
 |---|---|---|---|---|
 | [TD-00005](TD-00005-Desktop02Remaining.md) | 0.2 收尾：工具面板开关、上下文压缩入口、会话内搜索与 F6 | ☐ 未开始 | [#76](https://github.com/ACANX/AHA/issues/76) | |
 | [TD-00006](TD-00006-DesktopProviderEnhancement.md) | 供应商连接测试 + 密钥写入密钥库 | ☐ 未开始 | [#77](https://github.com/ACANX/AHA/issues/77) | |
-| [TD-00007](TD-00007-DesktopPackagingAndCoverage.md) | jpackage 自包含安装包 + 覆盖率门禁上线 | ☐ 未开始 | [#78](https://github.com/ACANX/AHA/issues/78) | |
+| [TD-00007](TD-00007-DesktopPackagingAndCoverage.md) | 覆盖率门禁上线（`jpackage` 部分已决策跳过） | ☐ 未开始 | [#78](https://github.com/ACANX/AHA/issues/78) | |
 
 ### 4.3 原生镜像
 
