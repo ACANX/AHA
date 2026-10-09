@@ -560,6 +560,7 @@ desktop 亦未列 tool 依赖。
 | v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，**另开 issue #48 长期跟踪**（本文件留索引 `N-24`），新增 `G-13` | @ACANX / CNXNC |
 | v0.42.0 | 2026-10-09 | 真机暴露 issue #49（暗色下搜索框 / 会话列表 / 输入框仍是亮色底，导航按钮 / 菜单栏 / 状态栏文字仍是深色）；修掉两处成因：`Palette.theme()` 去缓存（原生镜像下样式串与色表不同步）、`applyTheme` 逐个节点异常隔离；搜索框 / 输入框 / 会话单元格 / 菜单栏 / 滚动区改为显式套主题；新增 `N-25` | @ACANX / CNXNC |
 | v0.43.0 | 2026-10-09 | 落地 issue #46（预发行版显示带构建号的版本）：根 POM 新增 `aha.build.version`（默认 `${project.version}`）、`version.properties` 增加 `build` 项、`AppVersion` 提供 `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` / `CliNative.yml` 构建时传 `-Daha.build.version=<a.b.c.PPPPP>`；展示点：桌面端「关于」与启动日志、CLI 启动页 / `/help` / `version`；新增 `N-26`、`G-14` | @ACANX / CNXNC |
+| v0.44.0 | 2026-10-09 | 修正 issue #46 的构建号注入：`DesktopNative.yml` / `CliNative.yml` 的 `command: >-` 折叠块内写了 `#` 注释，块标量里的 `#` 不是 YAML 注释，被折进命令串后在 shell 里注释掉了其后全部参数（含 `-Daha.build.version`），导致构建号从未注入（真机看不到）；已把注释移出块外 | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |

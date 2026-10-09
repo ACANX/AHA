@@ -272,6 +272,9 @@ jobs:
         #     模块自身的 <properties> 会赢过父 POM 里 profile 注入的属性，于是
         #     native-image **被静默跳过**：构建「成功」、零产物、零报错、CI 全绿。
         #     命令行 -D 的优先级最高，显式传一次就把这类坑彻底关掉。
+        # -Daha.build.version：注入 version.properties 的 build 项，供桌面端「关于」/ 状态栏等显示（issue #46）。
+        # ⚠ 不能写成 command 折叠块内的 `#` 注释：块标量里的 `#` 不是 YAML 注释，
+        #   会被折进命令串，在 shell 里把其后所有参数注释掉（2026-10-09 实测踩过，构建号因此从未注入）。
         uses: ./.github/actions/maven-run
         with:
           command: >-
@@ -279,7 +282,6 @@ jobs:
             -pl aha-desktop-native,aha-desktop -am package
             -DskipTests -Djacoco.skip=true
             -Daha.native.version=${{ needs.native-version.outputs.version }}
-            # 构建版本：注入 version.properties 的 build 项，供 GUI「关于」/ CLI 启动页显示（issue #46）
             -Daha.build.version=${{ needs.native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
             -Dnative.skip=false
