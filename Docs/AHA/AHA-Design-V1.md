@@ -290,6 +290,8 @@ aha/
 │       ├── extension-authoring/
 │       ├── release/
 │       └── java-app-graalvm-native-image-compile/
+├── Archive/
+│   └── README.md                      ← 已废弃历史资料的归档（不再维护）
 └── Docs/
     ├── Dbsx.txt                         ← 用户原始待办（已冻结）
     ├── PLAN.md                          ← 暂缓与受限事项（已冻结）
@@ -480,6 +482,7 @@ aha/
 | v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
 | v3.66.0 | 2026-10-09 | §4 项目结构的 workflows 树补 `BuildJVMArtifacts.yml`（dev 的 JVM 便携包构建 + 预发行，issue #63）及 `DesktopNative.yml` / `CliNative.yml` | @ACANX |
 | v3.67.0 | 2026-10-09 | 文档结构调整：新增 `Docs/TODO/`（清单 `README.md` + `TD-PPPPP-*.md`）与 `Docs/Troubleshooting/`（`TS-yyyyMM-*.md`）；`Docs/DevLog/` 下 31 篇排查记录**全部 1:1 迁移**到 Troubleshooting，DevLog 重新定位为开发完成记录且命名改为 `yyyyMMdd-HH.md`；目录树与附录 A 同步 | @ACANX / CNXNC |
+| v3.68.0 | 2026-10-09 | 新增 `Archive/`（已废弃历史资料的归档，不参与 CI 检查）并登记入目录树与附录 A；§4 技能索引补 `issue-tracking` 与 `doc-recording`；新增「记录纪律（强制）」（代码与记录同变更内完成） | @ACANX / CNXNC |
 
 ---
 ```
@@ -631,6 +634,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `release` | 版本发布流程 | [SKILL.md](.agents/skills/release/SKILL.md) |
 | `java-app-graalvm-native-image-compile` | 把 Java 应用（jar 模式）编成多平台原生镜像（含隔离、四类清单、排错与测量口径） | [SKILL.md](.agents/skills/java-app-graalvm-native-image-compile/SKILL.md) |
 | `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 文件资源 / 运行期初始化）：三路发现法、来源优先级、精确签名、四层守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
+| `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
+| `doc-recording` | 三类过程记录的时机与写法（待办 TD / 开发日志 DevLog / 排查记录 TS）：写什么、怎么命名、登记与自检 | [SKILL.md](.agents/skills/doc-recording/SKILL.md) |
 
 ## 常用命令
 
@@ -3680,6 +3685,11 @@ Closes #123
 | 文档 | 说明 |
 |---|---|
 | `AHA-Design-V1.md` | 本文件：完整设计文档（唯一权威文档） |
+
+### Archive/
+
+已废弃 / 不再维护的历史资料（旧文档、旧设计稿、被取代的脚本与配置）；文件名保持原样，
+文件头注明「已废弃（YYYY-MM-DD）」与替代物。说明见 `Archive/README.md`。
 
 ### Docs/（根级）
 
