@@ -233,6 +233,9 @@ jobs:
         #     必须显式把 aha-cli 也列出来，让 `-am` 把五个上游一起拉进来。
         #   * `-Dnative.skip=false` 必须显式传：默认值是 true，profile 里虽然覆盖为 false，
         #     但命令行 -D 优先级最高，显式传一次把「静默跳过」这类坑彻底关掉。
+        # -Daha.build.version：注入 version.properties 的 build 项，供 CLI 启动页 / -V 显示（issue #46）。
+        # ⚠ 不能写成 command 折叠块内的 `#` 注释：块标量里的 `#` 不是 YAML 注释，
+        #   会被折进命令串，在 shell 里把其后所有参数注释掉（2026-10-09 实测踩过，构建号因此从未注入）。
         uses: ./.github/actions/maven-run
         with:
           command: >-
@@ -240,7 +243,6 @@ jobs:
             -pl aha-cli-native,aha-cli -am package
             -DskipTests -Djacoco.skip=true
             -Daha.native.version=${{ needs.cli-native-version.outputs.version }}
-            # 构建版本：注入 version.properties 的 build 项，供 CLI 启动页 / --version 显示（issue #46）
             -Daha.build.version=${{ needs.cli-native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
             -Dnative.skip=false
