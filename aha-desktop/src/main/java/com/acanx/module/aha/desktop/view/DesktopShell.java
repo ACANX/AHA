@@ -388,6 +388,11 @@ public final class DesktopShell implements ChatView {
         if (completion != null) {
             completion.refreshTheme();
         }
+        // 补丁样式表按主题**整份替换**：两份表都是纯字面量，
+        // 于是不存在「变量查表失败 → 整条声明被丢弃」这条路（issue #49 第四轮）
+        if (rootNode != null) {
+            ThemePaint.install(rootNode.getScene());
+        }
         return resolved;
     }
 
