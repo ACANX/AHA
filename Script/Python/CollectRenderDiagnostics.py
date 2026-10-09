@@ -81,6 +81,11 @@ def candidates(explicit: Path | None) -> list[Path]:
     if home:
         found.append(Path(home) / "Log" / LOG_FILE_NAME)
 
+    # AHA 的默认 home。真机实测：日志常落在 %USERPROFILE%\.aha\Log\AHA.log
+    # （配置里写的是 Aha.Logging.File=${AHA_HOME:-~/.aha}/Log/AHA.log），
+    # **不是**启动目录——第一版脚本漏了这一条，真机上就找不到日志。
+    found.append(Path.home() / ".aha" / "Log" / LOG_FILE_NAME)
+
     # 当前目录与其上溯各层：便携包从解压目录启动、源码检出从仓库根启动
     here = Path.cwd().resolve()
     for base in [here, *here.parents]:
