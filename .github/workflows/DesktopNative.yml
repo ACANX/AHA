@@ -98,12 +98,10 @@ jobs:
             exit 0
           fi
 
-          # ② 基线版本从根 POM 读，唯一来源。
+          # ② 基线经唯一读取入口解析（`version` 文件 → 根 POM 的 `<properties>/<revision>`
+          #    → `<version>`），见 TD-00016 §B。
           #    刻意不用 `help:evaluate`：Maven 4 下它带 -q 时输出为空（踩过）。
-          #    注意不能写 findtext('version')：ElementTree 的标签是**带命名空间**的
-          #    （{http://maven.apache.org/POM/4.0.0}version），那样永远取不到，而且不报错、
-          #    只会让版本号变成空的（本地实测踩到过）。这里按「第一个以 version 结尾的直接子节点」取。
-          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+          base=$(python3 .github/Python/ProjectVersion.py --resolve)
 
           # ③ PR 号：先看输入，其次按提交反查。
           #    push 事件里没有 PR 号（merge commit 也是普通 push），所以要走一次 API。

@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""AHA 版本号一致性校验（TD-00016 §E / issue #93）。
+"""AHA 版本号读取与一致性校验（TD-00016 §B / §E；issue #93 / #94）。
 
 版本号在仓库里有多个「出现位置」：人写的一处（根 POM），机器生成的多处
 （资源过滤后的 `version.properties`、构建产物文件名、CI 打出的 tag）。
 任何一处漏改都会**静默产出错误版本**——0.1.1 那次就是这样把旧版本的包发了
 出去（见 `Docs/Troubleshooting/TS-202610-VersionBumpMissedModules.md`）。
-本脚本把「版本漂移」从静默错误变成 CI 红灯，并在失败信息里点明是哪一处对
-不上，而不是只抛一句「版本不一致」。
 
-校验五处（与 §E 一一对应）：
+本脚本同时承担两件事：
+
+  * **唯一读取入口**（§B）：解析顺序为「显式输入 → `version` 文件 → 根 POM 的
+    `<properties>/<revision>` → 根 POM 的 `<version>`」；各工作流都经它读版本，
+    版本源将来怎么变（`<version>` ↔ `<revision>` ↔ `version` 文件）只改这一处。
+  * **一致性校验**（§E）：把「版本漂移」从静默错误变成 CI 红灯，并在失败信息
+    里点明是哪一处对不上，而不是只抛一句「版本不一致」。
+
+`--verify` 校验五处（与 §E 一一对应）：
 
   1. 根目录 `version` 文件（P4 引入；尚不存在时以根 POM 为基准）
   2. 根 `pom.xml` 的版本（优先 `<properties>/<revision>`，回退根 `<version>`）
@@ -18,13 +24,14 @@
 
 用法：
 
-    python3 bin/ProjectVersion.py --verify   # 一致性校验（CI 用）
-    python3 bin/ProjectVersion.py            # 裸调用：输出当前版本号
+    python3 .github/Python/ProjectVersion.py --resolve [<版本>]  # 解析版本（显式输入优先）
+    python3 .github/Python/ProjectVersion.py --verify            # 一致性校验（CI 用）
+    python3 .github/Python/ProjectVersion.py                     # 裸调用：输出当前版本号
 
-前置条件：第 3、4 项依赖构建产物，故 `--verify` 必须排在 `clean verify`
-之后（见 `Gate.yml`：先完整构建，再校验）。
+前置条件：`--verify` 的第 3、4 项依赖构建产物，故必须排在 `clean verify`
+之后（见 `Gate.yml`：先完整构建，再校验）。`--resolve` 只读文本，无此限制。
 
-退出码：0 = 通过；1 = 存在不一致或无法校验；2 = 用法错误。
+退出码：0 = 通过；1 = 存在不一致或无法解析；2 = 用法错误。
 """
 
 from __future__ import annotations
@@ -42,6 +49,9 @@ ROOT = Path(__file__).resolve().parents[2]
 # 基线版本号格式：a.b.c（AHA 的预发行用 a.b.c.PPPPP 构建号表达，
 # 不含 SNAPSHOT，见 Docs/DevSpec/ReleaseProcess.md 第 2 节）
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+
+# 显式传入的完整版本号：a.b.c 或带构建号的 a.b.c.PPPPP
+EXPLICIT_VERSION_RE = re.compile(r"\d+\.\d+\.\d+(?:\.\d+)?")
 
 # 遍历时的剪枝目录：既不产出构建产物，也避免扫到海量无关文件
 SKIP_DIRS = {".git", "node_modules", ".idea", ".venv", "__pycache__"}
@@ -81,11 +91,21 @@ def read_root_pom(root: Path) -> tuple[str, str]:
     return version, revision
 
 
-def resolve_version(root: Path) -> tuple[str, str]:
-    """解析版本基准，返回 (版本号, 来源描述)。
+def resolve_version(root: Path, override: str | None = None) -> tuple[str, str]:
+    """解析版本号，返回 (版本号, 来源描述)。
 
-    优先级（TD-00016 §H.1）：`version` 文件 → 根 POM 的 `<revision>` → 根 POM 的 `<version>`。
+    优先级（TD-00016 §H.1）：显式输入 → `version` 文件 → 根 POM 的 `<revision>`
+    → 根 POM 的 `<version>`。
+
+    `override` 为空串或 None 时忽略显式输入，继续按文件 / POM 解析。
     """
+    if override is not None and override.strip():
+        value = override.strip()
+        if not EXPLICIT_VERSION_RE.fullmatch(value):
+            raise VerifyError(
+                f"显式版本号 {override!r} 不符合 a.b.c 或 a.b.c.PPPPP 格式"
+            )
+        return value, "显式输入（命令行 / workflow input）"
     version_file = root / "version"
     pom_version, revision = read_root_pom(root)
     if version_file.is_file():
@@ -278,7 +298,14 @@ def collect_findings(root: Path, baseline: str) -> list[tuple[str, bool, str]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="AHA 版本号一致性校验（TD-00016 §E / issue #93）"
+        description="AHA 版本号读取与一致性校验（TD-00016 §B / §E）"
+    )
+    parser.add_argument(
+        "--resolve",
+        nargs="?",
+        const="",
+        metavar="VERSION",
+        help="解析版本号（可给显式版本，优先于 version 文件与 POM）；输出到 stdout",
     )
     parser.add_argument(
         "--verify",
@@ -287,17 +314,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.verify and args.resolve is not None:
+        parser.error("--verify 与 --resolve 不能同时使用")
+
     try:
-        baseline, source = resolve_version(ROOT)
+        version, source = resolve_version(ROOT, args.resolve)
     except VerifyError as exc:
-        print(f"[问题] 无法解析版本基准：{exc}", file=sys.stderr)
+        print(f"[问题] 无法解析版本：{exc}", file=sys.stderr)
         return 1
 
     if not args.verify:
-        # 裸调用：输出当前版本号（供脚本 / 本地使用，见 §H.1）
-        print(baseline)
+        # 裸调用 / --resolve：输出一行版本号（供脚本与工作流消费，见 §B）
+        print(version)
         return 0
 
+    baseline = version
     print(f"版本一致性校验：基准 {baseline}（来源：{source}）")
     findings = collect_findings(ROOT, baseline)
 
