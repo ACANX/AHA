@@ -69,7 +69,11 @@ if not exist "%BUNDLE%\lib\aha-desktop-*.jar" call :extract "%ZIP%" "%BUNDLE%" |
 set "LIB=%BUNDLE%\lib"
 
 :launch
+rem --add-opens below serves the render diagnostics (issue #48): reading the font
+rem factory (com.sun.javafx.font.PrismFontFactory) needs reflection, and the
+rem module system blocks it unless that package is opened. Harmless otherwise.
 "%JAVA%" --enable-native-access=org.xerial.sqlitejdbc ^
+    --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED ^
     --module-path "%LIB%" ^
     --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.AhaDesktopApp %*
 

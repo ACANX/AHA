@@ -194,6 +194,7 @@ Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景�
 - [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) - 工具使用
 - [ExtensionAuthoringGuide.md](Docs/Guide/ExtensionAuthoringGuide.md) - 扩展开发
 - [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) - 排错指南
+- [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) - 原生渲染诊断手册（真机取证步骤：跑原生包与 JVM 模式、收集诊断日志、对照判据）
 
 ## 待办与计划
 

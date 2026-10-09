@@ -135,6 +135,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) | 各供应商接入方式 |
 | [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) | 工具使用与权限规则 |
 | [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) | 常见问题排查 |
+| [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) | 原生渲染诊断（真机取证步骤与判定表，issue #48） |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
 其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、

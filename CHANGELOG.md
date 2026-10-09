@@ -131,6 +131,29 @@
   规则写进 `BuildSpec.md` §7。
 
 ### 修复
+- **原生桌面镜像字体渲染与 JVM 模式不一致（issue #48）——本轮先做诊断**：真机报原生包的字发虚、
+  字形偏细，明显不如 JVM 模式锐利。本轮把「原生包到底走的哪条路」变成可观测的事实：
+  ① 实测 `V0.1.1.00055` 的 **Ubuntu 原生包**（本机 WSLg 可跑），确认原生镜像里 JavaFX 的原生库
+  加载链路正常，ES2 在本机因无 GPU 回退 SW（预期行为，不能据此推断 Windows）；
+  ② 用像素实验**证伪**「软件管线没有 LCD 次像素抗锯齿」——`prism.lcdtext=true/false` 在 SW 管线
+  下的产物不同（4375 B / 3025 B，md5 不同），说明 SW 同样支持次像素抗锯齿；
+  ③ `AhaDesktopApp.main` 默认打开 `prism.verbose`（JavaFX 会打出实际管线名），`start()` 新增
+  `logRenderingDiagnostics()` 一次打全：`prism.*` / `glass.platform` 属性、JavaFX 版本、
+  默认字体族 / 名称 / 字号 / 可用字体族数、**字体实现工厂（`PrismFontFactory.getFontFactory()`
+  的实现类，反射读取）**、**同一段文字 14px 下的宽 / 高 / 基线（字形度量）**、屏幕
+  outputScale / dpi；为此新增 1 条可达性元数据（439 → 440）与 1 条测试守卫（12 → 13）。
+  **只加日志、不改渲染行为**——拿到真机两份日志（原生 / JVM）后再定修法。
+  诊断代码已先在本地 JVM 模式实跑：`字体实现工厂` 在 Windows 上应为 DirectWrite 的
+  `DWFactory`、非 Windows / 无 DirectWrite 时为内置 FreeType 的 `FTFactory`——**两边若不同，
+  即说明字形栅格化走了另一条路**，这正是「笔画偏细、发虚」最可能的解释。
+  详见 `Docs/DevLog/DevLog-20261009-13.md`。
+- **原生桌面镜像渲染诊断的操作手册与收集脚本（issue #48）**：把「真机上各跑一次原生包与
+  JVM 模式、把同样的几行日志拿出来对照」落成可照做的材料——新增
+  `Docs/Guide/NativeRenderDiagnosticsGuide.md`（步骤、日志位置、判定表、诊断行含义、常见问题）
+  与 `Script/Python/CollectRenderDiagnostics.py`（自动定位 `Log/AHA.log`、**只取最后一次启动的片段**、
+  生成可直接粘贴的 Markdown 报告）；`bin/AhaDesktop.{bat,sh}` 补上
+  `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`，否则 JVM 模式下
+  「字体实现工厂」会因非导出包被模块系统拒绝、只打「不可用」，对照就少一条关键证据。
 - **原生桌面镜像暗色下控件背景与文字未适配（issue #49）**：切到暗色后，侧边栏搜索框 / 会话列表、
   中部输入框仍是亮色（白）底，侧边栏导航按钮、菜单栏与状态栏文字仍是深色，均不可读。两处成因：
   ① `Palette.theme()` 返回**缓存的静态字段**，与运行期更新的 `FOREGROUND` 等字段在原生镜像下

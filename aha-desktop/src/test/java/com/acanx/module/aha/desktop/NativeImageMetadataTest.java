@@ -198,6 +198,18 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void reachabilityMetadataRegistersFontFactoryForDiagnostics() throws IOException {
+        String json = readMetadata();
+        // AhaDesktopApp.logRenderingDiagnostics() 用反射读字体实现工厂（issue #48）：
+        // 这个类名是判断「原生镜像是否走了与 JVM 不同的字体路径」的关键证据。
+        // 未登记时反射会失败，日志里只会打「不可用」——诊断等于白做。
+        String entry = entryFor(json, "com.sun.javafx.font.PrismFontFactory");
+        assertThat(entry)
+                .as("字体诊断要反射调用 PrismFontFactory.getFontFactory()（issue #48）")
+                .contains("\"getFontFactory\"");
+    }
+
+    @Test
     void reachabilityMetadataRegistersPrismEffectPeers() throws IOException {
         String json = readMetadata();
         for (String type : PRISM_EFFECT_PEERS) {
