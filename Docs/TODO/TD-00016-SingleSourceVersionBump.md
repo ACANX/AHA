@@ -3,7 +3,7 @@
 > 待办编号：TD-00016
 > 标题：版本切换收敛为「改一行」——引入 `${revision}` + 单一读取入口 + 一致性校验
 > 状态：☐ 未开始
-> 跟踪 Issue：[#92](https://github.com/ACANX/AHA/issues/92)（多阶段实施：P1 校验 → P2 读取收敛 → P3 `${revision}` → P4 分发器 → P5 文档）
+> 跟踪 Issue：父 [#92](https://github.com/ACANX/AHA/issues/92)；子任务 [#93](https://github.com/ACANX/AHA/issues/93)（P1 校验）/ [#94](https://github.com/ACANX/AHA/issues/94)（P2 读取收敛）/ [#95](https://github.com/ACANX/AHA/issues/95)（P3 `${revision}`）/ [#96](https://github.com/ACANX/AHA/issues/96)（P4 分发器）/ [#97](https://github.com/ACANX/AHA/issues/97)（P5 文档）
 > 创建日期：2026-10-09
 > 最后更新：2026-10-09
 
