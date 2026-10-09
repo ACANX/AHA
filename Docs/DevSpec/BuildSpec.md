@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.21.0
+**文档版本**：v1.22.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -35,6 +35,7 @@
 | v1.19.0 | 2026-10-08 | 第 4.1 节补「JavaFX 平台分类器」规则：profile 设 `javafx.platform`、激活条件两条硬规则、空壳自动模块的排除要求、未覆盖平台的失败方式与应急覆盖开关 | @ACANX |
 | v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
 | v1.21.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（dev 的 JVM 构建线，与 `DesktopNative.yml` / `CliNative.yml` 同构）：`push` 到 `dev` 时构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`），补齐 JVM 模式在 dev 上的产物缺口（issue #63）；§8.1 分层表登记该层 | @ACANX |
+| v1.22.0 | 2026-10-09 | §2 补「JDK 27 编译变体」（`-Dmaven.compiler.release=27`，仅 `BuildJVMArtifacts.yml` 的 jdk27 腿，包名带 `-jdk27`，issue #65）：不改变 JDK 25 基线与正式发版；§8.1 分层表同步补 JDK 轴 | @ACANX |
 
 ---
 
@@ -51,10 +52,15 @@
 
 | 类别 | 锁定版本 | 说明 |
 |---|---|---|
-| JDK | **25 (LTS)** | 编译与运行目标，禁止降级 |
+| JDK | **25 (LTS)** | 默认编译与运行目标（`release=25`），禁止降级；另有 JDK 27 编译变体（见下） |
 | Maven 运行时 | **4.x** | 仅作为构建运行时，通过 Maven Wrapper 固定 |
 | Maven 兼容基线 | **3.9.x** | 所有 POM 修改必须通过 Maven 3.9.x 验证 |
 | JPMS | **优先启用（非强制）** | 默认写 `module-info.java` 并走模块路径；与 OpenJFX 等需求冲突时可为它让路（`C-01` 决策，2026-10-08） |
+
+**JDK 27 编译变体（额外产物，非基线）**：dev 出包线（`BuildJVMArtifacts.yml`）在 JDK 25 之外
+额外用 **JDK 27** 编译一份产物（`-Dmaven.compiler.release=27`，包名带 `-jdk27` 后缀，issue #65），
+用于提前验证 JDK 27 下能否编译与运行。它**不改变上面的 JDK 25 基线**：默认构建仍是 `release=25`，
+正式发版（`Release.yml`）仍只用 JDK 25；只有该工作流的 jdk27 腿显式覆盖 release。
 
 **禁止事项**：
 

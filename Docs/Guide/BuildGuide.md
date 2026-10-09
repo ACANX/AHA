@@ -37,7 +37,7 @@
 
 | 组件 | 版本 |
 |---|---|
-| JDK | 25 (LTS) |
+| JDK | 25 (LTS)；另有可选的 JDK 27 编译变体（见 `BuildSpec.md` §2，issue #65） |
 | Maven 运行时 | 4.x（Maven Wrapper 固定，无需单独安装） |
 | Maven 兼容基线 | 3.9.x（仅兼容验证时需要） |
 

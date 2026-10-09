@@ -939,6 +939,7 @@ aha/
     </modules>
 
     <properties>
+        <!-- 默认编译目标；CI 的 jdk27 腿用 -Dmaven.compiler.release=27 覆盖（BuildJVMArtifacts.yml，issue #65） -->
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
