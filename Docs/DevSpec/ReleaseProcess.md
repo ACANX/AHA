@@ -77,7 +77,7 @@
    - 可用一条命令改根 POM 的 `<revision>`（需联网取 maven-versions-plugin）：
 
      ```
-     ./mvnw versions:set-property -Dproperty=revision -DnewVersion=0.1.2 -DgenerateBackupPoms=false
+     ./mvnw versions:set-property -Dproperty=revision -DnewVersion=x.y.z -DgenerateBackupPoms=false
      ```
 
      **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
