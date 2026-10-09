@@ -120,6 +120,9 @@ Dist/
 
 ## 构建
 
+> 下面的命令供人类开发者使用。项目约定 **Agent 不在本地执行 Maven 编译 / 测试**，
+> 一律推送后以 PR 的 CI checks 为准（见 [AGENTS.md](AGENTS.md)）。
+
 ```bash
 ./mvnw clean verify          # Maven 4 运行时（含测试与覆盖率门禁）
 mvn clean verify             # Maven 3.9.x 兼容验证

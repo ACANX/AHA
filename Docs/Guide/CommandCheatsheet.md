@@ -17,6 +17,9 @@
 | 平台 | 桌面端便携包按平台出包，包内含**本平台**的 OpenJFX 原生库 |
 | 命令名 | 本机若命令是 `python` 而非 `python3`，替换即可 |
 
+> **Agent 约束**：本速查里的 `mvnw` 命令供人类开发者构建发行包；Agent 不在本地执行
+> 编译 / 测试，以 PR 的 CI checks 为准（见仓库根 `AGENTS.md`）。
+
 ## 1. 脚本一览（最常用）
 
 | 想做的事 | Windows | Linux / macOS |

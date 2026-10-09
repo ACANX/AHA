@@ -58,7 +58,7 @@ Closes #123
 | 1 | **断言分支**：`git rev-parse --abbrev-ref HEAD` 是预期分支 | 避免把提交落到别人的分支上 |
 | 2 | **核对新增文件真的入库**：`git ls-files <新文件…>` 逐个点名 | `git add -A` 会**静默跳过**被 `.gitignore` 命中的文件 |
 | 3 | **确认没有源码被忽略**：`python3 bin/CheckScripts.py` | 该脚本会问 git 要「被忽略且在 `src/` 下或本身就是 `.java`」的文件，有则失败 |
-| 4 | 只在本地跑快检查（单模块 `test -Djacoco.skip=true` 与 `bin/Check*.py`） | 慢检查由 CI 承担，见 `BuildSpec.md` §8 |
+| 4 | 本地只跑 `bin/Check*.py` 静态检查；编译 / 测试 / verify 一律交给 CI，推送后以 PR checks 为准 | 慢检查由 CI 承担，见 `BuildSpec.md` §8 |
 
 > **真实事故（2026-10-08）**：`.gitignore` 里不带前导斜杠的 `Log/`（本意是仓库根的运行期
 > 日志目录）在**任意层级**匹配，且 Windows / macOS 大小写不敏感，于是吃掉了

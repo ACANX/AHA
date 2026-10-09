@@ -24,6 +24,7 @@
 | v1.8.0 | 2026-10-07 | §3.2 补充慢检查的触发时机（含每周定期扫描）与 Maven 3.9.x 兼容验证（Compat.yml）及本地命令 | @ACANX |
 | v1.9.0 | 2026-10-07 | §5 补终端查看覆盖率汇总的方式（`bin/ReportCoverage.py`）并说明门禁静默、脚本只报数不判定 | @ACANX |
 | v1.10.0 | 2026-10-09 | §3.1.1 新增桌面端便携包的一键构建与更新脚本（`Script/Python/DesktopDistBuild.py`、`DesktopDistExtract.py`）与命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，随 `mvn package` 重建） | @ACANX |
+| v1.11.0 | 2026-10-09 | 明确 Agent 不在本地执行 Maven 编译 / 测试，以 PR 的 CI checks 为准；§3.2 自查说明区分「人类开发者」与「Agent」 | @ACANX |
 
 ---
 
@@ -32,6 +33,10 @@
 本指南说明 AHA 的**构建操作**，属于用户指南（`Docs/Guide/`）。
 
 **强制要求**（版本锁定、双版本验证、覆盖率门禁）见 [BuildSpec.md](../DevSpec/BuildSpec.md)。
+
+> **Agent 约束**：本指南的命令供人类开发者使用。项目约定 Agent **不在本地执行任何
+> Maven 编译 / 测试 / verify**，一律推送后**以 PR 的 CI checks 结果为准**，失败再根据 CI 日志
+> 排查修改；Agent 本地只跑 `python3 bin/Check*.py`。见 [AGENTS.md](../../AGENTS.md)。
 
 ## 2. 前置准备
 
@@ -154,7 +159,8 @@ python3 bin/CheckChanged.py --all           # 无条件全部执行
 |---|---|---|
 | 仅文档 | `CheckChanged.py <md>` | 亚秒 |
 | 仅脚本 | `CheckChanged.py <py>` | 亚秒 |
-| 实现代码 | `./mvnw -pl aha-cli -am test -Djacoco.skip=true` | 约 1 分钟 |
+| 实现代码（Agent） | `CheckChanged.py`；编译 + 单测由 CI 的 `Build.yml` 判定 | 亚秒 / CI |
+| 实现代码（人类开发者） | `./mvnw -pl aha-cli -am test -Djacoco.skip=true` | 约 1 分钟 |
 
 **完整门禁不在每次改动后跑**。覆盖率门禁、完整 `clean verify`、文档检查、技能检查、
 脚本检查与重复率检查都属于慢检查，已集中到 CI 的 `Gate.yml`——它在**合入 `main` /
@@ -168,7 +174,7 @@ Maven 3.9.x 兼容性由独立的 `Compat.yml` 验证（同属卡点，且是发
 断言实际使用的 Maven 版本与 `.mvn/wrapper/maven-wrapper.properties` 一致——
 「门禁跑的到底是哪一版 Maven」不靠推断。
 
-本地在合入前自查时按下面执行：
+**人类开发者**在合入前自查时按下面执行（**Agent 不执行 Maven**，一律交给 CI，见 [AGENTS.md](../../AGENTS.md)）：
 
 ```bash
 ./mvnw -B clean verify                 # 构建 + 测试 + 覆盖率门禁（≥ 70%）

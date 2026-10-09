@@ -33,9 +33,9 @@
 
 ## 1. 发布前检查
 
-- [ ] `./mvnw clean verify` 通过（Maven 4）
-- [ ] `mvn clean verify` 通过（Maven 3.9.x）
-- [ ] 全部测试通过，覆盖率达标
+- [ ] CI 的 `Gate.yml`（`clean verify` + 覆盖率门禁）通过
+- [ ] CI 的 `Compat.yml`（Maven 3.9.x）通过
+- [ ] 全部测试通过，覆盖率达标（读 CI 日志，不在本地重跑）
 - [ ] 发行包可构建且可运行（见 §3.1）
 - [ ] `Docs/DevSpec/` 全部文档已审查
 - [ ] `CHANGELOG.md` 已更新
@@ -160,6 +160,8 @@
 `win` / `linux` / `linux-aarch64` / `mac` / `mac-aarch64`——**没有 `win-aarch64`**，故 Windows ARM 不在范围。
 
 ### 3.1 发行包验证（发布前必做）
+
+> 发行包由 CI 构建；下面的命令**不在本地执行 Maven**。验证在 CI 或用户明确要求的发布场景中完成。
 
 ```bash
 ./mvnw clean package

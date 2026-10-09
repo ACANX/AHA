@@ -169,7 +169,7 @@ common ← extension-api ← core ← tool ← desktop   # 桌面端需要内置
 - POM 语法兼容 Maven 3.9.x
 - Maven Wrapper 固定 Maven 4 运行时
 - 双版本验证：CI 必须同时跑 Maven 4 和 Maven 3.9.x
-- `mvn clean verify` 是唯一验收标准
+- `mvn clean verify` 通过是唯一验收标准，**由 CI 判定**（`Gate.yml` / `Compat.yml`）；本地不执行 Maven（见 `BuildSpec.md` §8）
 
 ## 第 8 条：宪法修订程序
 

@@ -220,8 +220,8 @@ Issue 区开一条对应 Issue 作为长期跟踪载体，写明现象、背景�
 
 | 技能（`name`） | 用途 | 入口 |
 |---|---|---|
-| `build` | 构建、打包、Maven Wrapper 操作 | [SKILL.md](.agents/skills/build/SKILL.md) |
-| `test` | 单元测试、集成测试、覆盖率 | [SKILL.md](.agents/skills/test/SKILL.md) |
+| `build` | 构建由 CI 承担；按 PR 的 CI 日志排查构建失败（本地不跑 Maven） | [SKILL.md](.agents/skills/build/SKILL.md) |
+| `test` | 测试与覆盖率由 CI 承担；新增测试、按 CI 日志排查失败用例 | [SKILL.md](.agents/skills/test/SKILL.md) |
 | `llm-adapter` | 新增 LLM 供应商适配器 | [SKILL.md](.agents/skills/llm-adapter/SKILL.md) |
 | `tool-authoring` | 新增工具 | [SKILL.md](.agents/skills/tool-authoring/SKILL.md) |
 | `extension-authoring` | 新增扩展 | [SKILL.md](.agents/skills/extension-authoring/SKILL.md) |

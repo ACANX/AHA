@@ -252,8 +252,8 @@ POM 语法必须兼容 Maven 3.9.x：
 | 仅技能（`.agents/skills/`） | `bin/CheckSkills.py`；技能内 Markdown 另需 `CheckDocs.py` | 构建 |
 | 仅脚本（`*.bat`/`*.cmd`/`*.sh`/`*.py`、`.gitattributes`） | `bin/CheckScripts.py` | 构建 |
 | 像素网格常量（`StartupPixelLogo.java` 与 `bin/GenPixelLogo.py`） | `bin/GenPixelLogo.py --verify` | 构建 |
-| 实现代码（Java / POM / YAML） | `./mvnw -pl <模块> -am test -Djacoco.skip=true` | 覆盖率门禁、文档检查 |
-| 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | `./mvnw -B pmd:cpd && bin/CheckDuplication.py` | 构建 |
+| 实现代码（Java / POM / YAML） | `bin/Check*.py`（本地）；**编译 + 单元测试由 CI 的 `Build.yml` 判定** | 覆盖率门禁、文档检查 |
+| 重复率相关（父 POM 的 PMD 配置、`bin/CheckDuplication.py`） | **由 CI 的 `Gate.yml` 判定** | 构建 |
 
 **本地不跑完整 `verify`（强制）**：完整 `verify`（覆盖率采集 + 打包 + javadoc + 覆盖率门禁）
 **只在 CI 跑**。即使改动触及下列内容，也一样**推送后看 CI**，不要在本机补跑：
@@ -264,9 +264,10 @@ POM 语法必须兼容 Maven 3.9.x：
   `python3 bin/ReportCoverage.py` 在 CI 的输出里取）
 - 发布前验收（见 [ReleaseProcess.md](ReleaseProcess.md)）
 
-> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息。
-> 本地唯一允许的重验证手段是 `./mvnw -pl <模块> -am test -Djacoco.skip=true`（不含覆盖率采集）
-> 与各 `bin/Check*.py`。
+> 这条是**用户多次重申的硬要求**：本地重复跑分钟级任务既慢、又不产生新信息，
+> 而且会让 Agent 陷入长等待、掩盖「哪里才是权威验证」这一事实。
+> **本地只允许跑 `bin/Check*.py` 静态检查；所有 Maven 编译 / 测试 / verify 一律由 CI 承担。**
+> 推送后**以 PR 的 checks 结果为准**，失败再按 CI 日志排查并推送修复。
 
 ### 8.1 检查分层与门禁时机
 
