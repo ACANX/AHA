@@ -27,8 +27,20 @@ class AppVersionTest {
     }
 
     @Test
-    void versionIsBareNumberWithoutPrefix() {
+    void displayUsesBuildVersionWhenAvailable() {
         assertThat(AppVersion.version()).isNotBlank();
-        assertThat(AppVersion.DISPLAY).isEqualTo("AHA " + AppVersion.version());
+        assertThat(AppVersion.DISPLAY).isEqualTo("AHA " + AppVersion.buildVersion());
+        // 未注入构建号时（本地构建 / 正式发版），构建版本等于基线版本
+        if (!AppVersion.isPreRelease()) {
+            assertThat(AppVersion.buildVersion()).isEqualTo(AppVersion.version());
+        }
+    }
+
+    @Test
+    void buildVersionIsUsableInBothFormalAndPreReleaseBuilds() {
+        // 资源未过滤会留下 ${...}；资源缺失会退回 -dev 兜底值
+        assertThat(AppVersion.buildVersion()).doesNotContain("${").doesNotContain("-dev");
+        // 正式构建：build == version；预发行版：build 以 version 为前缀（如 0.1.1.00046）
+        assertThat(AppVersion.buildVersion()).startsWith(AppVersion.version());
     }
 }

@@ -240,6 +240,8 @@ jobs:
             -pl aha-cli-native,aha-cli -am package
             -DskipTests -Djacoco.skip=true
             -Daha.native.version=${{ needs.cli-native-version.outputs.version }}
+            # 构建版本：注入 version.properties 的 build 项，供 CLI 启动页 / --version 显示（issue #46）
+            -Daha.build.version=${{ needs.cli-native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
             -Dnative.skip=false
 

@@ -279,6 +279,8 @@ jobs:
             -pl aha-desktop-native,aha-desktop -am package
             -DskipTests -Djacoco.skip=true
             -Daha.native.version=${{ needs.native-version.outputs.version }}
+            # 构建版本：注入 version.properties 的 build 项，供 GUI「关于」/ CLI 启动页显示（issue #46）
+            -Daha.build.version=${{ needs.native-version.outputs.version }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
             -Dnative.skip=false
 

@@ -14,6 +14,14 @@
 **按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
+- **预发行版显示带构建号的版本（issue #46）**：此前 GUI 与 CLI 只能查到基线版本（如 `0.1.1`），
+  而 PR 合并到 `dev` 后自动构建的包带构建号（如 `0.1.1.00046`）——它只出现在产物文件名与包内
+  README 上，程序内部查不到。现把版本拆成两层：根 POM 新增 `aha.build.version`
+  （默认 `${project.version}`），`version.properties` 增加 `build` 项，`AppVersion` 相应提供
+  `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` 与 `CliNative.yml` 在构建时传
+  `-Daha.build.version=<a.b.c.PPPPP>`（正式发版不传，等于基线版本，不做强制）。
+  展示点：桌面端「关于」与启动日志、CLI 启动页顶栏、`/help`、`aha version` / `--version`。
+  详见 `Docs/DevLog/DevLog-20261009-10.md`。
 - **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
   把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
   定位是「验证线」：正式交付仍是 JVM 模式。

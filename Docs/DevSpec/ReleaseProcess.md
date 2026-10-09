@@ -70,6 +70,10 @@
      反应堆显示 `Building AHA-Common 0.1.0`、产物名为 `aha-common-0.1.0.jar`、
      `aha --version` 仍报旧版本，而构建**不报错**——静默发出错版本的包。
    - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
+   - **构建版本（预发行）**：`version.properties` 另有 `build=${aha.build.version}` 项；正式发版与
+     本地构建不传，等于基线版本；PR 合并到 `dev` 后自动出包的工作流（`DesktopNative.yml` /
+     `CliNative.yml`）会传 `-Daha.build.version=<a.b.c.PPPPP>`（如 `0.1.1.00046`），
+     供 GUI「关于」与 CLI 启动页 / `/help` 显示，便于按版本号排查（issue #46）
 3. 执行完整构建与验收
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
    按父 POM 的 `<version>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
