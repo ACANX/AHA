@@ -33,6 +33,7 @@ import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
@@ -114,6 +115,28 @@ public final class AhaDesktopApp extends Application {
                 + " · 日志级别：" + boot.loggingLevel();
     }
 
+    /**
+     * 打印渲染与字体诊断（issue #48：原生镜像与 JVM 模式的字体渲染不一致）。
+     *
+     * <p>两者跑在同一台机器、同一份配置上，唯一的变量是二进制。要定位差异，先得拿到
+     * 「实际用了哪条管线、哪个字体族、多大字号、屏幕缩放多少」——否则只能猜。
+     * 渲染管线由 JavaFX 自己输出（启动时已默认打开 {@code prism.verbose}）；
+     * 字体与缩放 JavaFX 不打，所以在这里补上。JVM 模式下同样会打，正好用来对照。</p>
+     *
+     * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
+     * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
+     */
+    private static void logRenderingDiagnostics() {
+        Font defaultFont = Font.getDefault();
+        LOG.info("渲染诊断：默认字体 族={} 名称={} 字号={} 可用字体族数={}",
+                defaultFont.getFamily(), defaultFont.getName(), defaultFont.getSize(),
+                Font.getFamilies().size());
+        Screen primary = Screen.getPrimary();
+        LOG.info("渲染诊断：屏幕 outputScale={}x{} dpi={} 视觉边界={}",
+                primary.getOutputScaleX(), primary.getOutputScaleY(), primary.getDpi(),
+                primary.getVisualBounds());
+    }
+
     @Override
     public void start(Stage stage) {
         FxDispatcher dispatcher = new PlatformFxDispatcher();
@@ -121,6 +144,8 @@ public final class AhaDesktopApp extends Application {
         // 先定色表、再建界面：反过来不行——颜色是内联在样式串里的，界面建完再换主题
         // 只能靠逐个重刷，那条路径一旦漏了某个控件，就会出现「日志说生效亮色、界面还是暗的」
         // （真机上就是这么撞到的）。先定色的意思是：新节点天生是对的，重刷只是补充。
+        logRenderingDiagnostics();
+
         DesktopSettings settings = DesktopSettings.load(DesktopSettings.defaultFile());
         Theme effective = Palette.setTheme(settings.theme());
         LOG.info("界面设置：主题 {}（生效 {}），字号 {}px，前景 {} / 底色 {}，文件 {}",
@@ -448,6 +473,13 @@ public final class AhaDesktopApp extends Application {
      * @param args 参数
      */
     public static void main(String[] args) {
+        // 排查 issue #48（原生镜像与 JVM 模式的字体渲染不一致）：
+        // 让 JavaFX 自己把渲染管线打出来（"Prism pipeline name = …"）。
+        // 用户交上来的启动日志里就带着答案，不必再让谁去改代码加日志；
+        // 必须在 launch 之前设置——管线的选择在此之前就定了。
+        if (System.getProperty("prism.verbose") == null) {
+            System.setProperty("prism.verbose", "true");
+        }
         launch(AhaDesktopApp.class, args);
     }
 }
