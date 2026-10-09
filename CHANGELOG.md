@@ -147,6 +147,13 @@
   `DWFactory`、非 Windows / 无 DirectWrite 时为内置 FreeType 的 `FTFactory`——**两边若不同，
   即说明字形栅格化走了另一条路**，这正是「笔画偏细、发虚」最可能的解释。
   详见 `Docs/DevLog/DevLog-20261009-13.md`。
+- **原生桌面镜像渲染诊断的操作手册与收集脚本（issue #48）**：把「真机上各跑一次原生包与
+  JVM 模式、把同样的几行日志拿出来对照」落成可照做的材料——新增
+  `Docs/Guide/NativeRenderDiagnosticsGuide.md`（步骤、日志位置、判定表、诊断行含义、常见问题）
+  与 `Script/Python/CollectRenderDiagnostics.py`（自动定位 `Log/AHA.log`、**只取最后一次启动的片段**、
+  生成可直接粘贴的 Markdown 报告）；`bin/AhaDesktop.{bat,sh}` 补上
+  `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED`，否则 JVM 模式下
+  「字体实现工厂」会因非导出包被模块系统拒绝、只打「不可用」，对照就少一条关键证据。
 - **原生桌面镜像暗色下控件背景与文字未适配（issue #49）**：切到暗色后，侧边栏搜索框 / 会话列表、
   中部输入框仍是亮色（白）底，侧边栏导航按钮、菜单栏与状态栏文字仍是深色，均不可读。两处成因：
   ① `Palette.theme()` 返回**缓存的静态字段**，与运行期更新的 `FOREGROUND` 等字段在原生镜像下

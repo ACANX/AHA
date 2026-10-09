@@ -87,7 +87,10 @@ if ! command -v "$JAVA" >/dev/null 2>&1; then
     exit 1
 fi
 
+# --add-opens 是渲染诊断（issue #48）用的：字体实现工厂探针要反射读
+# com.sun.javafx.font.PrismFontFactory，而模块系统默认拒绝该包。
 exec "$JAVA" \
      --enable-native-access=org.xerial.sqlitejdbc \
+     --add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED \
      --module-path "$LIB" \
      --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.AhaDesktopApp "$@"
