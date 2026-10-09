@@ -1,6 +1,6 @@
 # 版本切换指南
 
-**文档版本**：v1.2.0
+**文档版本**：v1.3.0
 **状态**：生效
 **生效日期**：2026-10-09
 **最后更新**：2026-10-09
@@ -16,6 +16,7 @@
 | v1.0.0 | 2026-10-09 | 初始版本：操作步骤、改动清单、检查清单、常见问题快速处置、应急预案、历史教训与维护约定 | @ACANX / CNXNC |
 | v1.1.0 | 2026-10-09 | §2.3 一次性命令改用 `versions:set-property -Dproperty=revision`；注明 P3（#95）后 POM 侧版本源收敛为 1 处、`AppVersion` 已解耦，§2.1 清单为历史口径 | @ACANX / CNXNC |
 | v1.2.0 | 2026-10-09 | P5（#97）：§2 改动清单由 14 处降为 **1 处**（根目录 `version` 文件，其余由 `VersionBump` / `VersionDistribute.py` 分发）；§2.3 改为「一键分发 + 手工应急」；§3 步骤与 §4 检查清单按新口径重写（一致性校验项保留）；§5 第 1/2/3/8 项更新 | @ACANX / CNXNC |
+| v1.3.0 | 2026-10-09 | §5 新增第 10 条：版本切换 PR 上为什么没有 `Gate` / `Compat` 的 checks（触发范围只覆盖 `main`，而 PR base 是 `dev`）与处置 | @ACANX / CNXNC |
 
 ---
 
@@ -150,6 +151,7 @@ python3 .github/Python/ProjectVersion.py --verify
 | 7 | 发版 PR 卡在必需检查 / 审批 | 分支规则集要求（审批数、`Gate`/`Compat` 必需检查、`last_push_approval`） | 见 `ReleaseProcess.md` §4.2 与 Issue #85 |
 | 8 | 两个原生模块版本没跟上 | 历史问题：旧清单漏了后加模块 | 已消除——子模块统一写 `${revision}`，分发脚本**动态扫描 POM** 并断言数量 ≥ 9（新增模块自动覆盖） |
 | 9 | 构建号没注入（GUI 只显示基线版本） | 工作流的 `command: >-` 折叠块里写了 `#` 注释，把参数吞掉 | 注释移出折叠块（`ReleaseProcess.md` 第 2 节「构建版本」） |
+| 10 | 版本切换 PR 上**没有** `Gate` / `Compat` 的 checks | 这两个工作流的 `pull_request` 触发范围只覆盖 `main`，而版本切换 PR 的 base 是 `dev`——这是既定触发范围，不是配置错误 | `Build` / `CodeQL` 会正常跑（前提：已配 PAT，否则需人工 close/reopen 或补一次 push，见 §2.2）；若本次切换也要过门禁，就把 PR 指向 `main`，或在两个工作流里显式扩大触发范围（口径问题登记在 issue #96 的 F12） |
 
 ## 6. 应急预案
 
