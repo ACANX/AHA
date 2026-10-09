@@ -1,7 +1,11 @@
 package com.acanx.module.aha.desktop.view;
 
+import java.net.URL;
+
 import javafx.geometry.Insets;
 import javafx.scene.Node;
+import javafx.scene.Scene;
+import javafx.scene.control.DialogPane;
 import javafx.scene.control.Labeled;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
@@ -29,11 +33,53 @@ import org.slf4j.LoggerFactory;
  *
  * @since 0.2.0
  */
-final class ThemePaint {
+public final class ThemePaint {
 
     private static final Logger LOG = LoggerFactory.getLogger(ThemePaint.class);
 
+    /**
+     * 主题补丁样式表：把 modena 里依赖 {@code derive()} / {@code linear-gradient()} 的规则
+     * 换成字面量（见该文件头部说明）。原生镜像下没有它，输入框 / 下拉框 / 按钮 / 滚动条会没有背景。
+     */
+    private static final String STYLESHEET = "/com/acanx/module/aha/desktop/view/aha-theme.css";
+
     private ThemePaint() {
+    }
+
+    /**
+     * 给对话框套主题（{@link Palette#dialogTheme()}）并装上补丁样式表。
+     *
+     * <p>{@code DialogPane} 的 {@code Scene} 要等窗口建好后才存在，所以这里挂一次监听补装。</p>
+     *
+     * @param pane 对话框面板
+     */
+    static void dialog(DialogPane pane) {
+        String css = Palette.dialogTheme();
+        pane.setStyle(css);
+        apply(pane, css);
+        install(pane.getScene());
+        pane.sceneProperty().addListener((observable, oldScene, newScene) -> install(newScene));
+    }
+
+    /**
+     * 把补丁样式表挂到场景上（幂等）。
+     *
+     * @param scene 场景；{@code null} 时直接返回
+     */
+    public static void install(Scene scene) {
+        if (scene == null) {
+            return;
+        }
+        URL url = ThemePaint.class.getResource(STYLESHEET);
+        if (url == null) {
+            // 打包漏了资源时不该让整个界面挂掉，但要能查出来
+            LOG.warn("主题补丁样式表缺失，控件可能没有背景：{}", STYLESHEET);
+            return;
+        }
+        String external = url.toExternalForm();
+        if (!scene.getStylesheets().contains(external)) {
+            scene.getStylesheets().add(external);
+        }
     }
 
     /**

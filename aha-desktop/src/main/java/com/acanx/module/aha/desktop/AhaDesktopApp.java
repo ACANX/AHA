@@ -355,7 +355,11 @@ public final class AhaDesktopApp extends Application {
         double availHeight = bounds.getHeight() / scaleY;
         double width = Math.min(ShellLayout.WINDOW_WIDTH, availWidth * SCREEN_USAGE);
         double height = Math.min(ShellLayout.WINDOW_HEIGHT, availHeight * SCREEN_USAGE);
-        stage.setScene(new Scene(root, width, height));
+        Scene scene = new Scene(root, width, height);
+        // 原生镜像下 modena 的 derive() / linear-gradient() 求值不可靠，必须挂补丁样式表，
+        // 否则输入框 / 下拉框 / 按钮 / 滚动条会没有背景（issue #49）
+        com.acanx.module.aha.desktop.view.ThemePaint.install(scene);
+        stage.setScene(scene);
         stage.setX(bounds.getMinX() / scaleX + (availWidth - width) / 2);
         stage.setY(bounds.getMinY() / scaleY + (availHeight - height) / 2);
         // 尺寸下限：否则用户把窗口拖小后，输入区与底栏会被挤没

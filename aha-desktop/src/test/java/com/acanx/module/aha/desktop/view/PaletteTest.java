@@ -1,6 +1,8 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.tool.ToolKind;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -95,6 +97,56 @@ class PaletteTest {
 
         Palette.setTheme(Theme.DARK);
         assertThat(Palette.dialogTheme()).contains("-fx-background-color: #1E1E1E");
+    }
+
+    @Test
+    void themeStyleNeverUsesCssMathFunctions() {
+        // 原生镜像下 derive() / ladder() / linear-gradient() 求值不可靠，
+        // 只要样式串里出现它们，控件就可能整块没有背景（issue #49）
+        for (Theme theme : new Theme[] {Theme.DARK, Theme.LIGHT}) {
+            Palette.setTheme(theme);
+            assertThat(Palette.theme())
+                    .as("%s：主题样式串不得含 CSS 函数", theme)
+                    .doesNotContain("derive(")
+                    .doesNotContain("ladder(")
+                    .doesNotContain("linear-gradient(");
+        }
+    }
+
+    @Test
+    void lightThemeKeepsControlSurfacesLight() {
+        // 输入框 / 下拉框 / 滚动条在亮色下必须是浅色——它们发黑时用户根本看不清内容
+        Palette.setTheme(Theme.LIGHT);
+
+        assertThat(Palette.CONTROL_INNER).isEqualTo("#FFFFFF");
+        assertThat(Palette.SCROLL_TRACK).isEqualTo("#F0F0F0");
+        assertThat(Palette.SCROLL_THUMB).isEqualTo("#B8B8B8");
+        assertThat(Palette.theme())
+                .contains("-fx-aha-control-bg: #FFFFFF")
+                .contains("-fx-text-box-border: #C8C8C8")
+                .contains("-fx-body-color: #F4F4F4");
+    }
+
+    @Test
+    void patchStylesheetIsPackagedAndAlsoFreeOfCssMathFunctions() throws Exception {
+        // 这份表是原生镜像下控件背景的唯一来源（见 aha-theme.css 头部说明），
+        // 既要在 classpath 上，也不能再引入 derive / gradient
+        String path = "/com/acanx/module/aha/desktop/view/aha-theme.css";
+        try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
+            assertThat(in).as("主题补丁样式表必须在 classpath 上：%s", path).isNotNull();
+            String css = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(css)
+                    .contains(".text-input")
+                    .contains(".scroll-bar > .thumb")
+                    .contains("-fx-aha-control-bg");
+            // 注释里可以提这些函数名（说明用），但**声明**里不能出现
+            String declarations = css.replaceAll("(?s)/\\*.*?\\*/", "");
+            assertThat(declarations)
+                    .as("补丁表里不得使用原生镜像下求值不可靠的 CSS 函数")
+                    .doesNotContain("derive(")
+                    .doesNotContain("ladder(")
+                    .doesNotContain("linear-gradient(");
+        }
     }
 
     @Test

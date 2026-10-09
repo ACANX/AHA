@@ -87,7 +87,7 @@ public final class ApprovalDialog {
         ButtonType alwaysType = new ButtonType(ApprovalText.alwaysLabel(permission),
                 ButtonBar.ButtonData.APPLY);
         dialog.getDialogPane().getButtonTypes().addAll(denyType, onceType, alwaysType);
-        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
+        ThemePaint.dialog(dialog.getDialogPane());
         dialog.getDialogPane().setPrefWidth(680);
 
         String accent = Palette.forToolKind(com.acanx.module.aha.common.tool.ToolKind.of(toolName));

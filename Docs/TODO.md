@@ -562,6 +562,8 @@ desktop 亦未列 tool 依赖。
 | v0.43.0 | 2026-10-09 | 落地 issue #46（预发行版显示带构建号的版本）：根 POM 新增 `aha.build.version`（默认 `${project.version}`）、`version.properties` 增加 `build` 项、`AppVersion` 提供 `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` / `CliNative.yml` 构建时传 `-Daha.build.version=<a.b.c.PPPPP>`；展示点：桌面端「关于」与启动日志、CLI 启动页 / `/help` / `version`；新增 `N-26`、`G-14` | @ACANX / CNXNC |
 | v0.44.0 | 2026-10-09 | 修正 issue #46 的构建号注入：`DesktopNative.yml` / `CliNative.yml` 的 `command: >-` 折叠块内写了 `#` 注释，块标量里的 `#` 不是 YAML 注释，被折进命令串后在 shell 里注释掉了其后全部参数（含 `-Daha.build.version`），导致构建号从未注入（真机看不到）；已把注释移出块外 | @ACANX / CNXNC |
 | v0.45.0 | 2026-10-09 | issue #49 第二轮：真机仍报暗色下左栏文字深、亮色下对话框底色深。先取证（build-report 确认 `modena.css` 已打包；JVM 探针确认亮/暗两套下 `Label`/`Button`/`Menu`/`DialogPane` 均正确）→ 定位到原生镜像对 **looked-up color 查表 / `ladder()` 推导**不可靠；修法：`Palette.theme()` 显式钉死文字类颜色，新增 `Palette.dialogTheme()` 给 7 个对话框显式底色，`applyTheme` 加主题诊断日志；顺带补回漏合并的状态栏 `buildVersion()` | @ACANX / CNXNC |
+| v0.47.0 | 2026-10-09 | issue #49 第三轮（严重）：亮色与暗色下文本输入框 / 下拉框 / 「发送」按钮 / 滚动条背景全黑。查 modena.css 定案——这些控件的 `-fx-background-color` 写成 `derive()` / `linear-gradient()`，原生镜像下 CSS 函数求值不可靠，而 CSS 是「一个值无效就丢弃整条声明」，控件因此**没有背景**；修法：新增纯字面量补丁样式表 `aha-theme.css`（经 `Scene.getStylesheets()` 加载、排在 modena 之后）+ `Palette` 新增 4 个面色并把 modena 中间量全换字面量；新增 `G-16` | @ACANX / CNXNC |
+| v0.46.0 | 2026-10-09 | 真机（版本 `0.1.1.00054`）确认原生桌面端的启动链路与渲染期元数据已完整：issue **#35**（`QuantumToolkit` 反射）、**#37**（JNI `FindClass`）、**#39**（平台类 JNI 成员）、**#41**（效果 peer）四个 issue 全部修复并关闭（均附验证备注）；同步 `N-16` / `N-23` 为已验证、`G-08` / `G-10` / `G-11` 为已完成 | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1257,7 +1259,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       CI 全绿却零产物零报错（见 `Docs/DevLog/DevLog-20261008-08.md`）。
 - [ ] **N-11**：确认 `native-*` 作业**没有**被加进任何分支保护的必需检查
       （它现在即使失败也不会红，但契约上仍不该出现，见 `BuildSpec.md` §8.1）。
-- [ ] **N-16**：真机验证 issue #35 补上的「JavaFX 启动链路」反射 / JNI 元数据是否完整。
+- [x] **N-16**：真机验证 issue #35 补上的「JavaFX 启动链路」反射 / JNI 元数据是否完整。
       背景：修完 #26（主类注册）后，二进制下一处报 `ClassNotFoundException:
       com.sun.javafx.tk.quantum.QuantumToolkit`。已按启动链路（工具包 / 三平台 Glass 工厂 /
       四条 Prism 管线 / 渲染器 / 全部 212 个 stock shader / Glass 原生回调 / 图片解码 / 字体 /
@@ -1272,6 +1274,9 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       平台实现类**自己声明**的成员没登记（#37 只扫了 `FindClass` 字面量，平台子类不经 `FindClass`）。
       已改扫 `Get*ID` 的目标类，`jni-config.json` 由 62 条补到 **85 条**（Win* / Mac* 平台实现类 +
       `EventLoop`），待 CI 重出包后复跑；见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)。
+      **最终真机结果（2026-10-09，版本 `0.1.1.00054`）**：三层全部通过——原生包双击即可开窗，
+      不再出现 `ClassNotFoundException` / `NoClassDefFoundError` / `NoSuchMethodError`，
+      可正常进入 GUI 并完成交互；issue #35 / #37 / #39 均已关闭。
       验收标准：① 下载对应平台的原生包，双击能开窗、不报 `ClassNotFoundException` /
       `MissingReflectionRegistrationError` / `NoClassDefFoundError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
@@ -1310,7 +1315,7 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       **部分闭环（2026-10-09）**：issue #39 的静态扫描（`Get*ID` 目标类）已把
       Win* / Mac* 平台实现类补进 `jni-config.json`（见 [DevLog-20261009-05.md](DevLog/DevLog-20261009-05.md)）；
       但那是「已知缺口已闭」，agent 在两个平台上的实采仍待做，Prism 侧实现类同样待采。
-- [ ] **N-23**：真机验证原生桌面端**渲染期**元数据（效果 peer）。
+- [x] **N-23**：真机验证原生桌面端**渲染期**元数据（效果 peer）。
       背景：issue #41——修完 #35/#37/#39 后原生桌面端首次进到 GUI，但渲染到第一个用阴影效果的
       控件时报 `Could not create peer LinearConvolveShadow`，控件画不出。已对 javafx-graphics 25 的 jar
       扫描 `com/sun/scenario/effect/impl/**/*Peer`，把 99 个具体 peer 全部登记进
@@ -1318,6 +1323,8 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       验收标准：① 下载 Windows 原生包，双击能开窗、**控件正常绘制**（无 `Could not create peer`）
       ；② 走一遍窗口/控件/主题相关效果路径（阴影 / 颜色调整 / 混合等）；③ 若仍缺类，
       按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与对应 `DevLog`。
+      **真机结果（2026-10-09，版本 `0.1.1.00054`）**：控件正常绘制，不再出现
+      `Could not create peer`；issue #41 已关闭。
       依赖：`G-11`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
 - [ ] **N-24**：原生桌面端字体渲染与 JVM 模式不一致（issue #44 遗留）。
       长期跟踪载体：**issue #48**（现象、背景、待排查方向、验收标准均以该 Issue 为准）。
@@ -1344,6 +1351,16 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       修复由 PR #50 提交：`Palette.theme()` 去缓存、逐个节点重刷异常隔离、搜索框 / 输入框 /
       会话单元格 / 菜单栏 / 滚动区显式套主题（见 [DevLog-20261009-09.md](DevLog/DevLog-20261009-09.md)）。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
+
+      第三轮（v0.47.0）：真机报「亮色 / 跟随系统下输入框、发送按钮、下拉框、滚动条背景全黑，
+      且与主题切换无关」。查 `modena.css` 定案：这些控件的 `-fx-background-color` 形如
+      `derive(-fx-box-border,30%), linear-gradient(...)`，原生镜像下 CSS 函数求值不可靠，
+      而 **CSS 是一个值无效就丢弃整条声明**，控件因此根本没有背景（不是「设成了黑色」）。
+      修法：新增 `aha-theme.css`（纯字面量，无 CSS 函数，经 `Scene.getStylesheets()` 加载、
+      排在 modena 之后）+ `Palette` 定义 `-fx-aha-*` 变量并把 modena 中间量换成字面量。
+      验收追加：① 亮色下输入框 / 下拉框底为浅色；② 「发送」按钮可见且有边框；
+      ③ 会话列表中栏滚动条的轨道与滑块可见；④ 上述四项在亮 ↔ 暗切换后颜色同步变化。
+      见 [DevLog-20261009-12.md](DevLog/DevLog-20261009-12.md)。
 - [ ] **N-26**：真机验证预发行包显示带构建号的版本（issue #46）。
       长期跟踪载体：**issue #46**；本条目只作索引。
       修复由本次 PR 提交（见 [DevLog-20261009-10.md](DevLog/DevLog-20261009-10.md)）。
@@ -1393,14 +1410,15 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
 | G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
 | G-05 | 仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit` | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ☐ 未完成 |
-| G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☐ 未完成 |
+| G-08 | 推送 issue #35 的修复分支并提 PR（`fix/issue-35-native-quantum-toolkit` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-35-native-quantum-toolkit` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，`DesktopNative` 三条 jdk25 腿的产物自证第 ⑧ 条输出「已注册主类与 JavaFX 启动链路」 | ☑ 已完成（PR #36） |
 | G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
-| G-10 | 推送 issue #39 的修复分支并提 PR（`fix/issue-39-native-winwindow-jni` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 第三轮无法开工 | ① `git ls-remote origin refs/heads/fix/issue-39-native-winwindow-jni` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧b 条输出「已注册 JNI 可达类」 | ☐ 未完成 |
-| G-11 | 推送 issue #41 的修复分支并提 PR（`fix/issue-41-native-effect-peers` → `dev`） | 不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-23` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-41-native-effect-peers` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧ 条能看到 `PPSLinearConvolveShadowPeer` | ☐ 未完成 |
+| G-10 | 推送 issue #39 的修复分支并提 PR（`fix/issue-39-native-winwindow-jni` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-16` 第三轮无法开工 | ① `git ls-remote origin refs/heads/fix/issue-39-native-winwindow-jni` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧b 条输出「已注册 JNI 可达类」 | ☑ 已完成（PR #40） |
+| G-11 | 推送 issue #41 的修复分支并提 PR（`fix/issue-41-native-effect-peers` → `dev`） | 不推上去，CI 的 `DesktopNative` 腿不会重跑，`N-23` 无法开工 | ① `git ls-remote origin refs/heads/fix/issue-41-native-effect-peers` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ `DesktopNative` 三条 jdk25 腿产物自证第 ⑧ 条能看到 `PPSLinearConvolveShadowPeer` | ☑ 已完成（PR #43） |
 | G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
 | G-13 | 推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ☐ 未完成 |
 | G-14 | 推送 issue #46 的修复分支并提 PR（`feat/issue-46-build-version` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-26` 也拿不到带构建号的包 | ① `git ls-remote origin refs/heads/feat/issue-46-build-version` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 `N-26` 验证构建号显示 | ☐ 未完成 |
-| G-15 | 推送 issue #49 第二轮修复分支并提 PR（`fix/issue-49-native-looked-up-color` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第二轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-looked-up-color` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第二轮验证 | ☐ 未完成 |
+| G-15 | 推送 issue #49 第二轮修复分支并提 PR（`fix/issue-49-native-looked-up-color` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第二轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-looked-up-color` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第二轮验证 | ☑ 已完成（PR #55，已出 `V0.1.1.00055`） |
+| G-16 | 推送 issue #49 第三轮修复分支并提 PR（`fix/issue-49-native-css-functions` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第三轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-css-functions` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第三轮验证 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 

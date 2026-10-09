@@ -1226,7 +1226,7 @@ public final class DesktopShell implements ChatView {
         dialog.setTitle("重命名会话");
         dialog.setHeaderText("给这个会话起个名字");
         dialog.setContentText("标题");
-        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
+        ThemePaint.dialog(dialog.getDialogPane());
         dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
     }
@@ -1241,7 +1241,7 @@ public final class DesktopShell implements ChatView {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("删除会话");
         alert.setHeaderText("确认删除");
-        ThemePaint.themed(alert.getDialogPane(), Palette.dialogTheme());
+        ThemePaint.dialog(alert.getDialogPane());
         alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         alert.showAndWait()
                 .filter(picked -> picked == ButtonType.OK)
