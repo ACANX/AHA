@@ -1,0 +1,331 @@
+name: BuildJVMArtifacts
+
+# ── 这是什么 ────────────────────────────────────────────────────────────────────
+# dev 分支的 **JVM 构建与打包发布线**：每次合并到 dev 就出一版可直接运行的 JVM 便携包，
+# 挂到发布页（预发行）供下载验证。
+#
+# 这是 DesktopNative.yml / CliNative.yml 的 JVM 姊妹工作流：同一套「独立工作流 + 预发行」
+# 约定，只是不做原生编译，直接产出 JVM 便携包（桌面端 + CLI）。
+#
+# ── 为什么单独一个工作流（四条隔离）───────────────────────────────────────────
+# 1. **不参与快检查**：Build.yml 每次 push / PR 只做编译与单测（快检查）；
+#    本线只在 push 到 dev 时跑，不拖慢每次 PR，也不与 Build.yml 的作业互相牵连。
+# 2. **不影响发版流程**：预发行 tag 带 `-aha-jvm` 后缀，与正式发版（`V<版本号>`）及
+#    原生线（`-aha-desktop-native` / `-aha-cli-native`）区分，不进 releases/latest。
+# 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
+# 4. **可被打断**：同一分支的新一次运行会取消上一次（见 concurrency）。
+#
+# ── JDK 轴：25（基线）+ 27 ──────────────────────────────────────────────────
+# 矩阵同时出 **JDK 25**（默认，release=25）与 **JDK 27**（`-Dmaven.compiler.release=27`）
+# 两份产物：JDK 27 的包名带 `-jdk27` 后缀，与 JDK 25 基线并存不冲突。
+# 编译 JDK 由 setup-java 按矩阵切换；release 由命令行显式给（不动根 POM 的 25 默认）。
+#
+# ── 版本号规则 ──────────────────────────────────────────────────────────────────
+#     <基线版本>.<PR 号，补零到 5 位>
+# 基线 ← 根 pom.xml 的 <version>；PR 号 ← push 到 dev 时按提交 SHA 反查
+# （workflow_dispatch 时可显式传入）。
+# 例：PR #63 合进 dev，当基线是 0.1.1 → 0.1.1.00063
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（用于 0.1.1.PPPPP 的版本号；留空则按当前提交反查）
+        required: false
+        default: ''
+      version:
+        description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+# 同一分支只保留最新一次：dev 上连续合并时，旧的构建没有价值。
+# 注意这是**本工作流自己的**并发组，不碰其它工作流。
+concurrency:
+  group: build-jvm-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Windows 运行器上也有 bash（Git Bash）；统一用它，脚本只有一套。
+    shell: bash
+
+jobs:
+  # ── 1. 算版本（单独一个作业：三条腿共用同一个版本号）────────────────────────
+  build-version:
+    name: build-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      base: ${{ steps.compute.outputs.base }}
+      pr: ${{ steps.compute.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 计算版本（a.b.c.PPPPP，与原生线同规则）
+        id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # ① 显式给了完整版本号：直接用它（重打历史版本时用）
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "base=${INPUT_VERSION%.*}" >> "$GITHUB_OUTPUT"
+            echo "pr=0" >> "$GITHUB_OUTPUT"
+            echo "使用显式版本：${INPUT_VERSION}"
+            exit 0
+          fi
+
+          # ② 基线唯一来源：根 POM 的 <version>。标签带命名空间，不能写 findtext('version')。
+          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+
+          # ③ PR 号：先看输入，其次按提交 SHA 反查（push 事件没有 PR 号）。
+          pr="${INPUT_PR:-}"
+          if [ -z "$pr" ]; then
+            pr=$(curl -sS --max-time 30 \
+                   -H "Authorization: Bearer ${GH_TOKEN}" \
+                   -H "Accept: application/vnd.github+json" \
+                   "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls" \
+                 | python3 -c "import json,sys
+          d = json.load(sys.stdin)
+          print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
+          fi
+          if [ -z "$pr" ]; then
+            # 直接 push 到 dev 或 API 限流：不猜假 PR 号，明确记 00000 并告警。
+            echo "::warning::没能确定 PR 号（直接 push 或 API 限流），版本里的 PR 段记为 00000"
+            pr=0
+          fi
+
+          version=$(printf '%s.%05d' "$base" "$pr")
+          {
+            echo "base=${base}"
+            echo "pr=${pr}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "JVM dev 版本 = ${version}（基线 ${base} + PR ${pr}）"
+          {
+            echo "### JVM dev 版本：\`${version}\`"
+            echo ""
+            echo "基线 ${base}，来源 PR #${pr}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. 三条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
+  #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
+  #    CLI 包平台无关，只在一条腿产出。
+  build-mvn-artifact:
+    name: build-mvn-artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
+    needs: build-version
+    strategy:
+      # 一条腿失败不取消其余：各平台 × 各 JDK 的包是并列交付物。
+      fail-fast: false
+      matrix:
+        include:
+          # ── JDK 25（基线，release=25）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 25
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 25
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 25
+            upload_cli: false
+          # ── JDK 27（release=27）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 27
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 27
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 27
+            upload_cli: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+
+      - name: 构建 aha-desktop 与 aha-cli（含本平台 OpenJFX 分类器）
+        # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
+        # -Daha.build.version：注入 version.properties 的 build 项，供「关于」/ 启动页显示。
+        # 复用现有 assembly 链路：package 阶段即产出 Dist/aha-desktop-<版本>-<平台>.zip
+        # 与 CLI 的 Dist/{bin,lib}（见 aha-desktop/pom.xml、aha-cli/pom.xml）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B
+            -Dmaven.compiler.release=${{ matrix.jdk }}
+            -pl aha-desktop,aha-cli -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.build.version=${{ needs.build-version.outputs.version }}
+
+      - name: 产物自证（class 文件确为 JDK ${{ matrix.jdk }} 字节码）
+        # 只看「构建成功」不够：release 没生效时仍会以默认 25 编出来。
+        # 直接读任一 class 的 major version：Java 25 = 69，Java 27 = 71。
+        shell: bash
+        env:
+          JDK: ${{ matrix.jdk }}
+        run: |
+          set -uo pipefail
+          f=$(find aha-common/target/classes -name '*.class' | head -n1 || true)
+          if [ -z "$f" ]; then echo "::error::找不到 class 文件，无法自证"; exit 1; fi
+          major=$(od -An -tu1 -j 6 -N 2 "$f" | awk '{print $1 * 256 + $2}')
+          if [ "${JDK}" = "27" ]; then expect=71; else expect=69; fi
+          echo "样本：${f}  major=${major}  期望=${expect}"
+          if [ "${major}" != "${expect}" ]; then
+            echo "::error::class 字节码版本不符（期望 ${expect}，实际 ${major}）"
+            exit 1
+          fi
+          echo "自证通过：Java ${JDK} 字节码（major=${major}）"
+
+      - name: 规范桌面端包名（加构建版本与平台标签；JDK 27 另带 -jdk27）
+        shell: bash
+        env:
+          VERSION: ${{ needs.build-version.outputs.version }}
+          LABEL: ${{ matrix.label }}
+          JDK: ${{ matrix.jdk }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # 用 [0-9] 而不是 *：避免把原生镜像包 aha-desktop-native-*.zip 误当桌面端包
+          files=(Dist/aha-desktop-[0-9]*.zip)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
+            exit 1
+          fi
+          # JDK 25 保持原名（不带 JDK 段），JDK 27 加 -jdk27 区分两类产物。
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          target="Dist/aha-desktop-${VERSION}${suffix}-${LABEL}.zip"
+          mv -- "${files[0]}" "$target"
+          size=$(du -h "$target" | cut -f1)
+          jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c 'lib/javafx' || true)
+          echo "桌面端包：${target}（${size}，含本平台 OpenJFX jar ${jars} 个）"
+
+      - name: 打 CLI 便携包（平台无关，只在一个腿产出）
+        if: matrix.upload_cli
+        shell: bash
+        env:
+          VERSION: ${{ needs.build-version.outputs.version }}
+          JDK: ${{ matrix.jdk }}
+        run: |
+          set -euo pipefail
+          test -f Dist/bin/Aha.sh
+          test -d Dist/lib
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          target="Dist/aha-${VERSION}${suffix}-cli.zip"
+          # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
+          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib README.md LICENSE CHANGELOG.md)
+          mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
+          ls -lh "$target"
+
+      - name: 上传制品（Actions 制品仓库）
+        uses: actions/upload-artifact@v7
+        with:
+          # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
+          name: Mvn-Artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
+          path: |
+            Dist/aha-desktop-${{ needs.build-version.outputs.version }}*-${{ matrix.label }}.zip
+            Dist/aha-${{ needs.build-version.outputs.version }}*-cli.zip
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ── 3. 汇总发布（预发行版）─────────────────────────────────────────────────
+  #    单作业发布：三条腿并发写同一个 release 会互相打架，
+  #    因此先各自上传制品，再由这里一次性挂到发布页。
+  build-publish:
+    name: build-publish
+    needs: [build-version, build-mvn-artifact]
+    # 即使某条腿失败也要发布已成功的那几个平台（部分可用也有价值）。
+    if: always() && needs.build-version.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部制品
+        # 没有任何制品时下载可能报错——这属于「本次无可发布产物」的正常分支。
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: 整理资产（没有产物也算正常，不失败）
+        id: collect
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          # download-artifact 会把每个制品的 zip 放在自己的子目录里，先收平到 artifacts/ 顶层
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          files=(artifacts/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::本次没有任何 JVM 包可发布（各腿结论见各自摘要）"
+            {
+              echo "### JVM dev：本次无可发布产物"
+              echo ""
+              echo "三条腿都没有产出可用的包，因此**未创建预发行版**。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          ls -lh "${files[@]}"
+          {
+            echo "### JVM dev：本次可发布 ${#files[@]} 个包"
+            echo ""
+            for f in "${files[@]}"; do
+              echo "- \`$(basename "$f")\`（$(du -h "$f" | cut -f1)）"
+            done
+            echo ""
+            echo "> 解压即可运行：桌面端需 JDK 25（包内含本平台 OpenJFX）；CLI 包平台无关。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PreRelease-AHA-JVM
+        if: steps.collect.outputs.any == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          # tag 带 -aha-jvm 后缀与正式发版（V*）和原生线（-aha-desktop-native / -aha-cli-native）区分。
+          tag_name: V${{ needs.build-version.outputs.version }}-aha-jvm
+          name: V${{ needs.build-version.outputs.version }}-AHA-JVM
+          prerelease: true
+          files: artifacts/*.zip
+          body: |
+            ## 这是什么
+
+            以 `dev` 分支最新合并的代码构建的 **JVM 便携包**（非原生镜像）：
+            解压即可运行，桌面端需本机 JDK 25，CLI 包平台无关。
+
+            > ⚠️ **dev 预发行产物，不是正式发行包。** 正式版本请用 `V<版本号>` 的
+            > 发版页面；这里的东西用来「验证 dev 最新合并」。
+
+            ## 版本
+            - 本版版本号：`${{ needs.build-version.outputs.version }}`
+            - 基线版本：`${{ needs.build-version.outputs.base }}`（读自根 pom.xml）
+            - 来源 PR：#${{ needs.build-version.outputs.pr }}
+
+            ## 包含什么
+            - `aha-desktop-<版本>-<平台>.zip` / `aha-<版本>-cli.zip`：**JDK 25 基线**，
+              Java 25 字节码，需 JDK 25；
+            - `aha-desktop-<版本>-jdk27-<平台>.zip` / `aha-<版本>-jdk27-cli.zip`：**JDK 27**，
+              Java 27 字节码（major=71），需 JDK 27。
+
+            ## 怎么用
+            1. 按你的系统与 JDK 选对应包（`-jdk27` 后缀的需 JDK 27）；
+            2. 解压后运行 `bin/AhaDesktop.bat`（Windows）或 `bin/AhaDesktop.sh`（Linux/macOS），
+               CLI 运行 `bin/Aha.bat` / `bin/Aha.sh`；
+            3. 配置与数据在 `AHA_HOME`（默认 `~/.aha`）。
