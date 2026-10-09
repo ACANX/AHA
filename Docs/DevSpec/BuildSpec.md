@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.22.0
+**文档版本**：v1.23.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -36,6 +36,7 @@
 | v1.20.0 | 2026-10-08 | §4.1 补「发布时的平台出包」：矩阵在各平台 runner 上出包、产物命名、`expected` 双向自证、新增平台的方式 | @ACANX |
 | v1.21.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（dev 的 JVM 构建线，与 `DesktopNative.yml` / `CliNative.yml` 同构）：`push` 到 `dev` 时构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`），补齐 JVM 模式在 dev 上的产物缺口（issue #63）；§8.1 分层表登记该层 | @ACANX |
 | v1.22.0 | 2026-10-09 | §2 补「JDK 27 编译变体」（`-Dmaven.compiler.release=27`，仅 `BuildJVMArtifacts.yml` 的 jdk27 腿，包名带 `-jdk27`，issue #65）：不改变 JDK 25 基线与正式发版；§8.1 分层表同步补 JDK 轴 | @ACANX |
+| v1.23.0 | 2026-10-09 | §8.1 的「必需检查与审批要求」登记处由 `TODO.md` `G-02` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 
 ---
 
@@ -333,7 +334,8 @@ CI 全绿却零产物零报错（见 `Docs/DevLog/DevLog-20261008-08.md`）。
 - **可选腿的开关从已有键推导**（如按 `matrix.os` 判定），不新增专用键。
 - **`Gate.yml` / `Compat.yml` 的 `name:` 同样是契约**：job 级 `name:` 就是上报的检查名，
   改动它等于改必需检查的名字。
-- 确需改名时，同一变更内必须同步更新分支保护，并在 `TODO.md` 的 `G-02` 中刷新验收清单。
+- 确需改名时，同一变更内必须同步更新分支保护，并在对应 Issue（当前
+  [#85](https://github.com/ACANX/AHA/issues/85)）中刷新验收清单。
 
 **CI 必须容忍仓库侧瞬时失败（强制）**：门禁要拦的是**代码与配置的问题**，不是网络抖动。
 GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.apache.org/maven2)`，
@@ -379,7 +381,8 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   取舍时以**能否覆盖目标分支**为准（本例选工作流，因为默认设置覆盖不到 `main`）；
   覆盖率同理——本项目已由 `jacoco:check ≥ 0.70` + `bin/ReportCoverage.py` 在 `Gate` 里把关，
   是否再把覆盖率上传给外部服务属于**待拍板**事项；
-- **必需检查与审批要求一律写进 `TODO.md` 的 `G-02`**（现状 + 目标规格两张表），
+- **必需检查与审批要求一律写进对应 Issue**（当前 [#85](https://github.com/ACANX/AHA/issues/85)，
+  含现状 + 目标规格两张表；`TODO.md` 已冻结，不再作为登记处），
   每次变更规则集或作业名后同步回写——这与「作业名是分支保护的契约」是同一条约束的两面
   （那次是作业名失配停在 `Expected`，这次是规则要的东西不存在停在 `Waiting`）。
 

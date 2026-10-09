@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.13.0
+**文档版本**：v1.14.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -28,6 +28,7 @@
 | v1.11.0 | 2026-10-08 | 第 2 节版本号清单更正枚举名与位置：`AppVersion.FALLBACK` → `AppVersion.FALLBACK_VERSION`（`aha-common`，D-10 下移） | @ACANX |
 | v1.12.0 | 2026-10-09 | 第 2 节「构建版本（预发行）」补 `BuildJVMArtifacts.yml`：dev 的 JVM 便携包出包线同样传 `-Daha.build.version=<a.b.c.PPPPP>`（issue #63） | @ACANX |
 | v1.13.0 | 2026-10-09 | §3 与 §3.1 的 CLI 资产名统一为 `aha-cli-<版本>.zip`（前缀 `aha-cli` 与桌面端 `aha-desktop-` 对称）；dev JVM 线的 JDK 27 变体为 `aha-cli-<版本>-jdk27.zip` | @ACANX |
+| v1.14.0 | 2026-10-09 | §4.1 第 5 条「关闭 squash / rebase 合并」的登记处由 `TODO.md` `G-05` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 
 ---
 
@@ -203,7 +204,8 @@
    但那是一次纯人工的重复劳动——所以正解是第 5 条。
 5. **更根本的预防：别让 squash 对长期集成分支可用**。仓库设置里关闭 squash 与 rebase
    合并、只留 `Create a merge commit`，血缘由平台保证，不再依赖人记得住——
-   这件事与分支规则集同属仓库设置，已登记在 [TODO.md](../TODO.md) `G-05`。
+   这件事与分支规则集同属仓库设置，已登记在
+   [Issue #85](https://github.com/ACANX/AHA/issues/85)。
 6. **合并前后用树的逐字节比对确认没丢内容**：
 
    ```
