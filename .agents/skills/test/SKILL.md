@@ -1,7 +1,7 @@
 ---
 name: test
 description: 测试编写与执行：单元测试 / 集成测试与覆盖率由 CI（Build.yml / Gate.yml）承担，Agent 不在本地运行 Maven 测试；当需要新增测试、根据 PR 的 CI 日志定位失败用例或分析覆盖率缺口时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；使用 JUnit 5；测试运行于 module-path，故不可依赖 jdk.httpserver 等未声明模块；本地不执行 Maven。
 metadata:
   version: "2.0.0"

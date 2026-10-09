@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/JDK-25%20LTS-blue.svg" alt="JDK 25 LTS">
   <img src="https://img.shields.io/badge/Maven-4.x%20%7C%203.9.x-orange.svg" alt="Maven 4.x / 3.9.x">
   <img src="https://img.shields.io/badge/JPMS-required-green.svg" alt="JPMS">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="Apache License 2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg" alt="GPL-3.0-or-later"></a>
 </p>
 
 <p align="center">支持 CLI 与桌面端双模式运行的 Agent Harness。</p>
@@ -147,4 +147,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 ## 许可证
 
-[Apache License 2.0](LICENSE)
+本项目按 **GNU General Public License v3.0 或更高版本**（GPL-3.0-or-later）发布，
+全文见 [LICENSE](LICENSE)；SPDX 标识符为 `GPL-3.0-or-later`。
+
+Copyright (C) 2026 ACANX

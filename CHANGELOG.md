@@ -11,6 +11,11 @@
 ## [Unreleased]
 
 ### 变更
+- **开源许可切换为 GPL-3.0-or-later**：仓库许可由 Apache License 2.0 改为
+  **GNU General Public License v3.0 或更高版本**——`LICENSE` 换为 GPLv3 全文，
+  `pom.xml` 的 `<licenses>`、`README.md` 的徐章与许可段、`.agents/skills/*/SKILL.md`
+  的 `license` 字段（10 处）同步；`mvnw` / `mvnw.cmd` / `.mvn/wrapper/` 保持原样
+  （Maven Wrapper 的官方脚本，许可归 Apache 软件基金会）。
 - **版本切换收敛为「改一行」（TD-00016 / issue #92~#97）**：版本号的唯一权威源改为仓库根目录的
   `version` 文件；机器侧只保留根 `pom.xml` 的 `<properties>/<revision>`（8 个子模块写
   `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION` 与版本解耦

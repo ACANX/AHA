@@ -1,7 +1,7 @@
 ---
 name: issue-tracking
 description: 遗留事项的跟踪载体与写法：把未闭环的问题、待决策项、需人工/平台执行的动作用 GitHub Issue 跟踪，写明现象、背景、待排查方向与验收标准。当发现一个不适合本轮立即解决、或本轮未能闭环的问题时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要已登录的 `gh` CLI；对仓库 Issue 的写权限。无需构建工具链。
 metadata:
   version: "1.0.0"

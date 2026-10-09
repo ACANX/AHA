@@ -1,7 +1,7 @@
 ---
 name: build
 description: 构建、打包与 Maven 版本兼容：由 CI（Build.yml / Gate.yml / Compat.yml / BuildJVMArtifacts.yml）承担，Agent 不在本地执行 Maven；当需要了解改动会触发哪些构建、或需要根据 PR 的 CI 日志排查构建失败时使用。
-license: Apache-2.0
+license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；CI 通过 ./mvnw 使用 Maven 4.x，并由 Compat.yml 验证 Maven 3.9.x 兼容；本地不执行 Maven。
 metadata:
   version: "2.0.0"
