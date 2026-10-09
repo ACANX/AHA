@@ -1,6 +1,6 @@
 # AHA 待办与调整项（暂存区）
 
-**文档版本**：v0.40.0
+**文档版本**：v0.49.0
 **状态**：草稿
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -474,7 +474,8 @@ profile 按平台筛选；或改用 `jpackage` 产出自包含运行时，不再
 
 ### D-08 ◐ 打包流水线已就位（2026-10-08），jpackage 安装包待评估
 
-**复核（✅ 已核实）**：`Build.yml` 仍无打包 job；`Release.yml` 仍只上传 `dist.zip`。
+**复核（✅ 已核实）**：`Build.yml` 仍无打包 job（dev 的 JVM 便携包已由独立工作流
+`BuildJVMArtifacts.yml` 承担，见 issue #63）；`Release.yml` 仍只上传 `dist.zip`。
 
 **残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵
 （桌面端安装包需另设产物）。
@@ -565,6 +566,7 @@ desktop 亦未列 tool 依赖。
 | v0.48.0 | 2026-10-09 | issue #49 第四轮：真机反馈「亮色已好、暗色下文字仍是黑字」。根因是补丁表把文字色写成查表形式，而原生镜像下查表失败会丢掉整条声明（亮色恰好等于 modena 默认值所以看不出来）；改为 `aha-theme-{dark,light}.css` 两份纯字面量、按主题整份装载，`Palette` 删除 `-fx-aha-*` 定义，并补文字兜底规则（含 `Text` 节点的 `-fx-fill`）| @ACANX / CNXNC |
 | v0.47.0 | 2026-10-09 | issue #49 第三轮（严重）：亮色与暗色下文本输入框 / 下拉框 / 「发送」按钮 / 滚动条背景全黑。查 modena.css 定案——这些控件的 `-fx-background-color` 写成 `derive()` / `linear-gradient()`，原生镜像下 CSS 函数求值不可靠，而 CSS 是「一个值无效就丢弃整条声明」，控件因此**没有背景**；修法：新增纯字面量补丁样式表 `aha-theme.css`（经 `Scene.getStylesheets()` 加载、排在 modena 之后）+ `Palette` 新增 4 个面色并把 modena 中间量全换字面量；新增 `G-16` | @ACANX / CNXNC |
 | v0.46.0 | 2026-10-09 | 真机（版本 `0.1.1.00054`）确认原生桌面端的启动链路与渲染期元数据已完整：issue **#35**（`QuantumToolkit` 反射）、**#37**（JNI `FindClass`）、**#39**（平台类 JNI 成员）、**#41**（效果 peer）四个 issue 全部修复并关闭（均附验证备注）；同步 `N-16` / `N-23` 为已验证、`G-08` / `G-10` / `G-11` 为已完成 | @ACANX / CNXNC |
+| v0.49.0 | 2026-10-09 | 新增独立工作流 `BuildJVMArtifacts.yml`（issue #63）：dev 的 JVM 便携包出包线（`aha-desktop` + `aha-cli` → 预发行），补齐 JVM 模式在 dev 上没有产物的缺口；`D-08` 复核表述同步更正 | @ACANX |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |

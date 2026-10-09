@@ -14,6 +14,10 @@
 **按平台出包的机制**，为 0.2 桌面端的发布做准备。
 
 ### 新增
+- **dev 分支 JVM 便携包自动出包（issue #63）**：新增独立工作流 `BuildJVMArtifacts.yml`
+  （与 `DesktopNative.yml` / `CliNative.yml` 同构）：每次合并到 `dev` 就构建 `aha-desktop`
+  与 `aha-cli` 便携包，发布预发行版（tag `V<版本>-aha-jvm`）。此前 JVM 模式只有本地构建与
+  发版构建两条路径，dev 上每轮合并都无法产出可直接下载验证的包。
 - **预发行版显示带构建号的版本（issue #46）**：此前 GUI 与 CLI 只能查到基线版本（如 `0.1.1`），
   而 PR 合并到 `dev` 后自动构建的包带构建号（如 `0.1.1.00046`）——它只出现在产物文件名与包内
   README 上，程序内部查不到。现把版本拆成两层：根 POM 新增 `aha.build.version`

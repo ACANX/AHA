@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.65.0
+**文档版本**：v3.66.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -469,6 +469,7 @@ aha/
 | v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 | v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
 | v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
+| v3.66.0 | 2026-10-09 | §4 项目结构的 workflows 树补 `BuildJVMArtifacts.yml`（dev 的 JVM 便携包构建 + 预发行，issue #63）及 `DesktopNative.yml` / `CliNative.yml` | @ACANX |
 
 ---
 ```
@@ -820,6 +821,9 @@ aha/
 │   │       └── action.yml
 │   └── workflows/
 │       ├── Build.yml           ← 快检查（每次 push / PR）
+│       ├── BuildJVMArtifacts.yml ← dev 的 JVM 便携包构建 + 预发行
+│       ├── DesktopNative.yml   ← 桌面端原生镜像（试验性，预发行）
+│       ├── CliNative.yml       ← CLI 原生镜像（试验性，预发行）
 │       ├── Gate.yml            ← 门禁 + 每周定期扫描
 │       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml

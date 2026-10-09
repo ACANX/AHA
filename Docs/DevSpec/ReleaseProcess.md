@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.11.0
+**文档版本**：v1.12.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-06
+**最后更新**：2026-10-09
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -26,6 +26,7 @@
 | v1.9.0 | 2026-10-08 | §3 制品表改为「CLI 平台无关 / 桌面端按平台」；新增 §3.2「桌面端按平台出包」（命名、包布局、自证规则、如何新增平台）；CLI 资产改名 `aha-<版本>-cli.zip` | @ACANX |
 | v1.10.0 | 2026-10-08 | §3.2 补包内依赖清单（18 个 jar 的分类构成）、不含项（JDK / 测试依赖）与「模块图完整性自证」（并记录 `--validate-modules` 不能当判据的实测） | @ACANX |
 | v1.11.0 | 2026-10-08 | 第 2 节版本号清单更正枚举名与位置：`AppVersion.FALLBACK` → `AppVersion.FALLBACK_VERSION`（`aha-common`，D-10 下移） | @ACANX |
+| v1.12.0 | 2026-10-09 | 第 2 节「构建版本（预发行）」补 `BuildJVMArtifacts.yml`：dev 的 JVM 便携包出包线同样传 `-Daha.build.version=<a.b.c.PPPPP>`（issue #63） | @ACANX |
 
 ---
 
@@ -72,7 +73,7 @@
    - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
    - **构建版本（预发行）**：`version.properties` 另有 `build=${aha.build.version}` 项；正式发版与
      本地构建不传，等于基线版本；PR 合并到 `dev` 后自动出包的工作流（`DesktopNative.yml` /
-     `CliNative.yml`）会传 `-Daha.build.version=<a.b.c.PPPPP>`（如 `0.1.1.00046`），
+     `CliNative.yml` / `BuildJVMArtifacts.yml`）会传 `-Daha.build.version=<a.b.c.PPPPP>`（如 `0.1.1.00046`），
      供 GUI「关于」与 CLI 启动页 / `/help` 显示，便于按版本号排查（issue #46）
 3. 执行完整构建与验收
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，

@@ -16,6 +16,7 @@
 | 工作流 | 承担 |
 |---|---|
 | `Build.yml` | 每次 push / PR：编译 + 单元测试（`clean test -Djacoco.skip=true`） |
+| `BuildJVMArtifacts.yml` | `push` → `dev`：构建 `aha-desktop` / `aha-cli` 便携包并发布 dev 预发行版（`build-mvn-artifact` / `build-publish`） |
 | `Gate.yml` | 合入 `main` 前 / 每周 / 发布前：完整 `clean verify`、覆盖率门禁、文档/技能/脚本/像素标志、重复率 |
 | `Compat.yml` | Maven 3.9.x 兼容（`mvn clean verify`） |
 | `Release.yml` | 发布：按平台出包并挂 release 页面 |
@@ -88,7 +89,8 @@ Dist\bin\Aha.bat chat        # Windows
 
 CI 侧的分工：`Build.yml` 每次 push/PR 只做编译与单元测试；`Gate.yml` 承载
 verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、每周定期、发布前**运行；
-`Compat.yml` 承载 Maven 3.9.x 兼容验证。`Gate` 与 `Compat` 都应在 main 的
+`Compat.yml` 承载 Maven 3.9.x 兼容验证；`BuildJVMArtifacts.yml` 在 `push` 到 `dev` 时
+构建 JVM 便携包并发布预发行版（不影响 Build 快检查）。`Gate` 与 `Compat` 都应在 main 的
 分支保护里设为必需检查。
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8.1 节。
