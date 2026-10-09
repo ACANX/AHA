@@ -154,6 +154,16 @@
   `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
   另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
   `PaletteTest` 新增两条守卫。详见 `Docs/DevLog/DevLog-20261009-11.md`。
+- **原生桌面镜像输入框 / 下拉框 / 按钮 / 滚动条背景发黑（issue #49 第三轮）**：亮色与暗色下，
+  文本输入框、「发送」按钮、下拉选择框与会话列表滚动条的背景都是黑的，且与主题切换无关。
+  查 `modena.css` 确认根因：这些控件的 `-fx-background-color` 写成 `derive(...)` /
+  `linear-gradient(...)`，而原生镜像下 CSS 函数求值不可靠，**CSS 的规则是一个值无效就丢弃
+  整条声明**，于是控件根本没有背景（并非「被设成了黑色」）。修法：新增纯字面量的补丁样式表
+  `aha-theme.css`，经 `Scene.getStylesheets()` 加载（排在 modena 之后）覆盖之；`Palette` 新增
+  `HOVER_BACKGROUND` / `SCROLL_TRACK` / `SCROLL_THUMB` / `ON_ACCENT`，并把 modena 依赖的中间量
+  （`-fx-body-color` / `-fx-text-box-border` / `-fx-outer-border` / `-fx-box-border` …）全换成字面量。
+  守卫 `PaletteTest` 新增三条：主题样式串与补丁表均不得含 CSS 函数、亮色下控件面色必须为浅色、
+  补丁表必须在 classpath 上。详见 `Docs/DevLog/DevLog-20261009-12.md`。
 - **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
   ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
   改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，

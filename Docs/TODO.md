@@ -562,6 +562,7 @@ desktop 亦未列 tool 依赖。
 | v0.43.0 | 2026-10-09 | 落地 issue #46（预发行版显示带构建号的版本）：根 POM 新增 `aha.build.version`（默认 `${project.version}`）、`version.properties` 增加 `build` 项、`AppVersion` 提供 `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` / `CliNative.yml` 构建时传 `-Daha.build.version=<a.b.c.PPPPP>`；展示点：桌面端「关于」与启动日志、CLI 启动页 / `/help` / `version`；新增 `N-26`、`G-14` | @ACANX / CNXNC |
 | v0.44.0 | 2026-10-09 | 修正 issue #46 的构建号注入：`DesktopNative.yml` / `CliNative.yml` 的 `command: >-` 折叠块内写了 `#` 注释，块标量里的 `#` 不是 YAML 注释，被折进命令串后在 shell 里注释掉了其后全部参数（含 `-Daha.build.version`），导致构建号从未注入（真机看不到）；已把注释移出块外 | @ACANX / CNXNC |
 | v0.45.0 | 2026-10-09 | issue #49 第二轮：真机仍报暗色下左栏文字深、亮色下对话框底色深。先取证（build-report 确认 `modena.css` 已打包；JVM 探针确认亮/暗两套下 `Label`/`Button`/`Menu`/`DialogPane` 均正确）→ 定位到原生镜像对 **looked-up color 查表 / `ladder()` 推导**不可靠；修法：`Palette.theme()` 显式钉死文字类颜色，新增 `Palette.dialogTheme()` 给 7 个对话框显式底色，`applyTheme` 加主题诊断日志；顺带补回漏合并的状态栏 `buildVersion()` | @ACANX / CNXNC |
+| v0.47.0 | 2026-10-09 | issue #49 第三轮（严重）：亮色与暗色下文本输入框 / 下拉框 / 「发送」按钮 / 滚动条背景全黑。查 modena.css 定案——这些控件的 `-fx-background-color` 写成 `derive()` / `linear-gradient()`，原生镜像下 CSS 函数求值不可靠，而 CSS 是「一个值无效就丢弃整条声明」，控件因此**没有背景**；修法：新增纯字面量补丁样式表 `aha-theme.css`（经 `Scene.getStylesheets()` 加载、排在 modena 之后）+ `Palette` 新增 4 个面色并把 modena 中间量全换字面量；新增 `G-16` | @ACANX / CNXNC |
 | v0.46.0 | 2026-10-09 | 真机（版本 `0.1.1.00054`）确认原生桌面端的启动链路与渲染期元数据已完整：issue **#35**（`QuantumToolkit` 反射）、**#37**（JNI `FindClass`）、**#39**（平台类 JNI 成员）、**#41**（效果 peer）四个 issue 全部修复并关闭（均附验证备注）；同步 `N-16` / `N-23` 为已验证、`G-08` / `G-10` / `G-11` 为已完成 | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
@@ -1340,6 +1341,16 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       修复由 PR #50 提交：`Palette.theme()` 去缓存、逐个节点重刷异常隔离、搜索框 / 输入框 /
       会话单元格 / 菜单栏 / 滚动区显式套主题（见 [DevLog-20261009-09.md](DevLog/DevLog-20261009-09.md)）。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
+
+      第三轮（v0.47.0）：真机报「亮色 / 跟随系统下输入框、发送按钮、下拉框、滚动条背景全黑，
+      且与主题切换无关」。查 `modena.css` 定案：这些控件的 `-fx-background-color` 形如
+      `derive(-fx-box-border,30%), linear-gradient(...)`，原生镜像下 CSS 函数求值不可靠，
+      而 **CSS 是一个值无效就丢弃整条声明**，控件因此根本没有背景（不是「设成了黑色」）。
+      修法：新增 `aha-theme.css`（纯字面量，无 CSS 函数，经 `Scene.getStylesheets()` 加载、
+      排在 modena 之后）+ `Palette` 定义 `-fx-aha-*` 变量并把 modena 中间量换成字面量。
+      验收追加：① 亮色下输入框 / 下拉框底为浅色；② 「发送」按钮可见且有边框；
+      ③ 会话列表中栏滚动条的轨道与滑块可见；④ 上述四项在亮 ↔ 暗切换后颜色同步变化。
+      见 [DevLog-20261009-12.md](DevLog/DevLog-20261009-12.md)。
 - [ ] **N-26**：真机验证预发行包显示带构建号的版本（issue #46）。
       长期跟踪载体：**issue #46**；本条目只作索引。
       修复由本次 PR 提交（见 [DevLog-20261009-10.md](DevLog/DevLog-20261009-10.md)）。
@@ -1396,7 +1407,8 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
 | G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
 | G-13 | 推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ☐ 未完成 |
 | G-14 | 推送 issue #46 的修复分支并提 PR（`feat/issue-46-build-version` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-26` 也拿不到带构建号的包 | ① `git ls-remote origin refs/heads/feat/issue-46-build-version` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 `N-26` 验证构建号显示 | ☐ 未完成 |
-| G-15 | 推送 issue #49 第二轮修复分支并提 PR（`fix/issue-49-native-looked-up-color` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第二轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-looked-up-color` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第二轮验证 | ☐ 未完成 |
+| G-15 | 推送 issue #49 第二轮修复分支并提 PR（`fix/issue-49-native-looked-up-color` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第二轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-looked-up-color` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第二轮验证 | ☑ 已完成（PR #55，已出 `V0.1.1.00055`） |
+| G-16 | 推送 issue #49 第三轮修复分支并提 PR（`fix/issue-49-native-css-functions` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第三轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-css-functions` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第三轮验证 | ☐ 未完成 |
 
 ### G-01 ☐ 未完成
 

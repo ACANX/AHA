@@ -37,7 +37,7 @@ public final class ToolListDialog {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.initOwner(owner);
         alert.setTitle("工具");
-        ThemePaint.themed(alert.getDialogPane(), Palette.dialogTheme());
+        ThemePaint.dialog(alert.getDialogPane());
         List<ToolDescriptor> list;
         try {
             list = tools.get();

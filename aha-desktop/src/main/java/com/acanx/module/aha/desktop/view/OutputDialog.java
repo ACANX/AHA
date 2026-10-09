@@ -61,7 +61,7 @@ public final class OutputDialog {
         dialog.getDialogPane().getButtonTypes().addAll(copy, close);
         dialog.getDialogPane().setPrefWidth(900);
         dialog.getDialogPane().setPrefHeight(680);
-        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
+        ThemePaint.dialog(dialog.getDialogPane());
 
         TextArea area = new TextArea(text);
         area.setId(AREA_ID);
