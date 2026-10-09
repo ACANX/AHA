@@ -70,8 +70,8 @@ jobs:
   #         build 作业的结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
   #
   # 【重要】用 `GITHUB_TOKEN` 推的 tag **不会触发下游工作流**（GitHub 防递归的既定行为），
-  #         所以 `Release.yml` 不会因这里的 tag 自动开跑。要让发布自动跟上，有两条路：
-  #         改用 PAT 推 tag（存为仓库机密），或 tag 出来后手工触发发布。
+  #         所以 `Release.yml` 不会因这里的 tag 自动开跑。本仓库**不为此配置 PAT**——
+  #         发布按 ReleaseProcess.md §4.2 手工重建 tag（由人推送，不受防递归限制）。
   #
   # 【权限】推 tag 需要 `contents: write`。若仓库把 Actions 默认权限设成了只读，
   #         这一步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。

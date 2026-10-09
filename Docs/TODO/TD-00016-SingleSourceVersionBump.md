@@ -113,7 +113,7 @@ version            # 一行纯文本，如 0.1.3
 | F9 | `versions:set` 语义 | 改用 `versions:set-property -Dproperty=revision`，并更新文档 |
 | F10 | **Maven 4 下 flatten 与 consumer POM 是否冲突** | 无报错、无重复产物；`.m2` 里 POM 已解析为实际版本 |
 | F11 | **Maven 4 GA 后移除 flatten 的可行性** | 移除后构建通过，且 `.m2` / 远端 POM 仍已解析 |
-| F12 | **workflow 开出的 PR 其 checks 确实被触发** | PR 上出现 `Build` / `Gate` / `Compat` / `CodeQL` 运行记录（否则 PAT 未生效） |
+| F12 | **版本切换的验证路径可自证** | 方案已调整（**不配 PAT**）：PR 侧不跑 checks，验证由合并到 `dev` 后自动触发的 `Build` + `BuildJVMArtifacts` / `CliNative` / `DesktopNative` 承担（走 `push` 事件，不受 `GITHUB_TOKEN` 限制） |
 | F13 | 分发脚本的幂等与防漏 | 同版本重跑被拒；动态扫描到的 POM 数 ≥ 9 |
 
 ### G. 文档与规范同步
@@ -177,7 +177,7 @@ jobs:
         run: python3 bin/CheckDocs.py && python3 .github/Python/ProjectVersion.py --verify
       - uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.VERSION_BUMP_TOKEN }}     # ⚠ PAT，见下
+          token: ${{ github.token }}                   # 默认 token；本仓库不配 PAT，见下
           branch: chore/bump-${{ steps.v.outputs.version }}
           base: dev
           title: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
@@ -186,10 +186,13 @@ jobs:
 
 两个要点：
 
-- **`token` 必须用 PAT**（`secrets.VERSION_BUMP_TOKEN`，细粒度，仅 `contents: write` +
-  `pull-requests: write`）——默认 `GITHUB_TOKEN` 推的提交**不触发下游 workflow**（本仓库已在
-  `ReleaseProcess.md` §4.2 记过这个坑），否则版本切换 PR 的 `Build` / `Gate` 不会跑；
-  若暂不想配 PAT，则退而求其次：PR 开出来后由人手动 close/reopen 或补一次 push，并在 PR 描述里写明；
+- **`token` 用默认 `GITHUB_TOKEN`**（`github.token`）——**本仓库不配置 PAT**。代价是版本切换 PR 上
+  **不会**自动跑 checks：`GITHUB_TOKEN` 推的提交不触发下游 workflow（本仓库已在
+  `ReleaseProcess.md` §4.2 记过这个坑），且 `Gate` / `Compat` 的 `pull_request` 只覆盖
+  `main` / `release/**`，base 为 `dev` 的 PR 本来也不会跑。
+  **验证时机因此改为「合并到 `dev` 之后」**：`push` 事件会触发 `Build.yml`（`on: [push, pull_request]`）
+  与 `BuildJVMArtifacts` / `CliNative` / `DesktopNative`（`push: branches: [dev]`），不受 token 限制；
+  PR 侧的正确性由 workflow 自身的「自检」步骤（`CheckDocs` / `CheckScripts` / `ProjectVersion.py`）把关；
 - `inputs.version` 可留空 → 取 `version` 文件当前值（幂等重放用）。
 
 #### H.3 分发脚本：`Script/Python/VersionDistribute.py`
@@ -221,7 +224,7 @@ jobs:
 | 文档版本声明 | — | 4 处 | 改为不写死（§D）或纳入分发（H.3-6） |
 | 流水线读版本 | 无（不打 tag） | **4 个工作流读 POM** | 收敛到 `.github/Python/ProjectVersion.py`（§B） |
 | Maven 兼容线 | 单版本 | Maven 4 + **3.9.x** | 需 `flatten-maven-plugin`（§A） |
-| PR 触发下游 | 用默认 `GITHUB_TOKEN` | 有必需检查与 `Gate` | **必须用 PAT**（H.2） |
+| PR 触发下游 | 用默认 `GITHUB_TOKEN` | 有必需检查与 `Gate` | **不配 PAT**：PR 侧不跑 checks，验证归口到合并后的 `dev` 流水线（H.2） |
 | 一致性校验 | 无 | 无 | 新增（§E）——“守门人” |
 
 #### H.5 幂等与失败处置
@@ -229,7 +232,7 @@ jobs:
 - 重复触发同版本：H.3-1 直接拒绝，不产生空提交；
 - 并发触发：`concurrency` 串行化（H.2）；
 - 版本写错、PR 未合并：关掉 PR 重跑 workflow（分支名不同，互不影响）；
-- workflow 失败（如 PAT 失效）：Job Summary 写明「人工按 `VersionBumpGuide.md` §3 手工分发」。
+- workflow 失败：Job Summary 写明「人工按 `VersionBumpGuide.md` §3 手工分发」。
 
 ## 与 Maven 4 的分期决策
 
@@ -267,9 +270,8 @@ jobs:
 - [x] 版本读取只有 **1 处实现**（`.github/Python/ProjectVersion.py`），四个工作流统一调用；
 - [x] 一致性校验上线：`version` 文件 / `<revision>` / `version.properties` / 产物名 / tag 名
       不一致即 CI 失败；
-- [ ] **VersionBump workflow** 可一键分发并开出 PR（分支名 `chore/bump-<版本>`），
-      且 **PR 上的 checks 被真实触发**（F12）——分发与开 PR 已验证（#106）；
-      下游 checks 的**自动触发**依赖 `secrets.VERSION_BUMP_TOKEN`，尚未配置；
+- [x] **VersionBump workflow** 可一键分发并开出 PR（分支名 `chore/bump-<版本>`），
+      验证路径为「PR 侧自检 + 合并到 `dev` 后的自动流水线」（F12 方案已调整，见「落地结果」）；
 - [x] 分发脚本**动态扫描 POM**（不硬编码清单），新增模块无需改脚本（F13）；
 - [x] Maven 4 与 3.9.x 双版本构建通过；原生镜像线产物名正确；
 - [x] `ReleaseProcess` / `VersionBumpGuide` / `BuildSpec` 口径更新为「1 处」（或「1 处 + 一键分发」）；
@@ -302,8 +304,24 @@ jobs:
 | F9 | `versions:set` 语义 | ✅ 文档改用 `versions:set-property -Dproperty=revision` |
 | F10 | Maven 4 下 flatten 与 consumer POM | ✅ 无报错、无重复产物 |
 | F11 | Maven 4 GA 后移除 flatten 的可行性 | ⏸ 阶段二，待 GA 后实测 |
-| F12 | workflow 开出的 PR 其 checks 被触发 | ⚠️ 需配置 `secrets.VERSION_BUMP_TOKEN`；未配置时退化为 `GITHUB_TOKEN`，PR 的 checks 不会自动触发 |
+| F12 | 版本切换的验证路径 | ✅ 方案调整（**不配 PAT**）：PR 侧不跑 checks；验证由合并到 `dev` 后自动触发的 `Build` + 三条出包线承担（`push` 事件，不受 token 限制） |
 | F13 | 分发脚本幂等与防漏 | ✅ 同版本重跑被拒；动态扫描 9 个 POM（下限 9） |
+
+### F12 方案变更（2026-10-09）
+
+原方案要求「版本切换 PR 上 `Build` / `Gate` / `Compat` 的 checks 被触发」，隐含前提是配置
+`secrets.VERSION_BUMP_TOKEN`（PAT）。**该方案未采纳**，改为：
+
+- PR 侧只依赖 workflow 自身的「自检」步骤（`CheckDocs` / `CheckScripts` / `ProjectVersion.py`）；
+- 验证归口到**合并到 `dev` 之后**由 `push` 事件自动触发的流水线：`Build` +
+  `BuildJVMArtifacts` / `CliNative` / `DesktopNative`；
+- **理由**：`push` 事件不受 `GITHUB_TOKEN` 防递归限制，无需任何额外凭据；而 `Gate` / `Compat`
+  的 `pull_request` 只覆盖 `main` / `release/**`，即使配了 PAT 也不会在 base 为 `dev` 的 PR 上跑
+  ——原口径本身无法满足。
+
+同步更新：`ReleaseProcess.md` §2/§4.2、`VersionBumpGuide.md` §2.2/§5（第 6、10 条）、
+`.github/workflows/VersionBump.yml`（删掉 PAT 检查步骤与 `VERSION_BUMP_TOKEN` 引用）、
+`.github/workflows/Build.yml` 的注释。
 
 ### 真实切换验证
 

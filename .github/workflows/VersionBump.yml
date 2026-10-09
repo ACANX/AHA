@@ -8,9 +8,12 @@ name: VersionBump
 #
 # 触发：仅手动。输入留空时取 `version` 文件当前值（分发器会拒绝「与当前相同」的空提交）。
 #
-# ⚠ 与 ReleaseProcess.md §4.2 同一个坑：默认 `GITHUB_TOKEN` 推的提交**不触发下游 workflow**，
-#   于是这个 PR 上的 `Build` / `Gate` / `Compat` 不会跑。处置见下方「检查 PAT」步骤与
-#   `secrets.VERSION_BUMP_TOKEN`（细粒度 PAT，仅 contents: write + pull-requests: write）。
+# 验证时机（重要）：用默认 `GITHUB_TOKEN` 推的提交**不触发下游 workflow**（GitHub 防递归的
+#   既定行为），所以这个 PR 上**不会**自动跑 `Build` / `CodeQL`；`Gate` / `Compat` 另因
+#   `pull_request` 只覆盖 `main` / `release/**` 也不会跑。本仓库**不为此配置 PAT**——
+#   验证由**合并到 `dev` 之后**自动触发的流水线承担：`Build.yml`（`on: [push, pull_request]`）
+#   + `BuildJVMArtifacts` / `CliNative` / `DesktopNative`（`push: branches: [dev]`）。
+#   它们走 `push` 事件，不受 `GITHUB_TOKEN` 限制。PR 侧由本 workflow 的「自检」步骤把关。
 on:
   workflow_dispatch:
     inputs:
@@ -57,27 +60,30 @@ jobs:
         run: python3 Script/Python/VersionDistribute.py --version "${{ steps.v.outputs.version }}"
 
       - name: 自检（文档围栏 / 脚本编码行尾 / 版本读取）
-        # 产物级的「五处一致」由 PR 上的 Gate（ProjectVersion.py --verify）承担；
+        # 产物级的「五处一致」在合并到 dev 后由 Build / Gate 承担（见文件头「验证时机」）；
         # 这里刚分发完、尚未构建，读不到产物，故只做不依赖构建的检查。
         run: |
           python3 bin/CheckDocs.py
           python3 bin/CheckScripts.py
           python3 .github/Python/ProjectVersion.py --resolve
 
-      - name: 检查 PAT 是否已配置（决定下游 checks 会不会被触发）
-        env:
-          HAS_PAT: ${{ secrets.VERSION_BUMP_TOKEN != '' }}
+      - name: 说明验证时机（PR 上不跑 checks，合并到 dev 后自动验证）
         run: |
-          if [ "${HAS_PAT}" = "true" ]; then
-            echo "已配置 VERSION_BUMP_TOKEN：PR 上的 Build / Gate / Compat 会被正常触发。"
-          else
-            echo "::warning::未配置 secrets.VERSION_BUMP_TOKEN（退化为 GITHUB_TOKEN 开 PR）：该 token 推的提交不触发下游 workflow，PR 上的检查需人工 close/reopen 或补一次 push 才会跑。"
-          fi
+          {
+            echo "## 验证时机"
+            echo
+            echo "本 PR 上不会自动跑 \`Build\` / \`CodeQL\`（\`GITHUB_TOKEN\` 推的提交不触发下游 workflow），"
+            echo "\`Gate\` / \`Compat\` 也因 \`pull_request\` 只覆盖 \`main\` / \`release/**\` 而不跑。"
+            echo
+            echo "正确性由两处保证："
+            echo "1. 本 workflow 的自检步骤（\`CheckDocs\` / \`CheckScripts\` / \`ProjectVersion.py\`）；"
+            echo "2. **合并到 \`dev\` 后**自动触发的流水线：\`Build\` + \`BuildJVMArtifacts\` / \`CliNative\` / \`DesktopNative\`。"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: 开 PR（分支 chore/bump-<版本>，base dev）
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.VERSION_BUMP_TOKEN || github.token }}
+          token: ${{ github.token }}
           branch: chore/bump-${{ steps.v.outputs.version }}
           base: dev
           title: "chore(release): 基线版本切换到 ${{ steps.v.outputs.version }}"
@@ -93,8 +99,9 @@ jobs:
 
             ### 检查
 
-            - 产物级「五处一致」由本 PR 上 `Gate` 的 `ProjectVersion.py --verify` 校验
-              （`Build` 负责编译与单测、`Compat` 负责 Maven 3.9.x）。
-            - 若这些 checks **没有自动出现**：说明未配置 `secrets.VERSION_BUMP_TOKEN`，
-              用默认 `GITHUB_TOKEN` 推的提交不会触发下游 workflow——手动 close/reopen 本 PR，
-              或再 push 一次即可（原因与处置见 `Docs/DevSpec/ReleaseProcess.md` §4.2）。
+            - 本 PR 上**不会**自动跑 `Build` / `CodeQL`（`GITHUB_TOKEN` 推的提交不触发下游
+              workflow），`Gate` / `Compat` 也因 `pull_request` 只覆盖 `main` / `release/**` 而不跑。
+            - 正确性由「本 workflow 的自检步骤」+「**合并到 `dev` 后**自动触发的流水线」保证：
+              `Build`（编译与单测）与 `BuildJVMArtifacts` / `CliNative` / `DesktopNative`（出包）。
+              合并后到 Actions 看这几条运行结果即可。
+            - 分发内容（逐文件）见本次 workflow 运行的 Job Summary。
