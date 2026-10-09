@@ -652,6 +652,63 @@ jobs:
           # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
           exit 0
 
+      - name: 运行冒烟（GUI：Windows 腿真启动，验证「能起不崩」）
+        # 为什么只在 Windows 跑：GitHub 的 windows-latest 有**交互式桌面会话**，能创建窗口；
+        #   Linux 腿无 X（需 Xvfb），macOS 腿 GUI 访问受限。
+        # 为什么是诊断式（从不判死）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
+        #   覆盖不到真实 D3D 路径；GUI 测试本身抖动也大——BuildSpec §7 要求可选管线
+        #   不得进必需检查、且失败必须在步骤级容错。结论一律写摘要。
+        # 判据只留真正的不变式：进程能启动，且**不在启动期以非 0 退出**
+        #   （启动期崩溃正是本项目踩过的坑：ClassNotFoundException / NoClassDefFoundError /
+        #   渲染初始化失败）。
+        if: always() && runner.os == 'Windows' && steps.verify.outputs.produced == 'true'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $work = 'aha-desktop-native/target/native'
+          $bin = @("$work/aha-desktop-native.exe", "$work/aha-desktop-native") |
+                 Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $bin) {
+            $found = Get-ChildItem -Path 'aha-desktop-native/target' -Recurse -Filter 'aha-desktop-native.exe' -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if ($found) { $bin = $found.FullName }
+          }
+          if (-not $bin) {
+            Write-Host '::warning::没有找到可执行文件，跳过 GUI 冒烟'
+            exit 0
+          }
+
+          Write-Host "可执行文件：$bin"
+          Write-Host '—— 冒烟：启动桌面端原生镜像，观察 20 秒 ——'
+          $p = Start-Process -FilePath $bin -PassThru
+          Start-Sleep -Seconds 20
+
+          if ($p.HasExited) {
+            if ($p.ExitCode -eq 0) {
+              $verdict = 'normal-exit（20 秒内以 0 退出）'
+              Write-Host "进程在 20 秒内以 0 正常退出，按通过计"
+            } else {
+              $verdict = "crash（退出码 $($p.ExitCode)）"
+              Write-Host "::warning::GUI 冒烟：进程在 20 秒内以非 0 退出——疑似启动期崩溃"
+            }
+          } else {
+            $verdict = 'alive（存活 20 秒）'
+            Write-Host "✅ GUI 冒烟：进程存活 20 秒（窗口已创建、启动期未崩溃），PID=$($p.Id)"
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          @(
+            '### 桌面端原生镜像 GUI 冒烟（windows-amd64）'
+            ''
+            "- 结论：$verdict"
+            "- 可执行文件：$bin"
+            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，覆盖不到 D3D 真实路径；本步只验证「进程能起来、启动期不崩」。'
+            ''
+            '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          exit 0
+
       - name: 改名为发布用资产名
         continue-on-error: true
         if: steps.verify.outputs.produced == 'true'
