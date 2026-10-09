@@ -16,7 +16,7 @@
 | 工作流 | 承担 |
 |---|---|
 | `Build.yml` | 每次 push / PR：编译 + 单元测试（`clean test -Djacoco.skip=true`） |
-| `BuildJVMArtifacts.yml` | `push` → `dev`：构建 `aha-desktop` / `aha-cli` 便携包并发布 dev 预发行版（`build-mvn-artifact` / `build-publish`） |
+| `BuildJVMArtifacts.yml` | `push` → `dev`：按「平台 × JDK（25 / 27）」构建 `aha-desktop` / `aha-cli` 便携包并发布 dev 预发行版（`build-mvn-artifact` / `build-publish`） |
 | `Gate.yml` | 合入 `main` 前 / 每周 / 发布前：完整 `clean verify`、覆盖率门禁、文档/技能/脚本/像素标志、重复率 |
 | `Compat.yml` | Maven 3.9.x 兼容（`mvn clean verify`） |
 | `Release.yml` | 发布：按平台出包并挂 release 页面 |

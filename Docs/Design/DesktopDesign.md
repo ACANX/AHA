@@ -225,8 +225,8 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 **与 CI 的关系**：`Build.yml` 每次 push / PR 只做编译与单元测试（见 [BuildSpec.md](../DevSpec/BuildSpec.md)
 第 8 节）；另有一条**独立的 dev JVM 构建线**（`BuildJVMArtifacts.yml`，与 `DesktopNative.yml` /
 `CliNative.yml` 同构）——`push` 到 `dev` 时由 `build-mvn-artifact` / `build-publish` 用**同一条命令**
-产出便携包并发布预发行版（issue #63）。正式发版仍由 `Release.yml` 在 `V*` tag 上产出。
-原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
+产出便携包并发布预发行版（JDK 25 基线与 JDK 27 两轴，issue #63 / #65）。正式发版仍由
+`Release.yml` 在 `V*` tag 上产出。原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
 （见 [DesktopNativeDesign.md](DesktopNativeDesign.md)），不在本节范围内。
 
 ## 6. 线程模型（0.2 实装，2026-10-08）

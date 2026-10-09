@@ -15,6 +15,11 @@ name: BuildJVMArtifacts
 # 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
 # 4. **可被打断**：同一分支的新一次运行会取消上一次（见 concurrency）。
 #
+# ── JDK 轴：25（基线）+ 27 ──────────────────────────────────────────────────
+# 矩阵同时出 **JDK 25**（默认，release=25）与 **JDK 27**（`-Dmaven.compiler.release=27`）
+# 两份产物：JDK 27 的包名带 `-jdk27` 后缀，与 JDK 25 基线并存不冲突。
+# 编译 JDK 由 setup-java 按矩阵切换；release 由命令行显式给（不动根 POM 的 25 默认）。
+#
 # ── 版本号规则 ──────────────────────────────────────────────────────────────────
 #     <基线版本>.<PR 号，补零到 5 位>
 # 基线 ← 根 pom.xml 的 <version>；PR 号 ← push 到 dev 时按提交 SHA 反查
@@ -117,21 +122,38 @@ jobs:
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
   #    CLI 包平台无关，只在一条腿产出。
   build-mvn-artifact:
-    name: build-mvn-artifact-${{ matrix.label }}
+    name: build-mvn-artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
     needs: mvn-version
     strategy:
-      # 一条腿失败不取消其余：三个平台的包是并列交付物。
+      # 一条腿失败不取消其余：各平台 × 各 JDK 的包是并列交付物。
       fail-fast: false
       matrix:
         include:
+          # ── JDK 25（基线，release=25）──
           - os: ubuntu-latest
             label: linux-x64
+            jdk: 25
             upload_cli: true
           - os: windows-latest
             label: windows-x64
+            jdk: 25
             upload_cli: false
           - os: macos-latest
             label: macos-arm64
+            jdk: 25
+            upload_cli: false
+          # ── JDK 27（release=27）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 27
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 27
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 27
             upload_cli: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -139,7 +161,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: 25
+          java-version: ${{ matrix.jdk }}
 
       - name: 构建 aha-desktop 与 aha-cli（含本平台 OpenJFX 分类器）
         # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
@@ -150,15 +172,36 @@ jobs:
         with:
           command: >-
             ./mvnw -B
+            -Dmaven.compiler.release=${{ matrix.jdk }}
             -pl aha-desktop,aha-cli -am package
             -DskipTests -Djacoco.skip=true
             -Daha.build.version=${{ needs.mvn-version.outputs.version }}
 
-      - name: 规范桌面端包名（加构建版本与平台标签）
+      - name: 产物自证（class 文件确为 JDK ${{ matrix.jdk }} 字节码）
+        # 只看「构建成功」不够：release 没生效时仍会以默认 25 编出来。
+        # 直接读任一 class 的 major version：Java 25 = 69，Java 27 = 71。
+        shell: bash
+        env:
+          JDK: ${{ matrix.jdk }}
+        run: |
+          set -uo pipefail
+          f=$(find aha-common/target/classes -name '*.class' | head -n1 || true)
+          if [ -z "$f" ]; then echo "::error::找不到 class 文件，无法自证"; exit 1; fi
+          major=$(od -An -tu1 -j 6 -N 2 "$f" | awk '{print $1 * 256 + $2}')
+          if [ "${JDK}" = "27" ]; then expect=71; else expect=69; fi
+          echo "样本：${f}  major=${major}  期望=${expect}"
+          if [ "${major}" != "${expect}" ]; then
+            echo "::error::class 字节码版本不符（期望 ${expect}，实际 ${major}）"
+            exit 1
+          fi
+          echo "自证通过：Java ${JDK} 字节码（major=${major}）"
+
+      - name: 规范桌面端包名（加构建版本与平台标签；JDK 27 另带 -jdk27）
         shell: bash
         env:
           VERSION: ${{ needs.mvn-version.outputs.version }}
           LABEL: ${{ matrix.label }}
+          JDK: ${{ matrix.jdk }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -168,9 +211,9 @@ jobs:
             echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
             exit 1
           fi
-          # zip 名用的是 project.version（不含构建号），这里改成带构建版本与平台标签，
-          # 使 dev 每次构建的产物可区分，也不与正式发版的资产名相撞。
-          target="Dist/aha-desktop-${VERSION}-${LABEL}.zip"
+          # JDK 25 保持原名（不带 JDK 段），JDK 27 加 -jdk27 区分两类产物。
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          target="Dist/aha-desktop-${VERSION}${suffix}-${LABEL}.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c 'lib/javafx' || true)
@@ -181,11 +224,13 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.mvn-version.outputs.version }}
+          JDK: ${{ matrix.jdk }}
         run: |
           set -euo pipefail
           test -f Dist/bin/Aha.sh
           test -d Dist/lib
-          target="Dist/aha-${VERSION}-cli.zip"
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          target="Dist/aha-${VERSION}${suffix}-cli.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
           (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
@@ -195,10 +240,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
-          name: Mvn-Artifact-${{ matrix.label }}
+          name: Mvn-Artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
           path: |
-            Dist/aha-desktop-${{ needs.mvn-version.outputs.version }}-${{ matrix.label }}.zip
-            Dist/aha-${{ needs.mvn-version.outputs.version }}-cli.zip
+            Dist/aha-desktop-${{ needs.mvn-version.outputs.version }}*-${{ matrix.label }}.zip
+            Dist/aha-${{ needs.mvn-version.outputs.version }}*-cli.zip
           if-no-files-found: warn
           retention-days: 14
 
@@ -274,12 +319,13 @@ jobs:
             - 来源 PR：#${{ needs.mvn-version.outputs.pr }}
 
             ## 包含什么
-            - `aha-desktop-<版本>-<平台>.zip`：桌面端便携包（`bin/` 启动脚本 + `lib/` 依赖，
-              含本平台 OpenJFX 与缺省配置/静态资源，随模块 jar 分发）；
-            - `aha-<版本>-cli.zip`：CLI 发行包（`bin/` + `lib/`，平台无关）。
+            - `aha-desktop-<版本>-<平台>.zip` / `aha-<版本>-cli.zip`：**JDK 25 基线**，
+              Java 25 字节码，需 JDK 25；
+            - `aha-desktop-<版本>-jdk27-<平台>.zip` / `aha-<版本>-jdk27-cli.zip`：**JDK 27**，
+              Java 27 字节码（major=71），需 JDK 27。
 
             ## 怎么用
-            1. 按你的系统下载对应包；
+            1. 按你的系统与 JDK 选对应包（`-jdk27` 后缀的需 JDK 27）；
             2. 解压后运行 `bin/AhaDesktop.bat`（Windows）或 `bin/AhaDesktop.sh`（Linux/macOS），
                CLI 运行 `bin/Aha.bat` / `bin/Aha.sh`；
             3. 配置与数据在 `AHA_HOME`（默认 `~/.aha`）。

@@ -270,7 +270,7 @@ POM 语法必须兼容 Maven 3.9.x：
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
 | **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿 |
-| **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：构建 `aha-desktop`（按平台矩阵）与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`）；不影响 Build 快检查 |
+| **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：按「平台 × JDK」矩阵构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`）；JDK 轴为 25（基线，release=25）与 27（`-jdk27` 后缀，release=27，issue #65）；不影响 Build 快检查 |
 | **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |
 
