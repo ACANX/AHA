@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.core.config.ModelConfig;
 import com.acanx.module.aha.core.config.ModelConfigStore;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -29,6 +30,7 @@ import javafx.stage.Window;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -80,6 +82,11 @@ public final class ProviderDialog {
 
     private MenuButton editModelPresets;
 
+    /** 编辑区五档输入（档位名 → 输入框）。 */
+    private final Map<ModelTier, TextField> editTiers = new LinkedHashMap<>();
+
+    private ChoiceBox<String> editDefaultTier;
+
     private PasswordField editApiKey;
 
     private TextField editApiKeyPlain;
@@ -106,6 +113,11 @@ public final class ProviderDialog {
     private TextField newModel;
 
     private MenuButton newModelPresets;
+
+    /** 新增区五档输入（档位名 → 输入框）。 */
+    private final Map<ModelTier, TextField> newTiers = new LinkedHashMap<>();
+
+    private ChoiceBox<String> newDefaultTier;
 
     private PasswordField newApiKey;
 
@@ -249,7 +261,18 @@ public final class ProviderDialog {
         grid.addRow(row++, new Label("供应商 ID"), editIdLabel);
         grid.addRow(row++, new Label("适配器"), editAdapter);
         grid.addRow(row++, new Label("基础地址"), editBaseUrl);
-        grid.addRow(row++, new Label("模型"), new HBox(6, editModel, editModelPresets));
+        grid.addRow(row++, new Label("默认模型"), new HBox(6, editModel, editModelPresets));
+        for (ModelTier tier : ModelTier.strongestFirst()) {
+            TextField field = new TextField();
+            field.setPrefWidth(360);
+            field.setPromptText(tier == ModelTier.STANDARD ? "必填档" : "可选，留空回退 Standard");
+            editTiers.put(tier, field);
+            grid.addRow(row++, new Label("  档位 " + tier.configName()), field);
+        }
+        editDefaultTier = new ChoiceBox<>();
+        editDefaultTier.getItems().addAll(tierNames());
+        editDefaultTier.setValue(ModelTier.STANDARD.configName());
+        grid.addRow(row++, new Label("默认档位"), editDefaultTier);
         grid.addRow(row++, new Label("API Key"), keyRow(editApiKey, editApiKeyPlain));
         grid.addRow(row++, new Label("超时（秒）"), editTimeout);
         grid.addRow(row++, new Label("重试次数"), editRetries);
@@ -263,6 +286,7 @@ public final class ProviderDialog {
             }
             ProviderForm.Draft draft = new ProviderForm.Draft(id, editAdapter.getValue(),
                     editBaseUrl.getText(), editApiKey.getText(), editModel.getText(),
+                    tierValues(editTiers), editDefaultTier.getValue(),
                     editTimeout.getText(), editRetries.getText());
             String error = ProviderForm.save(store, draft, false);
             if (error != null) {
@@ -320,6 +344,10 @@ public final class ProviderDialog {
         editAdapter.setValue(draft.adapter());
         editBaseUrl.setText(draft.baseUrl());
         editModel.setText(draft.model());
+        editTiers.forEach((tier, field) -> field.setText(
+                draft.tierModels().getOrDefault(tier.configName(), "")));
+        editDefaultTier.setValue(draft.defaultTier() == null
+                ? ModelTier.STANDARD.configName() : draft.defaultTier());
         fillModelMenu(editModelPresets, editModel, id);
         editApiKey.setText(draft.apiKey());
         editTimeout.setText(draft.timeoutSeconds());
@@ -366,7 +394,18 @@ public final class ProviderDialog {
         grid.addRow(row++, new Label("供应商 ID"), newId);
         grid.addRow(row++, new Label("适配器"), newAdapter);
         grid.addRow(row++, new Label("基础地址"), newBaseUrl);
-        grid.addRow(row++, new Label("模型"), new HBox(6, newModel, newModelPresets));
+        grid.addRow(row++, new Label("默认模型"), new HBox(6, newModel, newModelPresets));
+        for (ModelTier tier : ModelTier.strongestFirst()) {
+            TextField field = new TextField();
+            field.setPrefWidth(360);
+            field.setPromptText(tier == ModelTier.STANDARD ? "必填档" : "可选，留空回退 Standard");
+            newTiers.put(tier, field);
+            grid.addRow(row++, new Label("  档位 " + tier.configName()), field);
+        }
+        newDefaultTier = new ChoiceBox<>();
+        newDefaultTier.getItems().addAll(tierNames());
+        newDefaultTier.setValue(ModelTier.STANDARD.configName());
+        grid.addRow(row++, new Label("默认档位"), newDefaultTier);
         grid.addRow(row++, new Label("API Key"), keyRow(newApiKey, newApiKeyPlain));
         grid.addRow(row++, new Label("超时（秒）"), newTimeout);
         grid.addRow(row++, new Label("重试次数"), newRetries);
@@ -389,6 +428,7 @@ public final class ProviderDialog {
         create.setOnAction(event -> {
             ProviderForm.Draft draft = new ProviderForm.Draft(newId.getText(), newAdapter.getValue(),
                     newBaseUrl.getText(), newApiKey.getText(), newModel.getText(),
+                    tierValues(newTiers), newDefaultTier.getValue(),
                     newTimeout.getText(), newRetries.getText());
             String error = ProviderForm.save(store, draft, true);
             if (error != null) {
@@ -445,6 +485,10 @@ public final class ProviderDialog {
         newAdapter.setValue(draft.adapter());
         newBaseUrl.setText(draft.baseUrl());
         newModel.setText(draft.model());
+        newTiers.forEach((tier, field) -> field.setText(
+                draft.tierModels().getOrDefault(tier.configName(), "")));
+        newDefaultTier.setValue(draft.defaultTier() == null
+                ? ModelTier.STANDARD.configName() : draft.defaultTier());
         fillModelMenu(newModelPresets, newModel, draft.id());
         newApiKey.setText("");
         newTimeout.setText(draft.timeoutSeconds());
@@ -493,13 +537,38 @@ public final class ProviderDialog {
         return label;
     }
 
+    /**
+     * 五档名列表（用于默认档下拉）。
+     *
+     * @return 档位名列表
+     */
+    private static List<String> tierNames() {
+        List<String> names = new ArrayList<>();
+        for (ModelTier tier : ModelTier.strongestFirst()) {
+            names.add(tier.configName());
+        }
+        return names;
+    }
+
+    /**
+     * 收集档位输入框的值。
+     *
+     * @param fields 档位输入框
+     * @return 档位名 → 输入值
+     */
+    private static Map<String, String> tierValues(Map<ModelTier, TextField> fields) {
+        Map<String, String> values = new LinkedHashMap<>();
+        fields.forEach((tier, field) -> values.put(tier.configName(), field.getText()));
+        return values;
+    }
+
     private String modelOf(String providerId) {
         ProviderForm.LoadResult loaded = ProviderForm.loadSafely(store);
         if (!loaded.ok()) {
             return null;
         }
         ProviderConfig provider = loaded.config().providersOrEmpty().get(providerId);
-        return provider == null ? null : provider.model();
+        return provider == null ? null : provider.effectiveModel(loaded.config().defaultTier());
     }
 
     private void reload(String selectId) {
@@ -530,7 +599,9 @@ public final class ProviderDialog {
         status.setStyle("-fx-font-size: 12px; -fx-text-fill: " + Palette.SUCCESS + ";");
         status.setText(active == null
                 ? "\u25cb 未设置默认供应商"
-                : "\u25cf 已启用：" + activeId + "   " + active.model()
+                : "\u25cf 已启用：" + activeId + "   "
+                        + active.effectiveTier(config.defaultTier()).configName() + " · "
+                        + active.effectiveModel(config.defaultTier())
                         + "   密钥 " + ProviderForm.mask(active.apiKey()));
     }
 

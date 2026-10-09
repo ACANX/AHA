@@ -29,6 +29,9 @@
 - JDK 25 (LTS)
 - Maven 4（通过 `./mvnw` 固定）或 Maven 3.9.x（兼容验证）
 
+> **Agent 约束**：本文中的 `./mvnw` 命令供人类开发者使用；Agent 不在本地执行编译 / 测试，
+> 以 PR 的 CI checks 为准（见 [AGENTS.md](../../AGENTS.md)）。
+
 ## 2. 构建
 
 ```bash

@@ -519,6 +519,7 @@ public final class ChatCommand implements Runnable {
         RuntimeDescriptor runtime = service.runtime();
         Map<String, String> attributes = runtime.attributes();
         field(rows, "供应商", attributes.get("Provider"));
+        field(rows, "档位", attributes.get("Tier"));
         field(rows, "模型", attributes.get("Model"));
         field(rows, "端点", attributes.get("Endpoint"));
         field(rows, "工作目录", runtime.workingDir());

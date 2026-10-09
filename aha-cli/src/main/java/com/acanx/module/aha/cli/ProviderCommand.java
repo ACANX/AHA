@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.exception.AhaException;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.core.config.ModelConfig;
 import com.acanx.module.aha.core.config.ModelConfigStore;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.RateLimitConfig;
 import picocli.CommandLine.Command;
@@ -28,6 +29,7 @@ import java.util.regex.Pattern;
         description = "模型供应商管理",
         subcommands = {
                 ProviderCommand.ListSub.class,
+                ProviderCommand.ShowSub.class,
                 ProviderCommand.TestSub.class,
                 ProviderCommand.UseSub.class,
                 ProviderCommand.AddSub.class,
@@ -39,7 +41,7 @@ public final class ProviderCommand implements Runnable {
 
     @Override
     public void run() {
-        System.out.println("用法: aha provider [list|test|use|add|remove]");
+        System.out.println("用法: aha provider [list|show|test|use|add|remove]");
     }
 
     private static ModelConfigStore store() {
@@ -64,10 +66,12 @@ public final class ProviderCommand implements Runnable {
             ModelConfig model = store.load();
             String current = model.defaultProvider();
             printConfigFile(store);
-            System.out.printf("%-16s %-20s %-24s %s%n", "NAME", "ADAPTER", "MODEL", "REMARK");
+            System.out.printf("%-16s %-20s %-12s %-24s %s%n", "NAME", "ADAPTER", "TIER", "MODEL", "REMARK");
             model.providersOrEmpty().forEach((name, provider) -> System.out.printf(
-                    "%-16s %-20s %-24s %s%n",
-                    name, provider.adapter(), provider.model(),
+                    "%-16s %-20s %-12s %-24s %s%n",
+                    name, provider.adapter(),
+                    provider.effectiveTier(model.defaultTier()).configName(),
+                    provider.effectiveModel(model.defaultTier()),
                     name.equals(current) ? "<== 当前默认" : ""));
             if (!store.exists()) {
                 System.out.println();
@@ -102,11 +106,56 @@ public final class ProviderCommand implements Runnable {
                     && !com.acanx.module.aha.core.config.ConfigLoader
                             .isUnresolvedPlaceholder(provider.apiKey());
             System.out.printf("供应商: %s%n适配器: %s%nBaseUrl: %s%n模型: %s%nAPI Key: %s%n",
-                    id, provider.adapter(), provider.baseUrl(), provider.model(),
+                    id, provider.adapter(), provider.baseUrl(), provider.effectiveModel(null),
                     apiKeyConfigured ? "已配置" : "未配置（请设置对应环境变量）");
             if (provider.apiKey() != null && provider.apiKey().startsWith("${")) {
                 System.out.printf("所需环境变量: %s%n",
                         provider.apiKey().replace("${", "").replace("}", ""));
+            }
+            return 0;
+        }
+    }
+
+    /**
+     * 展示单个供应商的档位明细（{@code aha provider show <Id>}）。
+     *
+     * @since 0.1.0
+     */
+    @Command(name = "show", description = "查看单个供应商的档位与默认模型",
+            mixinStandardHelpOptions = true)
+    public static final class ShowSub implements Callable<Integer> {
+
+        @Parameters(index = "0", description = "供应商 ID")
+        String id;
+
+        @Override
+        public Integer call() {
+            ModelConfigStore store = store();
+            ModelConfig model = store.load();
+            ProviderConfig provider = model.providersOrEmpty().get(id);
+            if (provider == null) {
+                System.err.println("[error] 未找到供应商: " + id);
+                return 1;
+            }
+            boolean apiKeyConfigured = provider.apiKey() != null
+                    && !provider.apiKey().isBlank()
+                    && !com.acanx.module.aha.core.config.ConfigLoader
+                            .isUnresolvedPlaceholder(provider.apiKey());
+            System.out.printf("供应商: %s%n适配器: %s%nBaseUrl: %s%nAPI Key: %s%n",
+                    id, provider.adapter(), provider.baseUrl(),
+                    apiKeyConfigured ? "已配置" : "未配置（请设置对应环境变量）");
+            System.out.printf("默认档位: %s%n", provider.effectiveTier(model.defaultTier()).configName());
+            System.out.printf("默认模型: %s%n", provider.effectiveModel(model.defaultTier()));
+            if (!provider.hasModels()) {
+                System.out.println("（老配置未配置档位表，Models 各档均按 Model 处理）");
+                return 0;
+            }
+            System.out.println();
+            System.out.printf("%-12s %s%n", "档位", "模型");
+            for (ModelTier tier : ModelTier.strongestFirst()) {
+                String configured = provider.configuredModel(tier);
+                System.out.printf("%-12s %s%n", tier.configName(),
+                        configured == null ? "（未配置）" : configured);
             }
             return 0;
         }
@@ -158,8 +207,21 @@ public final class ProviderCommand implements Runnable {
                 description = "Base URL（如 https://api.deepseek.com/v1，无需包含 /chat/completions）")
         String baseUrl;
 
-        @Option(names = "--model", required = true, description = "模型名")
-        String model;
+        @Option(names = {"--model-standard", "--model"},
+                description = "Standard 档模型名（必填档；--model 为其等价写法）")
+        String modelStandard;
+
+        @Option(names = "--model-ultra", description = "Ultra 档模型名（可选）")
+        String modelUltra;
+
+        @Option(names = "--model-pro", description = "Pro 档模型名（可选）")
+        String modelPro;
+
+        @Option(names = "--model-flash", description = "Flash 档模型名（可选）")
+        String modelFlash;
+
+        @Option(names = "--model-fallback", description = "Fallback 档模型名（可选）")
+        String modelFallback;
 
         @Option(names = "--api-key", description = "API Key，默认写入 ${AHA_API_KEY_<ID>} 占位")
         String apiKey;
@@ -184,11 +246,23 @@ public final class ProviderCommand implements Runnable {
                 return 1;
             }
             ModelConfigStore store = store();
+            Map<String, String> models = new java.util.LinkedHashMap<>();
+            putIfPresent(models, ModelTier.ULTRA, modelUltra);
+            putIfPresent(models, ModelTier.PRO, modelPro);
+            putIfPresent(models, ModelTier.STANDARD, modelStandard);
+            putIfPresent(models, ModelTier.FLASH, modelFlash);
+            putIfPresent(models, ModelTier.FALLBACK, modelFallback);
+            if (models.get(ModelTier.STANDARD.configName()) == null) {
+                System.err.println("[error] 必须指定 Standard 档模型（--model-standard 或 --model）");
+                return 1;
+            }
             ProviderConfig provider = new ProviderConfig(
                     adapter,
                     baseUrl,
                     apiKey != null && !apiKey.isBlank() ? apiKey : existingOrDerivedPlaceholder(id),
-                    model,
+                    models,
+                    ModelTier.STANDARD.configName(),
+                    models.get(ModelTier.STANDARD.configName()),
                     timeoutSeconds,
                     maxRetries,
                     new RateLimitConfig(rpm, 0),
@@ -202,6 +276,19 @@ public final class ProviderCommand implements Runnable {
             System.out.printf("默认供应商: %s%n", store.load().defaultProvider());
             CliContext.invalidate();
             return 0;
+        }
+
+        /**
+         * 非空时写入档位表。
+         *
+         * @param models 档位表
+         * @param tier   档位
+         * @param model  模型名
+         */
+        private static void putIfPresent(Map<String, String> models, ModelTier tier, String model) {
+            if (model != null && !model.isBlank()) {
+                models.put(tier.configName(), model);
+            }
         }
 
         /**

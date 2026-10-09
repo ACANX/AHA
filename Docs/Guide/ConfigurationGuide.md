@@ -179,13 +179,22 @@ aha config get Llm.ModelFile
 ```yaml
 Model:
   Default: DeepSeek          # 当前默认（选中）供应商
+  DefaultTier: Standard      # 可选：全局默认档，缺省 Standard
 
   Providers:
     DeepSeek:
       Adapter: openai-compatible
       BaseUrl: https://api.deepseek.com/v1
       ApiKey: "${AHA_API_KEY_DEEPSEEK}"
-      Model: deepseek-chat
+      # 五档：Standard 为唯一必填档，其余可选；可选档缺失回退 Standard
+      Models:
+        Ultra: deepseek-v4-pro
+        Pro: deepseek-v4-pro
+        Standard: deepseek-v4-flash
+        Flash: deepseek-v4-flash
+        Fallback: deepseek-v4-flash
+      DefaultTier: Standard     # 供应商级默认档（新规则下优先于 Model）
+      Model: deepseek-v4-flash  # 默认模型记录，与 DefaultTier 保持一致
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
@@ -193,13 +202,26 @@ Model:
         Tpm: 100000
 ```
 
-内置默认（`ModelDefault.yml`）提供 6 个供应商：
-`OpenAI`、`Anthropic`、`Gemini`、`DeepSeek`、`BigModelCN`、`Qwen`。
+内置默认（`ModelDefault.yml`）提供 8 个供应商：
+`OpenAI`、`Anthropic`、`Gemini`、`DeepSeek`、`BigModelCN`、`Qwen`、`Moonshot`、`MiniMax`。
+
+### 3.1 模型档位（五档）
+
+一个供应商可配置 **5 档**模型：`Ultra` / `Pro` / `Standard` / `Flash` / `Fallback`。
+
+- **`Standard` 是唯一必填档**：含 `Models` 的配置缺 `Standard` 会报配置错误（`MODEL_TIER_STANDARD_REQUIRED`）；
+- 可选档缺失不是错误，解析时**一律回退 `Standard`**；
+- **新旧规则判定**：配置里**有没有 `Models`**。只有 `Model`（无 `Models`）为老规则，
+  `Model` 直接生效，行为与升级前一致；含 `Models` 为新规则，`DefaultTier` 优先，`Model` 作为默认模型记录；
+- **默认档解析**（新规则）：`Providers.<Id>.DefaultTier` → `Model.DefaultTier` → `Standard`；
+- **运行期降级**：档位模型不可用时（404/422/429/5xx 重试耗尽等），先降 `Standard`，
+  再降 `Fallback` 档，最后走全局 `Llm.Fallback`；401/403 不降级；只作用于单次请求，有 `WARN` 日志。
 
 ## 4. 一键切换供应商
 
 ```bash
 aha provider list                          # 列出全部供应商，标记当前默认
+aha provider show DeepSeek                 # 查看某家的五档与默认档 / 默认模型
 aha provider use DeepSeek                  # 一键切换默认供应商
 aha provider test DeepSeek                 # 查看配置与所需环境变量（不发起请求）
 ```
@@ -210,6 +232,18 @@ aha provider test DeepSeek                 # 查看配置与所需环境变量�
 Model:
   Default: DeepSeek
 ```
+
+## 4.1 切换模型档位与默认模型
+
+```bash
+aha model show                     # 查看默认档、默认模型与各档模型
+aha model use Pro                  # 把默认档设为 Pro，并把 Model 同步为该档模型
+aha model use deepseek-v4-pro      # 按五档内模型名反查档位（多档同值取最强档）
+```
+
+会话内还可临时切档（仅本会话，不落盘）：`/model Standard`、`/model Ultra`；
+档位名**大小写敏感**，`/model <模型名>` 仅接受五档内的模型名。
+切换供应商仍请用 `aha provider use <Id>`。
 
 ## 5. 新增 / 删除供应商
 
@@ -238,7 +272,12 @@ aha provider remove MyProxy -y
 |---|---|---|---|
 | `--adapter` | ✅ | — | `openai-compatible` / `anthropic` / `gemini` |
 | `--base-url` | ✅ | — | 基础地址（如 `https://api.deepseek.com/v1`），适配器自动拼接端点路径 |
-| `--model` | ✅ | — | 模型名 |
+| `--model` | — | — | Standard 档模型名（等价 `--model-standard`；必填档） |
+| `--model-standard` | ✅ | — | Standard 档模型名（必填档） |
+| `--model-ultra` | — | — | Ultra 档模型名（可选） |
+| `--model-pro` | — | — | Pro 档模型名（可选） |
+| `--model-flash` | — | — | Flash 档模型名（可选） |
+| `--model-fallback` | — | — | Fallback 档模型名（可选） |
 | `--api-key` | — | `${AHA_API_KEY_<ID>}` | 支持 `${ENV}` 占位 |
 | `--timeout` | — | 120 | 超时秒数 |
 | `--max-retries` | — | 3 | 5xx 重试次数 |
@@ -275,6 +314,10 @@ Model.yml
 
 两份文件均受此约束；`Model.yml` 的顶层 `Model`、`Default`、`Providers` 及各供应商 ID 都需为 PascalCase。
 
+**档位校验**：含 `Models` 的供应商必须配置非空的 `Standard` 档，否则抛出 `ConfigException`
+（`MODEL_TIER_STANDARD_REQUIRED`，指明「供应商 X 缺少必填的 Standard 档」）；
+`DefaultTier` 必须是五档之一；新规则下 `Model` 必须是五档内的模型名。
+
 ## 9. 配置项参考（0.1.0）
 
 ### 9.1 主配置 `Aha.yaml`
@@ -309,10 +352,13 @@ Model.yml
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `Model.Default` | string | `OpenAI` | 当前默认供应商键名 |
+| `Model.DefaultTier` | string | `Standard` | 全局默认档位（五档之一） |
 | `Model.Providers.<Id>.Adapter` | string | — | `openai-compatible` / `anthropic` / `gemini` |
 | `Model.Providers.<Id>.BaseUrl` | string | — | 基础地址（如 `https://api.openai.com/v1`），适配器拼接 `/chat/completions` |
 | `Model.Providers.<Id>.ApiKey` | string | — | 支持 `${ENV}` 占位 |
-| `Model.Providers.<Id>.Model` | string | — | 模型名 |
+| `Model.Providers.<Id>.Models` | map | — | 五档模型（`Ultra`/`Pro`/`Standard`/`Flash`/`Fallback`），`Standard` 必填 |
+| `Model.Providers.<Id>.DefaultTier` | string | `Standard` | 供应商级默认档（新规则下优先于 `Model`） |
+| `Model.Providers.<Id>.Model` | string | — | 默认模型名（老规则下生效；新规则下为记录，与 `DefaultTier` 一致） |
 | `Model.Providers.<Id>.TimeoutSeconds` | int | 120 | 单次请求超时 |
 | `Model.Providers.<Id>.MaxRetries` | int | 3 | 5xx 重试次数（指数退避） |
 | `Model.Providers.<Id>.RateLimit.Rpm` | int | 0 | 每分钟请求限制，0 表示不限 |

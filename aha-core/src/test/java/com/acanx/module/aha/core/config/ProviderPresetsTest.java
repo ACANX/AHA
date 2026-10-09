@@ -16,12 +16,14 @@ class ProviderPresetsTest {
         var presets = ProviderPresets.builtin();
 
         assertThat(presets).containsKeys(ProviderPresets.DEEPSEEK, ProviderPresets.BIG_MODEL_CN, ProviderPresets.QWEN);
+        assertThat(presets).containsKeys(ProviderPresets.MOONSHOT, ProviderPresets.MINI_MAX);
         assertThat(presets.get(ProviderPresets.DEEPSEEK).adapter()).isEqualTo("openai-compatible");
         assertThat(presets.get(ProviderPresets.DEEPSEEK).baseUrl()).contains("deepseek.com");
         assertThat(presets.get(ProviderPresets.BIG_MODEL_CN).baseUrl()).contains("bigmodel.cn");
         assertThat(presets.get(ProviderPresets.QWEN).baseUrl()).contains("dashscope.aliyuncs.com");
         assertThat(presets.values()).allSatisfy(provider -> {
-            assertThat(provider.model()).isNotBlank();
+            // 新规则：每家的 Standard 档必须具名
+            assertThat(provider.standardModel()).isNotBlank();
             assertThat(provider.apiKey()).startsWith("${");
             assertThat(provider.timeoutSeconds()).isPositive();
             assertThat(provider.maxRetries()).isPositive();

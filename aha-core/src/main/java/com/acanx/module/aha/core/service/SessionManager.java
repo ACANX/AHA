@@ -159,6 +159,9 @@ public final class SessionManager {
         if (config.model() != null) {
             node.put("Model", config.model());
         }
+        if (config.tier() != null) {
+            node.put("Tier", config.tier());
+        }
         if (config.systemPrompt() != null) {
             node.put("SystemPrompt", config.systemPrompt());
         }
@@ -169,6 +172,7 @@ public final class SessionManager {
     private static SessionConfig deserialize(String json) {
         JsonNode node = JSON.readTree(json);
         String model = node.hasNonNull("Model") ? node.get("Model").asString() : null;
+        String tier = node.hasNonNull("Tier") ? node.get("Tier").asString() : null;
         String systemPrompt = node.hasNonNull("SystemPrompt")
                 ? node.get("SystemPrompt").asString()
                 : null;
@@ -180,6 +184,6 @@ public final class SessionManager {
                             ? entry.getValue().asString()
                             : entry.getValue()));
         }
-        return new SessionConfig(model, systemPrompt, extras);
+        return new SessionConfig(model, tier, systemPrompt, extras);
     }
 }

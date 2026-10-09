@@ -41,16 +41,20 @@ JaCoCo 在 `verify` 阶段执行 `check`，规则为 **BUNDLE 级 LINE COVEREDRA
 | aha-tool | 87.3% |
 | aha-cli | 90.9% |
 
-## 命令
+## 命令（由 CI 执行，本地不跑）
+
+覆盖率报告与门禁由 CI 的 `Gate.yml` 产出：
 
 ```bash
-./mvnw -pl aha-core jacoco:report    # 生成单模块报告
-./mvnw verify                        # 生成报告并执行门禁检查
+./mvnw verify                        # CI：生成报告并执行门禁检查
+./mvnw -pl aha-core jacoco:report    # CI：生成单模块报告
 ```
 
 报告位置：`<module>/target/site/jacoco/index.html`
 
-## 跳过测试时
+**Agent 需要覆盖率数字时，从 CI 的 `Gate` 日志或其构建产物读取，不在本机执行这些命令。**
+
+## 跳过测试时（仅 CI 侧）
 
 `-DskipTests` 会导致无覆盖率数据，必须同时跳过门禁，否则 `verify` 失败：
 

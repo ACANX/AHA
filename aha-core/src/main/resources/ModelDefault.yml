@@ -6,78 +6,166 @@
 #
 # 一键切换供应商：  aha provider use <ProviderId>
 # 查看供应商列表：  aha provider list
+# 查看单家明细：    aha provider show <ProviderId>
+# 切换模型档位：    aha model use <档位|模型名>   （Ultra/Pro/Standard/Flash/Fallback）
 # 新增供应商：      aha provider add <ProviderId> --adapter openai-compatible \
-#                       --base-url <url> --model <name> [--api-key <key>] [--default]
+#                       --base-url <url> --model-standard <name> [--api-key <key>] [--default]
 # 删除供应商：      aha provider remove <ProviderId>
 #
 # 字段命名规范：YAML 字段统一 PascalCase；ApiKey 支持 ${ENV} / ${ENV:-default} 占位。
 # BaseUrl 为「基础地址」，适配器负责拼接端点路径（如 /chat/completions）。
+#
+# 档位（Models）：每个供应商支持五档，Standard 为唯一必填档，其余可选；
+# 可选档缺失时回退 Standard；运行期 Standard 不可用时降级 Fallback 档。
+# 模型名以各家官方模型列表为准（不编造模型名，缺档留空）。参考价（¥ / 百万 tokens，输入 / 输出）
+# 仅作量级参考，实际以国内平台定价为准。
 
 Model:
   # 当前默认（选中）的供应商
   Default: OpenAI
+  # 可选：全局默认档，缺省 Standard
+  DefaultTier: Standard
 
   Providers:
+    # ── OpenAI：五档区分度大（旗舰 / 主力 / 轻量三层）───────────────
     OpenAI:
       Adapter: openai-compatible
       BaseUrl: "https://api.openai.com/v1"
       ApiKey: '${AHA_API_KEY_OPENAI}'
-      Model: gpt-4o
+      Models:
+        Ultra: gpt-6-astra
+        Pro: gpt-6.1-sol
+        Standard: gpt-6-sol
+        Flash: gpt-6-luna
+        Fallback: gpt-6-luna
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
         Rpm: 60
         Tpm: 100000
 
+    # ── Anthropic：Fable / Opus / Sonnet / Haiku 四线 ────────────────
     Anthropic:
       Adapter: anthropic
       BaseUrl: https://api.anthropic.com
       ApiKey: '${AHA_API_KEY_ANTHROPIC}'
-      Model: claude-sonnet-5-1
+      Models:
+        Ultra: claude-fable-5-1
+        Pro: claude-opus-5-5
+        Standard: claude-sonnet-5-5
+        Flash: claude-haiku-5-5
+        Fallback: claude-haiku-5-5
+      DefaultTier: Standard
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
         Rpm: 60
         Tpm: 100000
 
+    # ── Gemini：Pro 线最新到 3.1（Flash 已到 3.8）──────────────────
     Gemini:
       Adapter: gemini
       BaseUrl: https://generativelanguage.googleapis.com
       ApiKey: '${AHA_API_KEY_GEMINI}'
-      Model: gemini-3.5-flash
+      Models:
+        Ultra: gemini-3.1-pro-preview
+        Pro: gemini-3.1-pro-preview
+        Standard: gemini-3.8-flash
+        Flash: gemini-3.8-flash
+        Fallback: gemini-flash-lite-latest
+      DefaultTier: Standard
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
         Rpm: 60
         Tpm: 100000
 
+    # ── DeepSeek：五档趋于同值 ─────────────────────────────────────
     DeepSeek:
       Adapter: openai-compatible
       BaseUrl: https://api.deepseek.com/v1
       ApiKey: '${AHA_API_KEY_DEEPSEEK}'
-      Model: deepseek-chat
+      Models:
+        Ultra: deepseek-v4-pro
+        Pro: deepseek-v4-pro
+        Standard: deepseek-v4-flash
+        Flash: deepseek-v4-flash
+        Fallback: deepseek-v4-flash
+      # 供应商级默认档；Model 与该档保持一致（写盘时同步）
+      DefaultTier: Standard
+      Model: deepseek-v4-flash
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
         Rpm: 60
         Tpm: 100000
 
+    # ── 智谱 GLM（BigModelCN）：flashx / flash 拉开价格 ──────────────
     BigModelCN:
       Adapter: openai-compatible
       BaseUrl: https://open.bigmodel.cn/api/paas/v4
       ApiKey: '${AHA_API_KEY_BIG_MODEL_CN}'
-      Model: glm-4.6
+      Models:
+        Ultra: glm-5.3
+        Pro: glm-5.3
+        Standard: glm-5.3
+        Flash: glm-5.3-flashx
+        Fallback: glm-5.3-flash
+      DefaultTier: Standard
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
         Rpm: 60
         Tpm: 100000
 
+    # ── 通义千问（Qwen）────────────────────────────────────────────
     Qwen:
       Adapter: openai-compatible
       BaseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
       ApiKey: '${AHA_API_KEY_QWEN}'
-      Model: qwen-max
+      Models:
+        Ultra: qwen3.8-max
+        Pro: qwen3.8-max
+        Standard: qwen3.7-plus
+        Flash: qwen3.8-flash
+        Fallback: qwen3.8-flash
+      DefaultTier: Standard
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    # ── 月之暗面（Moonshot / Kimi）：模型较少，五档多有同值 ──────────
+    Moonshot:
+      Adapter: openai-compatible
+      BaseUrl: https://api.moonshot.cn/v1
+      ApiKey: '${AHA_API_KEY_MOONSHOT}'
+      Models:
+        Ultra: kimi-k3
+        Pro: kimi-k2.7-code-highspeed
+        Standard: kimi-k2.7-code
+        Flash: kimi-k2.6
+        Fallback: kimi-k2.6
+      DefaultTier: Standard
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000
+
+    # ── MiniMax：定价扁平，五档多为同价 ─────────────────────────────
+    MiniMax:
+      Adapter: openai-compatible
+      BaseUrl: https://api.minimax.chat/v1
+      ApiKey: '${AHA_API_KEY_MINI_MAX}'
+      Models:
+        Ultra: MiniMax-M3
+        Pro: MiniMax-M3
+        Standard: MiniMax-M2.7
+        Flash: MiniMax-M2.5
+        Fallback: MiniMax-M2.1
+      DefaultTier: Standard
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:

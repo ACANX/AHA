@@ -1,11 +1,13 @@
 package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.core.config.ModelConfigStore;
+import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 供应商表单的纯逻辑：草稿 ↔ 配置、校验、密钥打码。
@@ -21,7 +23,7 @@ public final class ProviderForm {
     public static final String[] ADAPTERS = {"openai-compatible", "anthropic", "gemini"};
 
     /**
-     * 已知供应商的预设（ID → 适配器 / 基础地址 / 默认模型）。
+     * 已知供应商的预设（ID → 适配器 / 基础地址 / Standard 档模型）。
      *
      * <p>内容与 {@code aha-core/src/main/resources/ModelDefault.yml} 保持一致，
      * 模型名一律用该文件里的**真实**名字——不编造模型名，否则用户照着填会拿到 404。</p>
@@ -29,27 +31,31 @@ public final class ProviderForm {
     private static final Map<String, String[]> PRESETS = new LinkedHashMap<>();
 
     /**
-     * 各供应商的候选模型（可下拉选，也可自己填）。
+     * 各供应商的候选模型（可下拉选，也可自己填）。按档位从强到弱排列。
      *
-     * <p>同样只收真实模型：默认那个来自 {@code ModelDefault.yml}，其余是同系列里广为人知的版本。
-     * 列表只是「省打字」，输入框本身是可编辑的，不限制用户填别的。</p>
+     * <p>同样只收真实模型：Standard 与 {@code ModelDefault.yml} 一致，其余是同一份预设里的
+     * 其余档位。列表只是「省打字」，输入框本身是可编辑的，不限制用户填别的。</p>
      */
     private static final Map<String, String[]> MODELS = new LinkedHashMap<>();
 
     static {
-        PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-4o"});
-        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-1"});
-        PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.5-flash"});
-        PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-chat"});
-        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-4.6"});
-        PRESETS.put("Qwen", new String[]{"openai-compatible", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-max"});
+        PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-6-sol"});
+        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-5"});
+        PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"});
+        PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-v4-flash"});
+        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3"});
+        PRESETS.put("Qwen", new String[]{"openai-compatible", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-plus"});
+        PRESETS.put("Moonshot", new String[]{"openai-compatible", "https://api.moonshot.cn/v1", "kimi-k2.7-code"});
+        PRESETS.put("MiniMax", new String[]{"openai-compatible", "https://api.minimax.chat/v1", "MiniMax-M2.7"});
 
-        MODELS.put("OpenAI", new String[]{"gpt-4o", "gpt-4o-mini", "gpt-4.1"});
-        MODELS.put("Anthropic", new String[]{"claude-sonnet-5-1", "claude-opus-4-1", "claude-haiku-4-5"});
-        MODELS.put("Gemini", new String[]{"gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash"});
-        MODELS.put("DeepSeek", new String[]{"deepseek-chat", "deepseek-reasoner"});
-        MODELS.put("BigModelCN", new String[]{"glm-4.6", "glm-4.5-air"});
-        MODELS.put("Qwen", new String[]{"qwen-max", "qwen-plus", "qwen-turbo"});
+        MODELS.put("OpenAI", new String[]{"gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"});
+        MODELS.put("Anthropic", new String[]{"claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"});
+        MODELS.put("Gemini", new String[]{"gemini-3.1-pro-preview", "gemini-3.8-flash", "gemini-flash-lite-latest"});
+        MODELS.put("DeepSeek", new String[]{"deepseek-v4-pro", "deepseek-v4-flash"});
+        MODELS.put("BigModelCN", new String[]{"glm-5.3", "glm-5.3-flashx", "glm-5.3-flash"});
+        MODELS.put("Qwen", new String[]{"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash"});
+        MODELS.put("Moonshot", new String[]{"kimi-k3", "kimi-k2.7-code-highspeed", "kimi-k2.7-code", "kimi-k2.6"});
+        MODELS.put("MiniMax", new String[]{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"});
     }
 
     /**
@@ -71,10 +77,6 @@ public final class ProviderForm {
 
     /**
      * 打开对话框时应当选中哪个供应商。
-     *
-     * <p>规则：优先选中**当前启用**的那个（用户最关心的就是「现在用的是谁」）；
-     * 它不在列表里（例如刚被删掉）或未设置时，退回第一个；列表为空返回 {@code null}。
-     * 抽成纯函数是为了让这条规则在无图形环境下也有测试。</p>
      *
      * @param activeId 当前启用的供应商 ID，可为 {@code null}
      * @param ids      列表里的全部 ID
@@ -119,9 +121,9 @@ public final class ProviderForm {
         String id = providerId == null ? "" : providerId.trim();
         String[] values = PRESETS.get(id);
         if (values == null) {
-            return new Draft(id, ADAPTERS[0], "https://", "", "", "60", "2");
+            return new Draft(id, ADAPTERS[0], "https://", "", "", Map.of(), null, "60", "2");
         }
-        return new Draft(id, values[0], values[1], "", values[2], "60", "2");
+        return new Draft(id, values[0], values[1], "", values[2], Map.of(), null, "60", "2");
     }
 
     private ProviderForm() {
@@ -134,12 +136,31 @@ public final class ProviderForm {
      * @param adapter        适配器
      * @param baseUrl        基础地址
      * @param apiKey         API Key（可含 ${ENV} 占位符）
-     * @param model          模型名
+     * @param model          默认模型名（老规则下即生效模型）
+     * @param tierModels     五档模型（档位名 → 模型名，可空）
+     * @param defaultTier    默认档位名（可空）
      * @param timeoutSeconds 超时秒数
      * @param maxRetries     重试次数
      */
     public record Draft(String id, String adapter, String baseUrl, String apiKey, String model,
+                        Map<String, String> tierModels, String defaultTier,
                         String timeoutSeconds, String maxRetries) {
+
+        /**
+         * 兼容构造：不含档位表（老规则表单）。
+         *
+         * @param id             供应商 ID
+         * @param adapter        适配器
+         * @param baseUrl        基础地址
+         * @param apiKey         API Key
+         * @param model          模型名
+         * @param timeoutSeconds 超时秒数
+         * @param maxRetries     重试次数
+         */
+        public Draft(String id, String adapter, String baseUrl, String apiKey, String model,
+                     String timeoutSeconds, String maxRetries) {
+            this(id, adapter, baseUrl, apiKey, model, Map.of(), null, timeoutSeconds, maxRetries);
+        }
     }
 
     /**
@@ -157,16 +178,14 @@ public final class ProviderForm {
                 source == null || source.baseUrl() == null ? "" : source.baseUrl(),
                 source == null || source.apiKey() == null ? "" : source.apiKey(),
                 source == null || source.model() == null ? "" : source.model(),
+                source == null ? Map.of() : new LinkedHashMap<>(source.modelsOrEmpty()),
+                source == null ? null : source.defaultTier(),
                 String.valueOf(source == null || source.timeoutSeconds() <= 0 ? 60 : source.timeoutSeconds()),
                 String.valueOf(source == null || source.maxRetries() < 0 ? 2 : source.maxRetries()));
     }
 
     /**
      * 与 core 的 {@code ConfigLoader} 保持一致的大驼峰规则。
-     *
-     * <p>供应商 ID 就是 YAML 字段名：{@code ConfigLoader.validateFieldNames} 会用同样的正则校验，
-     * 不符时**整份配置都读不出来**（CLI 报「YAML 字段必须为 PascalCase」并拒绝加载）。
-     * 界面若放宽校验，等于允许用户写出自己都读不回来的配置。</p>
      */
     private static final java.util.regex.Pattern PASCAL_CASE =
             java.util.regex.Pattern.compile("^[A-Z][a-zA-Z0-9]*$");
@@ -174,25 +193,33 @@ public final class ProviderForm {
     /**
      * 校验草稿。
      *
+     * <p>含 {@code Models} 档位时，{@code Standard} 为唯一必填档；默认模型必须落在五档内。
+     * 未填任何档位的草稿按老规则处理（只要求默认模型非空），保证旧配置可无缝编辑。</p>
+     *
      * @param draft 草稿
      * @return 字段名 → 错误说明；为空表示通过
      */
     public static Map<String, String> validate(Draft draft) {
         Map<String, String> errors = new LinkedHashMap<>();
+        Map<String, String> tiers = normalizedTiers(draft.tierModels());
         if (blank(draft.id())) {
             errors.put("id", "供应商 ID 不能为空");
         } else if (!PASCAL_CASE.matcher(draft.id().trim()).matches()) {
-            // 必须与 core 的 ConfigLoader.validateFieldNames 一致：
-            // 供应商 ID 就是 YAML 字段名，不符合大驼峰会让**整份配置读不出来**
-            // （CLI 报「YAML 字段必须为 PascalCase」并拒绝加载）。界面放宽校验等于
-            // 允许用户写出自己都读不回来的配置。
             errors.put("id", "供应商 ID 必须是大驼峰，如 DeepSeek（core 按 YAML 字段规范校验）");
         }
         if (blank(draft.adapter())) {
             errors.put("adapter", "适配器不能为空");
         }
-        if (blank(draft.model())) {
-            errors.put("model", "模型名不能为空（如 deepseek-chat）");
+        if (tiers.isEmpty()) {
+            if (blank(draft.model())) {
+                errors.put("model", "模型名不能为空（如 deepseek-chat）");
+            }
+        } else if (!tiers.containsKey(ModelTier.STANDARD.configName())) {
+            errors.put("tierStandard", "Standard 档为必填档，不能为空");
+        }
+        if (!blank(draft.defaultTier())
+                && ModelTier.fromConfigName(draft.defaultTier().trim()).isEmpty()) {
+            errors.put("defaultTier", "默认档位必须是 Ultra / Pro / Standard / Flash / Fallback");
         }
         if (blank(draft.baseUrl())) {
             errors.put("baseUrl", "基础地址不能为空（如 https://api.deepseek.com/v1）");
@@ -211,22 +238,55 @@ public final class ProviderForm {
     /**
      * 草稿 → 配置。
      *
-     * <p>保留原配置里表单不涉及的字段（限流、扩展参数），避免「改一个字段把别的丢掉」。</p>
+     * <p>保留原配置里表单不涉及的字段（限流、扩展参数）。含档位时把 {@code Model} 同步为
+     * {@code DefaultTier}（缺省 Standard）对应的模型，保证写盘后两者一致。</p>
      *
      * @param draft    草稿
      * @param original 原配置，可为 {@code null}
      * @return 新配置
      */
     public static ProviderConfig toConfig(Draft draft, ProviderConfig original) {
-        return new ProviderConfig(
-                draft.adapter().trim(),
-                draft.baseUrl().trim(),
-                draft.apiKey() == null ? "" : draft.apiKey().trim(),
-                draft.model().trim(),
-                Integer.parseInt(draft.timeoutSeconds().trim()),
-                Integer.parseInt(draft.maxRetries().trim()),
+        String adapter = draft.adapter().trim();
+        String baseUrl = draft.baseUrl().trim();
+        String apiKey = draft.apiKey() == null ? "" : draft.apiKey().trim();
+        int timeout = Integer.parseInt(draft.timeoutSeconds().trim());
+        int retries = Integer.parseInt(draft.maxRetries().trim());
+        Map<String, String> tiers = normalizedTiers(draft.tierModels());
+        if (tiers.isEmpty()) {
+            // 老规则：仅 Model，行为与升级前一致
+            return new ProviderConfig(adapter, baseUrl, apiKey, null, null,
+                    draft.model() == null ? "" : draft.model().trim(), timeout, retries,
+                    original == null ? null : original.rateLimit(),
+                    original == null ? null : original.extra());
+        }
+        ModelTier defaultTier = ModelTier.fromConfigName(draft.defaultTier())
+                .orElse(ModelTier.DEFAULT);
+        String model = tiers.getOrDefault(defaultTier.configName(),
+                tiers.get(ModelTier.STANDARD.configName()));
+        return new ProviderConfig(adapter, baseUrl, apiKey, tiers, defaultTier.configName(), model,
+                timeout, retries,
                 original == null ? null : original.rateLimit(),
                 original == null ? null : original.extra());
+    }
+
+    /**
+     * 去除空档位项，只保留非空的五档。
+     *
+     * @param tiers 原始档位表
+     * @return 规范化后的档位表
+     */
+    private static Map<String, String> normalizedTiers(Map<String, String> tiers) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (tiers == null) {
+            return result;
+        }
+        for (ModelTier tier : ModelTier.strongestFirst()) {
+            String value = tiers.get(tier.configName());
+            if (value != null && !value.isBlank()) {
+                result.put(tier.configName(), value.trim());
+            }
+        }
+        return result;
     }
 
     /**
@@ -250,13 +310,6 @@ public final class ProviderForm {
     /**
      * 安全读取 Model.yml：**坏配置不能让界面崩掉**。
      *
-     * <p>为什么需要它：core 按 YAML 字段规范做严格校验（供应商 ID 必须大驼峰），
-     * 一旦文件里出现 {@code qqqqq} 这类键名，{@code ConfigLoader} 会拒绝加载**整份文件**，
-     * 而对话框原先直接调用 {@code store.load()}，于是「打开供应商」当场抛异常——
-     * 用户只看到报错，看不到是哪一行坏了。</p>
-     *
-     * <p>现在的行为：对话框照常打开，并把 core 的原始错误（含出错字段名）显示出来。</p>
-     *
      * @param store 存取器
      * @return 读取结果
      */
@@ -270,11 +323,6 @@ public final class ProviderForm {
 
     /**
      * 落盘：新增或修改一个供应商，并**读回自检**。
-     *
-     * <p>为什么要有这个方法：第一版的「新增」直接写在对话框里，结果模型字段读到空值
-     * （可编辑 ComboBox 的输入文本不会自动提交到 value，失焦还会被清空），
-     * 校验失败却只在左上角留一行提示——用户看到的就是「点了新增没反应」。
-     * 把落盘抽出来之后，它可以被单元测试覆盖，而且写完立刻读回确认。</p>
      *
      * @param store  存取器
      * @param draft  表单草稿
@@ -298,11 +346,13 @@ public final class ProviderForm {
         if (!create && existing == null) {
             return "供应商不存在：" + id;
         }
-        store.putProvider(id, toConfig(draft, existing));
+        ProviderConfig converted = toConfig(draft, existing);
+        store.putProvider(id, converted);
         // 读回自检：写完立刻确认这份配置能被读出来（否则「点了没反应」会再次静默发生）
         LoadResult reloaded = loadSafely(store);
         ProviderConfig saved = reloaded.ok() ? reloaded.config().providersOrEmpty().get(id) : null;
-        if (saved == null || !saved.model().equals(draft.model().trim())) {
+        if (saved == null
+                || !Objects.equals(saved.effectiveModel(null), converted.effectiveModel(null))) {
             return "写入后读回校验失败：" + id + "（请检查 " + store.path() + " 的写权限）";
         }
         return null;

@@ -2,12 +2,16 @@ package com.acanx.module.aha.cli.session;
 
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.ConfigLoader;
+import com.acanx.module.aha.core.config.LlmConfig;
+import com.acanx.module.aha.core.config.ModelTier;
+import com.acanx.module.aha.core.config.ProviderConfig;
 
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 配置视图：把 {@link AhaConfig} 解析为「键 → 展示值」。
@@ -80,6 +84,10 @@ public final class ConfigView {
         if (config == null) {
             return "<未加载>";
         }
+        // 新增：Model.Providers.<Id>.Model / .DefaultTier / .Models.<档位> 可读
+        if (key != null && key.startsWith("Model.Providers.")) {
+            return resolveProviderField(config, key);
+        }
         return switch (key) {
             case "Llm.DefaultProvider" -> text(config.llm() == null ? null : config.llm().defaultProvider());
             case "Llm.ModelFile" -> describeModelFile(config);
@@ -104,6 +112,44 @@ public final class ConfigView {
             case "Agent.SystemPrompt" -> truncate(text(config.agent() == null ? null : config.agent().systemPrompt()));
             default -> "<未知配置键: " + key + ">";
         };
+    }
+
+    /**
+     * 解析 {@code Model.Providers.<Id>.<字段>}。
+     *
+     * @param config 主配置
+     * @param key    配置键
+     * @return 展示值
+     */
+    private static String resolveProviderField(AhaConfig config, String key) {
+        LlmConfig llm = config.llm();
+        String rest = key.substring("Model.Providers.".length());
+        int dot = rest.indexOf('.');
+        if (dot <= 0) {
+            return "<未知配置键: " + key + ">";
+        }
+        String id = rest.substring(0, dot);
+        String field = rest.substring(dot + 1);
+        ProviderConfig provider = llm == null || llm.providers() == null
+                ? null : llm.providers().get(id);
+        if (provider == null) {
+            return UNSET;
+        }
+        String globalTier = llm.defaultTier();
+        return switch (field) {
+            case "Model" -> text(provider.effectiveModel(globalTier));
+            case "DefaultTier" -> text(provider.effectiveTier(globalTier).configName());
+            default -> resolveProviderTier(provider, field, key);
+        };
+    }
+
+    private static String resolveProviderTier(ProviderConfig provider, String field, String key) {
+        if (!field.startsWith("Models.")) {
+            return "<未知配置键: " + key + ">";
+        }
+        Optional<ModelTier> tier = ModelTier.fromConfigName(field.substring("Models.".length()));
+        return tier.map(value -> text(provider.configuredModel(value)))
+                .orElse("<未知配置键: " + key + ">");
     }
 
     /**
