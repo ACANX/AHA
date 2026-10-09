@@ -240,6 +240,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 - [GettingStarted.md](Docs/Guide/GettingStarted.md) - 快速开始
 - [BuildGuide.md](Docs/Guide/BuildGuide.md) - 构建指南
+- [VersionBumpGuide.md](Docs/Guide/VersionBumpGuide.md) - **版本切换指南**（操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案；规范见 `ReleaseProcess.md`）
 - [CommandCheatsheet.md](Docs/Guide/CommandCheatsheet.md) - 常用命令速查（编译 / 更新 / 解压 / 启动；落地为 `Dist/README.commands.md`）
 - [ConfigurationGuide.md](Docs/Guide/ConfigurationGuide.md) - 配置指南
 - [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) - 供应商设置
