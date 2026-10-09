@@ -34,11 +34,12 @@ public final class AppVersion {
     /**
      * 取不到注入值时的兜底版本（如在 IDE 中直接运行、资源未过滤）。
      *
-     * <p>这是全仓**唯一**一个写死的版本字面量：正常构建走资源过滤取 POM 的
-     * {@code <version>}（见 {@code ReleaseProcess.md} 第 2 节），故改版本号时除根 POM 与
-     * 六个子 POM 的 {@code <parent>} 外，只此一处需要同步。</p>
+     * <p><strong>刻意与项目版本号解耦</strong>：它只在资源未过滤 / 缺失时出现，本就不代表
+     * 任何真实版本；写成 {@code x.y.z-dev} 反而会让人误以为「它就是当前版本」，并使改版本号
+     * 多出一处必须人工同步的写死字面量。这里的 {@code dev} 只是「非正式构建」的标记，
+     * 不随版本走（见 TD-00016 §C）。</p>
      */
-    private static final String FALLBACK_VERSION = "0.1.2-dev";
+    private static final String FALLBACK_VERSION = "dev";
 
     /** 注入失败时的标记，用于识别未过滤的占位符。 */
     private static final String PLACEHOLDER = "${";
