@@ -63,6 +63,18 @@ public final class Palette {
     /** 控件内部底色（{@code -fx-control-inner-background}）。 */
     public static String CONTROL_INNER = "#252526";
 
+    /** 悬浮态底色（按钮 / 列表项 hover）。 */
+    public static String HOVER_BACKGROUND = "#2D2D2D";
+
+    /** 滚动条轨道。 */
+    public static String SCROLL_TRACK = "#1E1E1E";
+
+    /** 滑动条滑块。 */
+    public static String SCROLL_THUMB = "#4A4A4A";
+
+    /** 强调色（{@link #FOCUS_BORDER}）上的前景色。 */
+    public static String ON_ACCENT = "#FFFFFF";
+
     /** 当前主题（{@link Theme#SYSTEM} 会被解析成实际生效的那一个）。 */
     private static Theme current = Theme.DARK;
 
@@ -155,6 +167,10 @@ public final class Palette {
         BORDER = "#3A3A3A";
         BASE = "#1E1E1E";
         CONTROL_INNER = "#252526";
+        HOVER_BACKGROUND = "#2D2D2D";
+        SCROLL_TRACK = "#1E1E1E";
+        SCROLL_THUMB = "#4A4A4A";
+        ON_ACCENT = "#FFFFFF";
     }
 
     /**
@@ -178,6 +194,10 @@ public final class Palette {
         BORDER = "#C8C8C8";
         BASE = "#F4F4F4";
         CONTROL_INNER = "#FFFFFF";
+        HOVER_BACKGROUND = "#E4E4E4";
+        SCROLL_TRACK = "#F0F0F0";
+        SCROLL_THUMB = "#B8B8B8";
+        ON_ACCENT = "#FFFFFF";
     }
 
     /**
@@ -210,6 +230,40 @@ public final class Palette {
                 + "-fx-selection-bar: " + FOCUS_BORDER + ";"
                 + "-fx-selection-bar-non-focused: " + BORDER + ";"
                 + "-fx-selection-bar-text: " + FOREGROUND + ";"
-                + "-fx-accent: " + FOCUS_BORDER + ";";
+                + "-fx-accent: " + FOCUS_BORDER + ";"
+                // ---- 以下为 aha-theme.css 使用的字面量变量（说明见该文件头部）----
+                // 原生镜像里 modena 的 derive() / linear-gradient() 求值不可靠，凡是引用它们的
+                // -fx-background-color 声明都会**整条失效**（CSS 的规则是一个值无效就丢弃整条）。
+                // 输入框 / 下拉框 / 按钮 / 滚动条在亮色与暗色下都发黑，就是这个原因（issue #49）。
+                + "-fx-aha-bg: " + BASE + ";"
+                + "-fx-aha-control-bg: " + CONTROL_INNER + ";"
+                + "-fx-aha-text: " + FOREGROUND + ";"
+                + "-fx-aha-muted: " + MUTED + ";"
+                + "-fx-aha-border: " + BORDER + ";"
+                + "-fx-aha-block: " + BLOCK_BACKGROUND + ";"
+                + "-fx-aha-hover: " + HOVER_BACKGROUND + ";"
+                + "-fx-aha-scroll-track: " + SCROLL_TRACK + ";"
+                + "-fx-aha-scroll-thumb: " + SCROLL_THUMB + ";"
+                + "-fx-aha-accent: " + FOCUS_BORDER + ";"
+                + "-fx-aha-on-accent: " + ON_ACCENT + ";"
+                // ---- 再把 modena 依赖的 looked-up color 全部换成字面量 ----
+                // 这些是 modena 自己 derive / ladder 出来的中间量。填成纯色后，
+                // modena 里「引用它们」的规则能重新解出值；剩下含 gradient 的规则
+                // 由 aha-theme.css 直接覆盖。
+                + "-fx-color: " + BASE + ";"
+                + "-fx-hover-base: " + HOVER_BACKGROUND + ";"
+                + "-fx-pressed-base: " + BLOCK_BACKGROUND + ";"
+                + "-fx-outer-border: " + BORDER + ";"
+                + "-fx-inner-border: " + BASE + ";"
+                + "-fx-body-color: " + BASE + ";"
+                + "-fx-body-color-to-right: " + BASE + ";"
+                + "-fx-box-border: " + BORDER + ";"
+                + "-fx-text-box-border: " + BORDER + ";"
+                + "-fx-text-inner-color: " + FOREGROUND + ";"
+                + "-fx-focus-color: " + FOCUS_BORDER + ";"
+                + "-fx-faint-focus-color: " + FOCUS_BORDER + ";"
+                + "-fx-shadow-highlight-color: " + BASE + ";"
+                + "-fx-mark-highlight-color: " + FOREGROUND + ";"
+                + "-fx-default-button: " + FOCUS_BORDER + ";";
     }
 }
