@@ -22,9 +22,13 @@ POM 侧收敛为根 `pom.xml` 的 `<properties>/<revision>` 一处，其余位�
     （项目约定：Agent 不在本地跑 Maven，见 `AGENTS.md`）；
   * **先算后写**：所有改动先在内存算好并校验，全部成功才落盘，避免留下半成品；
   * **幂等拒绝**：新版本与当前相同即非零退出，不产生空提交；
-  * **收尾断言**：全仓搜旧版本号，白名单（历史记录 / `@since` / 构建号）之外不得残留。
+  * **只动声明行**：文档的版本声明按「声明行」精确匹配，**不做全文件替换、也不全仓搜
+    旧版本号**——历史叙述里的旧版本号（如「0.1.1 起落地」「实测覆盖率（0.1.1）」）
+    是合法内容，全仓扫描会成片误报（实测 60+ 处），全文件替换会把历史改错；
+  * **自证**：分发后正向断言受管位置（根 POM `<revision>`、`version` 文件、
+    `AppVersion` 兜底常量）已等于新版本。
 
-退出码：0 = 分发完成；1 = 校验失败或仍有残留；2 = 用法错误。
+退出码：0 = 分发完成；1 = 校验失败；2 = 用法错误。
 """
 
 from __future__ import annotations
@@ -49,21 +53,35 @@ VERSION_FILE = ROOT / "version"
 PROJECT_VERSION_SCRIPT = ROOT / ".github/Python/ProjectVersion.py"
 APP_VERSION_FILE = ROOT / "aha-common/src/main/java/com/acanx/module/aha/common/AppVersion.java"
 
-# 文档版本声明（§D）。#97 改为不写死之后，这些文件里匹配不到旧版本号，本脚本自动跳过
-DOC_DECLARATIONS = (
-    "README.md",
-    "AGENTS.md",
-    "Docs/AHA/AHA-Design-V1.md",
-    "Docs/Guide/ReferenceGuide.md",
-)
+# 文档版本声明（§D）：只按「声明行」精确匹配，**绝不整文件替换**。
+#
+# 为什么必须精确：历史文档里合法地存在旧版本号——`AHA-Design-V1.md` 的
+# 「0.1.1 起落地」「实测覆盖率（0.1.1）」、修订记录表等。整文件替换会把历史改错，
+# 全仓搜旧版本号则会把它们全报成「残留」（实测 60+ 处误报）。
+# 每个 pattern 只负责定位**声明行**；替换时只改该行里第一个 a.b.c。
+# 注意：POM 示例行必须带上旧版本号——设计文档里还有**插件 / 依赖版本**示例，
+# 不加限定会把 `<version>3.16.0</version>` 一并改成项目版本（实测踩到过）。
+# #97 把文档改成不写死后，这些 pattern 匹配 0 次，脚本自动跳过。
+def doc_declaration_patterns(old: str) -> dict[str, tuple[re.Pattern[str], ...]]:
+    return {
+        "README.md": (
+            re.compile(r"(?m)^当前版本 \*\*[\d.]+\*\*"),
+        ),
+        "AGENTS.md": (
+            re.compile(r"(?m)^\*\*当前版本\*\*：[\d.]+"),
+        ),
+        "Docs/AHA/AHA-Design-V1.md": (
+            re.compile(r"(?m)^\*\*目标版本\*\*：AHA [\d.]+"),
+            re.compile(r"(?m)^\*\*当前版本\*\*：[\d.]+"),
+            re.compile(rf"(?m)^\s*<version>{re.escape(old)}</version>"),
+        ),
+        "Docs/Guide/ReferenceGuide.md": (
+            re.compile(r"(?m)dev` 上工作在 `[\d.]+`"),
+        ),
+    }
 
-# 收尾断言的白名单路径前缀：这些是**历史记录**，旧版本号本来就该留在里面
-WHITELIST_PREFIXES = (
-    "CHANGELOG.md",
-    "Docs/TODO/",
-    "Docs/Troubleshooting/",
-    "Docs/DevLog/",
-)
+# 声明行里的版本 token
+VERSION_TOKEN_RE = re.compile(r"\d+\.\d+\.\d+")
 
 PROPERTIES_BLOCK_RE = re.compile(r"<properties>.*?</properties>", re.S)
 REVISION_RE = re.compile(r"<revision>\s*([^<\s]+)\s*</revision>")
@@ -113,10 +131,24 @@ def find_poms() -> list[str]:
     return sorted(set(poms))
 
 
-def replace_version_token(text: str, old: str, new: str) -> tuple[str, int]:
-    """把「独立」的旧版本号替换为新版本号（不误伤 `0.1.20` 或 `0.1.2.00099`）。"""
-    pattern = re.compile(rf"(?<![\d.]){re.escape(old)}(?![\d.])")
-    return pattern.subn(new, text)
+def update_declarations(
+    text: str, patterns: tuple[re.Pattern[str], ...], new: str
+) -> tuple[str, int]:
+    """更新声明行里的版本号，返回 (新文本, 替换次数)。
+
+    只在**声明行**内替换第一个 a.b.c，因此不会碰历史叙述里的旧版本号。
+    """
+    total = 0
+    for pattern in patterns:
+
+        def replace(match: re.Match[str]) -> str:
+            nonlocal total
+            updated, count = VERSION_TOKEN_RE.subn(new, match.group(0), count=1)
+            total += count
+            return updated
+
+        text = pattern.sub(replace, text)
+    return text, total
 
 
 def plan_distribution(old: str, new: str) -> tuple[dict[Path, str], list[str]]:
@@ -185,45 +217,48 @@ def plan_distribution(old: str, new: str) -> tuple[dict[Path, str], list[str]]:
         else:
             raise DistributeError(f"AppVersion.FALLBACK_VERSION 的值意外：{value!r}")
 
-    # ⑤ 文档版本声明：匹配不到说明已改为不写死（§D / #97 之后的常态）
-    for rel in DOC_DECLARATIONS:
+    # ⑤ 文档版本声明：按「声明行」精确更新；匹配 0 次说明已改为不写死（§D / #97 之后的常态）
+    for rel, patterns in doc_declaration_patterns(old).items():
         path = ROOT / rel
         if not path.is_file():
             continue
         content = path.read_text(encoding="utf-8")
-        updated, count = replace_version_token(content, old, new)
+        updated, count = update_declarations(content, patterns, new)
         if count:
             planned[path] = updated
             notes.append(f"{rel}：{count} 处版本声明 {old} → {new}")
         else:
-            notes.append(f"{rel}：未发现 {old}（已改为不写死？），跳过")
+            notes.append(f"{rel}：无版本声明行（已改为不写死？），跳过")
 
     return planned, notes
 
 
-def find_leftovers(old: str) -> list[str]:
-    """收尾断言：全仓搜旧版本号，白名单之外若有残留即失败。"""
-    token = re.compile(rf"(?<![\d.]){re.escape(old)}(?![\d.])")
-    build_number = re.compile(rf"{re.escape(old)}\.\d{{5}}")
+def verify_managed(new: str) -> list[str]:
+    """正向断言：受管位置必须已是新版本。
+
+    刻意**不做全仓搜旧版本号**：历史文档 / 示例 / 依赖版本里的旧版本号都是合法内容，
+    全仓扫描会成片误报；受管位置的正向断言已足以证明分发到位。
+    """
     problems: list[str] = []
-    for name in git_ls_files():
-        if name.startswith(WHITELIST_PREFIXES):
-            continue
-        path = ROOT / name
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
-        for lineno, line in enumerate(text.splitlines(), 1):
-            if not token.search(line):
-                continue
-            if "@since" in line:
-                continue  # 历史 API 标注，属于「当初引入时的版本」
-            if build_number.search(line):
-                continue  # 构建号 a.b.c.PPPPP（预发行），不是基线版本声明
-            problems.append(f"{name}:{lineno}: {line.strip()[:120]}")
+
+    version_file = VERSION_FILE.read_text(encoding="utf-8").strip()
+    if version_file != new:
+        problems.append(f"version 文件是 {version_file}，应为 {new}")
+
+    text = (ROOT / "pom.xml").read_text(encoding="utf-8")
+    block = PROPERTIES_BLOCK_RE.search(text)
+    revision = REVISION_RE.search(block.group(0)).group(1) if block else None
+    if revision != new:
+        problems.append(f"根 pom.xml 的 <revision> 是 {revision}，应为 {new}")
+
+    if APP_VERSION_FILE.is_file():
+        fallback = FALLBACK_RE.search(APP_VERSION_FILE.read_text(encoding="utf-8"))
+        value = fallback.group(2) if fallback else None
+        if value not in ("dev", f"{new}-dev"):
+            problems.append(
+                f'AppVersion.FALLBACK_VERSION 是 {value!r}（应为 "dev" 或 "{new}-dev"）'
+            )
+
     return problems
 
 
@@ -257,17 +292,17 @@ def main(argv: list[str] | None = None) -> int:
     for path, text in planned.items():
         path.write_text(text, encoding="utf-8")
 
-    leftovers = find_leftovers(old)
-    if leftovers:
-        print(f"[问题] 分发后仍发现旧版本号（{old}）残留，请检查以下位置：", file=sys.stderr)
-        for item in leftovers:
+    problems = verify_managed(new)
+    if problems:
+        print("[问题] 分发后自证失败：", file=sys.stderr)
+        for item in problems:
             print(f"  ❌ {item}", file=sys.stderr)
         return 1
 
     print(f"版本分发完成：{old} → {new}")
     for note in notes:
         print(f"  ✅ {note}")
-    print(f"  ✅ 收尾断言：白名单之外已无 {old} 残留")
+    print(f"  ✅ 自证：根 pom.xml 的 <revision> 与 version 文件均为 {new}")
     print(f"  ✅ 共写入 {len(planned)} 个文件")
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
