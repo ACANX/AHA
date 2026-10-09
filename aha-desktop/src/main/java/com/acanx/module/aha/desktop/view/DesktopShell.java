@@ -1140,6 +1140,8 @@ public final class DesktopShell implements ChatView {
         search.setPromptText("⌕ 搜索会话");
         // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
         themed(search, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                // 显式背景属性：只设 looked-up color 时，原生镜像下偶发不向子节点（.content / .text）传播（issue #49）
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";"
                 + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         search.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
@@ -1224,7 +1226,7 @@ public final class DesktopShell implements ChatView {
         dialog.setTitle("重命名会话");
         dialog.setHeaderText("给这个会话起个名字");
         dialog.setContentText("标题");
-        dialog.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
         dialog.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         dialog.showAndWait().ifPresent(title -> onSessionRename.accept(item.id(), title));
     }
@@ -1239,7 +1241,7 @@ public final class DesktopShell implements ChatView {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle("删除会话");
         alert.setHeaderText("确认删除");
-        alert.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(alert.getDialogPane(), Palette.dialogTheme());
         alert.initOwner(composer.getScene() == null ? null : composer.getScene().getWindow());
         alert.showAndWait()
                 .filter(picked -> picked == ButtonType.OK)
@@ -1289,7 +1291,8 @@ public final class DesktopShell implements ChatView {
             // 单元格背景必须显式给：ListView 的 -fx-control-inner-background 未必传到 cell 上，
             // 暗色下会露出 modena 默认白底（issue #49）；选中态另行覆盖
             boolean selected = isSelected();
-            setStyle("-fx-background-color: "
+            // 用 ThemePaint：原生镜像下 CSS 文字色不一定落到 cell 上（issue #49）
+            ThemePaint.themed(this, "-fx-background-color: "
                     + (selected ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
                     + "-fx-text-fill: "
                     + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
@@ -1391,6 +1394,9 @@ public final class DesktopShell implements ChatView {
         composer.setPromptText(COMPOSER_PROMPT);
         // 输入框同样显式套主题：否则暗色下是白底 + 浅色文字，看不清（issue #49）
         themed(composer, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                // 同上：TextArea 的底色在 modena 里来自 .text-area > .content 的查表，
+                // 显式给 background-color 才能在原生镜像下稳定生效（真机截图里它是纯白底）
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";"
                 + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         composer.setWrapText(true);
@@ -1752,8 +1758,8 @@ public final class DesktopShell implements ChatView {
      */
     private <T extends Node> T themed(T node, Supplier<String> style) {
         // 登记「怎么重新上样式」，换主题时整屏重刷（见 restylers 的说明）
-        restylers.add(() -> node.setStyle(style.get()));
-        node.setStyle(style.get());
+        restylers.add(() -> ThemePaint.themed(node, style.get()));
+        ThemePaint.themed(node, style.get());
         return node;
     }
 

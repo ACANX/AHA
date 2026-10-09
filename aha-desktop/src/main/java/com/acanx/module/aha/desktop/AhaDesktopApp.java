@@ -232,6 +232,10 @@ public final class AhaDesktopApp extends Application {
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
         Parent root = shell.buildRoot();
+        // 构建期用的是「当时」的色表：这里幂等地再刷一次，保证所有登记过的节点与当前色表一致。
+        // 原生镜像里出现过「部分节点停在构建期主题」的混合状态——底色一套、文字另一套（issue #49），
+        // 这一步把「构建期取值」这个不确定性直接抹掉。
+        shell.applyTheme(settings.theme());
         stage.setTitle(AppVersion.DISPLAY + " 桌面端（0.2 开发中）");
 
         // 窗口 / 任务栏图标：Logo.svg 的位图版本（见 LogoImage 的说明）

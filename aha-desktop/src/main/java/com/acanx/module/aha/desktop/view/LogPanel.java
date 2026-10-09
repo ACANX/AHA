@@ -108,7 +108,7 @@ public final class LogPanel {
         dialog.getDialogPane().getButtonTypes().add(close);
         dialog.getDialogPane().setPrefWidth(1000);
         dialog.getDialogPane().setPrefHeight(640);
-        dialog.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
 
         filter.setId(FILTER_ID);
         filter.getItems().setAll(LogLevel.DISPLAY_ORDER);

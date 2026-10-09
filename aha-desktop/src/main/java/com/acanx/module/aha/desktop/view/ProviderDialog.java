@@ -138,7 +138,7 @@ public final class ProviderDialog {
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         dialog.getDialogPane().setContent(buildBody(dialog, onChanged));
         // 主题必须铺到对话框：Dialog 有自己的场景根，不继承主窗口样式
-        dialog.getDialogPane().setStyle(Palette.dialogTheme());
+        ThemePaint.themed(dialog.getDialogPane(), Palette.dialogTheme());
         dialog.getDialogPane().setPrefWidth(1280);
         dialog.getDialogPane().setMinWidth(1280);
         // 限高 + 可滚动：内容一多，对话框会长过屏幕，「新增」按钮被切在屏幕外
@@ -200,14 +200,14 @@ public final class ProviderDialog {
         HBox body = new HBox(14, new VBox(6, status, list), right);
         VBox content = new VBox(8, body);
         content.setPadding(new Insets(6));
-        content.setStyle(Palette.dialogTheme());
+        ThemePaint.themed(content, Palette.dialogTheme());
 
         ScrollPane scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.setStyle(Palette.dialogTheme());
+        ThemePaint.themed(scroll, Palette.dialogTheme());
         VBox root = new VBox(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        root.setStyle(Palette.dialogTheme());
+        ThemePaint.themed(root, Palette.dialogTheme());
         return root;
     }
 
@@ -295,7 +295,7 @@ public final class ProviderDialog {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                     "确定删除供应商 " + id + " 吗？", ButtonType.OK, ButtonType.CANCEL);
             confirm.initOwner(editSave.getScene() == null ? null : editSave.getScene().getWindow());
-            confirm.getDialogPane().setStyle(Palette.dialogTheme());
+            ThemePaint.themed(confirm.getDialogPane(), Palette.dialogTheme());
             confirm.setTitle("删除供应商");
             confirm.showAndWait().filter(picked -> picked == ButtonType.OK).ifPresent(picked -> {
                 store.removeProvider(id);
