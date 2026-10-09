@@ -557,7 +557,7 @@ desktop 亦未列 tool 依赖。
 | v0.38.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `DevLog-20261009-07.md` | @ACANX |
 | v0.39.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
 | v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
-| v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，新增 `N-24`、`G-13` | @ACANX / CNXNC |
+| v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，**另开 issue #48 长期跟踪**（本文件留索引 `N-24`），新增 `G-13` | @ACANX / CNXNC |
 | `version.properties` + `AppVersion` | `aha-cli` | `aha-common`（根包；该模块「零外部依赖」约定不变） |
 | picocli 版本适配 | `AppVersion.VersionProvider`（嵌套类） | `CliVersionProvider`（**仍在 cli**，避免把 picocli 带进 common） |
 | 日志装配 `LoggingSetup` | `aha-cli` | `aha-core`（`log4j-core` 在该模块改 `compile` scope） |
@@ -1315,15 +1315,10 @@ in central (<url>)`——**与 CI 一致的是后者**。⇒ CI 是当次就没�
       ；② 走一遍窗口/控件/主题相关效果路径（阴影 / 颜色调整 / 混合等）；③ 若仍缺类，
       按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与对应 `DevLog`。
       依赖：`G-11`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
-- [ ] **N-24**：真机验证原生桌面端与 JVM 模式的**字体渲染一致性**（issue #44 遗留项）。
-      背景：同机同配置下，原生镜像的字形清晰度 / 字体与 JVM（jar）模式差距明显，而 #44 的另
-      三类界面问题均已修。可能的方向：① Prism 渲染管线是否回退到软件管线（软件管线无次像素
-      抗锯齿，字会发虚）；② 原生镜像下的字体枚举 / 默认字体解析是否与 JVM 不同；③ 高分辨率
-      缩放比读取是否一致。
-      验收标准：① 日志 / 真机能确认实际使用的 Prism 管线与 LCD 文本开关；② 原生包的默认字体
-      与 JVM 模式一致；③ 字形清晰度肉眼与 JVM 模式无异；④ 定位到的缺口按同一格式补进元数据
-      或启动参数，并回写 `Docs/Design/DesktopNativeDesign.md` 与对应 `DevLog`。
-      依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出包。
+- [ ] **N-24**：原生桌面端字体渲染与 JVM 模式不一致（issue #44 遗留）。
+      长期跟踪载体：**issue #48**（现象、背景、待排查方向、验收标准均以该 Issue 为准）。
+      本条目只作索引，不在这里维护细节；#48 关闭后把本条目改为「已完成」并回填结论。
+      依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #48 验证。
 
 ## 11. 待人工执行的动作（需仓库 / 平台权限）
 

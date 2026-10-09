@@ -132,8 +132,9 @@
   （`ContextMenu`）补上主题重刷（弹层有独立的场景根，不继承主窗口样式）。
   ③ **暗色下标题文字对比度不足**：右栏「本轮」标题与左右折叠按钮此前未登记主题，
   改用默认深色文字；现统一走 `themed(...)` 登记。
-  遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决（见 `Docs/TODO.md` 的 `N-24`），
-  需真机对比渲染管线后才能定位。详见 `Docs/DevLog/DevLog-20261009-08.md`。
+  遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决，已另开 **issue #48** 长期跟踪
+  （`Docs/TODO.md` 的 `N-24` 只作索引），需真机对比渲染管线后才能定位。
+  详见 `Docs/DevLog/DevLog-20261009-08.md`。
 - **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
   但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
   com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：
