@@ -31,7 +31,7 @@ name: DesktopNative
 # ── 版本号规则 ──────────────────────────────────────────────────────────────────
 #     <基线版本>.<PR 号，补零到 5 位>
 # 基线与 PR 号都从「唯一来源」推导，不复制字面量：
-#     基线  ← 根 pom.xml 的 <version>（0.1.1）
+#     基线  ← 根 pom.xml 的 <version>（0.1.2）
 #     PR 号 ← pull_request 事件自带；push 到 dev 时按提交 SHA 反查关联 PR
 # 例：PR #21 合进 dev，当基线是 0.1.1 → 0.1.1.00021
 #
@@ -45,7 +45,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: PR 号（用于 0.1.1.PPPPP 的版本号；留空则按当前提交反查）
+        description: PR 号（用于 0.1.2.PPPPP 的版本号；留空则按当前提交反查）
         required: false
         default: ''
       version:

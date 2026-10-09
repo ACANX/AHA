@@ -38,7 +38,7 @@ public final class AppVersion {
      * {@code <version>}（见 {@code ReleaseProcess.md} 第 2 节），故改版本号时除根 POM 与
      * 六个子 POM 的 {@code <parent>} 外，只此一处需要同步。</p>
      */
-    private static final String FALLBACK_VERSION = "0.1.1-dev";
+    private static final String FALLBACK_VERSION = "0.1.2-dev";
 
     /** 注入失败时的标记，用于识别未过滤的占位符。 */
     private static final String PLACEHOLDER = "${";

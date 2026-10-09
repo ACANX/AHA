@@ -35,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: PR 号（用于 0.1.1.PPPPP 的版本号；留空则按当前提交反查）
+        description: PR 号（用于 0.1.2.PPPPP 的版本号；留空则按当前提交反查）
         required: false
         default: ''
       version:
