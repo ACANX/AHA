@@ -345,7 +345,7 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 声明，否则运行期抛 `MissingReflectionRegistrationError`。清单见
 `aha-desktop/src/main/resources/META-INF/native-image/.../reachability-metadata.json`
 （按「启动链路」分组；后续又用 tracing agent 采集补充，当前总计 **340 条**），逐条理由见
-[DevLog-20261008-13.md](../DevLog/DevLog-20261008-13.md)。
+[TS-202610-QuantumToolkitMissing.md](../Troubleshooting/TS-202610-QuantumToolkitMissing.md)。
 
 **反射不只 JavaFX（同一 issue 审计出来的第二类缺口）**：把运行时依赖也查了一遍，
 `sqlite-jdbc` 与 `log4j-core` 都**自带** native-image 元数据（无需本项目处理），
@@ -393,7 +393,7 @@ native 层拿到空引用继续跑就是段错误。
 里的 `FindClass` 做静态扫描，得 **62 个类**——JDK 基础类、Glass 公共类与三平台实现类、
 字体（DirectWrite / FreeType / CoreText / FontConfig，含两个动态名）与几何。
 成员统一用 `allDeclared*` 全量（native 按名字查成员，签名跨版本不稳）。平台专属类共用一份清单，
-缺席平台只产生无害 warning。详见 [DevLog-20261008-15.md](../DevLog/DevLog-20261008-15.md)。
+缺席平台只产生无害 warning。详见 [TS-202610-JniFindClassSegfault.md](../Troubleshooting/TS-202610-JniFindClassSegfault.md)。
 
 **JNI 的第二类缺口：平台实现类自己的成员查找（issue #39，2026-10-09）**。修完 #37 后，Windows 真机在
 `WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。
@@ -412,7 +412,7 @@ native 层拿到空引用继续跑就是段错误。
 `MacCommonDialogs` / `MacFileNSURL` / `MacGestureSupport` / `MacMenuDelegate` / `MacPasteboard` /
 `MacTimer` / `MacAccessible`；另加三平台共用的 `com.sun.glass.ui.EventLoop`），
 清单由 62 条增至 **85 条**。GTK 无需补——它经 `FindClass` 取类，#37 已覆盖。
-详见 [DevLog-20261009-05.md](../DevLog/DevLog-20261009-05.md)。
+详见 [TS-202610-WinWindowJniMemberMissing.md](../Troubleshooting/TS-202610-WinWindowJniMemberMissing.md)。
 
 **JNI 之外的第三层：效果 peer 的动态类名（issue #41，2026-10-09）**。JNI 清单补齐后，Windows 真机首次进到 GUI，
 但控件画不出：渲染到第一个用阴影效果的控件时反复报
@@ -424,7 +424,7 @@ native 层拿到空引用继续跑就是段错误。
 修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
 用 `javap` 过滤 7 个 abstract 基类后，把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`
 （`allDeclaredConstructors`；`Class.forName` 属反射，故进这份清单而非 `jni-config.json`），
-元数据由 340 条增至 **439 条**。详见 [DevLog-20261009-06.md](../DevLog/DevLog-20261009-06.md)。
+元数据由 340 条增至 **439 条**。详见 [TS-202610-PrismEffectPeerMissing.md](../Troubleshooting/TS-202610-PrismEffectPeerMissing.md)。
 
 ### 6.2 迭代时改哪里（只改一处）
 

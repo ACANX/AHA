@@ -535,7 +535,7 @@ static void install(LoggerContext context, String xml) throws IOException {
 
 - [AHA-Design-V1.md](AHA/AHA-Design-V1.md)：权威版本路线图与阶段计划
 - [TODO.md](TODO.md)：待办与调整项
-- [DevLog/](DevLog/)：排障复盘与事故记录（`DevLog-YYYYmmdd-HH.md`）
+- [DevLog/](DevLog/)：开发完成事项的记录（`yyyyMMdd-HH.md`）；排查 / 事故复盘见 [Troubleshooting/](Troubleshooting/)（`TS-yyyyMM-*.md`）
 - [CLIDesign.md](Design/CLIDesign.md)：终端与渲染决策（含 §7.1 状态行、§7.2 输入行构成、§7.3 工具区块）
 - [MemoryStorageDesign.md](Design/MemoryStorageDesign.md)：记忆存储与载体选型
 

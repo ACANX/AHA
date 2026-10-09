@@ -291,8 +291,14 @@ aha/
 │       ├── release/
 │       └── java-app-graalvm-native-image-compile/
 └── Docs/
+    ├── Dbsx.txt                         ← 用户原始待办（已冻结）
+    ├── PLAN.md                          ← 暂缓与受限事项（已冻结）
+    ├── TODO.md                          ← 历史待办（已冻结）
     ├── AHA/
     │   └── AHA-Design-V1.md
+    ├── TODO/
+    │   ├── README.md
+    │   └── TD-00001-CliToolCallOutputRendering.md
     ├── DevSpec/
     │   ├── Constitution.md
     │   ├── BuildSpec.md
@@ -342,17 +348,20 @@ aha/
         ├── ConfigLoadingFlow.svg
         ├── ExtensionArchitecture.svg
         └── ExtensionLifecycle.svg
+    ├── Troubleshooting/
+    │   ├── README.md
+    │   ├── TS-202610-CiRequiredCheckNameMismatch.md
+    │   ├── TS-202610-CoverageGateInvisible.md
+    │   ├── TS-202610-FakeMergeDirtyPr.md
+    │   ├── TS-202610-ArtifactNotFoundInCentral.md
+    │   ├── TS-202610-RulesetBlocksSingleMaintainer.md
+    │   ├── TS-202610-VersionBumpMissedModules.md
+    │   ├── TS-202610-AtomicReplaceSilentFailure.md
+    │   ├── TS-202610-ProviderConfigDialogTraps.md
+    │   ├── TS-202610-DesktopFeatureBugs.md
+    │   └── TS-202610-NativeModuleSilentTraps.md
     └── DevLog/
-        ├── DevLog-20261007-20.md
-        ├── DevLog-20261007-21.md
-        ├── DevLog-20261007-22.md
-        ├── DevLog-20261007-23.md
-        ├── DevLog-20261007-24.md
-        ├── DevLog-20261008-00.md
-        ├── DevLog-20261008-01.md
-        ├── DevLog-20261008-02.md
-        ├── DevLog-20261008-03.md
-        └── DevLog-20261008-04.md
+        └── README.md
 ```
 
 ## 2. 命名规范
@@ -465,11 +474,12 @@ aha/
 | v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
 | v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
 | v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（621 用例 / 合计行覆盖 80.8%（4087/5061）），补 `aha-desktop` 用例数 | @ACANX |
-| v3.62.0 | 2026-10-08 | 附录 A 收录 `DevLog-20261008-01.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
+| v3.62.0 | 2026-10-08 | 附录 A 收录 `TS-202610-AtomicReplaceSilentFailure.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
 | v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 | v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
 | v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
 | v3.66.0 | 2026-10-09 | §4 项目结构的 workflows 树补 `BuildJVMArtifacts.yml`（dev 的 JVM 便携包构建 + 预发行，issue #63）及 `DesktopNative.yml` / `CliNative.yml` | @ACANX |
+| v3.67.0 | 2026-10-09 | 文档结构调整：新增 `Docs/TODO/`（清单 `README.md` + `TD-PPPPP-*.md`）与 `Docs/Troubleshooting/`（`TS-yyyyMM-*.md`）；`Docs/DevLog/` 下 31 篇排查记录**全部 1:1 迁移**到 Troubleshooting，DevLog 重新定位为开发完成记录且命名改为 `yyyyMMdd-HH.md`；目录树与附录 A 同步 | @ACANX / CNXNC |
 
 ---
 ```
@@ -3675,8 +3685,10 @@ Closes #123
 
 | 文档 | 说明 |
 |---|---|
-| `TODO.md` | 待办与调整项（暂存区） |
-| `PLAN.md` | 暂缓与受限事项，含「做不到」的判断依据与实测证据 |
+| `TODO.md` | 历史待办与调整项（**已冻结**，仅供追溯） |
+| `PLAN.md` | 暂缓与受限事项，含「做不到」的判断依据与实测证据（**已冻结**） |
+| `Dbsx.txt` | 用户原始待办（**已冻结**） |
+| `TODO/` | 待办清单与详情：`README.md`（清单看板）+ `TD-PPPPP-*.md`（单项详情） |
 
 ### Docs/DevSpec/
 
@@ -3743,22 +3755,28 @@ Closes #123
 | `ExtensionArchitecture.svg` | 扩展架构图 |
 | `ExtensionLifecycle.svg` | 扩展生命周期图 |
 
-### Docs/DevLog/
+### Docs/Troubleshooting/
 
-排障复盘与事故记录，按时间线命名（`DevLog-YYYYmmdd-HH.md`，见 `DocumentationSpec.md` §1）。
+问题排查与事故复盘，按 `TS-yyyyMM-大驼峰英文标题.md` 命名（见 `DocumentationSpec.md` §1）；
+完整索引见 `Docs/Troubleshooting/README.md`。
 
 | 文件 | 说明 |
 |---|---|
-| `DevLog-20261007-20.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
-| `DevLog-20261007-21.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
-| `DevLog-20261007-22.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
-| `DevLog-20261007-23.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
-| `DevLog-20261007-24.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
-| `DevLog-20261008-00.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
-| `DevLog-20261008-01.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
-| `DevLog-20261008-02.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
-| `DevLog-20261008-03.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
-| `DevLog-20261008-04.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
+| `TS-202610-CiRequiredCheckNameMismatch.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
+| `TS-202610-CoverageGateInvisible.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
+| `TS-202610-FakeMergeDirtyPr.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
+| `TS-202610-ArtifactNotFoundInCentral.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
+| `TS-202610-RulesetBlocksSingleMaintainer.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
+| `TS-202610-VersionBumpMissedModules.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
+| `TS-202610-AtomicReplaceSilentFailure.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
+| `TS-202610-ProviderConfigDialogTraps.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
+| `TS-202610-DesktopFeatureBugs.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
+| `TS-202610-NativeModuleSilentTraps.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
+
+### Docs/DevLog/
+
+**开发完成事项**的记录，按 `yyyyMMdd-HH.md` 命名（见 `DocumentationSpec.md` §1）；
+规范与模板见 `Docs/DevLog/README.md`。问题排查与事故复盘不写在这里，见上一节。
 
 ### .agents/skills/
 

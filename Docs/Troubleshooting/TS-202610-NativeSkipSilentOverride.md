@@ -1,0 +1,139 @@
+# TS-202610-NativeSkipSilentOverride：「CI 全绿但零产物」：native.skip 被模块自身的属性静默压掉
+
+> 日期：2026-10-08
+> 作者：@ACANX（与 AI 助手协作）
+> 关联 PR：#15（`dev → main`）
+> 关联记录：`Docs/Troubleshooting/TS-202610-NativeToleranceStepLevel.md`（上一轮把原生管线做成「可选」）、
+> `Docs/Troubleshooting/TS-202610-Pr15StaleLocalRef.md`、`.github/workflows/DesktopNative.yml`
+
+## 1. 背景
+
+用户观察到运行 `37720809417`：「流程正常在跑，但每个子流程的二进制产物并未编译出来，
+也未打包上传。」
+
+这正是上一轮那笔取舍的**代价**：为了让原生管线「可选」，我把所有可能失败的步骤都加了
+`continue-on-error`，`产物自证` 也从「硬门禁」改成了「诊断式」。
+于是**编译被静默跳过**时，整条流水线依然全绿——四条腿全 `success`，
+只是 `改名为发布用资产名` / `上传制品` 全部 `skipped`，`native-publish` 写了一句
+「本次无可发布产物」然后正常结束。
+
+「不吓人」做到了，「不静默」没做到。这一轮把根因挖出来并补上可观测性。
+
+## 2. 排障过程与修复链
+
+### 2.1 从「哪一步被跳过」反推
+
+拉 `/actions/runs/37720809417/jobs`：
+
+```
+native-image-ubuntu-x64-jdk25   ✓ 构建原生镜像 success
+                                ✓ 产物自证（诊断式） success
+                                - 改名为发布用资产名 skipped     ← 没有产物
+                                - 上传制品          skipped
+native-publish                  ✓ 整理资产（没有产物也算正常，不失败） success
+                                - 发布预发行版      skipped
+```
+
+「构建成功 + 产物自证通过 + 改名跳过」这个组合只有一个解释：
+**构建步骤根本没有产出二进制**，而产物自证被设计成「判不出来也不阻塞」。
+
+### 2.2 一条便宜的判别实验
+
+本机（WSL）**没有装 GraalVM**，这恰好是个理想的判别器：
+只要 `native-image` 真的被调用，构建就**必然失败**（`Cannot run program "native-image"`）；
+若构建「成功」，就说明它压根没被调用。
+
+用 CI 的调用方式跑（带 profile、不传 `-Dnative.skip`）：
+
+```
+./mvnw -B -Pdesktop-native -pl aha-desktop-native,aha-desktop -am package -DskipTests …
+  [INFO] --- exec:3.5.1:exec (native-image) @ aha-desktop-native ---
+  [INFO] BUILD SUCCESS          ← 目标被执行了，却什么都没做
+```
+
+**构建成功 = 开关是「跳过」**。于是去看开关的定义位置：
+
+```
+pom.xml:442                   <native.skip>false</native.skip>   ← desktop-native profile 里
+aha-desktop-native/pom.xml:89 <native.skip>true</native.skip>    ← 模块自己的 properties
+```
+
+### 2.3 根因：模块自身属性赢过父 POM 的 profile 覆盖
+
+Maven 的属性继承里，**模块自身 `<properties>` 的定义优先于从父 POM 继承来的属性**；
+而父 POM 里 profile 注入的属性，对子模块而言也只是「继承来的属性」。
+于是上一轮为响应「默认构建只要保证能编译打 jar」而加的
+`<native.skip>true</native.skip>`（写在**模块**里）把 profile 的 `false` 压掉了——
+`native-image` 永远被跳过，且**不留任何错误**。
+
+这是本轮最值得记住的一点：**「安全默认值」若定义在错误的层级，就会变成「永久关闭」。**
+
+### 2.4 修复：三层，缺一层都可能复发
+
+1. **默认值只有一个来源，且放在聚合 POM**（`pom.xml` 的 `<properties>` 里 `true`），
+   由 `desktop-native` profile 在**同一个 POM** 内覆盖为 `false`；
+   模块 POM 里的那份定义**删掉**，只留一段说明这个坑的注释。
+2. **CI 显式兜底**：构建命令加 `-Dnative.skip=false`（命令行 `-D` 优先级最高，
+   不受属性继承影响）。
+3. **自证执行痕迹**：新增一步「确认 native-image 真的执行过」——
+   `native-image` 只要跑过就会在输出目录留下 `<name>.build_artifacts.txt`；
+   文件不存在就 `::warning::` 双写（step annotation + Job Summary），
+   并把「被跳过」与「早退」两种可能都点名。
+   同时 `产物自证` 在「构建成功却没有二进制」时也会输出这句点名的原因。
+
+另外把 jdk27 那两条腿的「跳过」也解释清楚：它们因为 GraalVM 的 JDK 27 版本尚未发布，
+安装步骤失败（`steps.graal.outcome != 'success'`），后续步骤整体跳过——
+跳过的步骤不会自己解释自己，所以加了一步专门写摘要。
+
+### 2.5 验证：三条命令三个方向
+
+```
+① 默认构建（无 profile）          → BUILD SUCCESS
+   （-pl aha-desktop-native 报「不存在」= 模块确实不在反应堆）
+② 带 profile、不传 -Dnative.skip  → Cannot run program "native-image"
+   （本机无 GraalVM 必然失败 —— 证明开关**真的生效**了）
+③ 带 profile + -Dnative.skip=true → BUILD SUCCESS（本机自检模式，跳过真编）
+```
+
+② 是最关键的：修复前它是 `BUILD SUCCESS`（被静默跳过），修复后变成「尝试真编并失败」，
+说明 profile 的覆盖终于生效。
+
+## 3. 最终验证结果
+
+- 判别实验三条命令的结果见上（② 由「静默成功」变为「真实尝试」）；
+- `DesktopNative.yml` 四处加固：显式 `-Dnative.skip=false`、
+  新增「确认 native-image 真的执行过」步骤、产物自证点名原因、jdk27 腿的跳过说明；YAML 合法；
+- `bin/Check{Docs,Skills,Scripts}.py` 全绿；
+- 下一次 `DesktopNative` 运行应当：三条 jdk25 腿产出二进制并上传、
+  `native-publish` 真正创建 `native-v<版本>` 预发行版（判据见 `TODO.md` N-12）。
+
+## 4. 关键教训
+
+1. **「构建成功」不是验收标准**：带开关的管线，开关被跳过时构建照样成功。
+   验收条件必须包含「产物存在 + 自证通过」。
+2. **安全默认值必须定义在正确的层级**：模块自身的 `<properties>` 会赢过父 POM 的
+   profile 覆盖。默认值只放一处（聚合 POM），覆盖点也只放一处（同一 POM 的 profile），
+   CI 再显式兜底一次。
+3. **容忍失败必须以「叫得响」为条件**：上一轮把管线做成「可选」是对的
+   （用户明确要求），但**同一轮就该同时加上「产物缺失必须 warning + 摘要」**。
+   只做前者，等于把「红叉」换成了「静默空转」——比红叉更糟。
+4. **利用环境差异做判别器**：本机没有 GraalVM，于是「构建成功 / 失败」本身就是
+   「开关是否生效」的判据。这类零成本判别实验比读日志快得多。
+5. **执行痕迹比日志可靠**：`<name>.build_artifacts.txt` 是 native-image 一定会留下的痕迹；
+   而日志在成功时常常不留档（本项目的 `maven-run` 成功后即删除临时日志）。
+
+## 5. 涉及文件清单
+
+- `pom.xml`（`native.skip` 默认值的唯一来源 + profile 覆盖 + 注释说明继承陷阱）
+- `aha-desktop-native/pom.xml`（删掉模块自身那份定义，保留坑的说明）
+- `.github/workflows/DesktopNative.yml`（`-Dnative.skip=false` 兜底；
+  新增「确认 native-image 真的执行过」；产物自证点名原因；jdk27 跳过说明）
+- `Docs/DevSpec/BuildSpec.md`（默认值单一来源；新增「构建成功不是验收标准」）
+- `Docs/Design/DesktopNativeDesign.md`（§2.0 记入本次事故）
+- `.agents/skills/java-app-graalvm-native-image-compile/references/troubleshooting.md`
+  （新增「构建成功、零产物、零报错」与「执行痕迹」两行 +「静默跳过」小节）
+- `.agents/skills/java-app-graalvm-native-image-compile/references/isolation-and-ci.md`
+  （§1.1 改为聚合 POM 单一来源 + 坑标注）
+- `.agents/skills/java-app-graalvm-native-image-compile/assets/module-pom.xml`（默认值移出模块）
+- `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md`（五个坑 + 迭代日志）
+- `Docs/TODO.md`（N-12 新增）、`Docs/Dbsx.txt`、`CHANGELOG.md`

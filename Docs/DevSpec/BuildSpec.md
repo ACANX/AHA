@@ -312,7 +312,7 @@ POM 语法必须兼容 Maven 3.9.x：
 （如 native-image 的 `<name>.build_artifacts.txt`）；③ 产物缺失时必须 `::warning::` 双写
 （step annotation + Job Summary），把「被跳过」与「早退」两种可能都点名。
 2026-10-08 实测事故：`native.skip` 默认值写在子模块 → profile 覆盖失效 →
-CI 全绿却零产物零报错（见 `Docs/DevLog/DevLog-20261008-08.md`）。
+CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-202610-NativeSkipSilentOverride.md`）。
 
 **门禁必须自证（强制）**：JaCoCo 的 `check` 通过时不打印百分比，日志上与「没配门禁」
 无法区分（真实发生过：`./mvnw clean verify` 日志里只有 `Analyzed bundle`，被合理质疑
@@ -357,7 +357,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
   | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
 
-- 完整复盘见 [DevLog-20261007-23.md](../DevLog/DevLog-20261007-23.md)。
+- 完整复盘见 [TS-202610-ArtifactNotFoundInCentral.md](../Troubleshooting/TS-202610-ArtifactNotFoundInCentral.md)。
 
 **分支规则集必须对「单人 + 机器」可满足（强制）**：规则集（Ruleset）与门禁是**同一份契约的两端**，
 两端必须自洽。已经出现过两种把 PR 永久锁死的情形（比红色更麻烦——红色至少告诉你哪里错）：
@@ -386,7 +386,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   每次变更规则集或作业名后同步回写——这与「作业名是分支保护的契约」是同一条约束的两面
   （那次是作业名失配停在 `Expected`，这次是规则要的东西不存在停在 `Waiting`）。
 
-完整复盘见 [DevLog-20261007-24.md](../DevLog/DevLog-20261007-24.md)。
+完整复盘见 [TS-202610-RulesetBlocksSingleMaintainer.md](../Troubleshooting/TS-202610-RulesetBlocksSingleMaintainer.md)。
 
 **main 上的构建成功后自动打 tag（0.1.1 起）**：`Build.yml` 里有一个 `tag` 作业，
 条件为「`push` 到 `main` 且 `build` 作业成功」。它：
