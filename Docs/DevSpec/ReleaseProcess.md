@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.15.0
+**文档版本**：v1.16.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -30,6 +30,7 @@
 | v1.13.0 | 2026-10-09 | §3 与 §3.1 的 CLI 资产名统一为 `aha-cli-<版本>.zip`（前缀 `aha-cli` 与桌面端 `aha-desktop-` 对称）；dev JVM 线的 JDK 27 变体为 `aha-cli-<版本>-jdk27.zip` | @ACANX |
 | v1.14.0 | 2026-10-09 | §4.1 第 5 条「关闭 squash / rebase 合并」的登记处由 `TODO.md` `G-05` 改为 GitHub Issue（#85）：`TODO.md` 已冻结，待办统一走 Issue | @ACANX / CNXNC |
 | v1.15.0 | 2026-10-09 | 第 2 节版本源口径：P3（#95）引入 `<revision>` 后 POM 侧收敛为 **1 处**（8 子模块写 `${revision}` 继承），`AppVersion.FALLBACK_VERSION` 解耦为 `"dev"`；一次性命令改用 `versions:set-property -Dproperty=revision`；§2 第 4 步与 §4.1 的版本来源改指 `<revision>` | @ACANX / CNXNC |
+| v1.16.0 | 2026-10-09 | P5（#97，父 #92）文档口径同步：§2 版本切换改为「改 `version` 文件 / 触发 `VersionBump` workflow」；§4.1 与 §4.2 的版本号来源改指根目录 `version` 文件（权威），`<revision>` 降为机器位置；§1 检查清单与 §4.2 ④ 的「8 处」改为 `ProjectVersion.py --verify` 一键校对 | @ACANX / CNXNC |
 
 ---
 
@@ -41,7 +42,7 @@
 - [ ] 发行包可构建且可运行（见 §3.1）
 - [ ] `Docs/DevSpec/` 全部文档已审查
 - [ ] `CHANGELOG.md` 已更新
-- [ ] 版本号已更新（`pom.xml`）
+- [ ] 版本号已更新（根目录 `version` 文件为权威源，机器位置根 POM 的 `<revision>` 与之一致）
 
 ### 1.1 1.0 发布附加检查（自举硬门槛）
 
@@ -64,25 +65,22 @@
 
 1. 从 `dev` 创建 `release/x.y.z` 分支
 2. 更新版本号与 `CHANGELOG.md`
-   - **P3 起版本源已收敛**：POM 侧只有根 `pom.xml` 的 `<properties>/<revision>` **一处**
-     （8 个子模块写 `<parent><version>${revision}</version>` 继承），
-     `AppVersion.FALLBACK_VERSION` 已与版本解耦（固定 `"dev"`）。
-   - 历史口径（引入 `<revision>` 之前）：版本号要改 **10 处**（实测：只改根 POM 会
-     **BUILD SUCCESS 但产物仍是旧版本号**）：根部 `pom.xml` 的 `<version>` + **八个子模块**
-     `aha-*/pom.xml` 里 `<parent>` 下的 `<version>`（`aha-common` / `aha-extension-api` /
-     `aha-core` / `aha-tool` / `aha-cli` / `aha-desktop` / `aha-cli-native` / `aha-desktop-native`）
-     + `AppVersion.FALLBACK_VERSION`（在 `aha-common`；只在 IDE 直接运行、资源未过滤时出现）
-   - 另有四处**版本声明**需同步：`README.md`、`AGENTS.md`、`Docs/AHA/AHA-Design-V1.md`
-     （头部「目标版本 / 当前版本」）、`Docs/Guide/ReferenceGuide.md`
-   - 可用一条命令改根 POM 的 `<revision>`（需联网取 maven-versions-plugin）：
-
-     ```
-     ./mvnw versions:set-property -Dproperty=revision -DnewVersion=x.y.z -DgenerateBackupPoms=false
-     ```
-
-     **教训（2026-10-07 实测）**：只改根 POM 时六个子模块仍按 `<parent>` 声明的旧版本解析，
-     反应堆显示 `Building AHA-Common 0.1.0`、产物名为 `aha-common-0.1.0.jar`、
-     `aha --version` 仍报旧版本，而构建**不报错**——静默发出错版本的包。
+   - **版本源（P4 起）**：唯一权威源是**根目录 `version` 文件**（一行，如 `0.1.2`）；
+     机器侧只保留根 `pom.xml` 的 `<properties>/<revision>` **一处**（8 个子模块写
+     `<parent><version>${revision}</version>` 继承），`AppVersion.FALLBACK_VERSION`
+     已与版本解耦（固定 `"dev"`）。
+   - **改法（推荐）**：触发 **`VersionBump` workflow**（`workflow_dispatch`，输入新版本号），
+     由 `Script/Python/VersionDistribute.py` 把 `version` 分发到根 POM 的 `<revision>`
+     与 4 处文档版本声明，并自动开 PR（`chore/bump-<版本>` → `dev`）；也可直接改
+     `version` 文件一行，再按常规 PR 流程提交。操作细节见
+     [VersionBumpGuide.md](../Guide/VersionBumpGuide.md)。
+   - **一致性校验（强制）**：`python3 .github/Python/ProjectVersion.py --verify` 断言
+     `version` 文件 / 根 POM `<revision>` / `version.properties` 的 `version` /
+     产物名版本段 / `Build.yml` 的 tag 规则五处一致（已接入 `Gate.yml`）。
+   - **手工应急**（不走 workflow 时）：只需改 **`version` 文件与根 POM 的 `<revision>` 两处**，
+     两者必须相同；子模块与文档声明由分发脚本负责。当初「为何要改 10 处」的历史口径见
+     [VersionBumpGuide.md](../Guide/VersionBumpGuide.md) 第 7 节与
+     [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)。
    - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
    - **构建版本（预发行）**：`version.properties` 另有 `build=${aha.build.version}` 项；正式发版与
      本地构建不传，等于基线版本；PR 合并到 `dev` 后自动出包的工作流（`DesktopNative.yml` /
@@ -97,10 +95,11 @@
 
 ### 4.1 tag 命名与手工补打
 
-- 约定：**`V<版本号>`**（大写 `V`，版本号取自根 `pom.xml` 的 `<properties>/<revision>`，如 `V0.1.1`）。
+- 约定：**`V<版本号>`**（大写 `V`，版本号取自根目录 `version` 文件，如 `V0.1.1`）。
   ⚠ 历史例外：0.1.0 那次发布的 tag 是 **`0.1.0`**（无 `V` 前缀），与约定不一致；
   处置见 [TODO.md](../TODO.md) `G-06`。
-  版本号的**唯一来源是根 POM**，工作流与文档都不复制它。
+  版本号的**唯一权威源是根目录 `version` 文件**（机器位置是根 POM 的 `<revision>`，
+  由 `VersionDistribute.py` 写入），工作流与文档都不复制它。
 - 自动打 tag 的触发条件：**push 到 `main`**（`dev` → `main` 的 PR 合并之后）且 `Build.yml` 的
   `build` 作业成功。
 - 需要手工补打的情形：那条**可选**的 macOS 腿没有通过、连带 `build` 作业未算成功；
@@ -254,7 +253,8 @@ cd /tmp/merge-check && git merge --no-ff origin/<head>
 git diff --stat origin/<head> HEAD      # 输出为空 = 复议面为零（最有力的结论）
 git diff --quiet origin/<head> HEAD || echo '⚠ 合并结果与 head 不一致，逐条看过再推'
 
-# ④ 版本号 8 处逐一核对（根 POM + 六个模块 <parent><version> + AppVersion 回退值）
+# ④ 版本号一致性核对（version 文件 / <revision> / version.properties / 产物名 / tag 规则）
+python3 .github/Python/ProjectVersion.py --verify
 ```
 
 **复议面为零**（③ 输出为空）是发布前最强的自证：它同时排除了「冲突解错」、「旧内容覆盖新内容」、

@@ -1,10 +1,10 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.66.0
+**文档版本**：v3.70.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
-**目标版本**：AHA 0.1.2
+**目标版本**：AHA 0.1.x（确切版本见仓库根目录 `version` 文件）
 **文档命名规范**：Markdown、SVG、图片统一大驼峰（PascalCase）；`.agents/skills/` 下技能目录及 `SKILL.md` 的 `name` 采用 kebab-case
 **YAML 字段命名规范**：AHA 自有字段统一大驼峰（PascalCase）
 **SQL 字段命名规范**：SQLite 表名（单数）与字段名统一 snake_case
@@ -487,6 +487,7 @@ aha/
 | v3.67.0 | 2026-10-09 | 文档结构调整：新增 `Docs/TODO/`（清单 `README.md` + `TD-PPPPP-*.md`）与 `Docs/Troubleshooting/`（`TS-yyyyMM-*.md`）；`Docs/DevLog/` 下 31 篇排查记录**全部 1:1 迁移**到 Troubleshooting，DevLog 重新定位为开发完成记录且命名改为 `yyyyMMdd-HH.md`；目录树与附录 A 同步 | @ACANX / CNXNC |
 | v3.68.0 | 2026-10-09 | 新增 `Archive/`（已废弃历史资料的归档，不参与 CI 检查）并登记入目录树与附录 A；§4 技能索引补 `issue-tracking` 与 `doc-recording`；新增「记录纪律（强制）」（代码与记录同变更内完成） | @ACANX / CNXNC |
 | v3.69.0 | 2026-10-09 | 新增 `Docs/Guide/VersionBumpGuide.md`（版本切换指南：操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案 / 历史教训 / 维护约定）；`ReleaseProcess.md` §2 交叉引用；Guide 索引（目录树 + 附录 A）补齐 `ReferenceGuide` / `CommandCheatsheet` / `NativeRenderDiagnosticsGuide` / `VersionBumpGuide` | @ACANX / CNXNC |
+| v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
 
 ---
 ```
@@ -534,7 +535,7 @@ aha/
 # AHA - Agent Harness
 
 **项目代号**：AHA
-**当前版本**：0.1.2
+**当前版本**：见仓库根目录 `version` 文件
 **构建工具**：Maven 4（运行时）/ Maven 3.9.x（兼容基线）
 **JDK**：25 (LTS)
 **模块化**：JPMS 优先启用（非强制；与 OpenJFX 冲突时为它让路）
@@ -827,6 +828,7 @@ aha/
 ├── mvnw
 ├── mvnw.cmd
 ├── pom.xml
+├── version                     ← 版本号唯一权威源（一行纯文本）
 ├── .mvn/
 │   └── wrapper/
 │       └── maven-wrapper.properties
@@ -842,11 +844,14 @@ aha/
 │   ├── actions/
 │   │   └── maven-run/          ← Maven 调用统一入口：清失败标记 + 重试
 │   │       └── action.yml
+│   ├── Python/
+│   │   └── ProjectVersion.py   ← 版本唯一读取入口（--resolve / --verify）
 │   └── workflows/
 │       ├── Build.yml           ← 快检查（每次 push / PR）
 │       ├── BuildJVMArtifacts.yml ← dev 的 JVM 便携包构建 + 预发行
 │       ├── DesktopNative.yml   ← 桌面端原生镜像（试验性，预发行）
 │       ├── CliNative.yml       ← CLI 原生镜像（试验性，预发行）
+│       ├── VersionBump.yml     ← 版本分发（workflow_dispatch，开 PR 到 dev）
 │       ├── Gate.yml            ← 门禁 + 每周定期扫描
 │       ├── Compat.yml          ← Maven 3.9.x 兼容基线
 │       └── Release.yml
@@ -859,6 +864,9 @@ aha/
 ├── bin/
 │   ├── Aha.bat
 │   └── Aha.sh
+├── Script/
+│   └── Python/
+│       └── VersionDistribute.py ← 版本分发（根 POM <revision> / version 文件 / 文档声明）
 ├── aha-common/
 │   ├── pom.xml
 │   └── src/
@@ -946,7 +954,8 @@ aha/
 
     <groupId>com.acanx.module</groupId>
     <artifactId>aha</artifactId>
-    <version>0.1.2</version>
+    <!-- CI-friendly 版本：实体值在 <properties>/<revision>，子模块引用 ${revision} 继承 -->
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>AHA</name>
@@ -962,6 +971,11 @@ aha/
     </modules>
 
     <properties>
+        <!-- 项目版本：**机器侧唯一来源**。权威源是仓库根目录的 version 文件，
+             该值由 Script/Python/VersionDistribute.py 分发写入（P4 / #96，见 TD-00016 §H）。
+             示例里写占位符，避免文档复制具体版本号（BuildSpec.md §7） -->
+        <revision>x.y.z</revision>
+
         <!-- 默认编译目标；CI 的 jdk27 腿用 -Dmaven.compiler.release=27 覆盖（BuildJVMArtifacts.yml，issue #65） -->
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -1111,7 +1125,7 @@ aha/
     <parent>
         <groupId>com.acanx.module</groupId>
         <artifactId>aha</artifactId>
-        <version>0.1.2</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
