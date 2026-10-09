@@ -85,8 +85,9 @@ jobs:
             exit 0
           fi
 
-          # ② 基线唯一来源：根 POM 的 <version>。标签带命名空间，不能写 findtext('version')。
-          base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
+          # ② 基线经唯一读取入口解析（`version` 文件 → 根 POM 的 `<properties>/<revision>`
+          #    → `<version>`），见 TD-00016 §B。
+          base=$(python3 .github/Python/ProjectVersion.py --resolve)
 
           # ③ PR 号：先看输入，其次按提交 SHA 反查（push 事件没有 PR 号）。
           pr="${INPUT_PR:-}"

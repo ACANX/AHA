@@ -60,8 +60,10 @@ jobs:
   #
   # 触发时机：**push 到 `main`**（即 `dev` → `main` 的 PR 被合并之后），且上面的 build 已成功。
   #
-  # tag 名：`V<项目版本号>`（如 `V0.1.0`）。版本号**唯一来源是父 POM 的 `<version>`**，
-  #         工作流里不写版本字面量——版本改了 tag 跟着走，不会形成两处口径。
+  # tag 名：`V<项目版本号>`（如 `V0.1.0`）。版本号由唯一读取入口
+  #         `.github/Python/ProjectVersion.py` 解析（`version` 文件 → 根 POM 的
+  #         `<revision>` → `<version>`，见 TD-00016 §B）；工作流里不写版本字面量——
+  #         版本改了 tag 跟着走，不会形成两处口径。
   #
   # 为什么 `needs: build` 就够了：带 `needs` 的作业在依赖失败时会被跳过，不必再判 `result`。
   #         唯一的边角是那条**可选**的 macOS 腿（`continue-on-error`）：若它没通过且影响到了
@@ -83,10 +85,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 读取项目版本（唯一来源：父 POM）
+      - name: 读取项目版本（唯一入口：.github/Python/ProjectVersion.py）
         id: version
         run: |
-          VERSION=$(python3 -c 'import xml.etree.ElementTree as ET; ns="{http://maven.apache.org/POM/4.0.0}"; print(ET.parse("pom.xml").getroot().find(ns+"version").text.strip())')
+          VERSION=$(python3 .github/Python/ProjectVersion.py --resolve)
           test -n "${VERSION}"
           echo "项目版本：${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
