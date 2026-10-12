@@ -86,7 +86,7 @@
         <javafx.platform>unsupported</javafx.platform>
         <jackson.version>3.2.3</jackson.version>
         <picocli.version>4.7.7</picocli.version>
-        <jline.version>4.4.6</jline.version>
+        <jline.version>4.4.7</jline.version>
         <sqlite.version>3.53.4.0</sqlite.version>
         <slf4j.version>2.0.20</slf4j.version>
         <log4j.version>2.26.1</log4j.version>
@@ -102,10 +102,10 @@
         <!-- 原生镜像（试验性）：两套平行管线——桌面端 aha-desktop-native（见
              Docs/Design/DesktopNativeDesign.md）与 CLI aha-cli-native（见
              Docs/Design/CliNativeDesign.md） -->
-        <exec.plugin.version>3.5.1</exec.plugin.version>
-        <dependency.plugin.version>3.9.0</dependency.plugin.version>
-        <resources.plugin.version>3.3.1</resources.plugin.version>
-        <clean.plugin.version>3.4.1</clean.plugin.version>
+        <exec.plugin.version>3.6.4</exec.plugin.version>
+        <dependency.plugin.version>3.11.0</dependency.plugin.version>
+        <resources.plugin.version>3.5.0</resources.plugin.version>
+        <clean.plugin.version>3.5.0</clean.plugin.version>
         <!-- 重复代码率检查：报告由 `pmd:cpd` 生成，阈值由 bin/CheckDuplication.py 判定 -->
         <pmd.plugin.version>3.28.0</pmd.plugin.version>
 
