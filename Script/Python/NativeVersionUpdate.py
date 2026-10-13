@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-r"""AHA 桌面端原生镜像一键更新（GitHub Releases -> Dist/）。
+r"""AHA 原生镜像一键更新 · 共享引擎（GitHub Releases -> Dist/）。
 
-用途：把「去发布页找最新的 V*-aha-desktop-native 预发行版、下载本平台 zip、
+本文件是**实现本体**：两种原生包（桌面端与 CLI）共用同一套逻辑——按 TD-00015 的要求
+「尽量共享实现，避免两套逻辑各自漂移」。两者的差别只有五项：tag 后缀、资产前缀、
+可执行文件名、状态文件名、帮助里展示的用法；它们全部集中在 `KINDS` 表里，
+由 `configure(kind)` 在启动时绑定。
+
+**用户入口是两个薄壳**（文档里一律写它们；直接跑本文件等价于桌面端，属历史行为）：
+
+    DesktopNativeVersionUpdate.py   桌面端原生包（aha-desktop-native）
+    CliNativeVersionUpdate.py       CLI 原生包（aha-cli-native）
+
+用途：把「去发布页找最新的 V*-aha-{desktop,cli}-native 预发行版、下载本平台 zip、
 解压、把可执行文件放到 Dist/」这一串手工步骤压成一条命令（Windows 为例）：
 
     python3 Script\Python\DesktopNativeVersionUpdate.py
 
-（POSIX 下把路径分隔符换成 `/`：`python3 Script/Python/DesktopNativeVersionUpdate.py`；
-若本机命令是 `python` 而非 `python3`，换成 `python` 即可。）
+（POSIX 下把路径分隔符换成 `/`；若本机命令是 `python` 而非 `python3`，换成 `python` 即可。
+Windows 一键入口：`Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cmd`。）
 
 流程（每一步都会打印出来，可加 --dry-run 先预览）：
 
@@ -70,25 +80,59 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPO = "ACANX/AHA"
 DEFAULT_JDK = "25"
-#: 已知的 JDK 分支：未显式指定 --jdk 时按此顺序兜底（见 DesktopNative.yml 的 matrix）
+#: 已知的 JDK 分支：未显式指定 --jdk 时按此顺序兜底（见各原生工作流的 matrix）
 KNOWN_JDKS = ("25", "27")
-#: 预发行版 tag 的后缀（见 DesktopNative.yml 的 native-publish 作业）
-TAG_SUFFIX = "-aha-desktop-native"
-#: 发布资产的前缀
-ASSET_PREFIX = "AHA-Desktop-Native-"
-#: 记录「本地装的是哪一版」的清单文件（落在 Dist/，该目录已被 .gitignore 忽略）
-STATE_FILE = ".aha-desktop-native.json"
-#: 可执行文件名（发布包内就是这个 basename）
-EXECUTABLE_NAMES = ("aha-desktop-native.exe", "aha-desktop-native")
 CHUNK = 1 << 20
-USER_AGENT = "AHA-DesktopNativeVersionUpdate/1.0 (+https://github.com/ACANX/AHA)"
+
+
+@dataclass(frozen=True)
+class Kind:
+    """一种原生包。除下表这五项外，两种种类的取件逻辑完全相同。"""
+
+    key: str          #: configure() 的参数
+    title: str        #: 面向用户的名称
+    tag_suffix: str   #: 预发行版 tag 后缀（见各工作流的 native-publish 作业）
+    asset_prefix: str  #: 发布资产前缀
+    exe_base: str     #: 可执行文件 basename（不带 .exe）
+    state_file: str   #: 记录「本地装的是哪一版」的清单（落在 Dist/）
+    entry: str        #: 用户入口脚本名（帮助 / 文档里展示）
+    workflow: str     #: 产出它的工作流（报错时指路）
+
+
+#: 支持的种类。`CliNativeVersionUpdate.py` 就是靠这里多出的一行换来整套能力的。
+KINDS = {
+    "desktop": Kind(
+        key="desktop", title="桌面端原生镜像",
+        tag_suffix="-aha-desktop-native", asset_prefix="AHA-Desktop-Native-",
+        exe_base="aha-desktop-native", state_file=".aha-desktop-native.json",
+        entry="DesktopNativeVersionUpdate.py", workflow="DesktopNative.yml",
+    ),
+    "cli": Kind(
+        key="cli", title="CLI 原生镜像",
+        tag_suffix="-aha-cli-native", asset_prefix="AHA-Cli-Native-",
+        exe_base="aha-cli-native", state_file=".aha-cli-native.json",
+        entry="CliNativeVersionUpdate.py", workflow="CliNative.yml",
+    ),
+}
+
+# ── 当前生效的种类（由 configure() 绑定；下面这组常量都是它的投影）──────────────
+
+#: 当前种类
+KIND = KINDS["desktop"]
+#: 预发行版 tag 的后缀
+TAG_SUFFIX = KIND.tag_suffix
+#: 发布资产的前缀
+ASSET_PREFIX = KIND.asset_prefix
+#: 记录「本地装的是哪一版」的清单文件（落在 Dist/，该目录已被 .gitignore 忽略）
+STATE_FILE = KIND.state_file
+#: 可执行文件名（发布包内就是这个 basename）
+EXECUTABLE_NAMES = (KIND.exe_base + ".exe", KIND.exe_base)
+#: 下载请求的 User-Agent（GitHub 要求带）
+USER_AGENT = "AHA-NativeVersionUpdate/1.1 (+https://github.com/ACANX/AHA)"
 
 #: 文档 / 帮助里统一展示的用法（Windows 路径分隔符）。写成 raw 字符串，
 #: 避免 `\P` 被当成转义序列（Python 会给 SyntaxWarning）。
-USAGE_CMD = r"python3 Script\Python\DesktopNativeVersionUpdate.py"
-
-#: tag -> 版本。构建号补零到 5 位（DesktopNative.yml 用 printf '%05d'）。
-TAG_RE = re.compile(rf"^[Vv]?(\d+(?:\.\d+)*?)\.(\d+){TAG_SUFFIX}$")
+USAGE_CMD = rf"python3 Script\Python\{KIND.entry}"
 
 #: 本机平台 -> 发布用的平台标签（顺序即优先级）。注意 Linux 对应的标签是 ubuntu-*，
 #: 不是 linux-*；macOS 当前只发 arm64。
@@ -177,7 +221,7 @@ def format_size(num: float) -> str:
 
 
 def parse_tag(tag: str) -> Version | None:
-    """`V0.1.1.00040-aha-desktop-native` -> Version(0.1.1, 40, 0.1.1.00040)。"""
+    """`V0.1.1.00040<TAG_SUFFIX>` -> Version(0.1.1, 40, 0.1.1.00040)。"""
     match = TAG_RE.match(tag.strip())
     if not match:
         return None
@@ -198,17 +242,47 @@ def platform_labels() -> list[str]:
 
 def executable_name(label: str) -> str:
     """目标平台上的可执行文件名（由发布平台标签决定，而不是本机 OS）。"""
-    return "aha-desktop-native.exe" if label.startswith("windows") else "aha-desktop-native"
+    return f"{KIND.exe_base}.exe" if label.startswith("windows") else KIND.exe_base
 
 
 def asset_name(version: Version, label: str, jdk: str) -> str:
-    """发布资产名：`AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`。"""
+    """发布资产名：`<资产前缀><版本>-<平台>-jdk<JDK>.zip`。"""
     return f"{ASSET_PREFIX}{version.text}-{label}-jdk{jdk}.zip"
 
 
-ASSET_RE = re.compile(
-    rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$"
-)
+#: tag -> 版本。构建号补零到 5 位（工作流用 printf '%05d'）。
+#: 两个正则都随 configure() 重建——它们直接由 TAG_SUFFIX / ASSET_PREFIX 派生。
+def _rebuild_patterns() -> None:
+    global TAG_RE, ASSET_RE
+    TAG_RE = re.compile(rf"^[Vv]?(\d+(?:\.\d+)*?)\.(\d+){TAG_SUFFIX}$")
+    ASSET_RE = re.compile(
+        rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$"
+    )
+
+
+TAG_RE: re.Pattern[str]
+ASSET_RE: re.Pattern[str]
+_rebuild_patterns()
+
+
+def configure(kind: str | Kind) -> Kind:
+    """选定原生包种类：重绑上面那组模块级常量（引擎函数都在调用时读它们）。
+
+    就地改全局而不是「到处传参」，正是本引擎能一套逻辑两种包的原因；
+    单线程 CLI 下没有竞态问题。
+    """
+    global KIND, TAG_SUFFIX, ASSET_PREFIX, STATE_FILE, EXECUTABLE_NAMES, USER_AGENT, USAGE_CMD
+    KIND = KINDS[kind] if isinstance(kind, str) and kind in KINDS else kind
+    if not isinstance(KIND, Kind) or KIND.key not in KINDS:
+        raise UpdateError(f"未知的原生包种类；可用：{' / '.join(KINDS)}")
+    TAG_SUFFIX = KIND.tag_suffix
+    ASSET_PREFIX = KIND.asset_prefix
+    STATE_FILE = KIND.state_file
+    EXECUTABLE_NAMES = (KIND.exe_base + ".exe", KIND.exe_base)
+    USER_AGENT = f"AHA-NativeVersionUpdate/1.1 ({KIND.key}; +https://github.com/ACANX/AHA)"
+    USAGE_CMD = rf"python3 Script\Python\{KIND.entry}"
+    _rebuild_patterns()
+    return KIND
 
 
 # ── 网络 ─────────────────────────────────────────────────────────────────────
@@ -597,12 +671,12 @@ def extract_executable(archive_path: Path, target: Path) -> None:
             name
             for name in archive.namelist()
             if not name.endswith("/")
-            and Path(name).name.startswith("aha-desktop-native")
+            and Path(name).name.startswith(KIND.exe_base)
             and not Path(name).name.lower().endswith((".txt", ".json", ".md", ".html"))
         ]
         if not entries:
             raise UpdateError(
-                f"{archive_path.name} 里没有 aha-desktop-native 可执行文件；"
+                f"{archive_path.name} 里没有 {KIND.exe_base} 可执行文件；"
                 f"包内内容：{archive.namelist()}"
             )
         entry = sorted(entries, key=lambda name: (Path(name).name not in EXECUTABLE_NAMES,
@@ -645,7 +719,7 @@ def write_state(dist: Path, payload: dict) -> None:
 
 def print_list(repo: str, releases: list[Release], labels: list[str], jdk: str,
                jdk_explicit: bool, timeout: float, limit: int) -> None:
-    print(f"{repo} 最近的 {TAG_SUFFIX} 版本（本平台优先：{' / '.join(labels)}）：")
+    print(f"{repo} 最近的 {KIND.title}（{TAG_SUFFIX}）版本（本平台优先：{' / '.join(labels)}）：")
     shown = 0
     for release in releases:
         if shown >= limit:
@@ -743,15 +817,15 @@ def asset_label(asset: Asset, labels: list[str]) -> str:
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="DesktopNativeVersionUpdate.py",
-        description="从 GitHub Releases 取最新的 AHA 桌面端原生镜像，安装到 Dist/。",
+        prog=KIND.entry,
+        description=f"从 GitHub Releases 取最新的 AHA {KIND.title}，安装到 Dist/。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "示例（Windows；POSIX 下把反斜杠换成 `/`）：\n"
             f"  {USAGE_CMD}            # 装最新版\n"
             f"  {USAGE_CMD} --list     # 看看有哪些版本\n"
             f"  {USAGE_CMD} --dry-run  # 只预览链接\n"
-            f"  {USAGE_CMD} --tag V0.1.1.00038-aha-desktop-native\n"
+            f"  {USAGE_CMD} --tag V0.1.1.00038{TAG_SUFFIX}\n"
         ),
     )
     parser.add_argument("--repo", default=DEFAULT_REPO, help=f"GitHub 仓库（默认 {DEFAULT_REPO}）")
@@ -780,7 +854,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, kind: str | Kind | None = None) -> int:
+    """跑一次更新。`kind` 给定则先绑定种类（两个薄壳入口走的都是这条路径）。"""
+    configure(kind or KIND)
     configure_stdio()
     args = parse_args(argv)
     try:
