@@ -232,13 +232,23 @@ class AhaDesktopSmokeTest {
                 .as("/help 的输出应当列出命令").isTrue();
 
         // ↑ / ↓ 翻历史，且不丢草稿
+        //
+        // 注意：必须先发一条**普通内容**进历史，不能拿 /help 当历史项——
+        // 文本一旦以 / 开头，候选弹层会立刻弹出，而**弹层打开时 ↑/↓ 归弹层用**
+        // （设计行为，见 DesktopShell 那个事件过滤器的注释）。
+        // 拿 /help 当历史项会把「翻历史」测成「翻候选」——那是断言写错，不是产品缺陷。
+        onUi(() -> {
+            input.setText("上一条普通内容");
+            input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
+                    KeyCode.ENTER, false, false, false, false));
+        });
         onUi(() -> {
             input.setText("随手打的草稿");
             input.positionCaret(input.getText().length());
         });
         onUi(() -> input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.UP,
                 false, false, false, false)));
-        assertThat(uiGet(() -> input.getText())).isEqualTo("/help");
+        assertThat(uiGet(() -> input.getText())).isEqualTo("上一条普通内容");
         onUi(() -> input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.DOWN,
                 false, false, false, false)));
         assertThat(uiGet(() -> input.getText())).as("翻回草稿").isEqualTo("随手打的草稿");
