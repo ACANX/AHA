@@ -395,6 +395,32 @@ class NativeImageMetadataTest {
         }
     }
 
+    /**
+     * `prism_d3d.dll` 按名填写的 OS / 驱动信息字段（issue #60）。
+     *
+     * <p>{@code D3DPipeline.printDriverInformation(adapter)} 会 new 一个
+     * {@code D3DDriverInformation}，交给 **native 方法**
+     * {@code nGetDriverInformation(int, D3DDriverInformation)} 去填；
+     * 实测 {@code prism_d3d.dll} 里含 {@code osMajorVersion} / {@code osBuildNumber} /
+     * {@code driverName} / {@code vendorID} / {@code psVersionMajor} / {@code maxSamples}
+     * 这些**字段名**——即 native 用 {@code GetFieldID} 按名访问。</p>
+     *
+     * <p>未登记时字段保持 Java 默认值（0 / null），于是 {@code prism.verbose} 打印全零：
+     * {@code Windows version 0.0 build 0}、{@code Driver null, version 0.0.0.0}、
+     * {@code Device : ven_0000, dev_0000, subsys_00000000}、{@code Max Multisamples supported: 0}——
+     * 与 issue #60 的真机日志逐项一致。注意本类在**反射**侧不需要登记：
+     * Java 侧从来不用 {@code Class.forName} 加载它，是 native 拿着 Java 侧传进来的对象
+     * 用 {@code GetObjectClass} + {@code GetFieldID} 回写字段。</p>
+     */
+    @Test
+    void jniConfigRegistersPrismD3dDriverInformationFields() throws IOException {
+        String json = Files.readString(JNI_CONFIG);
+        assertThat(entryFor(json, "com.sun.prism.d3d.D3DDriverInformation"))
+                .as("D3DDriverInformation 的字段由 prism_d3d.dll 按名回写；"
+                        + "未登记时字段保持 0 / null，prism.verbose 打印的 OS 与驱动信息全是零值（issue #60）")
+                .contains("allDeclaredFields");
+    }
+
     @Test
     void jniConfigIsAnArrayWithoutDuplicateEntries() throws IOException {
         assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();
