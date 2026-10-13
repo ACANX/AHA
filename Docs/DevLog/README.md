@@ -18,7 +18,7 @@
 | 目录 / 载体 | 记什么 |
 |---|---|
 | `Docs/DevLog/`（本目录） | **已完成事项的开发记录** |
-| `Docs/Troubleshooting/` | 问题排查 / 缺陷定位 / 事故复盘（`TS-yyyyMM-PascalCaseTitle.md`） |
+| `Docs/Troubleshooting/` | 问题排查 / 缺陷定位 / 事故复盘（`TS-yyMM-NNN-英文词序.md`） |
 | `Docs/TODO/` | 待办清单（`TD-PPPPP-*.md`）与进度看板 |
 | GitHub Issue | 需要长期跟踪的遗留问题（含验收标准） |
 

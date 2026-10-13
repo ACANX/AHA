@@ -355,16 +355,16 @@ aha/
         └── ExtensionLifecycle.svg
     ├── Troubleshooting/
     │   ├── README.md
-    │   ├── TS-202610-CiRequiredCheckNameMismatch.md
-    │   ├── TS-202610-CoverageGateInvisible.md
-    │   ├── TS-202610-FakeMergeDirtyPr.md
-    │   ├── TS-202610-ArtifactNotFoundInCentral.md
-    │   ├── TS-202610-RulesetBlocksSingleMaintainer.md
-    │   ├── TS-202610-VersionBumpMissedModules.md
-    │   ├── TS-202610-AtomicReplaceSilentFailure.md
-    │   ├── TS-202610-ProviderConfigDialogTraps.md
-    │   ├── TS-202610-DesktopFeatureBugs.md
-    │   └── TS-202610-NativeModuleSilentTraps.md
+    │   ├── TS-2610-001-CI-Required-Check-Name-Mismatch.md
+    │   ├── TS-2610-002-Coverage-Gate-Invisible.md
+    │   ├── TS-2610-003-Fake-Merge-Dirty-PR.md
+    │   ├── TS-2610-004-Artifact-Not-Found-In-Central.md
+    │   ├── TS-2610-005-Ruleset-Blocks-Single-Maintainer.md
+    │   ├── TS-2610-006-Version-Bump-Missed-Modules.md
+    │   ├── TS-2610-007-Atomic-Replace-Silent-Failure.md
+    │   ├── TS-2610-008-Provider-Config-Dialog-Traps.md
+    │   ├── TS-2610-009-Desktop-Feature-Bugs.md
+    │   └── TS-2610-010-Native-Module-Silent-Traps.md
     └── DevLog/
         └── README.md
 ```
@@ -479,7 +479,7 @@ aha/
 | v3.59.0 | 2026-10-08 | 技术栈表 OpenJFX 行补「平台分类器由父 POM 的 javafx-* profile 解析」，指向 DesktopDesign.md 第 5 节 | @ACANX |
 | v3.60.0 | 2026-10-08 | §2 模块表补 `aha-desktop` 的真实依赖（common / tool runtime / JavaFX）；§3 目录树展开桌面端（描述符、fx 契约、测试）；§6 由「0.1 仅占位」改写为「0.2 实装」并记线程与打包要点 | @ACANX |
 | v3.61.0 | 2026-10-08 | §3.1 实测覆盖率按 0.1.1 刷新（621 用例 / 合计行覆盖 80.8%（4087/5061）），补 `aha-desktop` 用例数 | @ACANX |
-| v3.62.0 | 2026-10-08 | 附录 A 收录 `TS-202610-AtomicReplaceSilentFailure.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
+| v3.62.0 | 2026-10-08 | 附录 A 收录 `TS-2610-007-Atomic-Replace-Silent-Failure.md`（下移资源 + 桌面端首行代码的 5 个坑） | @ACANX |
 | v3.63.0 | 2026-10-08 | §6 桌面端小节：启动改为走与 CLI 共用的 `AhaBootstrap`（配置加载/日志装配/密钥库） | @ACANX |
 | v3.64.0 | 2026-10-08 | §6 桌面端小节补界面骨架（三栏与折叠三条路径） | @ACANX |
 | v3.65.0 | 2026-10-09 | 新增 `Docs/Design/DesktopNativeUpdateDesign.md`（桌面端原生镜像的版本更新脚本设计） | @ACANX |
@@ -3796,21 +3796,21 @@ Closes #123
 
 ### Docs/Troubleshooting/
 
-问题排查与事故复盘，按 `TS-yyyyMM-大驼峰英文标题.md` 命名（见 `DocumentationSpec.md` §1）；
+问题排查与事故复盘，按 `TS-yyMM-NNN-英文词序.md` 命名（见 `DocumentationSpec.md` §1）；
 完整索引见 `Docs/Troubleshooting/README.md`。
 
 | 文件 | 说明 |
 |---|---|
-| `TS-202610-CiRequiredCheckNameMismatch.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
-| `TS-202610-CoverageGateInvisible.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
-| `TS-202610-FakeMergeDirtyPr.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
-| `TS-202610-ArtifactNotFoundInCentral.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
-| `TS-202610-RulesetBlocksSingleMaintainer.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
-| `TS-202610-VersionBumpMissedModules.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
-| `TS-202610-AtomicReplaceSilentFailure.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
-| `TS-202610-ProviderConfigDialogTraps.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
-| `TS-202610-DesktopFeatureBugs.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
-| `TS-202610-NativeModuleSilentTraps.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
+| `TS-2610-001-CI-Required-Check-Name-Mismatch.md` | CI 必需检查因矩阵作业名变更而永久挂起（`TODO.md` `F-08`） |
+| `TS-2610-002-Coverage-Gate-Invisible.md` | 覆盖率门禁静默不可自证（`TODO.md` `F-09`） |
+| `TS-2610-003-Fake-Merge-Dirty-PR.md` | PR #8 永久 `dirty`：一次「假合并」断开血缘，用 `-s ours` 接回（`TODO.md` `F-12`） |
+| `TS-2610-004-Artifact-Not-Found-In-Central.md` | CI 插件依赖解析失败，而 artifact 确实存在（`TODO.md` `F-13`） |
+| `TS-2610-005-Ruleset-Blocks-Single-Maintainer.md` | PR 卡死：规则集要求了「无人能批准」与「没人生产」的检查（`TODO.md` `G-02`/`G-04`） |
+| `TS-2610-006-Version-Bump-Missed-Modules.md` | 版本号切换：只改根 POM 会 BUILD SUCCESS 但静默产出旧版本 |
+| `TS-2610-007-Atomic-Replace-Silent-Failure.md` | 下移版本号/日志装配 + 桌面端首行代码：原子替换静默失效、`log4j2.xml` 误判、测试期望错、用例数心算错 |
+| `TS-2610-008-Provider-Config-Dialog-Traps.md` | 供应商配置改造：主题没铺到对话框、可编辑 ComboBox 失焦丢值、坏配置让界面崩、界面校验与 core 不同源、自动化污染真实配置 |
+| `TS-2610-009-Desktop-Feature-Bugs.md` | 0.2 六项功能（卡片 / 会话列表 / 日志 / 输入 / 授权 / 主题）：测试抓出 5 处「想当然」的实现错误 + **`.gitignore` 静默吃掉 8 个源文件导致 CI 失败** |
+| `TS-2610-010-Native-Module-Silent-Traps.md` | 新增原生镜像试验模块与工作流：`-am` 不带 profile 模块、模块 groupId 覆盖父 POM、「中央仓库找不到」其实是坐标错、负缓存、拷贝步骤不删旧文件、POM 命名空间版版本解析静默为空 |
 
 ### Docs/DevLog/
 

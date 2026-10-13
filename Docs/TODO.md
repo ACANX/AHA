@@ -74,7 +74,7 @@
 | v0.35.0 | 2026-10-08 | 真机暴露 issue #37（Glass 初始化处 JNI `FindClass` 失败 → segfault）；新增 `jni-config.json`（62 类，扫描 openjfx 三平台 native 源码得到）；`N-16` 进入第二轮待验证 | @ACANX |
 | v0.36.0 | 2026-10-09 | 真机（#37 修复后）暴露 issue #39（`WinWindow._initIDs` 查自己声明的 `notifyMoving` → `NoSuchMethodError`）；改扫 `Get*ID` 目标类，`jni-config.json` 由 62 → **85** 条（Win* / Mac* 平台实现类 + `EventLoop`）；新增 `G-10`；`N-16` 进入第三轮 | @ACANX / CNXNC |
 | v0.37.0 | 2026-10-09 | 真机（#39 修复后）首次进到 GUI，但暴露 issue #41（效果 peer 动态类名未登记 → `Could not create peer`，控件画不出）；扫描 javafx-graphics 25 jar 登记 **99** 个具体 peer，`reachability-metadata.json` 由 340 → **439** 条；新增 `N-23`、`G-11` | @ACANX / CNXNC |
-| v0.38.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `TS-202610-LauncherMissingLibOnSourceRoot.md` | @ACANX |
+| v0.38.0 | 2026-10-09 | `D-02` 补记：`bin/AhaDesktop.{bat,sh}` 支持源码检出布局（无 `lib/` 时按平台解压 `Dist/aha-desktop-*.zip` 后启动），修「源码根运行报找不到 lib、而提示的 `clean package` 走不通」；新增 `TS-2610-024-Launcher-Missing-Lib-On-Source-Root.md` | @ACANX |
 | v0.39.0 | 2026-10-09 | 新增两个脚本：`Script/Python/DesktopDistBuild.py`（构建便携包并自证）与 `DesktopDistExtract.py`（解压并更新 `Dist/lib`、`Dist/bin`，清理旧桌面端独占 jar）；新增命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，已纳入版本控制，由 CLI assembly 与 extract 脚本重建，且 `mvn clean` 不删）；`BuildGuide.md` §3.1.1 同步 | @ACANX |
 | v0.40.0 | 2026-10-09 | 构建输出目录全仓统一为**大驼峰 `Dist`**（POM 的 outputDirectory / `finalName`、CI 工作流路径、启动脚本、忽略规则与文档）；`Dist/README.commands.md` 纳入版本控制（`.gitignore` 放行、clean 排除、随 assembly/extract 重建）；新增 `G-12`（推送本分支并提 PR） | @ACANX |
 | v0.41.0 | 2026-10-09 | 真机暴露 issue #44（默认主题不跟随系统、切主题残留、暗色下标题对比度低、字体差异）；修掉前三类确定性缺陷（`SystemTheme` 三级回退 + 系统配色订阅、硬编码色改读 `Palette`、裸控件补主题登记、弹层与右键菜单重刷）；字体差异遗留，**另开 issue #48 长期跟踪**（本文件留索引 `N-24`），新增 `G-13` | @ACANX / CNXNC |
@@ -742,7 +742,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       ③ `native-publish` 真正创建 `native-v<版本>` 预发行版并挂上 zip。
       背景：2026-10-08 事故——`native.skip` 的默认值写在模块自己的 `<properties>` 里，
       赢过了父 POM 中 profile 的覆盖，导致 native-image 被静默跳过，
-      CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-202610-NativeSkipSilentOverride.md`）。
+      CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-2610-014-Native-Skip-Silent-Override.md`）。
 - [ ] **N-11**：确认 `native-*` 作业**没有**被加进任何分支保护的必需检查
       （它现在即使失败也不会红，但契约上仍不该出现，见 `BuildSpec.md` §8.1）。
       背景：修完 #26（主类注册）后，二进制下一处报 `ClassNotFoundException:
@@ -753,12 +753,12 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       **第一轮真机结果（2026-10-08）**：#35 的反射修复生效，但暴露下一层——
       Glass 初始化处 `NoClassDefFoundError: java/lang/Runnable`（issue #37，JNI 可达类未注册）。
       已补 `jni-config.json`（62 条，静态扫描 openjfx 三平台 native 源码的 `FindClass`），
-      待 CI 重出包后复跑；见 [TS-202610-JniFindClassSegfault.md](Troubleshooting/TS-202610-JniFindClassSegfault.md)。
+      待 CI 重出包后复跑；见 [TS-2610-021-JNI-Find-Class-Segfault.md](Troubleshooting/TS-2610-021-JNI-Find-Class-Segfault.md)。
       **第二轮真机结果（2026-10-09）**：JNI 可达类修好后，暴露下一层——
       `WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`（issue #39）：
       平台实现类**自己声明**的成员没登记（#37 只扫了 `FindClass` 字面量，平台子类不经 `FindClass`）。
       已改扫 `Get*ID` 的目标类，`jni-config.json` 由 62 条补到 **85 条**（Win* / Mac* 平台实现类 +
-      `EventLoop`），待 CI 重出包后复跑；见 [TS-202610-WinWindowJniMemberMissing.md](Troubleshooting/TS-202610-WinWindowJniMemberMissing.md)。
+      `EventLoop`），待 CI 重出包后复跑；见 [TS-2610-022-Win-Window-JNI-Member-Missing.md](Troubleshooting/TS-2610-022-Win-Window-JNI-Member-Missing.md)。
       **最终真机结果（2026-10-09，版本 `0.1.1.00054`）**：三层全部通过——原生包双击即可开窗，
       不再出现 `ClassNotFoundException` / `NoClassDefFoundError` / `NoSuchMethodError`，
       可正常进入 GUI 并完成交互；issue #35 / #37 / #39 均已关闭。
@@ -766,7 +766,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       `MissingReflectionRegistrationError` / `NoClassDefFoundError`；② 能完成一次真实对话（与 `N-14` 合并验证）；
       ③ 若仍缺类名，按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与
       对应 `DevLog`。
-      依据：[TS-202610-QuantumToolkitMissing.md](Troubleshooting/TS-202610-QuantumToolkitMissing.md)、
+      依据：[TS-2610-019-Quantum-Toolkit-Missing.md](Troubleshooting/TS-2610-019-Quantum-Toolkit-Missing.md)、
       `Docs/Design/DesktopNativeDesign.md` §6.1。
 - [ ] **N-17**：改用 GraalVM tracing agent 采集可达性元数据（手写清单的「抄底」方案）。
       背景：`N-16` 与 issue #35 已证明——**手工枚举只能做到「已知缺口已闭」，无法证明完整**；
@@ -798,12 +798,12 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       验收标准：三平台元数据分别覆盖各自的 Glass / Prism 实现类；产物自证与
       `NativeImageMetadataTest` 仍绿。
       **部分闭环（2026-10-09）**：issue #39 的静态扫描（`Get*ID` 目标类）已把
-      Win* / Mac* 平台实现类补进 `jni-config.json`（见 [TS-202610-WinWindowJniMemberMissing.md](Troubleshooting/TS-202610-WinWindowJniMemberMissing.md)）；
+      Win* / Mac* 平台实现类补进 `jni-config.json`（见 [TS-2610-022-Win-Window-JNI-Member-Missing.md](Troubleshooting/TS-2610-022-Win-Window-JNI-Member-Missing.md)）；
       但那是「已知缺口已闭」，agent 在两个平台上的实采仍待做，Prism 侧实现类同样待采。
       背景：issue #41——修完 #35/#37/#39 后原生桌面端首次进到 GUI，但渲染到第一个用阴影效果的
       控件时报 `Could not create peer LinearConvolveShadow`，控件画不出。已对 javafx-graphics 25 的 jar
       扫描 `com/sun/scenario/effect/impl/**/*Peer`，把 99 个具体 peer 全部登记进
-      `reachability-metadata.json`（见 [TS-202610-PrismEffectPeerMissing.md](Troubleshooting/TS-202610-PrismEffectPeerMissing.md)）。
+      `reachability-metadata.json`（见 [TS-2610-023-Prism-Effect-Peer-Missing.md](Troubleshooting/TS-2610-023-Prism-Effect-Peer-Missing.md)）。
       验收标准：① 下载 Windows 原生包，双击能开窗、**控件正常绘制**（无 `Could not create peer`）
       ；② 走一遍窗口/控件/主题相关效果路径（阴影 / 颜色调整 / 混合等）；③ 若仍缺类，
       按同一格式补进元数据并回写 `DesktopNativeDesign.md` §6.1 与对应 `DevLog`。
@@ -815,7 +815,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       本条目只作索引，不在这里维护细节；#48 关闭后把本条目改为「已完成」并回填结论。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #48 验证。
 
-      **调研结论（2026-10-09，见 [TS-202610-NativeFontRenderingDiff.md](Troubleshooting/TS-202610-NativeFontRenderingDiff.md)）**：
+      **调研结论（2026-10-09，见 [TS-2610-030-Native-Font-Rendering-Diff.md](Troubleshooting/TS-2610-030-Native-Font-Rendering-Diff.md)）**：
       ① **DPI 缩放基本排除**——HiDPI 缩放已 opt-in，窗口尺寸已按 `outputScale` 换算；
       ② **「Prism 回退到软件管线导致发虚」已用像素实验证伪**——SW 管线下
       `prism.lcdtext=true/false` 的产物不同（4375 B / 3025 B，md5 不同），软件管线同样有次像素抗锯齿；
@@ -833,7 +833,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       依赖：`G-15`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
       长期跟踪载体：**issue #49**（现象、截图与验收标准以该 Issue 为准）；本条目只作索引。
       修复由 PR #50 提交：`Palette.theme()` 去缓存、逐个节点重刷异常隔离、搜索框 / 输入框 /
-      会话单元格 / 菜单栏 / 滚动区显式套主题（见 [TS-202610-DarkModeControlColors.md](Troubleshooting/TS-202610-DarkModeControlColors.md)）。
+      会话单元格 / 菜单栏 / 滚动区显式套主题（见 [TS-2610-026-Dark-Mode-Control-Colors.md](Troubleshooting/TS-2610-026-Dark-Mode-Control-Colors.md)）。
       依赖：`G-13`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 #49 验证。
 
       第三轮（v0.47.0）：真机报「亮色 / 跟随系统下输入框、发送按钮、下拉框、滚动条背景全黑，
@@ -844,10 +844,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
       排在 modena 之后）+ `Palette` 定义 `-fx-aha-*` 变量并把 modena 中间量换成字面量。
       验收追加：① 亮色下输入框 / 下拉框底为浅色；② 「发送」按钮可见且有边框；
       ③ 会话列表中栏滚动条的轨道与滑块可见；④ 上述四项在亮 ↔ 暗切换后颜色同步变化。
-      见 [TS-202610-ModenaCssFunctionFailure.md](Troubleshooting/TS-202610-ModenaCssFunctionFailure.md)。
+      见 [TS-2610-029-Modena-CSS-Function-Failure.md](Troubleshooting/TS-2610-029-Modena-CSS-Function-Failure.md)。
 - [ ] **N-26**：真机验证预发行包显示带构建号的版本（issue #46）。
       长期跟踪载体：**issue #46**；本条目只作索引。
-      修复由本次 PR 提交（见 [TS-202610-BuildVersionPreRelease.md](Troubleshooting/TS-202610-BuildVersionPreRelease.md)）。
+      修复由本次 PR 提交（见 [TS-2610-027-Build-Version-Pre-Release.md](Troubleshooting/TS-2610-027-Build-Version-Pre-Release.md)）。
       验收标准：① 桌面端「关于」显示形如 `0.1.1.000XX` 的构建版本；② CLI 启动页顶栏与 `/help`
       显示同一构建号；③ `aha --version` 同样显示；④ 正式发版（`Release.yml`）仍显示基线版本。
       依赖：`G-14`（推送并提 PR）→ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 #46 验证。
@@ -889,7 +889,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 编号 | 事项 | 阻塞什么 | 验收标准 | 状态 |
 | ---- | ---- | -------- | -------- | ---- |
 | ~~G-01~~ | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
-| ~~G-02~~ | ~~**分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表~~ | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [TS-202610-RulesetBlocksSingleMaintainer.md](Troubleshooting/TS-202610-RulesetBlocksSingleMaintainer.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ✗ **不做**（2026-10-10 决定） |
+| ~~G-02~~ | ~~**分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表~~ | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [TS-2610-005-Ruleset-Blocks-Single-Maintainer.md](Troubleshooting/TS-2610-005-Ruleset-Blocks-Single-Maintainer.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ✗ **不做**（2026-10-10 决定） |
 | G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
 | G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
 | G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
@@ -924,7 +924,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 ```
 CHANGELOG.md
 Docs/AHA/AHA-Design-V1.md
-Docs/Troubleshooting/TS-202610-FakeMergeDirtyPr.md
+Docs/Troubleshooting/TS-2610-003-Fake-Merge-Dirty-PR.md
 Docs/DevSpec/BuildSpec.md
 Docs/DevSpec/ReleaseProcess.md
 Docs/TODO.md

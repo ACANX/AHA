@@ -30,7 +30,7 @@ metadata:
 | 待办清单与进度 | `Docs/TODO/` | `README.md`（固定名） | [README](../../../Docs/TODO/README.md) |
 | 单个待办详情 | `Docs/TODO/` | `TD-PPPPP-大驼峰英文标题.md`（五位从 `00001` 全局自增） | 同上；内容参考对应 Issue |
 | 已完成事项 | `Docs/DevLog/` | `yyyyMMdd-HH.md` | [README](../../../Docs/DevLog/README.md)（含完整模板） |
-| 问题排查 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyyyMM-大驼峰英文标题.md` | [README](../../../Docs/Troubleshooting/README.md) + [TS-Template.md](../../../Docs/Troubleshooting/TS-Template.md) |
+| 问题排查 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyMM-NNN-英文词序.md` | [README](../../../Docs/Troubleshooting/README.md) + [TS-Template.md](../../../Docs/Troubleshooting/TS-Template.md) |
 | 做不到 / 已暂缓的结论 | `Docs/PLAN.md` | 追加小节 | `DocumentationSpec.md` §4 |
 | 已废弃资料 | `Archive/` | 保持原名 + 头注「已废弃（YYYY-MM-DD）」 | [README](../../../Archive/README.md) |
 

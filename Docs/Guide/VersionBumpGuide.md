@@ -57,7 +57,7 @@
 | 4 处文档版本声明（`README.md` / `AGENTS.md` / `AHA-Design-V1.md` / `ReferenceGuide.md`） | 分发脚本（按**声明行**精确匹配，不碰历史叙述） |
 
 > 收敛前的历史口径（10 处版本号源 + 4 处文档声明，以及「只改根 POM 静默产出旧版本」的教训）
-> 见 §7 与 [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)。
+> 见 §7 与 [TS-2610-006-Version-Bump-Missed-Modules.md](../Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md)。
 
 ### 2.1 权威源：根目录 `version`
 
@@ -213,7 +213,7 @@ git revert <切换提交的 SHA>      # 生成反向提交，保留历史
 
 ## 7. 历史教训（必读）
 
-来自 [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)，
+来自 [TS-2610-006-Version-Bump-Missed-Modules.md](../Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md)，
 每一条都对应上面的某处处置：
 
 1. **「只改一处」的规范必须实测一遍再相信**——判定依据是反应堆的 `Building <模块> <版本>` 行与产物名，不是读 POM；

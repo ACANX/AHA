@@ -4,7 +4,7 @@
 版本号在仓库里有多个「出现位置」：人写的一处（根 POM），机器生成的多处
 （资源过滤后的 `version.properties`、构建产物文件名、CI 打出的 tag）。
 任何一处漏改都会**静默产出错误版本**——0.1.1 那次就是这样把旧版本的包发了
-出去（见 `Docs/Troubleshooting/TS-202610-VersionBumpMissedModules.md`）。
+出去（见 `Docs/Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md`）。
 
 本脚本同时承担两件事：
 
