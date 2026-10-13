@@ -761,12 +761,20 @@ jobs:
             '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
-          if ($ok) { exit 0 }
-
           # 失败时把现场打全（TS-2610-003 的教训）：日志尾部直接写进摘要，不必再去翻原始日志
-          $tail = (($text -split "`n") | Select-Object -Last 40) -join "`n"
-          @('' '```text' $tail '```') | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-          exit 1
+          # 注意：数组字面量里的元素必须**换行分隔**——PS 不接受 `@('a' 'b')` 这种单行空格分隔（会报
+          # Unexpected token，而且是**整段脚本解析失败**，静默变成空跑）。
+          if (-not $ok) {
+            $tail = (($text -split "`n") | Select-Object -Last 40) -join "`n"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value @(
+              ''
+              '```text'
+              $tail
+              '```'
+            )
+            exit 1
+          }
+          exit 0
 
       - name: 改名为发布用资产名
         continue-on-error: true
