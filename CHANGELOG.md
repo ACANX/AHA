@@ -42,8 +42,13 @@
   修复：`jni-config.json` 登记该类的 `allDeclared*`（85 → **86** 条）；
   `NativeImageMetadataTest` 加断言（15 → **16** 条）；工作流 ⑧b 加 `require_jni`；
   **Windows GUI 冒烟加可判别断言**：必须打印 `OS Information:`，且不得出现 `Windows version 0.0 build 0`
-  （改前必然出现 ⇒ 真前/后对照，不是空过断言）。⚠ CI runner 无真实 GPU，
-  驱动名 / 厂商 ID 那几项仍可能是零值，需真机对照。详见 `Docs/Troubleshooting/TS-2610-034`。
+  （改前必然出现 ⇒ 真前/后对照，不是空过断言）。**已实测验证**（PR #150 的 Windows 腿）：改前
+  `Driver null, version 0.0.0.0` / `ven_0000, dev_0000` ⇒ 改后
+  `Driver d3d10warp.dll, version 10.0.26100.33438` / `Pixel Shader version 3.0` / `ven_1414, dev_008C` /
+  `Max Multisamples supported: 4`（`1414` = Microsoft、WARP 软件设备 ⇒ 印证 CI runner 无硬件 GPU，
+  且**驱动那一组字段也已回写成功**）。⚠ 遗留两点：① 驱动取值需真机对照；
+  ② OS 版本虽不再是 `0.0`，但取到 `Windows 8.0 build 9200`——`GetVersionEx` 无 Win10 兼容清单时的
+  兼容性撒谎（同日志驱动版本 `10.0.26100.33438` 证明真实版本远高于此）。详见 `Docs/Troubleshooting/TS-2610-034`。
 - **原生元数据：Windows 手势 / 拖放两条补登记，并纠正 issue #125 的成因判断（2026-10-13）**：
   核验后确认 **「`reflection` 段缺 `WinGestureSupport` / `WinDnDClipboard`」在本仓库不是缺陷**——
   JavaFX 25 的 win jar 里**没有任何 Java 代码 `Class.forName` 它们**（`javap -p -c` 对

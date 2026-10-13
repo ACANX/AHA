@@ -81,8 +81,24 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
 
 - **反向验证（改前）**：改前该串**必然出现**——2026-10-13 两条原生构建的 Windows 腿日志都含
   `Windows version 0.0 build 0` ⇒ 这条断言**不是空过**；
-- **正向验证（改后）**：本修复 PR 的 Windows 原生腿应打印**真实** Windows 版本号
-  （如 `10.0 build 20348`），且摘要里 `OS / 驱动信息：OS Information:=True，全零=False`；
+- **正向验证（改后，已实测 2026-10-13）**：修复 PR [#150](https://github.com/ACANX/AHA/pull/150) 的 Windows 原生腿
+  （job `115292084727`）冒烟 `✅ 通过`（`$ok` 要求 `OS Information:` 命中**且**全零串消失），stdout 变为：
+
+  ```
+  OS Information:
+  	Windows 8.0 build 9200            ← 不再是 0.0 build 0（但仍是兼容性 shim，见 Q3）
+  D3D Driver Information:
+  	Microsoft Basic Render Driver
+  	\\.\DISPLAY1
+  	Driver d3d10warp.dll, version 10.0.26100.33438
+  	Pixel Shader version 3.0
+  	Device : ven_1414, dev_008C, subsys_00000000
+  	Max Multisamples supported: 4
+  ```
+
+  驱动名 / 厂商 ID / PS 版本 / 多重采样**全部变成真实值**：`ven_1414` 是 **Microsoft**、
+  `d3d10warp.dll` 是 **WARP 软件光栅化器** ⇒ 既印证了 runner 无硬件 GPU（与本档预判一致），
+  也证明**驱动那一组字段的回写同样成功了**（不是只有 OS 那一组生效）；
 - **回归**：`NativeImageMetadataTest` 随 `Build` / `Gate` 跑；
 - **真机**：D3D **驱动名 / 厂商 ID / Pixel Shader / Max Multisamples** 这几项依赖真实 GPU，
   CI runner 是无 GPU 的虚拟机 ⇒ **需 ACANX 真机对照**（本机日志里这几项仍可能是零/`null`，不算未修好）。
@@ -125,6 +141,10 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
 - `prism_d3d.dll` 里**含** `osMajorVersion` / `osBuildNumber` / `driverName` / `vendorID` /
   `psVersionMajor` / `maxSamples` / `nGetDriverInformation` 这些**名字**。
 - 两份元数据里 `com.sun.prism.d3d.D3DDriverInformation` 及其字段：**各 0 条**（改前）。
+- **修复后（PR [#150](https://github.com/ACANX/AHA/pull/150) 的 Windows 腿，job `115292084727`）**：
+  driver / 厂商 / PS 版本 / 多重采样**全部变为真实值**；OS 版本不再是 `0.0 build 0`，
+  但取到的是 `Windows 8.0 build 9200`（兼容性 shim，见 Q3）。
+- 冒烟判定 `通过`（要求 `OS Information:` 命中**且**全零串消失 ⇒ 两条断言都真跑了）。
 
 ### 机制 / 行为模型
 
@@ -156,6 +176,9 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
 | 登记条数（改前） | `grep -c D3DDriverInformation <两份元数据>` | `reachability-metadata.json` = **0**；`jni-config.json` = **0** |
 | jni 条数（改后） | `json.load(jni-config.json)` | **85 → 86** |
 | 断言条数（改后） | `grep -c "@Test" NativeImageMetadataTest.java` | **15 → 16** |
+| 输出全文（改前） | 原生包 stdout（run `38392225804`） | `Windows version 0.0 build 0` / `Driver null, version 0.0.0.0` / `ven_0000, dev_0000` / `Max Multisamples supported: 0` |
+| 输出全文（改后） | 原生包 stdout（job `115292084727`） | `Windows 8.0 build 9200` / `Microsoft Basic Render Driver` / `Driver d3d10warp.dll, version 10.0.26100.33438` / `Pixel Shader version 3.0` / `ven_1414, dev_008C` / `Max Multisamples supported: 4` |
+| 冒烟判定（改后） | 同上 | `✅ GUI 冒烟：通过：命中 [aha-version] 与 [ui-fxml-loaded]，且启动期未崩`（`$ok` 含「`OS Information:` 命中且无全零串」两个条件） |
 
 ## 排除项
 
@@ -172,11 +195,23 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
 
 **Q1 修复后的真实值验证到哪一步**
 
-现状：本档案写作时，修复 PR 的原生 CI 尚未跑完。
-阻塞点：需要看该 PR 的 Windows 腿摘要（`OS Information:=True`、全零 `=False`）与 stdout 里的真实 Windows 版本号；
-D3D 驱动那一组需 **ACANX 真机**对照（按 `IssueTrackingSpec.md` §4，人工判断项以 ACANX 的判断为准）。
+现状：**已在 CI 上验证通过**（2026-10-13，job `115292084727`）：driver 那一组全部为真实值，
+OS 版本不再是 `0.0`；唯一遗留是 OS 版本仍为兼容性 shim 值（**已单列为 Q3**）。
+阻塞点（仅剩真机对照）：D3D **驱动名 / 厂商 ID / 多重采样**在**真实 GPU** 机器上的取值——
+CI runner 是虚拟机（`Microsoft Basic Render Driver`），拿到的是 WARP 软件设备。
+按 `IssueTrackingSpec.md` §4，这类人工判断项以 ACANX 的判断为准。
 
 **Q2 同类漏项还有多少（`prism_d3d` 之外）**
 
 现状：已确认 ⑧b 清单**整段漏了 `prism_d3d` 的字段访问**；未逐一核对 `prism_common` / `decora_sse` / `glass.dll` 之外的原生库。
 阻塞点：需要一次系统性重扫（对每个 dll 抽字符串 + 与 Java 侧字段/方法名求交集），不在本次修复范围内。
+
+**Q3 原生包读到的 Windows 版本仍是兼容性 shim 值（`Windows 8.0 build 9200`）**
+
+现状：字段回写已生效（不再是 `0.0 build 0`），但值是 `8.0 build 9200`——
+这是 `GetVersionEx` 家族在没有「Windows 10 兼容清单」时的经典**兼容性撒谎**。
+**交叉证据**：同一份日志里 D3D 驱动版本是 `10.0.26100.33438`，而 **26100 正是 Windows 11 24H2 的构建号**
+⇒ 系统真实版本远高于 9200，所以这条是**清单问题**（原生 exe 缺 Win10 兼容清单，GraalVM 生成的 exe 默认没有），
+不是「读不到」。
+阻塞点：① 需给原生 exe 补清单；② issue #60 验收标准第 1 条的 **JVM 同机对照**仍未做
+（预期 JVM 侧打印真实版本，因 `java.exe` 自带清单）——这条正好能验证上述机理。
