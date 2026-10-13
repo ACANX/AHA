@@ -659,6 +659,10 @@ jobs:
           # 漏登记时手势与拖放会**静默失效**（只刷 ClassNotFoundException、窗口照常打开）。
           require_jni "com.sun.glass.ui.win.WinGestureSupport" "WinGestureSupport（Windows 手势，issue #125）"
           require_jni "com.sun.glass.ui.win.WinDnDClipboard" "WinDnDClipboard（Windows 拖放剪贴板，issue #125）"
+          # issue #60：prism_d3d.dll 的 nGetDriverInformation 按名回写本类的 OS / 驱动字段；
+          # 漏登记时字段保持 0 / null（「Windows version 0.0 build 0」、ven_0000/dev_0000），
+          # 与 issue #35 / #37 / #39 同族：native 按名访问 Java 成员，closed-world 下拿不到。
+          require_jni "com.sun.prism.d3d.D3DDriverInformation" "D3DDriverInformation（prism_d3d 回写 OS / 驱动信息的字段，issue #60）"
           require_jni "com.sun.glass.ui.mac.MacWindow" "MacWindow（macOS 窗口 JNI 回调）"
           require_jni "com.sun.glass.ui.EventLoop" "EventLoop（三平台嵌套事件循环）"
           require_jni "com.sun.javafx.font.directwrite.DWRITE_MATRIX" "DirectWrite 字体结构体"
@@ -724,7 +728,9 @@ jobs:
         #     ② 命中 `[ui-fxml-loaded]`（界面骨架真的装起来了）
         #     ③ 不得出现 `[ui-fxml-load-failed]`
         #     ④ 不得在 20 秒内以非 0 退出
-        #   ①~④ 任何一条不满足都是**确定的缺陷**（不是环境抖动）⇒ `exit 1`；
+        #     ⑤ 必须打印 `OS Information:`（否则第 ⑥ 条会空过——prism.verbose 没了就没人看得见）
+        #     ⑥ 不得出现 `Windows version 0.0 build 0`（issue #60：prism_d3d 按名回写字段失败的全零指纹）
+        #   ①~⑥ 任何一条不满足都是**确定的缺陷**（不是环境抖动）⇒ `exit 1`；
         #   仍保留 continue-on-error（不挡合并），但用 `::error::` 与摘要里的 ❌ + 日志尾部把真相摆出来。
         if: always() && runner.os == 'Windows' && steps.verify.outputs.produced == 'true'
         continue-on-error: true
@@ -771,6 +777,12 @@ jobs:
           $hasVersion = $text -match '\[aha-version\]'
           $hasLoaded  = $text -match '\[ui-fxml-loaded\]'
           $hasFailed  = $text -match '\[ui-fxml-load-failed\]'
+          # issue #60：OS / 驱动信息由 native（prism_d3d.dll）按名回写 D3DDriverInformation 的字段。
+          # 字段没登记时保持 Java 默认值，打印出来就是「Windows version 0.0 build 0」。
+          # 两条都要看：既要求这段真的打印了（否则下一条会**空过**），又要求它不是全零。
+          # 可判别性：改前该串必然出现（今天两条原生构建都是），改后应当消失 ⇒ 是真「前/后」对照。
+          $hasOsInfo  = $text -match 'OS Information:'
+          $zeroOsInfo = $text -match 'Windows version 0\.0 build 0'
 
           # 把现场打全（TS-2610-003 的教训）。为什么**无条件**打印而不是只在失败时：
           # 判定依赖「捕获到了什么」，而「什么都没捕获到」本身也是一种结论——
@@ -782,13 +794,18 @@ jobs:
           Write-Host '—— stderr（前 25 行）——'
           if (Test-Path $stderr) { Get-Content $stderr -TotalCount 25 | ForEach-Object { Write-Host "ERR| $_" } }
 
-          $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded
+          $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded `
+                -and $hasOsInfo -and (-not $zeroOsInfo)
           if ($hasFailed) {
             $verdict = '失败：界面装载失败（命中 [ui-fxml-load-failed]）'
           } elseif ($exited -and $code -ne 0) {
             $verdict = "失败：启动期以非 0 退出（退出码 ${code}）"
           } elseif (-not $hasLoaded) {
             $verdict = '失败：未命中正面标记 [ui-fxml-loaded]（界面没有装起来）'
+          } elseif ($zeroOsInfo) {
+            $verdict = '失败：OS 信息全零（Windows version 0.0 build 0）——prism_d3d 按名回写字段失败（issue #60 回归）'
+          } elseif (-not $hasOsInfo) {
+            $verdict = '失败：未打印 OS Information（prism.verbose 输出缺失，本步的 #60 断言会空过）'
           } elseif (-not $hasVersion) {
             $verdict = '可疑：命中 [ui-fxml-loaded] 但没有 [aha-version]'
           } else {
@@ -806,9 +823,10 @@ jobs:
             ''
             "- 结论：$verdict"
             "- 正面标记：``[aha-version]``=${hasVersion}，``[ui-fxml-loaded]``=${hasLoaded}，``[ui-fxml-load-failed]``=${hasFailed}"
+            "- OS / 驱动信息：``OS Information:``=${hasOsInfo}，全零（``Windows version 0.0 build 0``）=${zeroOsInfo}"
             "- 退出：exited=${exited}，code=${code}"
             "- 可执行文件：$bin"
-            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，覆盖不到 D3D 真实路径；本步验证的是**界面真的装起来了**。'
+            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，D3D **驱动名 / 厂商 ID 等依赖真实 GPU 的字段仍可能是零值**（runner 是虚拟机）；能在这里判别的是 **Windows 版本号**（与 GPU 无关）。'
             ''
             '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
