@@ -99,6 +99,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-030-Native-Font-Rendering-Diff.md](TS-2610-030-Native-Font-Rendering-Diff.md) | issue #48 调研——原生镜像的字体渲染差异 | 2026-10-09 13:00 | #48 |
 | [TS-2610-031-Dark-Text-CSS-Patch-Failure.md](TS-2610-031-Dark-Text-CSS-Patch-Failure.md) | 暗色下文字仍是黑色——CSS 补丁表不能再查表 | 2026-10-09 14:00 |  |
 | [TS-2610-032-FXML-Missing-Import-And-Smoke-Blind-Spot.md](TS-2610-032-FXML-Missing-Import-And-Smoke-Blind-Spot.md) | FXML 忘了写 import：原生包启动即崩，而构建与冒烟都判了「通过」 | 2026-10-13 13:00 | 见 issue #133 |
+| [TS-2610-033-Sibling-Metadata-Gap-Not-Reproducible.md](TS-2610-033-Sibling-Metadata-Gap-Not-Reproducible.md) | 姊妹工程复现的同族缺口，在本仓库不成立：查找在 native 侧、jni 早已登记（issue #125） | 2026-10-13 19:00 | 见 issue #125 |
 
 ## 3. 维护规则
 
