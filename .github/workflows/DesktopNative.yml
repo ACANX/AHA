@@ -730,6 +730,16 @@ jobs:
           $hasLoaded  = $text -match '\[ui-fxml-loaded\]'
           $hasFailed  = $text -match '\[ui-fxml-load-failed\]'
 
+          # 把现场打全（TS-2610-003 的教训）。为什么**无条件**打印而不是只在失败时：
+          # 判定依赖「捕获到了什么」，而「什么都没捕获到」本身也是一种结论——
+          # 只看 verdict 无法区分「已捕获但没命中标记」与「redirect 压根没生效」。
+          # 这两者的排查方向完全不同，所以两者都要看得见。
+          Write-Host "—— 捕获情况：out=$((Get-Item $stdout -ErrorAction SilentlyContinue).Length) 字节，err=$((Get-Item $stderr -ErrorAction SilentlyContinue).Length) 字节 ——"
+          Write-Host '—— stdout（前 25 行）——'
+          if (Test-Path $stdout) { Get-Content $stdout -TotalCount 25 | ForEach-Object { Write-Host "OUT| $_" } }
+          Write-Host '—— stderr（前 25 行）——'
+          if (Test-Path $stderr) { Get-Content $stderr -TotalCount 25 | ForEach-Object { Write-Host "ERR| $_" } }
+
           $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded
           if ($hasFailed) {
             $verdict = '失败：界面装载失败（命中 [ui-fxml-load-failed]）'
