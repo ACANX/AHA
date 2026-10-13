@@ -1,9 +1,9 @@
 # TS-202610-NativeFontRenderingDiff：issue #48 调研——原生镜像的字体渲染差异
 
-- **日期**：2026-10-09
-- **关联 Issue**：issue #48（原生桌面端字体渲染 / 字体与 JVM 模式不一致）
-- **关联 PR**：PR #58
-- **分支**：`feat/issue-48-render-diagnostics`
+- **日期**：2026-10-09（后续与缓解落地见第 6 节，追加于 2026-10-13）
+- **关联 Issue**：issue #48（原生桌面端字体渲染 / 字体与 JVM 模式不一致）、issue #44（父级）
+- **关联 PR**：PR #58（诊断铺路）
+- **分支**：`feat/issue-48-render-diagnostics`（诊断）、`fix/issue-44-native-text-greyscale`（缓解）
 
 ---
 
@@ -168,6 +168,9 @@ Windows 上 JavaFX 走 `WinFontFinder` + GDI/ClearType 的 hinting，
 **但目前仍是推断。** 要把它变成结论，必须拿到原生包在**真机**上的两组数据：
 **实际管线**与**默认字体族 / 字号 / 字体族数量**。
 
+> **2026-10-13 更新**：真机数据与像素对照已到手，**根因锁定为「抗锯齿方式」而非字体枚举**
+> —— 见下文第 6 节。本节的两条「待排查方向」中，方向②（字体枚举）已被排除。
+
 ## 4. 下一步（本 PR 做的事）
 
 1. **让渲染管线自己说话**：`AhaDesktopApp.main` 里默认打开
@@ -205,6 +208,7 @@ Windows 上 JavaFX 走 `WinFontFinder` + GDI/ClearType 的 hinting，
 
 > 注意：诊断代码**只加日志，不改渲染行为**——在拿到真机数据之前改渲染参数属于猜测，
 > 与项目「先证伪再改」的做法不符。
+> （**2026-10-13 更新**：真机数据已拿到，第 6 节据此落地了缓解措施；该注记只适用于本轮。）
 
 ## 5. 涉及文件清单
 
@@ -213,3 +217,69 @@ Windows 上 JavaFX 走 `WinFontFinder` + GDI/ClearType 的 hinting，
 - `CHANGELOG.md`、`Docs/TODO.md`
 - 调研产物（不入库，留在 `/tmp/n48/`）：`ubuntu.zip`、`aha-desktop-native`、
   `run.log`、`lcd/LcdProbe.java`、`lcd/sw-{true,false}.png`
+
+## 6. 后续（2026-10-10 ~ 10-13）：根因锁定与临时缓解落地
+
+### 6.1 真机数据：字体枚举、实现、管线三项全部排除
+
+ACANX 在 `0.1.1.00061` 上给出原生与 JVM 的对照截图（两张 2560×1600、亮色，可直接逐像素对齐）。
+诊断日志与像素统计合并后的结论：
+
+| 项 | 原生实测 | 结论 |
+| --- | --- | --- |
+| Prism 管线 | `com.sun.prism.d3d.D3DPipeline`（D3D9Ex） | 正常，排除 |
+| 字体实现 | `com.sun.javafx.font.directwrite.DWFactory` | 与系统同路径，排除 |
+| 字体枚举 | 可用字体族 **248** | 完整，排除（第 3 节方向②被否掉） |
+| **抗锯齿方式** | **无彩色边缘 ⇒ 灰度 AA** | **← 根因** |
+
+像素统计（同一坐标系下直接比对）：
+
+| 指标 | JVM 模式 | native | 比值 |
+| --- | --- | --- | --- |
+| **彩色边缘像素**（R/G/B 通道明显不等 ⇒ 次像素抗锯齿的证据） | **165,783** | **9,025** | **18.4×** |
+| 暗像素（笔画覆盖量） | 122,662 | 204,260 | 0.60 |
+| 亮度梯度总量 | 44,808,100 | 52,384,420 | 0.86 |
+| 两图不同像素 | — | 648,241（15.9%） | — |
+
+**判读**：JVM 的文字边缘有大量彩色像素（次像素/ClearType 的必然产物），native 几乎没有；
+native 的暗像素反而多 67% —— 灰度抗锯齿把「部分覆盖」的像素均匀变暗，笔画边缘因此扩散，
+这正是「发虚、偏细」的成因。**不是字体族、不是字体实现、不是管线、不是 DPI 缩放，
+而是「抗锯齿方式」的差异：JVM = 次像素，native = 灰度。**
+
+### 6.2 成因指向：DirectWrite 渲染参数在 closed-world 下读不到
+
+`DWFactory` 走 DirectWrite，ClearType 取决于 `IDWriteRenderingParams`（由系统 / 显示器
+ClearType 设置解析而来）。原生镜像里若这条读取路径失败，DirectWrite 退回默认渲染参数
+（无 ClearType、gamma 1.0）⇒ 灰度抗锯齿。这与 **issue #60**（原生镜像读不到系统与驱动信息：
+`Windows version 0.0 build 0`、D3D 驱动信息全 `null`）很可能是**同一类成因**：
+运行期对系统状态的访问在 closed-world 编译下缺失。
+
+### 6.3 本轮落地：临时缓解（不是根治）
+
+根治要么补上渲染参数的读取（首选）、要么等上游修复，都不在本轮范围。
+参照姊妹项目 LegionFanControl 已验证的做法（`NativeImageRenderDefaults`）：
+**原生镜像内默认关闭 LCD 次像素合成、改走灰度抗锯齿**
+（该项目的对照实验结论是「灰度路径在原生与 JVM 两个构建下逐项一致」），
+并保留不改代码即可回退的开关。
+
+- 实现：`aha-desktop/.../NativeRenderDefaults.java`，在 `AhaDesktopApp.main` 第一条语句调用
+  （`prism.lcdtext` 只在 `PrismFontFactory` 静态初始化时读取一次，必须早于工具包启动）；
+- 优先级：`-Dprism.lcdtext=…`（用户直接决定）＞ `-Daha.desktop.nativeTextGreyscale=false`
+  （关闭本默认值）＞ 原生内程序默认写 `false`；JVM 版不受影响；
+- 诊断：`logRenderingDiagnostics()` 增打「原生文本灰度默认 …；开关 …=…」，
+  与既有的 `属性 prism.lcdtext=…` 一行配合，同时给出「值是多少」与「是谁设的」；
+- 回退：`-Dprism.lcdtext=true`（单次）、`-Daha.desktop.nativeTextGreyscale=false`（关掉默认值）、
+  删调用点或 `git revert`（永久）。
+
+> **仍未修好根因**：原生的灰度与 JVM 的次像素不是同一观感；本措施消除的是「发虚、发糊」，
+> 不是「与 JVM 逐像素一致」。上游修复或补上渲染参数读取后，**应删除该类与调用点**。
+> 守卫与回退口径见 `NativeRenderDefaults` 类注释、`NativeRenderDiagnosticsGuide.md`
+> 与 `DesktopNativeDesign.md` §6.1。
+
+### 6.4 本轮涉及文件
+
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/NativeRenderDefaults.java`（新增）
+- `aha-desktop/src/main/java/com/acanx/module/aha/desktop/AhaDesktopApp.java`（调用点 + 诊断行）
+- `aha-desktop/src/test/java/com/acanx/module/aha/desktop/NativeRenderDefaultsTest.java`（新增）
+- `Docs/Guide/NativeRenderDiagnosticsGuide.md`、`Docs/Design/DesktopNativeDesign.md` §6.1、
+  `Docs/DevLog/20261013-08.md`、`CHANGELOG.md`

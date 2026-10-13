@@ -127,7 +127,7 @@ TD-00014-ManualAndExternalActions.md
 
 | Issue | 事项 |
 |---|---|
-| [#48](https://github.com/ACANX/AHA/issues/48) | 原生桌面端字体渲染与 JVM 模式不一致 |
+| [#48](https://github.com/ACANX/AHA/issues/48) | 原生桌面端字体渲染与 JVM 模式不一致（**已临时缓解**：原生内默认走灰度、可回退；根因指向 DirectWrite 渲染参数读不到，与 #60 同源，未根治——2026-10-13） |
 | [#49](https://github.com/ACANX/AHA/issues/49) | 暗色模式下标题文字对比度 / 控件适配 |
 | [#51](https://github.com/ACANX/AHA/issues/51) | GUI 从发布页检测最新 tag 并完成本地升级 |
 | [#60](https://github.com/ACANX/AHA/issues/60) | 原生桌面镜像读不到系统与驱动信息 |

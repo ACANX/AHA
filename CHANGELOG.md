@@ -11,6 +11,15 @@
 ## [Unreleased]
 
 ### 变更
+- **原生桌面端文本渲染临时缓解（issue #44 / #48）**：真机像素对照确认原生包**丢失了 LCD 次像素抗锯齿**
+  （退化为灰度，笔画发虚、偏细；彩色边缘像素为 JVM 的 1/18.4，暗像素反而多 67%）。
+  新增 `NativeRenderDefaults`，在**原生镜像内**默认写入 `prism.lcdtext=false`（改走灰度）；
+  JVM 版不受影响。用户可随时回退：`-Dprism.lcdtext=…` 直接指定渲染属性、
+  或用 `-Daha.desktop.nativeTextGreyscale=false` 关掉本默认值；命令行与日志诊断
+  （`渲染诊断：原生文本灰度默认 …`）已同步。
+  **这是临时措施、不是根治**——成因指向 DirectWrite 渲染参数在 closed-world 下读不到
+  （与 #60 同源），上游修复或补上参数读取后应删除本类与调用点。
+  见 `Docs/DevLog/20261013-08.md` 与 `TS-202610-NativeFontRenderingDiff.md` §6。
 - **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
   `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
   （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
