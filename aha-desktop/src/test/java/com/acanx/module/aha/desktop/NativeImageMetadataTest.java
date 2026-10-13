@@ -324,6 +324,35 @@ class NativeImageMetadataTest {
                 .contains("allDeclaredConstructors");
     }
 
+    /**
+     * Windows 手势与拖放（issue #125 的登记项）。
+     *
+     * <p>先说清楚这两个类<b>不是反射路径</b>：在 JavaFX 25 的 win jar 里没有任何
+     * Java 代码用 {@code Class.forName} 加载它们（实测：全 jar 扫描，唯一引用来自
+     * {@code glass.dll}），查找发生在 native 侧，属于 {@code FindClass} /
+     * {@code GetMethodID} 那一族 —— 因此它们的<b>正确归宿是 {@code jni-config.json}</b>，
+     * 那里早已登记（自 issue #39 起有守卫，见 {@link #jniConfigRegistersPlatformInitClasses()}）。</p>
+     *
+     * <p>在可达性元数据里再登记一次的理由有两条：
+     * ① 姊妹项目 LegionFanControl 的原生元数据按本清单的<b>反射段</b>生成，
+     * 缺这两条时其真机运行会抛 {@code ClassNotFoundException}（补上即消失，issue #125）；
+     * ② 让这两个类<b>确定进镜像</b>，不依赖静态可达链 —— {@code WinDnDClipboard}
+     * 目前只是因为被 {@code WinClipboardDelegate} {@code new} 出来才可达，
+     * 而 {@code WinGestureSupport} 在 Java 侧<b>完全没有引用</b>。</p>
+     */
+    @Test
+    void reachabilityMetadataRegistersWindowsGlassGestureAndDndTypes() throws IOException {
+        String json = readMetadata();
+        for (String type : List.of(
+                "com.sun.glass.ui.win.WinGestureSupport",
+                "com.sun.glass.ui.win.WinDnDClipboard")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 由 glass.dll 按名查找；登记后类才确定进镜像"
+                            + "（漏登记时手势与拖放静默失效，issue #125）", type)
+                    .contains("allDeclaredMethods");
+        }
+    }
+
     @Test
     void jniConfigRegistersClassLookupsFromJavafxNativeCode() throws IOException {
         assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();

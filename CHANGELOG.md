@@ -32,6 +32,16 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 修复
+- **原生元数据：Windows 手势 / 拖放两条补登记，并纠正 issue #125 的成因判断（2026-10-13）**：
+  核验后确认 **「`reflection` 段缺 `WinGestureSupport` / `WinDnDClipboard`」在本仓库不是缺陷**——
+  JavaFX 25 的 win jar 里**没有任何 Java 代码 `Class.forName` 它们**（`javap -p -c` 对
+  `WinWindow` / `WinApplication` 实测 **0 处命中**），全 jar 常量池里唯一引用来自 **`glass.dll`**，
+  属 native 侧查找，其正确归宿 `jni-config.json` **早已登记**（自 issue #39 起有测试断言守卫）；
+  本仓库 CI 的 Windows 腿真启动原生 exe 20 秒（run `38389103313`），stderr 315 B 内
+  **无**这两条异常。仍补两条反射登记（473 → **475**）：让这两个类**确定进镜像**、不依赖静态可达链
+  （`WinGestureSupport` 在 Java 侧零引用），并对齐姊妹工程按**反射段**生成清单的口径。
+  另补三道守卫：`NativeImageMetadataTest` 新断言 + `DesktopNative.yml` 步骤 ⑧ `require_meta` ×2、
+  步骤 ⑧b `require_jni` ×2。完整排查与反证见 `Docs/Troubleshooting/TS-2610-033`。
 - **FXML 骨架在原生包里启动即崩（2026-10-13）**：`desktop-shell.fxml` 漏写 `<?import?>`，原生包双击后抛
   `LoadException: BorderPane is not a valid type.`——而 `Build`、原生构建、GUI 冒烟**三方全绿**。
   修了三层：① 补 15 个 `<?import?>`；② 新增**静态对账**（元素类型名必须能在 import 表里找到；

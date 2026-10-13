@@ -620,6 +620,12 @@ jobs:
           require_meta "com.acanx.module.aha.core.config.AhaConfig" "AHA 配置记录（Jackson）"
           require_meta "javafx.scene.Node" "JavaFX 运行期反射（tracing agent 采集补齐）"
           require_meta "com.sun.glass.ui.gtk.GtkView" "Glass 平台实现类（tracing agent 采集补齐）"
+          # issue #125：Windows 手势（WinGestureSupport）与拖放剪贴板（WinDnDClipboard）。
+          # 它们的查找发生在 **native 侧**（glass.dll），本仓库 Java 侧无 Class.forName，
+          # 所以真正的归宿是下面 ⑧b 的 jni-config；这里再登记一次是为了让「类确定进镜像」
+          # 不依赖静态可达链，同时对齐姊妹项目按本清单**反射段**生成的口径。
+          require_meta "com.sun.glass.ui.win.WinGestureSupport" "WinGestureSupport（Windows 手势，issue #125）"
+          require_meta "com.sun.glass.ui.win.WinDnDClipboard" "WinDnDClipboard（Windows 拖放剪贴板，issue #125）"
           # FXML 界面骨架（0.1.3）：FXMLLoader 按名字强初始化自己，控制器字段靠反射注入；
           # 漏了同样是「构建全绿、启动即崩」（参考姊妹项目 LegionFanControl TS-2610-003）。
           # ButtonBase 单列：反射访问成员按**声明类**解析，只登记 Button 盖不住 setOnAction。
@@ -649,6 +655,10 @@ jobs:
           # 未登记时 WinWindow.<clinit> 直接 NoSuchMethodError，启动即崩。
           require_jni "com.sun.glass.ui.win.WinWindow" "WinWindow（Windows 窗口 JNI 回调，issue #39）"
           require_jni "com.sun.glass.ui.win.WinView" "WinView（Windows 视图 JNI 回调）"
+          # issue #125：这两个类由 glass.dll 的 native 代码按名查找，真实查找路径就在这份清单；
+          # 漏登记时手势与拖放会**静默失效**（只刷 ClassNotFoundException、窗口照常打开）。
+          require_jni "com.sun.glass.ui.win.WinGestureSupport" "WinGestureSupport（Windows 手势，issue #125）"
+          require_jni "com.sun.glass.ui.win.WinDnDClipboard" "WinDnDClipboard（Windows 拖放剪贴板，issue #125）"
           require_jni "com.sun.glass.ui.mac.MacWindow" "MacWindow（macOS 窗口 JNI 回调）"
           require_jni "com.sun.glass.ui.EventLoop" "EventLoop（三平台嵌套事件循环）"
           require_jni "com.sun.javafx.font.directwrite.DWRITE_MATRIX" "DirectWrite 字体结构体"
