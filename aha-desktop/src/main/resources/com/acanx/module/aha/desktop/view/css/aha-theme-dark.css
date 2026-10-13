@@ -20,13 +20,16 @@
 
 /* ============================ 输入类控件 ============================ */
 
+/* 内容面（输入框 / 文本域 / 列表 / 滚动容器）**与页底同色**（issue #153）：
+   暗色下曾用 #252526（比页底亮一档），深色底上这一档被放大感知，看着像「另一套主题」。
+   可点 / 浮层的「抬起控件」（按钮、菜单、下拉弹层）仍用 #252526 保留层次。 */
 .text-input,
 .text-field,
 .text-area,
 .password-field,
 .combo-box-base,
 .choice-box {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
     -fx-background-insets: 0;
     -fx-background-radius: 3;
     -fx-border-color: #3A3A3A;
@@ -40,7 +43,7 @@
 .text-area > .content,
 .text-area > .scroll-pane,
 .text-area > .scroll-pane > .viewport {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
 }
 
 .text-input:focused,
@@ -148,7 +151,7 @@
 .scroll-pane,
 .scroll-pane > .viewport,
 .scroll-pane > .corner {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
     -fx-background-insets: 0;
 }
 
@@ -162,16 +165,16 @@
 .tree-view,
 .table-view,
 .tree-table-view {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
     -fx-background-insets: 0;
     -fx-border-color: #3A3A3A;
-    -fx-control-inner-background: #252526;
-    -fx-control-inner-background-alt: #252526;
+    -fx-control-inner-background: #1E1E1E;
+    -fx-control-inner-background-alt: #1E1E1E;
 }
 
 .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell,
 .tree-view > .virtual-flow > .clipped-container > .sheet > .tree-cell {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
     -fx-text-fill: #E4E4E4;
 }
 
@@ -187,7 +190,7 @@
 }
 
 .list-view > .virtual-flow > .corner {
-    -fx-background-color: #252526;
+    -fx-background-color: #1E1E1E;
 }
 
 /* ============================ 下拉弹出层 ============================ */
