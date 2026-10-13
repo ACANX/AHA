@@ -175,6 +175,45 @@ final class FxmlViewChecks {
                 .isEmpty();
     }
 
+    /**
+     * 每个属性位置的 {@code id} 都必须取自 {@code holder} 的公开 String 常量。
+     *
+     * <p>冒烟测试与真机排查都按 {@code lookup("#" + CONSTANT)} 定位；id 写成字面量时，
+     * 常量改了、fxml 没改，所有 lookup 会**静默落空**（不报错，只是什么也找不到）。</p>
+     */
+    static void assertNodeIdsArePublicConstants(String view, String fxml, Class<?> holder) {
+        Set<String> allowed = publicStringConstants(holder);
+        Set<String> unknown = new TreeSet<>();
+        for (String id : nodeIds(fxml)) {
+            if (!allowed.contains(id)) {
+                unknown.add(id);
+            }
+        }
+        assertThat(unknown)
+                .as("%s：节点 id 必须取自 %s 的公开常量；新增栏 / 部件时先定义常量，再写进 fxml",
+                        view, holder.getSimpleName())
+                .isEmpty();
+    }
+
+    /** {@code holder} 的公开 String 常量取值集合。 */
+    static Set<String> publicStringConstants(Class<?> holder) {
+        Set<String> values = new TreeSet<>();
+        for (Field field : holder.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                    && java.lang.reflect.Modifier.isPublic(field.getModifiers())
+                    && field.getType() == String.class) {
+                try {
+                    if (field.get(null) instanceof String text) {
+                        values.add(text);
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new AssertionError("读取常量失败：" + field.getName(), e);
+                }
+            }
+        }
+        return values;
+    }
+
     /** {@code .fxml} 必须被资源白名单收进镜像，且 {@code Trampoline.class} 不得被收进去。 */
     static void assertResourceWhitelisted(String resourcePath) throws IOException {
         Path args = nativeImageArgs();

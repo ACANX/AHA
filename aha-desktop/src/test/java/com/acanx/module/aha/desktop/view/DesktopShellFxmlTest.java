@@ -3,8 +3,6 @@ package com.acanx.module.aha.desktop.view;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.util.Set;
-import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,40 +57,12 @@ class DesktopShellFxmlTest {
     }
 
     /**
-     * 节点 id 必须取自 {@link DesktopShell} 的公开常量。
-     *
-     * <p>冒烟测试与真机排查都按 {@code lookup("#" + CONSTANT)} 定位；id 写成字面量时，
-     * 常量改了、fxml 没改，所有 lookup 会**静默落空**（不报错，只是什么也找不到）。</p>
+     * 节点 id 必须取自 {@link DesktopShell} 的公开常量（详见
+     * {@link FxmlViewChecks#assertNodeIdsArePublicConstants}）。
      */
     @Test
     void everyNodeIdMatchesAPublicConstant() throws IOException {
-        Set<String> allowed = constantValues();
-        Set<String> unknown = new TreeSet<>();
-        for (String id : FxmlViewChecks.nodeIds(FxmlViewChecks.read(DesktopShell.class, FXML))) {
-            if (!allowed.contains(id)) {
-                unknown.add(id);
-            }
-        }
-        assertThat(unknown)
-                .as("节点 id 必须取自 DesktopShell 的公开常量；新增栏 / 部件时先定义常量，再写进 fxml")
-                .isEmpty();
-    }
-
-    private static Set<String> constantValues() {
-        Set<String> values = new TreeSet<>();
-        for (java.lang.reflect.Field field : DesktopShell.class.getDeclaredFields()) {
-            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())
-                    && java.lang.reflect.Modifier.isPublic(field.getModifiers())
-                    && field.getType() == String.class) {
-                try {
-                    if (field.get(null) instanceof String text) {
-                        values.add(text);
-                    }
-                } catch (IllegalAccessException e) {
-                    throw new AssertionError("读取常量失败：" + field.getName(), e);
-                }
-            }
-        }
-        return values;
+        FxmlViewChecks.assertNodeIdsArePublicConstants("desktop-shell",
+                FxmlViewChecks.read(DesktopShell.class, FXML), DesktopShell.class);
     }
 }

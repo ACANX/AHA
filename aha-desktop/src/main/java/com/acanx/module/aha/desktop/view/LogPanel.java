@@ -7,8 +7,11 @@ import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -18,10 +21,13 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
+
+import java.io.IOException;
 
 /**
  * 日志面板：实时日志 + 级别过滤（{@code GUIDesign.md} 第 4.5 节「日志（排错用）」）。
@@ -59,13 +65,46 @@ public final class LogPanel {
     /** 面板里最多渲染多少行（再多没有阅读价值，反而卡界面）。 */
     public static final int MAX_LINES = 3000;
 
+    /** FXML 骨架资源（与本类同包）。 */
+    private static final String FXML_VIEW = "log-panel.fxml";
+
     private final String effectiveLevel;
 
-    private final TextArea area = new TextArea();
+    // ── FXML 注入的部件 ──────────────────────────────────────────────────────
+    // 字段名必须与 log-panel.fxml 的 fx:id 一一对应；原生镜像下这些**私有字段**由
+    // FXMLLoader 反射写入，因此 LogPanel 的字段必须登记进 reachability-metadata。
 
-    private final ComboBox<LogLevel> filter = new ComboBox<>();
+    /** 工具栏 + 日志区所在的根。 */
+    @FXML
+    private VBox root;
 
-    private final Label stats = new Label();
+    @FXML
+    private HBox toolbar;
+
+    /** 级别过滤下拉。 */
+    @FXML
+    private ComboBox<LogLevel> filter;
+
+    @FXML
+    private Button refresh;
+
+    @FXML
+    private Button copy;
+
+    @FXML
+    private Button clear;
+
+    /** 把右侧的统计行推到栏尾的撑高垫。 */
+    @FXML
+    private Region spacer;
+
+    /** 统计行（共 N 行 · 显示 M 行 · 上限 X 行）。 */
+    @FXML
+    private Label stats;
+
+    /** 只读日志区。 */
+    @FXML
+    private TextArea area;
 
     private Timeline ticker;
 
@@ -110,6 +149,50 @@ public final class LogPanel {
         dialog.getDialogPane().setPrefHeight(640);
         ThemePaint.dialog(dialog.getDialogPane());
 
+        dialog.getDialogPane().setContent(loadView());
+
+        refresh();
+        startTicker();
+        return dialog;
+    }
+
+    /**
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>与 {@code DesktopShell} / {@code ProviderDialog} 同款：本类既是面板状态的持有者，
+     * 也是它的 **FXML 控制器**。</p>
+     *
+     * <p>装载失败时打 ASCII 标记并显式 flush；标记必须印在**真的会执行到**的 catch 里
+     * （TS-2610-032 第三轮：写在「证不出会抛」的位置会被静态分析当死代码删掉）。</p>
+     *
+     * @return 对话框内容根节点
+     */
+    private Parent loadView() {
+        FXMLLoader loader = new FXMLLoader(LogPanel.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        Parent loaded;
+        try {
+            loaded = loader.load();
+        } catch (IOException e) {
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            throw new IllegalStateException("日志面板界面装载失败：" + FXML_VIEW, e);
+        }
+        wireView();
+        return loaded;
+    }
+
+    /** 把注入的节点接起来：样式、选项与事件。 */
+    private void wireView() {
+        root.setSpacing(ShellLayout.GAP);
+        root.setPadding(new Insets(4));
+
+        toolbar.setSpacing(ShellLayout.GAP);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        stats.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+
         filter.setId(FILTER_ID);
         filter.getItems().setAll(LogLevel.DISPLAY_ORDER);
         filter.setValue(LogLevel.INFO);
@@ -126,40 +209,24 @@ public final class LogPanel {
         });
         filter.valueProperty().addListener((observable, old, now) -> refresh());
 
-        Button refresh = new Button("刷新");
         refresh.setId(REFRESH_ID);
         refresh.setOnAction(event -> refresh());
-        Button copy = new Button("复制");
         copy.setId(COPY_ID);
         copy.setOnAction(event -> stats.setText(Clipboards.copy(area.getText())
                 ? "已复制当前视图（" + area.getText().length() + " 字符）"
                 : "复制失败：剪贴板不可用"));
-        Button clear = new Button("清空");
         clear.setId(CLEAR_ID);
         clear.setOnAction(event -> {
             LogCapture.buffer().clear();
             refresh();
         });
 
-        stats.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        HBox toolbar = new HBox(ShellLayout.GAP, new Label("级别"), filter, refresh, copy, clear,
-                spacer(), stats);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-
         area.setId(AREA_ID);
         area.setEditable(false);
         area.setWrapText(false);
         area.setStyle("-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
                 + "-fx-font-size: 12px;");
-
-        VBox content = new VBox(ShellLayout.GAP, toolbar, area);
         VBox.setVgrow(area, Priority.ALWAYS);
-        content.setPadding(new Insets(4));
-        dialog.getDialogPane().setContent(content);
-
-        refresh();
-        startTicker();
-        return dialog;
     }
 
     /**
@@ -230,11 +297,5 @@ public final class LogPanel {
             ticker.stop();
             ticker = null;
         }
-    }
-
-    private static javafx.scene.layout.Region spacer() {
-        javafx.scene.layout.Region region = new javafx.scene.layout.Region();
-        HBox.setHgrow(region, Priority.ALWAYS);
-        return region;
     }
 }
