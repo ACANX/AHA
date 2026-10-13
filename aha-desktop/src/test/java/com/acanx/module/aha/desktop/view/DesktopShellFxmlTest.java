@@ -46,6 +46,19 @@ class DesktopShellFxmlTest {
     /** 只匹配属性位置的 {@code id="…"}：{@code fx:id="…"} 里那个 {@code id} 前面是冒号，不会命中。 */
     private static final Pattern NODE_ID = Pattern.compile("\\sid=\"([^\"]+)\"");
 
+    /** {@code <?import javafx.scene.layout.BorderPane?>} 里的全限定类名。 */
+    private static final Pattern IMPORT = Pattern.compile("<\\?import\\s+([\\w.]+)\\s*\\?>");
+
+    /**
+     * 元素开始标签里的**类型名**（首字母大写）。
+     *
+     * <p>只取大写开头是有意的：FXML 里还有一类小写标签是**属性**（{@code <children>} /
+     * {@code <items>} / {@code <menus>} / {@code <content>} / {@code <top>} / {@code <center>} …），
+     * 它们由父元素的 getter / setter 解析，不走 import 表。Java 命名惯例下二者不会混淆。
+     * 带 {@code ?} / {@code /} / {@code !} 的（处理指令 / 闭标签 / 注释）也不会命中。</p>
+     */
+    private static final Pattern ELEMENT = Pattern.compile("<([A-Z][\\w.]*)[\\s/>]");
+
     @Test
     void fxmlShipsNextToTheController() throws IOException {
         assertThat(readFxml())
@@ -96,6 +109,39 @@ class DesktopShellFxmlTest {
         assertThat(unknown)
                 .as("节点 id 必须取自 DesktopShell 的公开常量（冒烟测试与真机排查都按它 lookup）；"
                         + "新增栏 / 部件时先在 DesktopShell 里定义常量，再写进 fxml")
+                .isEmpty();
+    }
+
+    @Test
+    void everyElementTypeIsImported() throws IOException {
+        String fxml = readFxml();
+
+        Set<String> imported = new TreeSet<>();
+        Matcher imports = IMPORT.matcher(fxml);
+        while (imports.find()) {
+            imported.add(imports.group(1));
+        }
+        assertThat(imported).as("fxml 必须有 import 表").isNotEmpty();
+
+        Set<String> simpleNames = new TreeSet<>();
+        for (String qualified : imported) {
+            simpleNames.add(qualified.substring(qualified.lastIndexOf('.') + 1));
+        }
+
+        List<String> missing = new ArrayList<>();
+        Matcher elements = ELEMENT.matcher(fxml);
+        while (elements.find()) {
+            String name = elements.group(1);
+            // 带点的写法是全限定名，不靠 import；其余必须能在 import 表里找到
+            if (!name.contains(".") && !simpleNames.contains(name)) {
+                missing.add(name);
+            }
+        }
+        assertThat(missing)
+                .as("FXML 的元素类型名必须能在 import 表里找到——FXML **不走 Class.forName 猜包**，"
+                        + "而是查本文件的 import 表；漏一个就是运行期 `LoadException: Xxx is not a valid type.`。"
+                        + "实测（0.1.3.00134 真机）：原生包构建成功、GUI 冒烟还判了通过，"
+                        + "双击才报 `BorderPane is not a valid type.` —— 编译期与纯文本对账都拦不住")
                 .isEmpty();
     }
 

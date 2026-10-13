@@ -662,15 +662,28 @@ jobs:
           # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
           exit 0
 
-      - name: 运行冒烟（GUI：Windows 腿真启动，验证「能起不崩」）
+      - name: 运行冒烟（GUI：Windows 腿真启动，验证「界面真的装起来了」）
         # 为什么只在 Windows 跑：GitHub 的 windows-latest 有**交互式桌面会话**，能创建窗口；
         #   Linux 腿无 X（需 Xvfb），macOS 腿 GUI 访问受限。
-        # 为什么是诊断式（从不判死）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
-        #   覆盖不到真实 D3D 路径；GUI 测试本身抖动也大——BuildSpec §7 要求可选管线
-        #   不得进必需检查、且失败必须在步骤级容错。结论一律写摘要。
-        # 判据只留真正的不变式：进程能启动，且**不在启动期以非 0 退出**
-        #   （启动期崩溃正是本项目踩过的坑：ClassNotFoundException / NoClassDefFoundError /
-        #   渲染初始化失败）。
+        # 为什么是诊断式（不判死整条流程）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
+        #   覆盖不到真实 D3D 路径；BuildSpec §7 要求可选管线不得进必需检查、
+        #   且失败必须在步骤级容错。结论一律写摘要。
+        #
+        # 【2026-10-13 修正】判据从「进程能存活 20 秒」改为**正面断言**。
+        #   起因：PR #134 的 FXML 骨架在原生包里启动即崩
+        #   （`LoadException: BorderPane is not a valid type.`——fxml 忘了写 <?import?>），
+        #   而旧判据把这一次判成了“通过”——它看的是“进程存活 / 非 0 退出码”，
+        #   既抳不到「窗口根本没出来」，也会把「崩了但进程没回收」当成存活。
+        #   正是姊妹项目 LegionFanControl TS-2610-003 的教训：
+        #   **负面断言只能证明“没看到坏现象”，不能证明“程序真的走到了好状态”**。
+        #
+        #   现在：抓 stdout / stderr，断言——
+        #     ① 命中 `[aha-version]`（程序真的进了 main）
+        #     ② 命中 `[ui-fxml-loaded]`（界面骨架真的装起来了）
+        #     ③ 不得出现 `[ui-fxml-load-failed]`
+        #     ④ 不得在 20 秒内以非 0 退出
+        #   ①~④ 任何一条不满足都是**确定的缺陷**（不是环境抖动）⇒ `exit 1`；
+        #   仍保留 continue-on-error（不挡合并），但用 `::error::` 与摘要里的 ❌ + 日志尾部把真相摆出来。
         if: always() && runner.os == 'Windows' && steps.verify.outputs.produced == 'true'
         continue-on-error: true
         shell: pwsh
@@ -689,35 +702,71 @@ jobs:
             exit 0
           }
 
-          Write-Host "可执行文件：$bin"
-          Write-Host '—— 冒烟：启动桌面端原生镜像，观察 20 秒 ——'
-          $p = Start-Process -FilePath $bin -PassThru
-          Start-Sleep -Seconds 20
+          $stdout = Join-Path $env:RUNNER_TEMP 'aha-smoke.out.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'aha-smoke.err.log'
+          Remove-Item $stdout, $stderr -ErrorAction SilentlyContinue
 
-          if ($p.HasExited) {
-            if ($p.ExitCode -eq 0) {
-              $verdict = 'normal-exit（20 秒内以 0 退出）'
-              Write-Host "进程在 20 秒内以 0 正常退出，按通过计"
-            } else {
-              $verdict = "crash（退出码 $($p.ExitCode)）"
-              Write-Host "::warning::GUI 冒烟：进程在 20 秒内以非 0 退出——疑似启动期崩溃"
-            }
-          } else {
-            $verdict = 'alive（存活 20 秒）'
-            Write-Host "✅ GUI 冒烟：进程存活 20 秒（窗口已创建、启动期未崩溃），PID=$($p.Id)"
+          Write-Host "可执行文件：$bin"
+          Write-Host '—— 冒烟：启动桌面端原生镜像，最多观察 20 秒 ——'
+          $p = Start-Process -FilePath $bin -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+
+          # 提前退出检测：崩得快就不必白等 20 秒
+          for ($i = 0; $i -lt 20; $i++) {
+            if ($p.HasExited) { break }
+            Start-Sleep -Seconds 1
+          }
+          $exited = $p.HasExited
+          $code = if ($exited) { $p.ExitCode } else { $null }
+          if (-not $exited) {
+            Write-Host "进程存活 20 秒，PID=$($p.Id)（冒烟结束，关掉它）"
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          $text = ''
+          if (Test-Path $stdout) { $text += (Get-Content $stdout -Raw) }
+          if (Test-Path $stderr) { $text += (Get-Content $stderr -Raw) }
+
+          $hasVersion = $text -match '\[aha-version\]'
+          $hasLoaded  = $text -match '\[ui-fxml-loaded\]'
+          $hasFailed  = $text -match '\[ui-fxml-load-failed\]'
+
+          $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded
+          if ($hasFailed) {
+            $verdict = '失败：界面装载失败（命中 [ui-fxml-load-failed]）'
+          } elseif ($exited -and $code -ne 0) {
+            $verdict = "失败：启动期以非 0 退出（退出码 ${code}）"
+          } elseif (-not $hasLoaded) {
+            $verdict = '失败：未命中正面标记 [ui-fxml-loaded]（界面没有装起来）'
+          } elseif (-not $hasVersion) {
+            $verdict = '可疑：命中 [ui-fxml-loaded] 但没有 [aha-version]'
+          } else {
+            $verdict = '通过：命中 [aha-version] 与 [ui-fxml-loaded]，且启动期未崩'
+          }
+
+          if ($ok) {
+            Write-Host "✅ GUI 冒烟：$verdict"
+          } else {
+            Write-Host "::error::GUI 冒烟：$verdict"
           }
 
           @(
             '### 桌面端原生镜像 GUI 冒烟（windows-amd64）'
             ''
             "- 结论：$verdict"
+            "- 正面标记：``[aha-version]``=${hasVersion}，``[ui-fxml-loaded]``=${hasLoaded}，``[ui-fxml-load-failed]``=${hasFailed}"
+            "- 退出：exited=${exited}，code=${code}"
             "- 可执行文件：$bin"
-            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，覆盖不到 D3D 真实路径；本步只验证「进程能起来、启动期不崩」。'
+            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，覆盖不到 D3D 真实路径；本步验证的是**界面真的装起来了**。'
             ''
             '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-          exit 0
+
+          if ($ok) { exit 0 }
+
+          # 失败时把现场打全（TS-2610-003 的教训）：日志尾部直接写进摘要，不必再去翻原始日志
+          $tail = (($text -split "`n") | Select-Object -Last 40) -join "`n"
+          @('' '```text' $tail '```') | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          exit 1
 
       - name: 改名为发布用资产名
         continue-on-error: true

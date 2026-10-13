@@ -571,6 +571,23 @@ public final class AhaDesktopApp extends Application {
      * @param args 参数
      */
     public static void main(String[] args) {
+        // 启动第一件事：把「这次跑的到底是哪一版」打到 stdout。
+        //
+        // 为什么要走 stdout、而不只用日志：日志的 console appender 级别是 ERROR，
+        // INFO 级的版本行在真机控制台上根本看不见——而排障时第一句要问的就是「你跑的是哪一版」。
+        //
+        // 版本必须带**构建号**（如 0.1.3.00134）：同一条 dev 分支会因 PR 不同构建出几十个包，
+        // 只报基线版本（0.1.3）无法定位到具体哪一个。
+        //
+        // 标记用**纯 ASCII**、且显式 flush：
+        //   ① 冒烟可能在中文 Windows（GBK）下跑，中文会乱码；
+        //   ② 重定向到文件时 System.out 不自动刷，标记会丢（TS-2610-003 的教训）。
+        // 它同时是原生冒烟的**正面断言**落点：见到它，才说明程序真的走到了启动路径。
+        System.out.println("[aha-version] version=" + AppVersion.buildVersion()
+                + " baseline=" + AppVersion.version()
+                + " prerelease=" + AppVersion.isPreRelease());
+        System.out.flush();
+
         // 临时缓解措施（issue #44 / #48，非最终方案）：原生镜像内默认关闭 LCD 次像素合成。
         // prism.lcdtext 只在 PrismFontFactory 静态初始化时读取一次，必须早于工具包启动；
         // 开关、回退与「为什么是临时措施」见 NativeRenderDefaults 的类注释。
