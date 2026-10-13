@@ -194,3 +194,108 @@ find ~/.m2/repository -name '*.lastUpdated' | head
 # 3) 清掉标记并强制重新尝试
 ./mvnw -B -U <goal>
 ```
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「一、二、…」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- CI 在 JaCoCo 的 `prepare-agent` 上失败，报的是**插件自身依赖**解析不出来：
+  `Could not find artifact org.slf4j:slf4j-api:jar:1.7.36 in central (…)`、
+  `org.ow2.asm:asm-commons:jar:9.10.1`、`org.ow2.asm:asm-tree:jar:9.10.1`（三条并列）。
+- 这三个版本**不是本项目声明的**：`slf4j-api` 在本项目被管到 `2.0.20`（`<slf4j.version>`），
+  项目里根本没有 ASM 的版本声明。
+- 直接问 Central：三个 artifact 的 `.pom` **全部 `200`**，且 `9.10.1` 正是 `asm-commons` 的**最新版**。
+- 解析源未被改：根 POM 无 `<repositories>` / `<pluginRepositories>`；`.mvn/` 下只有 `wrapper/`，
+  无 `settings.xml` / `maven.config`；全仓无镜像或私服地址（`aliyun` / `nexus` / `mirrorOf` 全无命中）；
+  四个工作流**都没有**启用 `actions/setup-java` 的 `cache:`。
+- **两种「找不到」的消息形态都实测到了**：
+  - 负缓存 → `… was not found in <url> **during a previous attempt. This failure was cached in the local repository** …`；
+  - 当次要不到 → `Could not find artifact … in central (<url>)`（与 CI 日志**同一形态**）。
+- 事后取证：同一个提交 `9900e55` **跑了两轮**——`build (ubuntu-latest, system)` 在 push 运行 **success**、
+  在 PR 运行 **failure**，其余三条腿两轮都 success；失败那条腿只跑了 **0.2 分钟**
+  （成功腿 0.7–1.1 分钟）。
+- 重试脚本注入假命令的 **5 种情形**全过：①成功→1 次 ②瞬时故障×2 后成功→3 次成功
+  ③一直瞬时故障→3 次后失败 ④**真失败（编译错）→只跑 1 次** ⑤`attempts=1`→不重试。
+- 端到端：真实命令 `-B -N … prepare-agent` 走该脚本 → `BUILD SUCCESS`；
+  本地 4 个 `*.lastUpdated` 失败标记被清为 **0**。
+
+### 机制 / 行为模型
+
+- **Maven 有两条「找不到」消息，性质完全不同，处理方式也不同**：
+
+  | 消息 | 含义 | 处理 |
+  | --- | --- | --- |
+  | `… during a previous attempt. This failure was **cached** in the local repository …` | 本地记了失败标记，更新间隔内**不会重试** | 清 `*.lastUpdated`（或 `-U`） |
+  | `Could not find artifact … in central (<url>)` | **当次**解析就失败（要不到） | 重试；并核实版本是否真实存在 |
+
+  依据：分别**造出**这两种状态后比对消息形态（「二、2.3」「二、2.4」）。
+- CI 那次是**仓库侧 / 网络侧的瞬时故障**。判据有二：同一提交、同一条腿**一轮成功一轮失败**
+  （代码不可能这样）；失败发生在 **0.2 分钟**内的依赖解析阶段。
+- 复合 action 的两条设计原则（本档案的修法）：
+  **先删 `*.lastUpdated`**——覆盖负缓存那条路；
+  **按失败性质定向重试**——只有命中「依赖解析不到 / 传输中断 / 远端 5xx / 本地负缓存」才重试
+  （最多 3 次、间隔 20 秒），其余立刻失败。因为**无差别重试会把编译错、测试失败的反馈时间拉长三倍**。
+- **不要把用户输入拼进脚本体**：`if ${{ inputs.command }}` 遇到引号会被 shell **词分割**拆坏
+  （实测 `bash -c "echo a b"` 被拆成 `bash` `-c` `"echo` `a` `b``）；
+  正确姿势是 `env:` 传参 + `bash -c "${MVN_COMMAND}"`。
+
+### 未定位 / 未复现
+
+- **未定位 CI 那次瞬时故障的具体上游原因**：档案只证明「**当次要不到**」（消息形态与本地复现一致），
+  没有证明「**为什么**要不到」——没有拿到仓库侧的 5xx / 超时记录。
+- 未复现「Actions 缓存恢复 `~/.m2` 导致污染」这条路径，因为四个工作流**都没开 `cache:`**，该路径不存在。
+- `.github/**/*.yml` 至今**没有本地检查**（`bin/CheckScripts.py` 只覆盖 `.bat` / `.cmd` / `.sh` / `.py`），
+  语法错了只能等 GitHub 判；已登记 `F-14`，**待决策**。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| CI 失败原文 | Actions 日志 | `[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.15:prepare-agent … or one of its dependencies could not be resolved` |
+| 三个 artifact 是否存在 | `curl -s -o /dev/null -w '%{http_code}\n' https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.10.1/asm-commons-9.10.1.pom` | **`200`**（另两个同为 200；`9.10.1` 是该 artifact 最新版） |
+| 负缓存的消息形态（**对照样本 A**） | 本地造 `*.lastUpdated` 后跑同一 goal | `… was not found in <url> during a previous attempt. This failure was cached in the local repository and resolution is not reattempted until the update interval of central has elapsed or updates are forced` |
+| 当次失败的消息形态（**对照样本 B，与 CI 一致**） | `-B -N dependency:get -Dartifact=org.ow2.asm:asm-commons:9.99.9` | `[ERROR] … Could not find artifact org.ow2.asm:asm-commons:jar:9.99.9 in central (https://repo.maven.apache.org/maven2)` |
+| 同一提交两轮的差异（**决定性**） | GitHub API 查 `9900e55` 的检查结果 | `build (ubuntu-latest, system)`：push **success** / PR **failure**；其余三条腿两轮 success |
+| 失败腿耗时（**佐证：断在解析阶段**） | 同上 | 失败腿 **0.2 分钟**；成功腿 0.7–1.1 分钟 |
+| 重试脚本逻辑 | 抽出 action 脚本 + 注入假命令跑 5 种情形 | ①1 次 ②3 次成功 ③3 次后失败 ④**真失败只跑 1 次** ⑤`attempts=1` 不重试——全过 |
+| 端到端与标记清理 | 真实 `prepare-agent` 走该脚本 | `BUILD SUCCESS`；本地 4 个失败标记 → **0** |
+| 工作流语法 | 解析 `.github/**/*.yml` + 校验 composite 结构 | 全部通过 |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 版本写错 / 该 artifact 不存在 | `curl` Central 三个 artifact **全部 200**，且 `9.10.1` 是最新版（「二、2.1」） |
+| 项目少配仓库 / 解析源被改（镜像、私服） | 根 POM 无 `<repositories>`、`.mvn/` 无 `settings.xml`、全仓无镜像关键字、四工作流未开 `cache:`（「二、2.2」） |
+| 本地负缓存（`*.lastUpdated`） | 负缓存的消息形态**带** `cached in the local repository`，与 CI 日志**不同**（「二、2.3」） |
+| 项目依赖解析失败（而非插件依赖） | 失败目标是 `jacoco:prepare-agent` 的**插件依赖**；且报错版本非本项目声明（`slf4j` 项目管 2.0.20） |
+| 代码问题（重跑还会失败） | 同一提交、同一条腿**一轮成功一轮失败**，代码不可能这样（「二、2.5」） |
+| 慢检查（`Gate` / `Compat`）也在卡人 | 该 PR 目标是 `dev`，而 `Gate` / `Compat` 只在 `pull_request → main / release/**` 触发，本次**只跑了 Build 快检查**（「二、2.5」） |
+
+## 未决问题
+
+**Q1 CI 那次的**具体**原因是什么？**
+
+现状：只定性到「当次要不到」（仓库侧 / 网络侧瞬时故障），**未定位**上游返回码或超时记录。
+阻塞点：Actions 运行日志不含仓库侧响应细节，且故障瞬时、无法原样复现。
+
+**Q2 `F-14`：`.github/**/*.yml` 要不要本地检查？**
+
+现状：`bin/CheckScripts.py` 只覆盖 `.bat` / `.cmd` / `.sh` / `.py`，YAML 语法错了只能等 GitHub 判。
+阻塞点：需决定是否引入 YAML 解析 / composite 结构校验，以及是否纳入 CI 或本地检查。
+
+**Q3 重试「最多 3 次、间隔 20 秒」的依据？**
+
+现状：取值来自经验，**没有统计过瞬时故障的恢复分布**。若恢复分布长尾，3 次可能偏少；
+若几乎瞬时恢复，间隔 20 秒又偏保守。
+
+**Q4 「定向重试」的特征匹配够全吗？**
+
+现状：只覆盖「依赖解析不到 / 传输中断 / 远端 5xx / 本地负缓存」四类。
+未穷举的情形（如哈希校验失败、连接重置的具体文案）会被判为「真失败」而**不重试**——
+这是有意保守，但没有做过「漏判率」的核算。

@@ -115,3 +115,114 @@ git diff --stat origin/dev HEAD        →  （空）
 - `Docs/DevSpec/ReleaseProcess.md`（新增 §4.2「合并发版 PR 前的三分钟核对」，原 §4.2 顺延为 §4.3）
 - `Docs/TODO.md`（新增 G-07：合并动作待人工完成，含两条路径与灰按钮时的排查顺序）
 - 临时 worktree：`E:\GitRepo\GitHub\ACANX\.aha-merge-tmp`（合并提交 `221ccee`，供人工推送）
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- 远端状态（与直觉相反）：`GET /repos/ACANX/AHA/pulls/15` →
+  `head=214611ff`、`base=91388474`、`commits=41`、`changed_files=159`，
+  **`mergeable=True`、`mergeable_state=clean`** ⇒ **远端没有冲突，GitHub 判定可直接合并**。
+- 本地演练（**临时 worktree**，不切当前分支）：
+  `git worktree add --detach <临时目录> origin/main` + `git merge --no-commit --no-ff origin/dev`
+  → **159 files changed, 0 conflicts**。
+- **基线独有的提交**：`git log --oneline origin/dev..origin/main` → `9138847 Release:V0.1.0`；
+  且 `origin/main` 的 `pom.xml` 里 aha 版本是 **`0.1.0`**，而 `origin/dev` 是 **`0.1.1`**
+  —— 合并方向搞错就会把版本**退回**。
+- 真合并结果证明取的是新版本：合并后 `pom.xml` → **`0.1.1`**、
+  `CHANGELOG` 首行 → **`## [0.1.1] - 2026-10-08`**。
+- 合并提交：`HEAD = 221ccee`，第一父 `9138847`（`main`）、第二父 `214611f`（`dev`）；
+  **`git diff --stat origin/dev HEAD` 为空**。
+- 关键文件与 `dev` 完全一致：`Build.yml` / `Gate.yml` / `DesktopNative.yml` / `.gitignore`；
+  版本号 **8 处**（根 POM + 六个模块 `<parent><version>` + `AppVersion.FALLBACK_VERSION`）全为 `0.1.1`。
+- 检查与审批都不构成阻塞：`dev` head `214611f` 上 `build`（三平台 × wrapper + system）、
+  `门禁`、`兼容性`、`CodeQL` 以及 **5 条原生镜像腿** **全部 success**；
+  三个 `APPROVED` 的 `commit_id` 都是 `214611ff`，时间 **01:34Z / 01:58Z / 02:19Z**
+  **晚于**最后一次 push（`dev` head 提交时间 **01:29:41Z**）。
+- **「问题」的真正来源是本地引用陈旧**：本地 `dev` 落后 `origin/dev` **36 个提交**，
+  本地 `main` **根本不存在**（从未 checkout 过）。
+- 处置：只对**纯落后**的分支做快进（`git fetch origin dev:dev`），当前分支 `feat/version-0.1.1` 原样不动；
+  本地 `dev` 快进到 `214611f`、`feat/dev` 快进到 `8cda4e2`。
+
+### 机制 / 行为模型
+
+- **`mergeable_state` 有区分度，是「能不能合」的唯一依据**：
+
+  | 取值 | 含义 |
+  | --- | --- |
+  | `clean` | 可以合并 |
+  | `blocked` | 缺审批或缺必需检查 |
+  | `dirty` | 有冲突 |
+
+  而**红叉可能来自旧提交上已被重跑覆盖的作业** ⇒ **不要用「页面上有没有红叉」判断能否合并**。
+- **基线独有的提交必须逐个看**：`git log origin/<head>..origin/<base>` 非空时，
+  要确认它会不会**带内容回退**（版本号、CI 配置、生成文件是高发区）。
+  这类事故**不产生任何冲突**，因此只有「**合并结果比对**」才能发现。
+- **一条命令证明复议面为零**：`git diff --quiet <待发布分支> <合并结果>`
+  —— 同时排除「冲突解错」「旧内容覆盖新内容」「CI 配置被回退」三类事故，比逐行读 diff 可靠。
+- **本地合并用临时 worktree**：不切用户当前分支、失败可弃、成功可直接推。
+- 「合并 / 重试失败」先问一句：**我是不是在拿陈旧引用做事**。
+
+### 未定位 / 未复现
+
+- **合并动作本身当时未完成**：档案写作时提交尚未推送（登记为 `TODO.md` **G-07**，
+  含两条路径与「灰按钮」时的排查顺序）。
+- **合并后的链路未验证**：推 `main` → `Build` 的 `tag（V<版本号>）` 作业打 `V0.1.1`
+  → `Release.yml` 出 CLI + 桌面端三平台包，这一整条当时只是**预期**。
+- 「灰按钮」的**具体触发条件未复现**：档案只给出排查顺序，没有实测样本。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 远端可合并性 | `GET /repos/ACANX/AHA/pulls/15` | `head=214611ff`、`base=91388474`、`commits=41`、`changed_files=159`、`mergeable=True`、**`mergeable_state=clean`** |
+| 本地演练（临时 worktree） | `git merge --no-commit --no-ff origin/dev` | **159 files changed, 0 conflicts** |
+| 基线独有提交 | `git log --oneline origin/dev..origin/main` | `9138847 Release:V0.1.0` |
+| 版本对比（**隐患**） | `git show origin/{main,dev}:pom.xml` | main = **`0.1.0`**；dev = **`0.1.1`** |
+| 合并结果取哪一侧 | 合并后读文件 | `pom.xml` = `0.1.1`；`CHANGELOG` 首行 = `## [0.1.1] - 2026-10-08` |
+| 合并提交的父子 | `git log -1 --format='%h %p'` | `221ccee`；父 `9138847`(main) + `214611f`(dev) |
+| **复议面为零** | `git diff --stat origin/dev HEAD` | **空** ✅ |
+| 关键文件未被回退 | 与 `dev` 逐文件比对 | `Build.yml` / `Gate.yml` / `DesktopNative.yml` / `.gitignore` 一致 |
+| 版本号 8 处 | `grep` 各 POM 与 `AppVersion` | 全为 `0.1.1` ✅ |
+| 检查全绿 | `dev` head `214611f` 的检查 | `build`（三平台 × wrapper + system）、`门禁`、`兼容性`、`CodeQL`、**5 条原生腿** 全 success |
+| 审批是否失效 | 三个 `APPROVED` 的 `commit_id` 与时间 | 均为 `214611ff`；01:34Z / 01:58Z / 02:19Z **晚于** push（01:29:41Z） |
+| 本地陈旧程度 | `git status` / `git log` | 本地 `dev` 落后 **36 个提交**；本地 `main` **不存在** |
+| 处置结果 | `git fetch origin dev:dev` | `dev` → `214611f`；`feat/dev` → `8cda4e2`；当前分支未动 |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「远端有冲突、合不了」 | `mergeable_state=clean`；worktree 演练 `0 conflicts` / 159 文件（「2.1」「2.2」） |
+| 「页面上有红叉 ⇒ 合并被挡」 | 红叉可能来自**旧提交**上已被重跑覆盖的作业；判断要看 `mergeable_state`（「2.1」） |
+| 「合并会把版本退回 `0.1.0`」 | 演练证明结果取 `0.1.1`（`pom.xml` + `CHANGELOG` 首行）（「2.3」） |
+| 「合并夹带了基线侧的旧内容」 | `git diff --stat origin/dev HEAD` 为**空**（「2.4」） |
+| 「审批会因最近一次 push 失效」 | 三个 `APPROVED` 的 `commit_id` 均为 `214611ff`，时间晚于最后一次 push（「2.5」） |
+| 「是本地环境/操作没问题」 | 本地 `dev` 落后 **36 个提交**、本地 `main` **不存在**——这才是在「拿陈旧引用做事」（「2.6」） |
+
+## 未决问题
+
+**Q1（`TODO.md` G-07）合并动作完成了吗？**
+
+现状：**待人工执行**，档案写作时提交尚未推送（合并提交 `221ccee` 已在临时 worktree 就绪）。
+阻塞点：需人来推 `main`；G-07 里登记了两条路径与「灰按钮」时的排查顺序。
+
+**Q2 合并后的链路是否按预期发生？**
+
+现状：**未验证**——推 `main` → `tag（V<版本号>）` 作业打 `V0.1.1` → `Release.yml` 出包，
+整条链路都还只是预期。
+
+**Q3 「灰按钮」的触发条件是什么？**
+
+现状：只写进 G-07 的排查顺序，**未复现**。可能涉及必需检查、审批、规则集（见 `TS-2610-005`）。
+
+**Q4 「合并前三分中核对」能机器化吗？**
+
+现状：作为**人工清单**写进 `ReleaseProcess.md` §4.2。
+阻塞点：其中「基线独有提交是否带内容回退」可以脚本化（比对合并结果与待发布分支的 diff），
+但尚未实现。

@@ -186,3 +186,138 @@ Exception in thread "main" java.lang.RuntimeException: No toolkit found
   （agent 采集制度见其 `references/agent-collection.md`，编排脚本 `scripts/collect-metadata.sh`）；
 - 细节与「仍不构成完整」的边界见 `Docs/Design/DesktopNativeDesign.md` §6.1；
 - Windows / macOS 平台的采集待做（`TODO.md` `N-22`）。
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- 修完 issue #26 之后，发布页的 `aha-desktop-native.exe` **换了一处崩**：
+
+  ```text
+  WARNING: Unsupported JavaFX configuration: classes were loaded from 'unnamed module ...'
+  java.lang.ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit
+  Exception in thread "main" java.lang.RuntimeException: No toolkit found
+  ```
+
+  即：**构建全绿、产物也在，但二进制一启动就退**。
+- **取证规模**：解压 `aha-desktop-native/target/native/lib/javafx-*-25-win.jar`，
+  对 `com/sun/{javafx,glass,prism,scenario}` 下 **2145 个类**批量 `javap -p -c`，
+  按 `Class.forName` 逐个回溯目标类名；完整性审计时进一步对 **4878 个** JavaFX 类逐个 `javap`
+  （含 `invokedynamic` 动态拼出的名字）。
+- **修复规模**：新增 **288 条**注册（总计 **293 条**），分 10 组——工具包与启动辅助 / Glass 平台工厂 /
+  Prism 管线 / 效果渲染器 / 着色器（**全部 212 个** stock shader `*_Loader`）/
+  Glass 原生回调（`jniAccessible` + 全量方法字段）/ 图片解码 / 字体（DirectWrite、CoreText、FreeType）/
+  **AHA 自身 Jackson 的 13 个配置记录 + `TaskRequest` / `TaskResult` / `ToolCall`** / 其它。
+- **同时补了着色器资源**：D3D 的内建 shader 是 `.obj`（HLSL 预编译字节码，`D3DShaderSource`
+  用 `getResourceAsStream` 读），ES2 的是 `.frag` / `.vert`；而原 `-H:IncludeResources`
+  只认 `png|css|…|dll`，**漏掉了 `.obj`** ⇒ 症状不是构建失败，而是**首次绘制时 shader 加载不到**。
+  已在两份参数文件里补 `obj|frag|vert|glsl|hlsl` 与 `bss`。
+- **依赖元数据审计**：`sqlite-jdbc` ✅ 自带；`log4j-core` / `log4j-api` ✅ 自带
+  （`reflect-config.json` **61 KB** + `resource-config.json`）；
+  **Jackson 3（databind / core / annotations）不随附任何元数据** ⚠️ ⇒ 必须自己注册；
+  `snakeyaml-engine` 无元数据但当前路径只解析到 `JsonNode` ⚪。
+- **验证**：`NativeImageMetadataTest`（**7 条**断言）通过；
+  反向验证①删除 `QuantumToolkit` 注册 → 两条断言失败并**点名 issue #35**；
+  反向验证②把 `loadShader` 改成两参 → 签名断言失败并**点名 `MissingReflectionRegistrationError`**；
+  JSON 用官方 `reachability-metadata-schema-v1.2.0.json` 校验通过（293 条、类型唯一）；
+  备份 / 恢复后 `diff` 无差异。
+- **三平台原生镜像真机启动当时未验证**（按项目约定，分钟级原生构建由 CI 承担；
+  本机只跑快检查）；真机「双击能开窗、能对话」由 `N-05` 跟踪。
+- **「6、后续补充（2026-10-08）」**：在 WSL + GraalVM 25.0.2 上对 GUI 真实跑了 tracing agent，
+  采集 **422 个反射 + 69 条资源**，过滤后补进 **47 条**应用栈条目（元数据总计 **340 条**），
+  含 Linux 平台实现类（`GtkView` / `GtkWindow` / `GtkPixels` / `X11GLFactory`）、
+  ServiceLoader provider，以及 **3 条按扩展名正则覆盖不到的资源**
+  （`LineBreakIteratorData` / `*.icu` / `NativeLibLoader.class`）；Windows / macOS 采集待做（`N-22`）。
+
+### 机制 / 行为模型
+
+- **框架的启动入口是「链式反射」，修一个不够**：只注册报错里那个类，下一次运行会**换一个类继续崩**。
+  正确的单位是「**启动链路**」，不是「某一行报错」。
+- **JNI 与反射是两件事**：`Class.forName` 注册只解决「找得到类」；
+  原生库回调 Java、读写结构体字段还需要 `jniAccessible` + 字段 / 方法注册，
+  否则是**运行期**错误而不是构建错误。
+- **平台差异要一起写**：同一份元数据在三平台共用，平台专属类缺席只会**在对应那条腿上炸**。
+- **别照抄同类工程的公开配置，签名要按本版本字节码核对**：参考配置里的
+  `loadShader(ShaderFactory, InputStream)` 实际是**三参**（`ShaderFactory, String, InputStream`），
+  照抄会让 `getMethod` 在运行期找不到方法。注册的是「**方法签名**」而不是「类名」，
+  跨版本时后者稳定、前者不一定。
+- **「启动链路」只是反射的一部分**：真正会炸的还有**业务层**——本次靠审计才发现 Jackson 3
+  不随附元数据，而 AHA 的配置与会话记录正是 Jackson 读写；不查这一层，就会
+  「**窗口开得起来、一存配置就炸**」。
+- **手工清单不叫「完整」，叫「已知缺口已闭」**：要「证明完整」只能靠 tracing agent
+  或真机逐功能跑。
+
+### 未定位 / 未复现
+
+- **三平台真机启动未验证**：本机没有 GraalVM，也没有能跑 JavaFX 的显示环境
+  ⇒ 「双击能开窗」**未在本机复现**，由 `N-05` / `N-16` 跟踪。
+- **清单完整性无法证明**：本档案自己写明三条理由——
+  ① AHA 自身还会新增反射点（Jackson 记录清单是**手写**的）；
+  ② 扩展系统本来就不能在原生镜像下跑（`ModuleLayer` 与 closed-world 冲突，`TODO` `E-01`）；
+  ③ 手工清单无法证明完整，唯一「抄底」手段是 tracing agent（`N-17`）。
+- **元数据不是本机 agent 采集的**（诚实说明）：它是「静态分析 JavaFX 25 字节码」+
+  「对照已跑通的同类工程公开配置（Gluon Substrate 等）」**推导**出来的，因此仍可能不完整。
+- **Windows / macOS 平台的 tracing agent 采集未做**（`N-22`）。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 启动即崩的原文 | 运行原生 exe | `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit` + `RuntimeException: No toolkit found` |
+| 取证规模 1 | 解压 `javafx-*-25-win.jar` + 批量 `javap -p -c` | **2145 个类**（`com/sun/{javafx,glass,prism,scenario}`） |
+| 取证规模 2（完整性审计） | 逐个 `javap` 4878 个 JavaFX 类 | 提取每个反射点目标（含 `invokedynamic` 拼出的名字） |
+| 修复规模 | `reachability-metadata.json` | 新增 **288 条**，总计 **293 条**，分 **10 组** |
+| stock shader 数量 | 同上 | **212 个** `*_Loader` 全部注册 |
+| 漏掉的资源类型 | 两份参数文件的资源正则 | 原为 `png|css|…|dll`，**漏 `.obj`** ⇒ 首次绘制时 shader 加载不到 |
+| 依赖自带元数据 | 查各 jar | `sqlite-jdbc` ✅ / `log4j-core`+`log4j-api` ✅（`reflect-config.json` **61 KB**）/ **Jackson 3 ❌** / `snakeyaml-engine` ⚪ |
+| 单测 | `-pl aha-desktop -am test -Dtest=NativeImageMetadataTest` | **7 条**断言通过 ✅ |
+| 反向验证① | 删掉 `QuantumToolkit` 注册 | 两条断言失败并**点名 issue #35**；恢复后通过 ✅ |
+| 反向验证② | 把 `loadShader` 改成两参 | 签名断言失败并点名 `MissingReflectionRegistrationError` ✅ |
+| JSON 合规性 | 官方 `reachability-metadata-schema-v1.2.0.json` | 293 条、类型唯一，校验通过 ✅ |
+| **tracing agent 采集（后续）** | WSL + GraalVM 25.0.2 上真跑 GUI | 采到 **422 个反射 + 69 条资源**；过滤后补 **47 条**（总计 **340 条**） |
+| 采集补到的资源 | 同上 | `LineBreakIteratorData` / `*.icu` / `NativeLibLoader.class`（**按扩展名正则覆盖不到**） |
+| 仍未验证 | — | **三平台真机启动**（`N-05`）与 **Windows / macOS 采集**（`N-22`） |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「注册主类就够了」（issue #26 的延续） | 启动链路是**链式**的：修完主类就换成 `QuantumToolkit` 崩（「1、背景」） |
+| 「只注册报错里那个类就行」 | 审计出 `PlatformFactory` / Prism 管线 / 字体工厂等**一串**同类反射点（「2.1」「2.4」） |
+| 「反射注册能顺带解决 JNI」 | JNI 回调与结构体字段读写另需 `jniAccessible` + 字段 / 方法注册（「4、教训」第 2 条） |
+| 「模板里没有的就都不用注册」 | 逐项审计后明确排除的只有：`-fx-skin` 皮肤类（本应用 Control 都重写 `createDefaultSkin()`）、effect Peer（不调用任何 effect）、Swing / Web / Media / FXML 可选模块探测、打印路径、剪贴板反序列化与 preloader（「2.4」表） |
+| 「照抄同类工程的公开配置即可」 | 参考配置的 `loadShader` 签名是**两参**、本版本实际是**三参**，照抄会让 `getMethod` 运行期失败（「4、教训」第 5 条） |
+| 「框架查完就完事」 | 审计发现 **Jackson 3 不随附元数据**，而配置与会话记录靠它读写（「2.4」末表） |
+| 「手工清单 = 完整」 | 档案自己写明三条不完整理由（AHA 自身会新增 / 扩展系统不可用 / 手写无法证明）（「2.4」末段） |
+
+## 未决问题
+
+**Q1 三平台原生二进制真能开窗、能对话吗？**
+
+现状：**未验证**（本机无 GraalVM、无显示环境）。由 `TODO.md` **N-05**（真机）与 **N-16** 跟踪。
+阻塞点：需要真机 + 已发布的原生包。
+
+**Q2 手工清单的完整性怎么「抄底」？**
+
+现状：唯一手段是用 GraalVM 的 **tracing agent** 在真实运行时采集元数据（登记为 **N-17**）。
+> **进展**：本档案「6、后续补充」已在 WSL + GraalVM 25.0.2 上对 **GUI** 跑过一轮，
+> 补入 47 条；**Windows / macOS 平台仍待做**（`N-22`）。
+阻塞点：采集需要能真跑界面的环境，各平台都要单独采。
+
+**Q3 AHA 自身的反射点还会增长，怎么跟？**
+
+现状：Jackson 记录清单是**手写**的——新增一个带 `@JsonProperty` 的记录、
+或某功能用上 effect / 自定义 skin，就要补一条。
+阻塞点：能否用「注解处理器生成 + 单测断言」把这块也自动化（CLI 侧的 picocli 已是这么做的，
+见 `TS-2610-020`），尚未评估。
+
+**Q4 扩展系统在原生镜像下能不能用？**
+
+现状：**不能**——`ModuleLayer` 与 closed-world 根本冲突，属**设计层面的已知非目标**
+（`TODO` `E-01`），不是本次回归。
+阻塞点：需要产品层面确认原生包是否需要扩展能力。

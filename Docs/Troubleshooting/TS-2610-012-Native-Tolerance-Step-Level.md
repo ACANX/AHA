@@ -129,3 +129,116 @@
 - `.agents/skills/java-app-graalvm-native-image-compile/assets/module-pom.xml`
   （模板默认值改安全：`native.skip=true`）
 - `CHANGELOG.md`、`Docs/Dbsx.txt`、`Docs/TODO.md`
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- `DesktopNative` 首次真跑（run `37710184662`，`dev@192a10d`）**四条腿全红**。
+- 它**确实不是必需检查**（分支保护里只有 `build (…)` / `Gate` / `Compat`），
+  **也确实没有挡住合并**——PR #15 只是把 `dev` head 的**全部**检查都列了出来。
+- **逐步骤结论**（本次定性的关键证据）：
+
+  | 腿 | 结论 | 失败步骤 |
+  | --- | --- | --- |
+  | `native-version` | success | — |
+  | `native-build (linux-x64, jdk25)` | failure | **「构建原生镜像」✓ 成功**；「产物自证」✗ |
+  | `native-build (macos-arm64, jdk25)` | failure | **「构建原生镜像」✓ 成功**；「产物自证」✗ |
+  | `native-build (windows-x64, jdk25)` | failure | 「工具链自证」✗ |
+  | `native-build (windows-x64, jdk27)` | failure | 「安装 GraalVM」✗ |
+  | `native-publish` | failure | 「整理资产」✗ |
+
+- **最重要的结论**：Linux 与 macOS 上**原生编译本身成功了**——整条链路
+  （GraalVM 安装 → `@argfile` → `-cp` classpath → `-H:Path` / `-H:Name` → assembly）**是通的**，
+  四个红叉**全在「编译之外」**。
+- 整次运行最后**也真的红了**：`native-publish` 的「整理资产」在**一个制品都没有**时 `exit 1`，
+  而它偏偏**没有加容错**。
+- 默认构建实测（不带任何 profile）：`clean package` → **BUILD SUCCESS**；反应堆只有 **7 个**声明模块；
+  native 相关日志 **0 行**；`aha-desktop-native/target/` **完全未被触碰**；
+  6 个模块 jar 全部产出；仓库根 **0 个 zip**。
+- 三个 YAML（`DesktopNative.yml` / `Release.yml` / `maven-run/action.yml`）合法；
+  `Check{Docs,Skills,Scripts}` 全绿。
+- **修复后工作流自身的表现（四条腿是否真的都绿、诊断输出能否揭示真因）当时未验证**，
+  留给下一次 `DesktopNative` 运行确认（`Docs/TODO.md` **N-10**）。
+
+### 机制 / 行为模型
+
+- **作业级容错 ≠ 非阻塞**：`continue-on-error` 放在**作业级**时，只保证**整次运行**不变红，
+  **作业本身仍显示红叉**；只有放到**步骤级**，作业才会变绿。
+
+  | 放法 | 效果 |
+  | --- | --- |
+  | 作业级 `continue-on-error: true` | 整次运行不变红；**作业仍红叉** |
+  | 步骤级 `continue-on-error: true` | **作业也绿**（红叉消失），运行自然绿 |
+
+- **但从「吓人」到「没人知道坏了」只有一步之遥**：步骤级容错**必须**配「摘要留真相」
+  （Job Summary 逐腿写结论），否则信息会随红叉一起消失。
+- **判据只留不变式**：「恰好 N 个」这类判据一定会漂，而**漂不代表坏**；
+  门禁的判据应当是「坏了才不满足」的条件。
+- **自证脚本要先打现场**：失败时最需要的是「到底有什么」（目录、候选文件、清单），而不是一句 `error`。
+- **不要把「环境问题」和「代码问题」混进同一个颜色**：Windows `.cmd` 不能执行、
+  GraalVM 某 JDK 未发布都属于前者，正确表现是「记录 + 摘要」，不是红叉。
+- **默认路径不该依赖平台工具链**（可诊断性）：一旦依赖，构建失败就从「代码问题」变成「环境问题」，
+  而后者极难在别人的机器上复现。实现是**两层保障**：① 模块只在 profile 的 `<modules>` 里；
+  ② 内层开关 `native.skip` 默认 `true`，由 `-Pdesktop-native` 置 `false`。
+
+### 未定位 / 未复现
+
+- **修复后的效果未验证**：四条腿是否真的都绿、诊断输出能否揭示「产物自证」的真因，
+  留给下一次 `DesktopNative` 运行（`TODO.md` **N-10**）——当时**没有结论**。
+- **GraalVM 的 JDK 27 尚未发布**（上游发布节奏，非本项目问题）：属**外部阻塞**，时间未知。
+- Windows 上「`.cmd` 不能由 bash 直接执行」**未在本机复现**（本机为 WSL）。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 运行与提交 | GitHub Actions | run `37710184662`，`dev@192a10d`，**四条腿全红** |
+| 是否挡住合并 | 分支保护的必需检查清单 | 只有 `build (…)` / `Gate` / `Compat` ⇒ **没挡** |
+| 逐步骤结论 | `/actions/runs/<id>/jobs` | linux / macos 的「构建原生镜像」**success**、「产物自证」failure；windows jdk25「工具链自证」failure；windows jdk27「安装 GraalVM」failure；`native-publish` failure |
+| 整次运行为何变红 | 同上 | `native-publish`「整理资产」**零制品时 `exit 1`** 且未加容错 |
+| 错误判据 1 | `DesktopNative.yml` 原文 | 「恰好 3 个 OpenJFX jar」——该数会随传递依赖**漂移** |
+| 错误判据 2 | 同上（`set -e` 下） | `jfx=$(ls dir/*.jar \| wc -l)`：glob 不匹配时 `ls` **退 2** ⇒ 赋值让整步失败，报错只有一行 `No such file or directory` |
+| Windows 缺陷原文 | 构建日志 | `native-image.cmd` 由 bash 直接执行失败 → 改 `cmd //c "native-image.cmd --version"` |
+| 默认构建契约 | 不带 profile 实测 | **BUILD SUCCESS**；反应堆 **7 个**模块；native 日志 **0 行**；`aha-desktop-native/target/` **未被触碰**；6 个 jar 产出；仓库根 **0 个 zip** |
+| 配置合法性 | YAML 解析 + `bin/Check{Docs,Skills,Scripts}.py` | 三个 YAML 合法 ✅ / 检查全绿 ✅ |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「它挡住合并了」 | 分支保护里它不是必需检查；PR #15 只是把 `dev` head 的**全部**检查列出来（「一、背景」） |
+| 「原生编译本身失败了」 | 逐步骤看：linux / macOS 的「构建原生镜像」是 **success**，红的是「产物自证」（「2.1」） |
+| 「作业级 `continue-on-error` 就等于非阻塞」 | 作业级只让**整次运行**不变红，作业**仍红叉**；步骤级才绿（「2.2」） |
+| 「恰好 3 个 OpenJFX jar 是硬约束」 | 该数会随传递依赖漂移，而**漂不代表坏** → 改为「≥3 且无 0 KB 空壳」（「2.3」第 2 条） |
+| 「glob 不匹配时赋值会正常通过」 | `set -e` 下 `ls` 退 2，赋值语句让整步失败（「2.3」第 2 条） |
+| 「原生包会被 `Release.yml` 当桌面端包处理」 | 已把 glob 收紧为 `Dist/aha-desktop-[0-9]*.zip`，否则自证断言「恰好 1 个桌面端包」会**假失败**（「2.4」） |
+| 「默认构建需要平台工具链」 | 两层保障 + 实测：默认反应堆无它、`target/` 未被触碰、native 日志 0 行（「2.5」「三、」） |
+
+## 未决问题
+
+**Q1（`TODO.md` N-10）修复后四条腿真的都绿吗？**
+
+现状：**未验证**——留给下一次 `DesktopNative` 运行确认。
+阻塞点：需要一次真实运行；本次只验证了默认构建契约与 YAML 合法性。
+
+**Q2 GraalVM 的 JDK 27 何时可用？**
+
+现状：上游**尚未发布**，安装步骤已容错，后续步骤以 `steps.graal.outcome == 'success'` 为前提，
+摘要里如实写「工具链未就绪」。
+阻塞点：**外部依赖**，本项目无法推进时间表。
+
+**Q3 诊断输出的信息量够不够？**
+
+现状：产物自证失败时会打 `ls -la` / `find` / classpath 清单，但**能否据此直接定性未验证**
+（与 Q1 同属一次运行才能回答）。
+
+**Q4 「先写技能 → 再改代码 → 记来源」这条流程要强制吗？**
+
+现状：本轮**顺序反了**（先改代码、后补技能），只在技能迭代日志里如实记下。
+阻塞点：是否有机器可查的判据（例如提交顺序），尚未评估。

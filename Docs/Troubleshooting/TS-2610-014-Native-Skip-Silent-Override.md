@@ -137,3 +137,112 @@ Maven 的属性继承里，**模块自身 `<properties>` 的定义优先于从�
 - `.agents/skills/java-app-graalvm-native-image-compile/assets/module-pom.xml`（默认值移出模块）
 - `.agents/skills/java-app-graalvm-native-image-compile/SKILL.md`（五个坑 + 迭代日志）
 - `Docs/TODO.md`（N-12 新增）、`Docs/Dbsx.txt`、`CHANGELOG.md`
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- 运行 `37720809417` 的形态：四条腿**全部 `success`**，但
+  「改名为发布用资产名」与「上传制品」**全部 `skipped`**，
+  `native-publish` 写了一句「本次无可发布产物」然后**正常结束**。
+- 「构建原生镜像 `success`」+「产物自证（诊断式）`success`」+「改名 `skipped`」
+  这个组合只有一个解释：**构建步骤根本没有产出二进制**。
+- **判别实验**（本机 WSL **没有装 GraalVM**，恰好是理想判别器）：
+  带 profile 且**不传** `-Dnative.skip` 时，`exec:3.5.1:exec (native-image)` 目标
+  **被执行了**，却仍然 **`BUILD SUCCESS`**（什么都没做）
+  ⇒ **「构建成功」等价于「开关是跳过」**。
+- 开关的定义位置（两处，互相打架）：
+  `pom.xml:442` → `<native.skip>false</native.skip>`（`desktop-native` profile 里）；
+  `aha-desktop-native/pom.xml:89` → `<native.skip>true</native.skip>`（**模块自身**的 `<properties>`）。
+- 修复后三条命令三种结果：
+  ① 默认构建（无 profile）→ `BUILD SUCCESS`（且 `-pl aha-desktop-native` 报「不存在」= 模块确实不在反应堆）；
+  ② 带 profile、**不传** `-Dnative.skip` → **`Cannot run program "native-image"`**
+  （本机无 GraalVM 必然失败——证明开关**真的生效**了）；
+  ③ 带 profile + `-Dnative.skip=true` → `BUILD SUCCESS`（本机自检模式，跳过真编）。
+- 修复后 `DesktopNative.yml` 四处加固：显式 `-Dnative.skip=false`、
+  新增「确认 native-image 真的执行过」（查 `<name>.build_artifacts.txt`，缺则 `::warning::` 双写）、
+  产物自证在「构建成功却无二进制」时点名原因、jdk27 腿补一步专门写跳过摘要；YAML 合法；
+  `Check{Docs,Skills,Scripts}` 全绿。
+- **下一次运行的结果当时未验证**：预期三条 jdk25 腿产出二进制并上传、
+  `native-publish` 真正创建 `native-v<版本>` 预发行版（判据见 `TODO.md` **N-12**）。
+
+### 机制 / 行为模型
+
+- **Maven 的属性继承顺序**：**模块自身 `<properties>` 的定义优先于从父 POM 继承的属性**，
+  而父 POM 里 **profile 注入**的属性对子模块而言也**只是「继承来的属性」**。
+  ⇒ 把「安全默认值」写在**模块级**，会让 profile 的覆盖**永远失效**
+  ——**「安全默认值」若定义在错误的层级，就变成「永久关闭」**。
+- **「构建成功」不是验收标准**：带开关的管线，开关被跳过时构建照样成功。
+  验收条件必须包含「**产物存在 + 自证通过**」。
+- **容忍失败必须以「叫得响」为条件**：上一轮把管线做成「可选」是对的（用户明确要求），
+  但只做容错而不加「产物缺失必须 warning + 摘要」，等于把「红叉」换成了「**静默空转**」
+  ——比红叉更糟。
+- **利用环境差异做判别器**：本机没有 GraalVM，于是「构建成功 / 失败」本身就是
+  「开关是否生效」的判据；这类零成本实验比读日志快得多。
+- **执行痕迹比日志可靠**：`<name>.build_artifacts.txt` 是 native-image 一定会留下的痕迹；
+  而**日志在成功时常常不留档**（本项目的 `maven-run` 成功后会删除临时日志）。
+
+### 未定位 / 未复现
+
+- **修复后的效果未验证**：下一次 `DesktopNative` 运行是否真的出二进制、是否真的创建预发行版，
+  当时没有结论（判据登记在 `TODO.md` N-12）。
+- **GraalVM 的 JDK 27 尚未发布**（外部依赖），两条 jdk27 腿只能整体跳过。
+- 「三条 jdk25 腿真能编出二进制」**未在本机验证**（本机无 GraalVM）——这正是本档案能定性、
+  却不能收官的原因。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 运行形态（**现象**） | `/actions/runs/37720809417/jobs` | 四条腿 `success`；「改名为发布用资产名」「上传制品」**`skipped`**；`native-publish`「本次无可发布产物」 |
+| 判别实验（**修复前**） | 带 profile、不传 `-Dnative.skip` | `exec:3.5.1:exec (native-image)` 执行了，但 **`BUILD SUCCESS`**（什么都没做） |
+| 开关定义 1 | `pom.xml:442` | `<native.skip>false</native.skip>`（profile 内） |
+| 开关定义 2 | `aha-desktop-native/pom.xml:89` | `<native.skip>true</native.skip>`（**模块自身** `<properties>`） |
+| 判别实验（**修复后**） | 同第 2 行 | **`Cannot run program "native-image"`** ⇒ 开关真的生效 ✅ |
+| 默认构建（无 profile） | `clean package` | `BUILD SUCCESS`；`-pl aha-desktop-native` 报「不存在」⇒ **不在反应堆** |
+| 自检模式 | 带 profile + `-Dnative.skip=true` | `BUILD SUCCESS`（跳过真编，符合预期） |
+| 执行痕迹判据 | 查输出目录 | `<name>.build_artifacts.txt` 不存在 ⇒ `::warning::` 双写（step annotation + Job Summary） |
+| 配置与检查 | YAML 解析 + `bin/Check{Docs,Skills,Scripts}.py` | 合法 ✅ / 全绿 ✅ |
+
+> **对照样本（规范要求）**：同一台机器、同一条命令，**修复前** `BUILD SUCCESS`（静默跳过）
+> 与**修复后** `Cannot run program "native-image"`（真实尝试）并列——这一个对照就把根因钉死了。
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「产物编译出来了、只是没上传」 | 「改名」与「上传」都是 **`skipped`**——**没有产物可改名**（「2.1」） |
+| 「构建步骤其实真的编译了」 | 本机无 GraalVM 的判别实验证明：目标被调用却什么都没做（「2.2」） |
+| 「开关没生效是因为 profile 没生效」 | profile **生效**（`exec` 目标被执行了），是**属性被模块覆盖**（「2.3」） |
+| 「默认构建会受影响」 | 无 profile 时 `-pl aha-desktop-native` 报「不存在」⇒ 模块不在反应堆（「2.5」①） |
+| 「产物自证能兜住这件事」 | 它是**诊断式**的（判不出来也不阻塞）⇒ 构建无产物时它仍然 `success`（「2.1」） |
+
+## 未决问题
+
+**Q1（`TODO.md` N-12）下一次运行真的出产物、真的创建预发行版了吗？**
+
+现状：**未验证**。判据已写明（三条 jdk25 腿产出二进制并上传；`native-publish` 创建
+`native-v<版本>` 预发行版）。
+阻塞点：需要一次真实的 `DesktopNative` 运行。
+
+**Q2 GraalVM 的 JDK 27 何时可用？**
+
+现状：上游**尚未发布**，两条 jdk27 腿整体跳过（已补跳过摘要）。
+阻塞点：**外部依赖**，本项目无法推进。
+
+**Q3 「开关被静默跳过」能不能在所有管线里通用地拦？**
+
+现状：本轮只给 `DesktopNative` 加了「执行痕迹自证」（`build_artifacts.txt`）。
+其它带开关的管线（如 `-Djacoco.skip`、`-DskipTests`）**没有**同类自证——
+它们被误置时同样会静默空转。
+阻塞点：模式可复制（「产物/痕迹存在 + 摘要」），但未评估推广范围。
+
+**Q4 还有别处把「安全默认值」写在模块级吗？**
+
+现状：本轮只处理了 `native.skip`，**未做全仓排查**。
+阻塞点：需要一次「模块级 `<properties>` 里是否定义了会与父 POM profile 冲突的开关」的扫描。
