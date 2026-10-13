@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    AHA 桌面端界面骨架（三栏 + 菜单栏 + 底部状态栏）。
+
+    ── 这份 FXML 里为什么几乎没有属性 ──────────────────────────────────────────
+    结构在这里，**样式与行为在 DesktopShell**（本文件的控制器）。
+
+    原生镜像下，FXML 的每一个属性都会变成一次**反射调用**（`text` → `setText`、
+    `alignment` → 静态 `setAlignment`…），而反射调用的成员声明在**哪个类上**就必须登记
+    哪个类——`Label` 的 `text` 声明在 `Labeled`、`Button` 的 `onAction` 声明在 `ButtonBase`
+    （见姊妹项目 LegionFanControl 的 `TS-2610-003`：FXML 重构后原生包启动即崩，
+    逐个补登记才恢复）。把属性降到最少，就让「需要登记的自然类」收敛到可枚举的一小组：
+    各种容器的**构造器**、`Pane#getChildren`、`Node#setId`、以及 `@FXML` 字段注入。
+
+    颜色与字号本来就是内联样式串（主题切换靠 `DesktopShell#restylers` 整屏重刷），
+    搬进 FXML 反而会把那套机制拆成两半。
+
+    ── 约定 ──────────────────────────────────────────────────────────────────
+    * `fx:id`  → 注入 `DesktopShell` 的同名字段（字段名必须一致）；
+    * `id`     → 节点 id，取值来自 `DesktopShell` 的常量（冒烟测试与真机排查都按它定位）；
+    * 动态内容（消息流、工具卡片、会话单元格、空态标志）**不在这里**——它们随数据生成，
+      留在 Java 里建（见 `DesktopShell#createEmptyState` / `#createToolCard`）。
+-->
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:id="root">
+    <top>
+        <VBox>
+            <MenuBar fx:id="menuBar" id="aha.menubar">
+                <menus>
+                    <Menu fx:id="fileMenu">
+                        <items>
+                            <MenuItem fx:id="exitItem"/>
+                        </items>
+                    </Menu>
+                    <Menu fx:id="editMenu">
+                        <items>
+                            <MenuItem fx:id="copyItem"/>
+                        </items>
+                    </Menu>
+                    <Menu fx:id="sessionMenu">
+                        <items>
+                            <MenuItem fx:id="clearItem"/>
+                        </items>
+                    </Menu>
+                    <Menu fx:id="toolsMenu">
+                        <items>
+                            <MenuItem fx:id="toolListItem"/>
+                            <SeparatorMenuItem/>
+                            <MenuItem fx:id="revokeItem"/>
+                        </items>
+                    </Menu>
+                    <Menu fx:id="viewMenu">
+                        <items>
+                            <CheckMenuItem fx:id="collapseLeft"/>
+                            <CheckMenuItem fx:id="collapseRight"/>
+                            <SeparatorMenuItem/>
+                            <MenuItem fx:id="themeItem"/>
+                        </items>
+                    </Menu>
+                    <Menu fx:id="helpMenu">
+                        <items>
+                            <MenuItem fx:id="aboutItem"/>
+                        </items>
+                    </Menu>
+                </menus>
+            </MenuBar>
+        </VBox>
+    </top>
+
+    <center>
+        <HBox fx:id="middleRow" id="aha.center.row">
+            <children>
+                <!-- 左栏：导航与列表 -->
+                <HBox fx:id="leftBox" id="aha.left">
+                    <children>
+                        <HBox fx:id="leftStrip">
+                            <children>
+                                <Button fx:id="leftToggle" id="aha.left.toggle"/>
+                            </children>
+                        </HBox>
+                        <VBox fx:id="leftContent" id="aha.left.content">
+                            <children>
+                                <TextField fx:id="sessionSearch" id="aha.session.search"/>
+                                <Button fx:id="newSessionButton"/>
+                                <Label fx:id="sessionSection"/>
+                                <ListView fx:id="sessionList" id="aha.session.list"/>
+                                <Button fx:id="providerButton"/>
+                                <Button fx:id="toolsButton"/>
+                                <Button fx:id="memoryButton"/>
+                                <Button fx:id="extensionButton"/>
+                                <Button fx:id="logButton"/>
+                                <Button fx:id="settingsButton"/>
+                                <Region fx:id="leftSpacer"/>
+                            </children>
+                        </VBox>
+                    </children>
+                </HBox>
+
+                <!-- 中栏：消息流 + 输入区 -->
+                <VBox fx:id="centerColumn" id="aha.center">
+                    <children>
+                        <ScrollPane fx:id="messageScroll">
+                            <content>
+                                <VBox fx:id="messages" id="aha.messages"/>
+                            </content>
+                        </ScrollPane>
+                        <VBox fx:id="composerBox">
+                            <children>
+                                <TextArea fx:id="composer" id="aha.composer"/>
+                                <HBox fx:id="composerActions">
+                                    <children>
+                                        <Button fx:id="sendButton" id="aha.send"/>
+                                    </children>
+                                </HBox>
+                            </children>
+                        </VBox>
+                    </children>
+                </VBox>
+
+                <!-- 右栏：本轮上下文 -->
+                <HBox fx:id="rightBox" id="aha.right">
+                    <children>
+                        <VBox fx:id="rightContent" id="aha.right.content">
+                            <children>
+                                <Label fx:id="rightTitle"/>
+                            </children>
+                        </VBox>
+                        <HBox fx:id="rightStrip">
+                            <children>
+                                <Button fx:id="rightToggle" id="aha.right.toggle"/>
+                            </children>
+                        </HBox>
+                    </children>
+                </HBox>
+            </children>
+        </HBox>
+    </center>
+
+    <bottom>
+        <HBox fx:id="statusBar" id="aha.statusbar">
+            <children>
+                <Label fx:id="connectionLabel"/>
+                <Label fx:id="status" id="aha.status"/>
+                <Label fx:id="config" id="aha.config"/>
+                <Region fx:id="statusSpacer"/>
+                <Label fx:id="usageLabel" id="aha.usage"/>
+                <Label fx:id="statusHint"/>
+                <Label fx:id="versionLabel"/>
+            </children>
+        </HBox>
+    </bottom>
+</BorderPane>

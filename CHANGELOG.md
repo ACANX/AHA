@@ -11,6 +11,19 @@
 ## [Unreleased]
 
 ### 变更
+- **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
+  状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
+  `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
+  冒烟测试按 id 的 `lookup` 全部照旧。新增 `javafx-fxml` 依赖（父 POM 的
+  `dependencyManagement` 一并登记）。原生镜像侧：`.fxml` 并入 `-H:IncludeResources`
+  扩展名白名单（**刻意不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像、
+  触发运行期 `defineClass` 而启动即崩），并按「**按声明类登记**」的规律补齐反射元数据
+  （`FXMLLoader` / `FXML` / 各控件与布局 / StAX 实现，并把 `Node` / `Parent` / `Region` /
+  `Pane` / `Control` / `Labeled` 升级为 `allDeclared*`）。自证：`NativeImageMetadataTest`
+  新增 FXML 用例，新增 `DesktopShellFxmlTest`（fx:id ↔ 字段 / id ↔ 常量 / 资源白名单
+  三向对账，不启 JavaFX）；启动时打印 ASCII 正面标记 `[ui-fxml-loaded]` /
+  `[ui-fxml-load-failed]`（带 flush）。参考姊妹项目 `TS-2610-003`（FXML 重构后
+  原生包启动即崩的两层踩坑）。见 `Docs/DevLog/20261013-11.md`。
 - **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
   的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
   不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。

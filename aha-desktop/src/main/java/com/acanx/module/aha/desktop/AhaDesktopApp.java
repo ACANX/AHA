@@ -331,7 +331,26 @@ public final class AhaDesktopApp extends Application {
         // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
-        Parent root = shell.buildRoot();
+        Parent root;
+        try {
+            root = shell.buildRoot();
+        } catch (RuntimeException | Error e) {
+            // FXML 骨架装不起来时必须**看得见**：窗口根本不会出现，而构建是绿的。
+            //
+            // 两个细节缺一不可（姊妹项目 LegionFanControl 的 TS-2610-003 踩过）：
+            //   1. 标记用**纯 ASCII**——冒烟在中文 Windows 下可能是 GBK，中文标记会乱码；
+            //   2. 打完显式 **flush**——重定向到文件时 System.err 不自动刷，标记会丢。
+            // 另：捕获范围必须含 Error——装不起来时抛的可能是 AssertionError /
+            // UnsupportedFeatureError，而它们不是 Exception。
+            System.err.println("[ui-fxml-load-failed] " + e);
+            e.printStackTrace();
+            System.err.flush();
+            throw e;
+        }
+        // 正面标记：它证明「界面骨架真的装好了」，而不只是「没看到报错」——
+        // 负面断言（比如「日志里不得含『加载失败』」）对「程序根本没跑到那一步」是盲的。
+        System.out.println("[ui-fxml-loaded] desktop-shell.fxml");
+        System.out.flush();
         // 构建期用的是「当时」的色表：这里幂等地再刷一次，保证所有登记过的节点与当前色表一致。
         // 原生镜像里出现过「部分节点停在构建期主题」的混合状态——底色一套、文字另一套（issue #49），
         // 这一步把「构建期取值」这个不确定性直接抹掉。

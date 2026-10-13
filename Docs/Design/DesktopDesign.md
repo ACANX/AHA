@@ -95,8 +95,8 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 - 父 POM 加 5 个 profile（`javafx-windows` / `javafx-mac` / `javafx-mac-aarch64` /
   `javafx-linux` / `javafx-linux-aarch64`），各自把属性 `javafx.platform` 设为对应分类器；
-- 父 POM 的 `dependencyManagement` 为 `javafx-base` / `javafx-graphics` / `javafx-controls`
-  声明 `version = ${javafx.version}` + `classifier = ${javafx.platform}`；
+- 父 POM 的 `dependencyManagement` 为 `javafx-base` / `javafx-graphics` / `javafx-controls` /
+  `javafx-fxml` 声明 `version = ${javafx.version}` + `classifier = ${javafx.platform}`；
 - `aha-desktop` 只写 `groupId` / `artifactId` / `<classifier>${javafx.platform}</classifier>`，
   **不出现平台字面量**；版本与分类器都来自父 POM。
 

@@ -262,6 +262,69 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void reachabilityMetadataRegistersTheFxmlViewChain() throws IOException {
+        String json = readMetadata();
+
+        // 骨架的装载与控制器注入：FXMLLoader 会在 <clinit> 里按名字强初始化自己
+        // （Utils.forceInit）——**按名字加载**的类封闭世界分析看不到，不登记就被裁掉，
+        // 原生包启动即 AssertionError: ClassNotFoundException: javafx.fxml.FXMLLoader
+        // （姊妹项目 LegionFanControl 的 TS-2610-003 第 ① 条）。
+        for (String type : List.of(
+                "com.acanx.module.aha.desktop.view.DesktopShell",
+                "javafx.fxml.FXMLLoader",
+                "javafx.fxml.FXML")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 属于 FXML 装载链路（按名字加载 + 控制器字段注入），必须显式登记", type)
+                    .isNotBlank();
+        }
+
+        // 反射访问成员的单元是「声明类」：Node#setId、Pane#getChildren、ButtonBase#setOnAction
+        // ……（子类条目不会覆盖父类成员）。这几条各自都要 allDeclared*
+        //（TS-2610-003 第 ② 条：三条报错逐个撞出来后才意识到这条规律）。
+        for (String type : List.of(
+                "javafx.scene.Node",
+                "javafx.scene.Parent",
+                "javafx.scene.layout.Region",
+                "javafx.scene.layout.Pane",
+                "javafx.scene.control.Control",
+                "javafx.scene.control.Labeled",
+                "javafx.scene.control.ButtonBase")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 是 FXML 反射访问属性 / 方法的**声明类**；只登记具体控件类不够"
+                            + "（父类成员不会因为子类在册而可用），必须 allDeclared*", type)
+                    .contains("allDeclaredMethods");
+        }
+
+        // desktop-shell.fxml 里出现的控件与布局：FXMLLoader 按类名实例化它们
+        for (String type : List.of(
+                "javafx.scene.layout.BorderPane",
+                "javafx.scene.layout.HBox",
+                "javafx.scene.layout.VBox",
+                "javafx.scene.control.Button",
+                "javafx.scene.control.Label",
+                "javafx.scene.control.TextField",
+                "javafx.scene.control.TextArea",
+                "javafx.scene.control.ScrollPane",
+                "javafx.scene.control.ListView",
+                "javafx.scene.control.MenuBar",
+                "javafx.scene.control.Menu",
+                "javafx.scene.control.MenuItem",
+                "javafx.scene.control.CheckMenuItem",
+                "javafx.scene.control.SeparatorMenuItem")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 在 desktop-shell.fxml 里出现，FXMLLoader 要按类名实例化它"
+                            + "（fxml 里新增控件时必须同步登记，否则构建全绿、启动即崩）", type)
+                    .contains("allDeclaredConstructors");
+        }
+
+        // FXMLLoader 解析 fxml 走 StAX，其 JDK 内部实现由 FactoryFinder **按名字**找；
+        // 不登记就是 FactoryConfigurationError: Provider … not found（TS-2610-003 第 ⑤ 条）
+        assertThat(entryFor(json, "com.sun.xml.internal.stream.XMLInputFactoryImpl"))
+                .as("FactoryFinder 按名字找 StAX 实现；不登记则原生包解析 fxml 时直接失败")
+                .contains("allDeclaredConstructors");
+    }
+
+    @Test
     void jniConfigRegistersClassLookupsFromJavafxNativeCode() throws IOException {
         assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();
         String json = Files.readString(JNI_CONFIG);
