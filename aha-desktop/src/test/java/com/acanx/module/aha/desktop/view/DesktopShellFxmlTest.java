@@ -11,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -146,6 +148,43 @@ class DesktopShellFxmlTest {
     }
 
     @Test
+    void everyFxmlInstantiatedTypeRegistersItsConstructor() throws IOException {
+        String fxml = readFxml();
+
+        Map<String, String> bySimpleName = new TreeMap<>();
+        Matcher imports = IMPORT.matcher(fxml);
+        while (imports.find()) {
+            String qualified = imports.group(1);
+            bySimpleName.put(qualified.substring(qualified.lastIndexOf('.') + 1), qualified);
+        }
+
+        String metadata = Files.readString(metadataPath(), StandardCharsets.UTF_8);
+        List<String> missing = new ArrayList<>();
+        Set<String> checked = new TreeSet<>();
+        Matcher elements = ELEMENT.matcher(fxml);
+        while (elements.find()) {
+            String simple = elements.group(1);
+            String qualified = bySimpleName.get(simple);
+            if (qualified == null || !checked.add(qualified)) {
+                continue; // 缺 import 由 everyElementTypeIsImported 负责报
+            }
+            String entry = entryForType(metadata, qualified);
+            if (entry == null || !entry.contains("allDeclaredConstructors")) {
+                missing.add(qualified);
+            }
+        }
+
+        assertThat(missing)
+                .as("FXML 实例化元素类型走的是**反射构造**，native-image 下该类型必须登记构造器；"
+                        + "只登记 type / methods / fields 不够。实测（0.1.3.00134 原生包）："
+                        + "`MissingReflectionRegistrationError: Cannot reflectively invoke constructor "
+                        + "'public javafx.scene.layout.Region()'` —— fxml 里一个 <Region fx:id=\"…\"/> 就直接炸。"
+                        + "本用例把「fxml 用到的类型」与「元数据登记」做了交叉校验，"
+                        + "后续各批次新增控件时不必再等原生构建才发现漏登记")
+                .isEmpty();
+    }
+
+    @Test
     void nativeImageArgsIncludeFxmlWithoutPullingClassesInAsResources() throws IOException {
         Path args = nativeImageArgs();
         assertThat(args).as("native-image 参数清单").exists();
@@ -234,6 +273,34 @@ class DesktopShellFxmlTest {
                     .isNotNull();
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    private static Path metadataPath() {
+        Path base = Path.of(System.getProperty("basedir", System.getProperty("user.dir")));
+        return base.resolve(Path.of("src", "main", "resources", "META-INF", "native-image",
+                "com.acanx.module.aha", "aha-desktop", "reachability-metadata.json"));
+    }
+
+    /** 截取某个 {@code type} 对应的完整 JSON 对象（大括号配平，与 NativeImageMetadataTest 同法）。 */
+    private static String entryForType(String metadata, String type) {
+        int at = metadata.indexOf("\"" + type + "\"");
+        if (at < 0) {
+            return null;
+        }
+        int start = metadata.lastIndexOf('{', at);
+        int depth = 0;
+        for (int i = start; i < metadata.length(); i++) {
+            char c = metadata.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return metadata.substring(start, i + 1);
+                }
+            }
+        }
+        return null;
     }
 
     private static Path nativeImageArgs() {

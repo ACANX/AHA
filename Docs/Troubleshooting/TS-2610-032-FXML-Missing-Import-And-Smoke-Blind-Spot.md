@@ -31,6 +31,18 @@ Caused by: javafx.fxml.LoadException: BorderPane is not a valid type.
 
 `/16!/` 是 `desktop-shell.fxml` 的第 16 行——就是那个 `<BorderPane …>` 根元素。
 
+补上 import 之后**又崩了一次**，是同一大类、不同一层——反射登记**漏了构造器**：
+
+```text
+Caused by: org.graalvm.nativeimage.MissingReflectionRegistrationError:
+  Cannot reflectively invoke constructor 'public javafx.scene.layout.Region()'
+  To allow this operation, add the following to the 'reflection' section of
+  'reachability-metadata.json' and rebuild the native image
+```
+
+而这一轮之所以能立刻定位，靠的是上一步刚改成正面断言的冒烟把 stdout / stderr 都抓了下来
+（见 §4 的第 4 条）——**判据变强之后，它自己就成了排查工具**。
+
 ## 2. 排查过程
 
 **取证①（真机）**：上面那段堆栈。`loadView()` 里我们自己的异常包装（`IllegalStateException("桌面端界面骨架装载失败：" + FXML_VIEW)`）把 `LoadException` 带了出来，链路上每一跳都在栈上，不需要额外加日志就定位到了行号。
@@ -66,7 +78,20 @@ FXML 里无前缀的元素名**不走 `Class.forName` 补全包名**，而是查
 这与 Java 的直觉相反：Java 里 `BorderPane` 能靠 import 或同包解析，而 FXML 的「import」是**另一套表**，
 且**漏了不会编译报错**——它只在装载那一刻才炸。
 
-### 3.2 结构性原因：冒烟用的是**负面/弱判据**
+#### 3.2 第二层直接原因：反射登记「按声明类」还要「按用途」
+
+`Region` 在元数据里**本来就有条目**（很早就被 tracing agent 采集到），登记里也有
+`allDeclaredMethods` / `allDeclaredFields`——于是「这个类型在册」看起来是满足的。
+但 FXML 实例化元素走的是**反射构造**，native-image 要求**单独登记构造器**：
+`type` / `methods` / `fields` 都不等于「允许反射 new」。
+
+`Region` 恰好是 fxml 里唯一被直接实例化的基类（`<Region fx:id="leftSpacer"/>`、`<Region fx:id="statusSpacer"/>`），
+于是它成了唯一暴露这个缺口的类型——`Pane` / `Parent` / `Node` 只是「暂时没人 new」。
+
+> 教训：**「类型在册」不等于「用途在册」**。登记要按**声明类**（§TS-2610-003）之外，
+> 还要按**用途**（构造 / 方法调用 / 字段读写）逐项覆盖。
+
+## 3.3 结构性原因：冒烟用的是**负面/弱判据**
 
 旧判据（改前原文）：
 
@@ -98,6 +123,12 @@ if ($p.HasExited) { … 退出码非 0 → 只打 ::warning:: … } else { '存�
 | 3 | **启动即打印全量版本**（含构建号）：`[aha-version] version=0.1.3.00134 baseline=0.1.3 prerelease=true`（纯 ASCII + flush） | `AhaDesktopApp#main` |
 | 4 | **冒烟改成正面断言**：抓 stdout/stderr，断言 ①命中 `[aha-version]` ②命中 `[ui-fxml-loaded]` ③不得出现 `[ui-fxml-load-failed]` ④不得 20 秒内非 0 退出；失败写 `::error::` + 摘要打 ❌ + 附日志尾部 | `.github/workflows/DesktopNative.yml` |
 
+| 5 | 给 `Region`（与 `Pane`）补 `allDeclaredConstructors` | `reachability-metadata.json` |
+| 6 | **新增交叉校验**：fxml 里实例化的每个类型，都必须在元数据里登记 `allDeclaredConstructors` | `DesktopShellFxmlTest#everyFxmlInstantiatedTypeRegistersItsConstructor` |
+
+第 6 条是关键：它把「fxml 用到的类型」与「元数据登记」对起来，于是这类漏登记
+**不必再等一轮原生构建才发现**（实测：对改前的元数据跑同一条规则，`Region` 被精确点名）。
+
 第 3 条同时是第 4 条的**断言落点**：一个「启动就能看到、且带构建号」的标记，既服务于排障（第一句要问
 「你跑的是哪一版」），又让「程序真的进到 main 了」变成机器可判定的事实。它走 `System.out` 而非 log4j2——
 后者的 console appender 级别是 ERROR，INFO 级的版本行在真机控制台上根本看不见（真机输出里确实只有 JavaFX 的 JUL 日志）。
@@ -113,6 +144,7 @@ if ($p.HasExited) { … 退出码非 0 → 只打 ::warning:: … } else { '存�
 | 静态对账能拦住本次缺陷 | 对**改前**的 fxml 跑同一规则 → 15 个类型全部报缺（第 2 节取证②） |
 | 静态对账不误报 | 对改后的 fxml 跑 → 0 缺；`<top>` / `<children>` / `<items>` 等**属性标签**按「首字母大写」规则被正确排除 |
 | 修复后的原生包 | 重新触发 `DesktopNative.yml`，冒烟须命中 `[aha-version]` 与 `[ui-fxml-loaded]` |
+| 交叉校验能拦住第二轮缺陷 | 对**改前**的元数据跑同一规则 → `javafx.scene.layout.Region` 被精确点名 |
 | 真机 | 由 ACANX 双击 `V0.1.3.00134-aha-desktop-native` 的 Windows 包确认窗口正常出现 |
 
 ## 6. 教训与沉淀
