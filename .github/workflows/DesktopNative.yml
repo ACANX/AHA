@@ -485,8 +485,12 @@ jobs:
             #   静态分析证明不可能抛 ⇒ catch 与字符串常量一起被删，exe 里 grep 不到。
             #    后果很阴：真机崩了却没有任何失败标记可看，而没人知道原因就在这里。
             #    .fxml 资源一并查：它没进镜像的症状也是「启动即崩」，但构建全绿。
+            #    【必须用 -F】标记里带 `[` `]` `-`，走正则会把它们当字符类/区间：
+            #    实测 `grep -aq -- '[ui-fxml-loaded]'` 报 Invalid range end 并**漏报**——
+            #    而应用明明打印了这个标记（同一轮冒烟就是证据）。检查工具本身出错，
+            #    比没有检查更危险：它会让你去修一个并不存在的缺陷。
             for marker in '[aha-version]' '[ui-fxml-loaded]' '[ui-fxml-load-failed]' 'desktop-shell.fxml'; do
-              if ! grep -aq -- "$marker" "$bin"; then
+              if ! grep -aqF -- "$marker" "$bin"; then
                 note="${note:+${note}；}exe 里找不到 ${marker}"
                 echo "::warning::exe 里找不到 ${marker}（标记被优化掉 / 资源没进镜像）"
               fi
