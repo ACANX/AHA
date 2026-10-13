@@ -2,81 +2,86 @@
 rem ==========================================================================
 rem  AHA - one-click update of the DESKTOP native image (Windows)
 rem
-rem  Thin launcher. All logic lives in the shared Python engine:
-rem    Script\Python\DesktopNativeVersionUpdate.py   entry for this kind
-rem    Script\Python\NativeVersionUpdate.py          shared engine (both kinds)
-rem  Design / rationale: Docs/TODO/TD-00015-*.md, Docs/Design/DesktopNativeUpdateDesign.md
+rem  Windows-native implementation, no Python required: this launcher only calls
+rem      Dist\UpdateNative.ps1 -Kind Desktop
+rem  which talks to the GitHub release page through PowerShell / .NET (Schannel
+rem  TLS). It therefore does not touch Python's OpenSSL, so a broken Python
+rem  install cannot break the update.
 rem
 rem  Usage:
-rem    UpdateDesktopNative.cmd              update to the newest build
-rem    UpdateDesktopNative.cmd --list       list recent versions
-rem    UpdateDesktopNative.cmd --dry-run    preview only, no download
-rem    UpdateDesktopNative.cmd --help       all options (--tag / --jdk / --platform ...)
-rem
-rem  Requires Python 3 (py launcher, python, or python3) and a repository clone:
-rem  this launcher lives in <repo>\Dist\ and resolves the repo root from there.
-rem  Without Python, download the package by hand from
-rem    https://github.com/ACANX/AHA/releases
-rem  (asset name: AHA-Desktop-Native-<version>-<os>-<arch>-jdk<JDK>.zip).
+rem    UpdateDesktopNative.cmd                update to the newest build
+rem    UpdateDesktopNative.cmd -List          list recent versions
+rem    UpdateDesktopNative.cmd -DryRun        preview only, no download
+rem    UpdateDesktopNative.cmd -Force         reinstall even if already newest
+rem    UpdateDesktopNative.cmd -Tag V0.1.3.00157-aha-desktop-native
+rem    UpdateDesktopNative.cmd -Jdk 27        JDK branch (default 25)
+rem  The Python-style spellings --list / --dry-run / --force / --jdk / --tag /
+rem  --platform are translated to the PowerShell ones.
 rem
 rem  Chinese documentation: README.commands.md in this directory, section 4.1.
 rem
-rem  Convention (enforced by bin/CheckScripts.py): keep this file ASCII-only
-rem  with CRLF line endings. Non-ASCII text belongs in the README.
+rem  Convention (enforced by bin/CheckScripts.py): this file must stay ASCII-only
+rem  with CRLF line endings - Chinese text belongs in UpdateNative.ps1 / README.
 rem ==========================================================================
 
-setlocal
-rem Repo root is one level above Dist\ - where this file is committed.
-cd /d "%~dp0.."
+setlocal EnableExtensions
+rem This file is committed in <repo>\Dist\ together with UpdateNative.ps1.
+cd /d "%~dp0"
 
-set "SCRIPT=Script\Python\DesktopNativeVersionUpdate.py"
+rem Absolute path: never let a same-named program on PATH shadow PowerShell.
+set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+set "PS1=%~dp0UpdateNative.ps1"
 
-if not exist "%SCRIPT%" (
+if not exist "%PS1%" (
     echo.
-    echo [ERROR] Not found: %SCRIPT%
-    echo         This launcher must stay in ^<repo^>\Dist\ next to the repository,
-    echo         or clone the repository again from
-    echo         https://github.com/ACANX/AHA
+    echo [ERROR] Not found: %PS1%
+    echo         UpdateDesktopNative.cmd and UpdateNative.ps1 must stay together in Dist\.
+    echo         Clone the repository again from https://github.com/ACANX/AHA
+    echo.
+    pause
+    exit /b 1
+)
+if not exist "%PS_EXE%" (
+    echo.
+    echo [ERROR] Windows PowerShell not found: %PS_EXE%
+    echo         This launcher needs Windows PowerShell 5.1 (shipped with Windows 10/11).
     echo.
     pause
     exit /b 1
 )
 
-rem Find a working Python 3: py launcher first (Windows), then python, then python3.
-rem Each candidate is probed with a real interpreter call, so a broken alias that
-rem exists on PATH but cannot run is not mistaken for a usable interpreter.
-set "PY="
-py -3 -c "import sys" >nul 2>nul && set "PY=py -3"
-if not defined PY (python -c "import sys" >nul 2>nul && set "PY=python")
-if not defined PY (python3 -c "import sys" >nul 2>nul && set "PY=python3")
+rem Remember whether this looks like a double-click (no arguments): only then pause.
+set "NOARGS="
+if "%~1"=="" set "NOARGS=1"
 
-if not defined PY (
-    echo.
-    echo [ERROR] Python 3 was not found on PATH ^(tried: py -3, python, python3^).
-    echo         Install Python 3, then run this file again - or download the
-    echo         package by hand from https://github.com/ACANX/AHA/releases
-    echo.
-    pause
-    exit /b 1
-)
+rem Translate the Python-style option spellings, pass everything else through.
+set "ARGS="
+:collect
+if "%~1"=="" goto ready
+set "ONE=%~1"
+if /i "%ONE%"=="--list" set "ONE=-List"
+if /i "%ONE%"=="--dry-run" set "ONE=-DryRun"
+if /i "%ONE%"=="--force" set "ONE=-Force"
+if /i "%ONE%"=="--jdk" set "ONE=-Jdk"
+if /i "%ONE%"=="--tag" set "ONE=-Tag"
+if /i "%ONE%"=="--platform" set "ONE=-Platform"
+set "ARGS=%ARGS% %ONE%"
+shift
+goto collect
 
-echo Using: %PY% %SCRIPT% %*
+:ready
+echo Checking the latest release on GitHub, please wait...
 echo.
-
-%PY% "%SCRIPT%" %*
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Kind Desktop %ARGS%
 rem Read the exit code right away - the next command would overwrite errorlevel.
 set "RC=%errorlevel%"
 
 echo.
 if "%RC%"=="0" (
-    echo [DONE] Installed into Dist\ ^(the previous build, if any, is kept as .bak^).
+    echo [DONE] See the messages above ^(the previous build, if any, is kept as .bak^).
 ) else (
-    echo [FAILED] exit code %RC% - see the output above for the reason
-    echo          ^(network unreachable, GitHub rate limit, a running program holding
-    echo          the file, or a Python install whose HTTPS is broken^).
+    echo [FAILED] exit code %RC% - see the message above for the reason
+    echo          ^(no network, GitHub rate limit, or the target file is running^).
 )
-
-rem Pause only when launched without arguments, i.e. the double-click case;
-rem with arguments the caller usually wants the shell back immediately.
-if "%~1"=="" pause
+if defined NOARGS pause
 exit /b %RC%
