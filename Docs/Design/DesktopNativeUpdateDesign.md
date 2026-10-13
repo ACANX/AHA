@@ -45,6 +45,22 @@ python3 Script\Python\DesktopNativeVersionUpdate.py
 曾考虑给单个入口加 `--kind` 参数，最终选「共享引擎 + 两个薄壳」：薄壳名就是文档名，
 双击入口不必再记参数，而共享逻辑仍然只有一份（这是 TD-00015 明确要求的）。
 
+**2026-10-13 晚：Windows 侧另做了一套 PowerShell 实现（`Dist/UpdateNative.ps1`）。**
+原因很具体——真机双击失败，报的是 `OPENSSL_Uplink ... no OPENSSL_Applink`：
+**本机 Python 的 OpenSSL 运行时不可用**，而且它是硬失败（进程被直接终结，进程内捕不到）。
+于是：
+
+| 平台 | 入口 | 实现 | 为什么要两套 |
+|---|---|---|---|
+| Windows | `Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cmd`（双击） | `Dist\UpdateNative.ps1`（`Invoke-RestMethod` / `Invoke-WebRequest`，走 .NET Schannel TLS） | Windows 上**不能假设有 Python**；且不碰 Python 的 OpenSSL |
+| POSIX（WSL / Linux / macOS） | `python3 Script/Python/{Desktop,Cli}NativeVersionUpdate.py` | 共享引擎 `NativeVersionUpdate.py` | POSIX 上**不能假设有 PowerShell**；且 Python 版功能更多（多源发现 / 断点续传 / sha256） |
+
+**两套实现共用同一份命名契约**（tag 后缀 / 资产前缀 / 可执行文件名），
+由 `bin/CheckScripts.py` 断言逐字一致——这是两套实现能共存的前提：
+一旦漂移，表现是「某个平台上永远取不到包」，静默且难查。
+Python 侧另有一条 `--downloader auto|urllib|curl`（Windows 的 `auto` 会子进程探测后再决定，
+POSIX 不需探测），用于「本机 Python 的 HTTPS 坏掉」时自救；见 `TS-2610-036`。
+
 三条边界先写清楚：
 
 1. **只做取件与落盘**：不改构建、不改 CI、不参与发版，也不碰 `AHA_HOME` 下的用户数据；
@@ -162,6 +178,15 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - **校验**：下载完成后按 `sha256:<hex>` 校验（仅 `api` 路径有 digest），
   失败即删除文件并报错，不留下「看起来下完了」的坏包。`size` 作为第二道兜底。
 - **进度输出到 `stderr`**，`stdout` 只留结果与计划，便于管道与日志分流。
+- **下载器有两条路（2026-10-13，issue #156）**：默认 `urllib`（Python 自带的 TLS）；
+  Windows 上 `auto` 会先用**子进程**探一次 HTTPS，不可用就改用系统 `curl.exe`（系统 TLS）。
+  为什么非要多这一层：部分 Windows 机器上 Python 的 OpenSSL 运行时会**硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`），而那种失败**在进程内捕捉不到**——进程被直接终结，
+  连 traceback 都打不出来，只能靠「换一条不经过 Python TLS 的路」自救；
+  探测之所以必须放在子进程，就是因为它连异常都来不及抛。详见 [`TS-2610-036`](../Troubleshooting/TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md)。
+  curl 路径同样支持续传（`-C -`，服务器不认 Range 时自动退回完整下载）。
+  （Windows 的一键入口另有一套 PowerShell 实现，根本不经 Python——见第 0 节；
+  本节的两条路服务的是 POSIX 上的 Python 路径。）
 
 ## 6. 安装
 
@@ -211,6 +236,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 | `--jdk` | `25` | JDK 分支；无该分支时报错而非静默替换 |
 | `--dist` | 仓库根 `Dist/` | 安装目录 |
 | `--source` | `auto` | `auto` / `api` / `atom` / `page` |
+| `--downloader` | `auto` | `auto` / `urllib` / `curl`；Windows 的 `auto` 先探 Python 的 HTTPS，失败则用系统 curl |
 | `--timeout` | `30` | 元数据请求超时（秒） |
 | `--download-timeout` | `600` | 下载超时（秒） |
 | `--force` | 关 | 忽略「已是最新」 |
@@ -246,6 +272,10 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - 未做限流后的重试与退避：`auto` 会退到 `atom`，对当前使用频率足够；
 - `.gitignore` 里的 `Dist/` 在大小写不敏感的文件系统上同时命中 `Dist/`，
   因此状态文件与 zip 不会被误提交——这是依赖既有规则，不是本脚本额外做的保护。
+- **Windows 上 Python 自身的 HTTPS 可能不可用**（OpenSSL `no OPENSSL_Applink`）：
+  **Windows 一键入口已改用 PowerShell 实现**（不经 Python，见第 0 节），因此不受影响；
+  Python 路径（POSIX）另有 `--downloader auto|urllib|curl` 兜底。
+  但**下载器救不了 Python 完全坏掉**的情形——`bin/Check*.py`、`DesktopDistBuild.py` 等仍需可用 Python。
 
 ## 11. 后续路线
 

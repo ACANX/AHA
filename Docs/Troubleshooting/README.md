@@ -102,6 +102,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-033-Sibling-Metadata-Gap-Not-Reproducible.md](TS-2610-033-Sibling-Metadata-Gap-Not-Reproducible.md) | 姊妹工程复现的同族缺口，在本仓库不成立：查找在 native 侧、jni 早已登记（issue #125） | 2026-10-13 19:00 | 见 issue #125 |
 | [TS-2610-034-Prism-D3d-Driver-Info-Zero-Values.md](TS-2610-034-Prism-D3d-Driver-Info-Zero-Values.md) | 原生包 OS / 驱动信息全零：native 按名回写字段，而字段没登记（issue #60） | 2026-10-13 20:30 | 见 issue #60 |
 | [TS-2610-035-Theme-Content-Surface-Color-Roles.md](TS-2610-035-Theme-Content-Surface-Color-Roles.md) | 暗色下内容面「亮一档」被放大感知：按角色拆分底色（issue #153） | 2026-10-13 21:00 | 见 issue #153 |
+| [TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md](TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md) | Windows 上 Python 的 HTTPS 硬失败：`no OPENSSL_Applink`（一键入口的 curl 兜底） | 2026-10-13 22:00 | 见 issue #156 |
 
 ## 3. 维护规则
 

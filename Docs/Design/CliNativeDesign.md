@@ -203,8 +203,8 @@ POM 与工作流**不需要动**：参数文件是单一来源，且会原样打
 **取件（免编，推荐）**：不想自己编也行——发布页上有 CI 编好的原生包，一条命令取到 `Dist/`：
 
 ```bat
-Dist\UpdateCliNative.cmd                                :: Windows 双击（在仓库里运行，需 Python 3）
-python3 Script\Python\CliNativeVersionUpdate.py         :: 等价命令行（Windows / WSL / Linux / macOS）
+Dist\UpdateCliNative.cmd                                :: Windows 双击（PowerShell 实现，无需 Python）
+python3 Script\Python\CliNativeVersionUpdate.py         :: POSIX（WSL / Linux / macOS）上的等价命令行
 python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
 ```
 

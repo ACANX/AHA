@@ -19,7 +19,18 @@
   `KINDS` 表里差五项（tag 后缀 / 资产前缀 / 可执行文件名 / 状态文件名 / 帮助里展示的用法），
   新增第三种原生包 = 表里加一行；历史命令名 `DesktopNativeVersionUpdate.py` **保持可用**
   （现为薄壳）。实测：本机取到 `V0.1.3.00154-aha-cli-native`，`version` 输出 `AHA 0.1.3.00154`。
-  详见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
+  ③ **网络层两条路（2026-10-13 追加）**：Windows 上若本机 Python 的 HTTPS **硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、进程内 `try/except` 捕不到），
+  `auto` 会用**子进程**探一次并自动改用系统 `curl.exe`（系统 TLS）；也可用
+  `--downloader auto|urllib|curl` 显式指定。详见 `TS-2610-036`。
+  ④ **Windows 一键入口改为 PowerShell 原生实现（2026-10-13 晚）**：真机双击报
+  `no OPENSSL_Applink`（本机 Python 的 OpenSSL 硬失败，进程被直接终结、进程内捕不到）⇒
+  `Dist/UpdateNative.ps1` 用 `Invoke-RestMethod` / `Invoke-WebRequest` 走 .NET Schannel TLS，
+  **完全不经过 Python**，也**不需要用户装 Python**（与姊妹项目 LegionFanControl 同一做法）；
+  Python 路径（POSIX）保留并带 `--downloader` 兜底。两套实现的命名契约由 `bin/CheckScripts.py`
+  断言逐字一致；同时补上 `.ps1` 的 UTF-8 BOM 规则，并修正「`Dist/` 被整体跳过、
+  里面两个 `.cmd` 从未被检查」的守卫缺口。背景见 `TS-2610-036`。
+  整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
 - **Troubleshooting 32 篇档案补齐四节必备项（2026-10-13，issue #128，选项 C）**：

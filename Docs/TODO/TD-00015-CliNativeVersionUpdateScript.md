@@ -33,7 +33,8 @@ CLI 原生镜像没有**，速查里只能如实写「需手动下载解压」�
 | `Script/Python/NativeVersionUpdate.py` | **共享引擎**：发现（api→atom→page）/ 选包 / 下载（断点续传 + sha256）/ 解压 / 覆盖 + `.bak` / 状态文件 / 全部参数 |
 | `Script/Python/DesktopNativeVersionUpdate.py` | 薄壳：`configure("desktop")` → 引擎（**历史命令名与行为不变**） |
 | `Script/Python/CliNativeVersionUpdate.py` | 薄壳：`configure("cli")` → 引擎，参数与桌面端完全同构 |
-| `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd` | Windows 一键入口（双击；找 Python 3 → 调用对应薄壳，参数原样透传） |
+| `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd` | Windows 一键入口（双击）；2026-10-13 晚改为调用同目录的 `UpdateNative.ps1`，**不需要 Python** |
+| `Dist/UpdateNative.ps1` | 上述两个入口的 PowerShell 实现（`Invoke-RestMethod` / `Invoke-WebRequest`，走 .NET Schannel TLS） |
 
 两种包在引擎里只差 `KINDS` 表里的五项：tag 后缀、资产前缀、可执行文件名、状态文件名、
 帮助里展示的用法。**新增第三种原生包 = 在表里加一行**。
@@ -49,7 +50,13 @@ CLI 原生镜像没有**，速查里只能如实写「需手动下载解压」�
       **`--help` 仍然失败**：这不是本次交付引入的，而是暴露了 issue
       [#117](https://github.com/ACANX/AHA/issues/117) 的根因（见下），已把证据补到那条 Issue；
 - [x] `Docs/Guide/CommandCheatsheet.md` §4.2 与 `Dist/README.commands.md` 同步改为「一键 + 脚本 + 手动」；
-- [x] `python3 bin/CheckScripts.py` 通过（`.py` 为 UTF-8 + LF；新增 `.cmd` 为纯 ASCII + CRLF）。
+- [x] `python3 bin/CheckScripts.py` 通过（`.py` 为 UTF-8 + LF；`.cmd` 为纯 ASCII + CRLF；
+      `.ps1` 含中文时带 UTF-8 BOM）；
+- [x] **Windows 侧不需要 Python**（2026-10-13 晚，按 ACANX 的要求对齐 LegionFanControl 的做法）：
+      `Dist/UpdateNative.ps1` 直接走 .NET / Schannel TLS 取件；两套实现的命名契约
+      （tag 后缀 / 资产前缀 / 可执行文件名）由 `bin/CheckScripts.py` **断言逐字一致**
+      （反向验证：改错一个字母 / 去掉 BOM / `.cmd` 里写中文，三项都如期失败）。
+      背景与排查见 `TS-2610-036`。
 
 ## 实测证据（2026-10-13，WSL Ubuntu 26.04）
 
