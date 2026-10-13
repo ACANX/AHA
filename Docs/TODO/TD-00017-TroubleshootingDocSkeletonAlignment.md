@@ -3,6 +3,7 @@
 > 待办编号：TD-00017
 > 标题：Troubleshooting 32 篇排查档案正文对齐 TroubleShootingDocSpec 的四节必备项
 > 状态：✅ 已完成（2026-10-13，选项 C）
+> 跟踪 Issue 状态：**已关闭**（`completed`，2026-10-13 11:28Z，经 ACANX 授权）
 > 跟踪 Issue：[#128](https://github.com/ACANX/AHA/issues/128)
 > 创建日期：2026-10-13
 > 最后更新：2026-10-13
@@ -66,7 +67,9 @@
 
 ## 关联
 
-- issue [#128](https://github.com/ACANX/AHA/issues/128)（跟踪）
+- issue [#128](https://github.com/ACANX/AHA/issues/128)（**已关闭 / completed**）——
+  [关闭评论](https://github.com/ACANX/AHA/issues/128#issuecomment-6144331163)（三要素：PR #146 + #147、标准 / 根治、可复核验收依据）
+- PR [#146](https://github.com/ACANX/AHA/pull/146)（`8f03c97`）、PR [#147](https://github.com/ACANX/AHA/pull/147)（`c20eb86`）
 - `Docs/DevLog/20261013-09.md`（命名规范化，已完成）
 - `Docs/DevSpec/DocumentationSpec.md` §1（命名规则）、**§5（正文骨架，本项新增）**
 - `Docs/Troubleshooting/TS-Template.md`（模板已带四节）
