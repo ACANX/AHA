@@ -42,6 +42,19 @@ name: DesktopNative
 on:
   push:
     branches: [dev]
+  # PR 上也跑一次：让「原生包能不能起」在**合并前**就看得见（issue #144）。
+  #
+  # 路径过滤：只有碰了桌面前端 / 原生模块 / 根 POM / 本工作流自身时才跑——
+  # 否则每个文档 PR 都要烧一次 5 条腿的原生构建（约 10 分钟）。
+  #
+  # 【重要】PR 事件下**不发布**（见 native-publish 的 if）：避免 PR 阶段就往发布页推预发行包、
+  # 留下无人认领的 tag。制品仍会上传为 Actions artifact，在 PR 页面底部可见。
+  pull_request:
+    paths:
+      - 'aha-desktop/**'
+      - 'aha-desktop-native/**'
+      - 'pom.xml'
+      - '.github/workflows/DesktopNative.yml'
   workflow_dispatch:
     inputs:
       pr:
@@ -86,6 +99,8 @@ jobs:
           SHA: ${{ github.sha }}
           INPUT_PR: ${{ inputs.pr }}
           INPUT_VERSION: ${{ inputs.version }}
+          # pull_request 事件自带的 PR 号：比「按提交反查」直接，也不依赖 API 是否限流
+          EVENT_PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
@@ -103,9 +118,9 @@ jobs:
           #    刻意不用 `help:evaluate`：Maven 4 下它带 -q 时输出为空（踩过）。
           base=$(python3 .github/Python/ProjectVersion.py --resolve)
 
-          # ③ PR 号：先看输入，其次按提交反查。
+          # ③ PR 号：先看事件（pull_request 自带）、再看输入，最后按提交反查。
           #    push 事件里没有 PR 号（merge commit 也是普通 push），所以要走一次 API。
-          pr="${INPUT_PR:-}"
+          pr="${EVENT_PR:-${INPUT_PR:-}}"
           if [ -z "$pr" ]; then
             pr=$(curl -sS --max-time 30 \
                    -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -838,7 +853,12 @@ jobs:
     name: native-publish
     needs: [native-version, native-image]
     # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
-    if: always() && needs.native-version.result == 'success'
+    #
+    # 【PR 事件下不发布】issue #144 给本工作流加了 pull_request 触发——那只是为了让
+    # 「原生包能不能起」在合并前可见。若 PR 也走发布，就会在还没合并的时候往发布页推
+    # 预发行包、并留下一个无人认领的 tag（PR 号版本号，合不入 dev 就永远是孤儿）。
+    # 制品仍由各腿的 upload-artifact 上传，PR 页面底部能直接下。
+    if: always() && needs.native-version.result == 'success' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 Dist/ 不是一回事，

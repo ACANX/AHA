@@ -25,6 +25,21 @@
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
 
 ### 变更
+- **补齐界面路径的自动化覆盖（2026-10-13，issue #144）**：FXML 化四批期间反复暴露同一个缺口——
+  静态对账只管「fxml 自身写对没有」、原生冒烟只管「界面在原生包里装起来没有」，而
+  **装起来之后的交互**在 CI 上从未执行过。两项改动：
+
+  1. `Build.yml` 新增**可选作业** `ui-smoke`（Linux + Xvfb）真开窗口跑 `AhaDesktopSmokeTest`
+     ——那套断言（三栏折叠三条路、Enter 发送、工具卡片、会话列表）其实早就写好了，
+     只是被 `@EnabledIfSystemProperty("aha.ui.tests")` 关着。按 `BuildSpec` §7，
+     它是 `continue-on-error` 的：**不进必需检查、不挡合并**，失败以红叉 + Job Summary 暴露。
+  2. `DesktopNative.yml` 增加**带路径过滤**的 `pull_request` 触发（只碰 `aha-desktop/**`、
+     `aha-desktop-native/**`、`pom.xml`、该工作流自身时才跑）：让「原生包能不能起」
+     **在合并前**可见。**PR 事件下不发布**——否则会在尚未合并时往发布页推预发行包、
+     留下无人认领的 tag；制品仍走 Actions artifact。
+
+  见 `Docs/DevLog/20261013-16.md`；规范同步到 `BuildSpec.md` §8.1（v1.29.0）、
+  `DesktopNativeDesign.md` §4.1，`TS-2610-032` §6 的「仍存在的盲区」标注为已补齐。
 - **界面静态资源按类型分目录（2026-10-13）**：`aha-desktop` 的静态资源由「与 Java 类同包的平面
   目录」改为 `view/fxml/`（7 个骨架）/ `view/css/`（2 份主题表）/ `view/image/`（logo.png）。
   **Java 类与包名不变**，因此 `module-info` 的 `opens`、native-image 的资源白名单（按扩展名匹配）

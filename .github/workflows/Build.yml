@@ -5,6 +5,14 @@ name: Build
 # 这里**只做快的**——编译 + 单元测试，不采集覆盖率、不打包、不做文档检查。
 # 覆盖率门禁、完整 `clean verify`、文档检查与重复率属于慢检查，统一放在
 # Gate.yml，只在合入 main 前与发布前跑（见 BuildSpec.md 第 9 节）。
+#
+# ── 本文件的两个作业 ────────────────────────────────────────────────────────
+#   * `build`    —— 四腿的编译 + 单元测试，**必需检查**（分支保护按作业名匹配）；
+#   * `ui-smoke` —— 真开窗口跑 `AhaDesktopSmokeTest`（Linux + Xvfb），**非必需**。
+#     它补的是界面路径的第三段：静态对账管「fxml 自身写对没有」、原生冒烟管
+#     「界面装起来没有」，而**装起来之后的交互**此前在 CI 上从未执行过。
+#     按 BuildSpec §7「可选管线不得进必需检查、失败必须在作业级容错」，它是
+#     continue-on-error 的：不挡合并，但失败会以红叉 + Job Summary 暴露出来。
 on: [push, pull_request]
 
 jobs:
@@ -55,6 +63,90 @@ jobs:
           JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
           javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
             -d /tmp/skill-templates $(find .agents/skills -name '*.java')
+
+  # ── GUI 冒烟：真开窗口跑 AhaDesktopSmokeTest（Linux + Xvfb，非阻塞）──────────
+  #
+  # 【它补的是哪一段】界面路径此前是三段式覆盖：
+  #   ① 静态对账（FxmlViewChecks / UiResourcesTest）—— fxml 自身写对没有；
+  #   ② 原生 GUI 冒烟（DesktopNative.yml）—— 界面在原生包里装起来没有；
+  #   ③ **装起来之后的交互**（三栏折叠三条路、Enter 发送、工具卡片展开、会话列表）
+  #      —— 在 CI 上**从未执行过**。这套断言早就写好了（AhaDesktopSmokeTest），
+  #      只是被 @EnabledIfSystemProperty("aha.ui.tests") 关着，等一个能跑 GUI 的环境。
+  #   本作业就是那个环境。
+  #
+  # 【为何单独一个作业、且非阻塞】
+  #   * 它要图形环境（Platform.startup + GTK），塞进 build 腿会污染「快速反馈」的定位；
+  #   * GUI 测试天然比单元测试抖（窗口时序、焦点、字体），按 BuildSpec §7 的口径
+  #     **可选管线不得进必需检查**、失败必须在作业级容错；
+  #   * 于是：它不挡合并，但失败会以红叉 + Job Summary 暴露。要不要升级成必需检查，
+  #     等它稳定跑一段时间再说（issue #144 的验收标准之一）。
+  ui-smoke:
+    name: ui-smoke（GUI + Xvfb：AhaDesktopSmokeTest）
+    continue-on-error: true
+    # 防挂死：JavaFX 的 toolkit 会起非守护线程，万一套件没退出，别让它吃掉整个 CI 配额。
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: 装 Xvfb 与 JavaFX 需要的系统库
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          # 必需的：Xvfb 提供虚拟显示；libgtk-3-0 是 JavaFX glass 在 Linux 上的依赖。
+          sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0
+          # 其余是常见依赖，**包名随 Ubuntu 版本变化**（libasound2 vs libasound2t64）——
+          # 尽力而为，装不上不算失败；真的缺了会在下面的冒烟里以 UnsatisfiedLinkError 暴露。
+          for pkg in libxtst6 libxss1 libgl1 libglib2.0-0 libasound2t64 libasound2 fonts-dejavu; do
+            sudo apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 || true
+          done
+      - name: 预装依赖模块（只编译，不跑它们的测试）
+        run: |
+          # 关键：分两步走。直接用 `-pl aha-desktop -am test` 会把**依赖模块的测试也跑一遍**
+          # （实测首轮跑了 211 个用例，其中 180 多个是 aha-common / aha-core 的）——
+          # 既拖时间，又会把「别的模块挂了」误报成「GUI 挂了」。
+          # 先 install 依赖（skipTests），再**只测 aha-desktop**。
+          ./mvnw -B -q -pl aha-desktop -am install -DskipTests -Djacoco.skip=true
+      - name: 跑 GUI 冒烟（xvfb-run，只测 aha-desktop）
+        id: smoke
+        run: |
+          set -o pipefail
+          xvfb-run -a ./mvnw -B -pl aha-desktop test \
+            -Daha.ui.tests=true -Djacoco.skip=true 2>&1 | tee /tmp/ui-smoke.log
+      - name: 结论写进摘要
+        if: always()
+        env:
+          SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          set -uo pipefail
+          log=/tmp/ui-smoke.log
+          ran=$(grep -oE 'Tests run: [0-9]+' "$log" 2>/dev/null | tail -1 || true)
+          summary=/tmp/ui-summary.md
+          {
+            echo '### GUI 冒烟（Linux + Xvfb）'
+            echo ''
+            if [ "$SMOKE" = "success" ]; then
+              echo '结论：**通过** —— `AhaDesktopSmokeTest` 在 CI 上真实执行了'
+            else
+              echo "结论：**失败**（step outcome = ${SMOKE:-未取到}）——见下方日志尾部"
+            fi
+            echo ''
+            echo '- 套件：`AhaDesktopSmokeTest`（真开窗口：三栏折叠 / Enter 发送 / 工具卡片 / 会话列表）'
+            echo "- 最近一行统计：\`${ran:-未取到}\`"
+            echo ''
+            echo '> 本作业是**可选**的：不进必需检查、不挡合并（见 `BuildSpec.md` §7 与 issue #144）。'
+            if [ "$SMOKE" != "success" ]; then
+              echo ''
+              echo '```text'
+              tail -60 "$log" 2>/dev/null || echo '（没有日志）'
+              echo '```'
+            fi
+          } > "$summary"
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          cat "$summary"
 
   # ── 构建成功后在 main 上自动打 tag ─────────────────────────────────────────
   #
