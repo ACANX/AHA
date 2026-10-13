@@ -25,6 +25,15 @@
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
 
 ### 变更
+- **供应商对话框迁到 FXML（2026-10-13，批次 2）**：`ProviderDialog`（617 行 / 61 处手写控件）
+  的界面结构迁到 `provider-dialog.fxml`，两个 `GridPane` 的全部行由 `GridPane.rowIndex`
+  定位；本类改作 FXML 控制器（`setController(this)`），接线收敛到
+  `wireView` / `wireEditGrid` / `wireCreateGrid` / `wireKeyRow`。
+  档位（`ModelTier` 的 5 档）写进 fxml 以保证表单可读，并用**两道守卫**防「枚举改了、
+  fxml 忘了改」：控制器里的数量硬校验 + `ProviderDialogFxmlTest` 的三向静态对账。
+  同时把批次 1 写的 5 条 FXML 对账抽成可复用的 `FxmlViewChecks`（批次 3 / 4 直接复用）。
+  元数据新增 7 条（`ProviderDialog` 控制器字段、`ChoiceBox` / `ComboBox` / `MenuButton` /
+  `PasswordField` / `Separator` / `GridPane`）。见 `Docs/DevLog/20261013-12.md`。
 - **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
   状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
   `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
