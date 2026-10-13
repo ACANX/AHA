@@ -511,25 +511,28 @@ jobs:
             fi
           fi
 
-          # ④ classpath 输入：真正的不变式是「OpenJFX 四件套齐全」+「没有 0 KB 空壳」，
+          # ④ classpath 输入：真正的不变式是「OpenJFX 四件套齐全」+「没有空壳 jar」，
           #    不是「恰好 4 个」——带分类器与不带分类器的 jar 共用同一份 POM，
           #    多出来的条目是正常的；空壳才是问题（本项目已在 POM 里排除）。
           #    四件：base / graphics / controls / fxml（0.1.3 起界面骨架走 FXML）。
+          #    【判据用 -size -2k 而不是 -size 0】实测（run 38347798375）：
+          #    无分类器的 `javafx-controls-25.jar` 是 **306 字节**，不是 0 字节——
+          #    用 `-size 0` 会让这种空壳从眼皮底下走过去。
           jfx=$(ls "$work"/lib/javafx-*.jar 2>/dev/null | wc -l | tr -d ' ')
           total=$(ls "$work"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ')
           # 同①：不用 find -maxdepth（macOS BSD find 不支持）
-          empty=$(find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null | wc -l | tr -d ' ')
+          empty=$(find "$work/lib" -type f -name '*.jar' -size -2k 2>/dev/null | wc -l | tr -d ' ')
           if [ "${jfx:-0}" -lt 4 ]; then
             note="${note:+${note}；}classpath 里的 OpenJFX jar 只有 ${jfx} 个（少于四件套）"
             echo "::warning::$note"
             ls "$work"/lib/javafx-*.jar 2>/dev/null || true
           fi
           if [ "${empty:-0}" -ne 0 ]; then
-            note="${note:+${note}；}lib/ 里有 ${empty} 个 0 KB 空壳 jar"
+            note="${note:+${note}；}lib/ 里有 ${empty} 个空壳 jar（小于 2 KB）"
             echo "::warning::$note"
-            find "$work/lib" -type f -name '*.jar' -size 0 2>/dev/null || true
+            find "$work/lib" -type f -name '*.jar' -size -2k 2>/dev/null || true
           fi
-          echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个"
+          echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，空壳 ${empty} 个"
 
           # ⑥ 构建报告（native-image 的 emit build report 参数产出）：
           #    有它才谈得上「按报告调参数」，所以它缺了就告警。

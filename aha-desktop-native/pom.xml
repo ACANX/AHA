@@ -187,6 +187,9 @@
                 界面骨架（desktop-shell.fxml）的装载体。与其余三件同理：
                 带分类器的工件会拉进「无分类器」空壳，必须排除；
                 它自己也是带平台分类器的（含原生库），所以不能只声明无分类器版本。
+                三个都要排（base / graphics / controls）：fxml 的 POM 三个都声了
+                无分类器版本，漏一个就在 classpath 上留一个空壳（实测 `javafx-controls-25.jar`，
+                306 字节 —— 工作流的 `-size 0` 检查抓不到）。
             -->
             <exclusions>
                 <exclusion>
@@ -196,6 +199,10 @@
                 <exclusion>
                     <groupId>org.openjfx</groupId>
                     <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-controls</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
