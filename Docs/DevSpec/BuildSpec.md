@@ -175,7 +175,7 @@ POM 语法必须兼容 Maven 3.9.x：
 
 | 项 | 要求 |
 |---|---|
-| 扩展 | `jacoco-maven-plugin`（版本见父 POM 属性 `jacoco.version`） |
+| 扩展 | `jacoco-maven-plugin`（版本见父 POM 属性 `jacoco.plugin.version`） |
 | 绑定 | `prepare-agent` / `report` / `check`，均于 `verify` 阶段 |
 | 门禁规则 | `BUNDLE` 级 `LINE COVEREDRATIO ≥ 0.70` |
 | 未达标后果 | `verify` 失败，PR 不得合入 |
@@ -199,7 +199,10 @@ POM 语法必须兼容 Maven 3.9.x：
 `version` 文件或根 POM 的 `<revision>`；历史注记（`@since`、实测数据标题、`CHANGELOG`
 历史段）不受此限。
 
-**版本单一来源**：依赖的确切版本集中在**父 POM 的 `<properties>`**，是唯一来源。
+**版本单一来源**：依赖与**构建插件**的确切版本都集中在**父 POM 的 `<properties>`**，是唯一来源；
+`<dependencyManagement>` / `<pluginManagement>` 只引用 `${…}` 属性，**不出现版本字面量**
+（字面量会让「同一插件两处版本不同」无处暴露，Dependabot 升级也容易漏改）。
+属性命名约定：依赖用 `<名>.version`，插件用 `<插件名>.plugin.version`（统一便于按名检索）。
 文档（含 README、设计文档、选型清单）**不得复制具体版本号**，只写主版本线——
 升级由 Dependabot 每日提出，抄进文档必然漂移（曾因此出现「文档写 3.1.3、POM 已是 3.2.3」）。
 需要确切版本时看 `pom.xml`。
@@ -209,6 +212,9 @@ POM 语法必须兼容 Maven 3.9.x：
 即便日后版本升级也不删改。判据：**选型声明写主版本线，证据写确切版本**。
 
 - 内部模块版本统一由父 POM `dependencyManagement` 管理，子模块不得硬编码版本
+- 第三方依赖与构建插件的版本**统一在父 POM `<properties>` 声明**，经
+  `<dependencyManagement>` / `<pluginManagement>` 下发；子模块与插件块里不得出现版本字面量
+  （唯一的例外：`annotationProcessorPaths` 不读 `dependencyManagement`，需就地写 `${属性}`）
 - `aha-common` 保持**零外部依赖**（仅 JDK），禁止引入 Jackson 等第三方库
 - 内核模块（`aha-core`）禁止依赖任何传输 / 协议库
 - 发行包固定为 **JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
