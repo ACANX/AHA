@@ -147,6 +147,48 @@ if ($p.HasExited) { … 退出码非 0 → 只打 ::warning:: … } else { '存�
 | 交叉校验能拦住第二轮缺陷 | 对**改前**的元数据跑同一规则 → `javafx.scene.layout.Region` 被精确点名 |
 | 真机 | 由 ACANX 双击 `V0.1.3.00134-aha-desktop-native` 的 Windows 包确认窗口正常出现 |
 
+## 5.1 第三轮：失败标记**根本不在二进制里**（守卫成了死代码）
+
+第二轮修复后，本机把 Release 上的 exe 拖出来做了两件事：`strings` 搜标记、对比 sha256。结果是：
+
+```text
+aha-version              1
+ui-fxml-loaded           1
+ui-fxml-load-failed      0      ← 找不到
+desktop-shell.fxml       5
+```
+
+`[ui-fxml-load-failed]` 在**源码里明明写着**（`AhaDesktopApp.start` 的 catch 块），却没进产物。原因：
+
+```java
+Parent root;
+try {
+    root = shell.buildRoot();     // ← 现在只是 `return rootNode;`
+} catch (RuntimeException | Error e) {
+    System.err.println("[ui-fxml-load-failed] " + e);   // ← 这行被删了
+    ...
+}
+```
+
+FXML 的装载在本 PR 里已经**挪进构造器**（`DesktopShell.loadView()`），而宿主里这圈 `try/catch`
+包的是一个「只读字段」的方法——**静态分析能证明它不可能抛异常**，于是整个 catch handler
+连同那个字符串常量一起被当成死代码消除。真机崩溃的栈也确实不停在这一层，而是：
+`DesktopShell.<init>` → `loadView` → 包装后的 `IllegalStateException`。
+
+**教训：守卫写在「证不出会抛」的位置，等于没有守卫。** 更糟的是它看起来像个守卫——
+排障时会先去找那个标记，找不到再怀疑人生。
+
+修复：
+
+| 项 | 做法 |
+|---|---|
+| 标记挪到真正会执行的地方 | 印在 `DesktopShell.loadView()` 的 `catch (IOException)` 里（真机崩溃的栈就停在这一层） |
+| 删掉宿主的死代码 catch | `AhaDesktopApp.start` 不再包一圈——**留着它比没有更坏** |
+| **把「标记真的在产物里」变成机器自证** | `DesktopNative.yml` 的产物自证步骤新增：exe 里必须能 grep 到 `[aha-version]` / `[ui-fxml-loaded]` / `[ui-fxml-load-failed]` / `desktop-shell.fxml` |
+
+最后一条是本次最有价值的沉淀：它把「标记存在性」从「靠人想得到」变成「每轮构建都查」，
+而且**成本几乎为零**（一次 grep）。这也是 LegionFanControl 那边 `CheckExeFxmlView` 的同款思路。
+
 ## 6. 教训与沉淀
 
 | 教训 | 沉淀 |
@@ -155,6 +197,7 @@ if ($p.HasExited) { … 退出码非 0 → 只打 ::warning:: … } else { '存�
 | FXML 的 import 是**另一套表**，漏了只在运行期炸 | 新增静态对账（无需图形环境，几毫秒）；`DesktopShellFxmlTest` 成为后续 FXML 化各批次的**必过门** |
 | 只看「进程活着」会漏掉「窗口没出来」 | 正面标记 + 失败时把日志尾部写进摘要 |
 | 排障第一句要问「你跑的是哪一版」 | 启动即打印 `[aha-version]`（含构建号），并成为冒烟断言 |
+| **守卫必须证明自己会执行** | 产物自证新增「启动标记必须能在 exe 里 grep 到」；死代码 catch 已删除 |
 | **能用静态手段拦住的，不要留给真机** | 本档案的两条新守卫都在 `Build.yml` 里跑（秒级），不依赖 GPU、不依赖显示 |
 
 > **仍存在的盲区（诚实记录）**：`AhaDesktopSmokeTest`（真开窗口、验三栏折叠、Enter 发送等）在 CI 上**仍然不跑**

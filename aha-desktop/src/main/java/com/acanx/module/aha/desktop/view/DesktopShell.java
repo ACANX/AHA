@@ -505,6 +505,21 @@ public final class DesktopShell implements ChatView {
         try {
             rootNode = loader.load();
         } catch (IOException e) {
+            // 装载失败必须**看得见**：窗口根本不会出现，而构建是绿的。
+            //
+            // 【为什么失败标记印在这里、而不是印在宿主的 start()】
+            // FXML 的装载已经挪到构造器（本方法），宿主里那圈
+            // `try { shell.buildRoot(); } catch (...)` 包的是 buildRoot()——而它现在只是
+            // `return rootNode;`，**静态分析能证明它不可能抛异常**，于是那段 catch
+            // 连同字符串常量一起被当成死代码删掉：实测 exe 里 grep 不到
+            // `[ui-fxml-load-failed]`（见 TS-2610-032 第三轮）。
+            // **守卫写在「证不出会抛」的位置，等于没有守卫。**
+            // 这里的 catch 是真的会执行到的那一个（真机崩溃的栈就停在这一层）。
+            //
+            // 纯 ASCII + 显式 flush：冒烟可能在中文 Windows（GBK）下跑；
+            // 重定向到文件时 System.err 不自动刷，标记会丢。
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
             // 不吞异常：装不起来时窗口会是空白，静默失败会让排障从「一行堆栈」变成「猜」
             throw new IllegalStateException("桌面端界面骨架装载失败：" + FXML_VIEW, e);
         }

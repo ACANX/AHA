@@ -479,6 +479,19 @@ jobs:
             size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
             echo "找到可执行文件：${bin}（$((size / 1024)) KB）"
 
+            # ⑨ exe 字节自证：**启动标记必须真的在二进制里**。
+            #    「代码里写了标记」不等于「标记在产物里」。实测（TS-2610-032 第三轮）：
+            #    `[ui-fxml-load-failed]` 所在的那圈 catch 包的是 `return rootNode;`，
+            #   静态分析证明不可能抛 ⇒ catch 与字符串常量一起被删，exe 里 grep 不到。
+            #    后果很阴：真机崩了却没有任何失败标记可看，而没人知道原因就在这里。
+            #    .fxml 资源一并查：它没进镜像的症状也是「启动即崩」，但构建全绿。
+            for marker in '[aha-version]' '[ui-fxml-loaded]' '[ui-fxml-load-failed]' 'desktop-shell.fxml'; do
+              if ! grep -aq -- "$marker" "$bin"; then
+                note="${note:+${note}；}exe 里找不到 ${marker}"
+                echo "::warning::exe 里找不到 ${marker}（标记被优化掉 / 资源没进镜像）"
+              fi
+            done
+
             # ② 体积下限 5 MB：小于它基本是「编译没真正完成却留下壳」
             if [ "$size" -lt 5242880 ]; then
               note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
