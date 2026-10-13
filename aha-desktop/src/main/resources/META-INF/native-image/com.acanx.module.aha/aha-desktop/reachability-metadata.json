@@ -465,6 +465,7 @@
     {"type": "com.sun.xml.internal.stream.XMLInputFactoryImpl", "allDeclaredConstructors": true},
 
     {"type": "com.acanx.module.aha.desktop.view.ProviderDialog", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.desktop.view.LogPanel", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.desktop.view.SettingsDialog", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.desktop.view.ApprovalDialog", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.desktop.view.OutputDialog", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
