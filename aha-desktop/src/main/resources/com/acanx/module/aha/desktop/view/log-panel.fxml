@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    日志面板的界面骨架（批次 3 / issue #136）。
+
+    形态：工具栏（级别过滤 + 刷新 / 复制 / 清空 + 统计行）+ 只读日志区。
+    数据源是**日志系统的真实输出**（`LogCapture` 的内存缓冲），不是重放消息——
+    所以配置里级别是 WARN 时，面板里就是看不到 DEBUG；这一点写在对话框头部，免得被当成 bug。
+
+    「关闭」是 Dialog 自己的按钮（`ButtonType`），不在本文件里。
+
+    约定与 desktop-shell.fxml / provider-dialog.fxml 一致：
+    结构与文案在这里，样式与行为在 LogPanel（本文件的控制器）。
+-->
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:id="root">
+    <children>
+        <HBox fx:id="toolbar">
+            <children>
+                <Label text="级别"/>
+                <ComboBox fx:id="filter" id="aha.log.filter"/>
+                <Button fx:id="refresh" id="aha.log.refresh" text="刷新"/>
+                <Button fx:id="copy" id="aha.log.copy" text="复制"/>
+                <Button fx:id="clear" id="aha.log.clear" text="清空"/>
+                <Region fx:id="spacer"/>
+                <Label fx:id="stats"/>
+            </children>
+        </HBox>
+        <TextArea fx:id="area" id="aha.log.text"/>
+    </children>
+</VBox>
