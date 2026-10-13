@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    「查看全部」输出对话框的界面骨架（批次 4 / issue #137）。
+
+    工具卡片的预览只显示前 200 行，点「全部」到这里看完整内容。文本区只读但可选中，
+    另给一个「复制」按钮——把长输出从界面搬走是这个对话框存在的唯一理由。
+
+    「复制 / 关闭」是 Dialog 自己的 ButtonType（复制还挂了事件过滤器：点它**不关窗**，
+    只把标题栏换成「已复制到剪贴板」），不进本文件。
+-->
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:id="root">
+    <children>
+        <TextArea fx:id="area" id="aha.output.text"/>
+        <HBox fx:id="bottom">
+            <children>
+                <Label fx:id="hintLabel" text="文本可选中，也可直接 Ctrl+C。"/>
+            </children>
+        </HBox>
+    </children>
+</VBox>
