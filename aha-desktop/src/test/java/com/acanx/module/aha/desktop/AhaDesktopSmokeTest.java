@@ -98,6 +98,15 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.RIGHT_CONTENT_ID).isVisible()))
                 .isFalse();
 
+        // 线程模型自证：后台虚拟线程的值必须经 FxBridge 落到 UI 线程。
+        //
+        // 【必须在发消息之前验】状态标签是同一处被反复覆写的：只要发生过一次发送，
+        // ChatController 就会把它改成「生成中…（Esc 中断）」；而 CI 里没有配置供应商，
+        // 流不会结束，这个值就再也回不来了。
+        // 原实现在整个用例**末尾**才验它——那时早已被覆盖（这是套件从未真跑过时
+        // 留下的又一处错设）。
+        assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
+
         // 折叠 → 展开：走的是窄条按钮本身，也就是鼠标用户点的那颗
         Button leftToggle = (Button) uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_TOGGLE_ID));
         assertThat(leftToggle).isNotNull();
@@ -303,12 +312,17 @@ class AhaDesktopSmokeTest {
                 approve.get().getDialogPane(), ApprovalDialog.ARGS_ID)).getText()))
                 .contains("path: a.txt");
 
-        assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
+        // 注：状态探针的断言已移到用例开头（发消息之前）——在这里它是被覆盖过的值。
 
         onUi(stage::close);
     }
 
-    /** 反复读状态标签，直到后台虚拟线程的值经桥接落到 UI 线程。 */
+    /**
+     * 反复读状态标签，直到后台虚拟线程的值经桥接落到 UI 线程。
+     *
+     * <p><strong>只在发消息之前调用</strong>：状态标签会被 {@code setBusy(true)} 覆写成
+     * 「生成中…（Esc 中断）」，而 CI 里通常没有配置供应商、流不会结束——那个值回不来。</p>
+     */
     private static String awaitStatus(Stage stage) throws Exception {
         String text = DesktopShell.STATUS_INITIAL;
         for (int i = 0; i < POLL_ROUNDS && DesktopShell.STATUS_INITIAL.equals(text); i++) {
