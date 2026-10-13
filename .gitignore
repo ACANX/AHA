@@ -6,6 +6,9 @@ target/
 Dist/*
 dist/*
 !Dist/README.commands.md
+# 一键更新原生包的两个 Windows 入口（issue #156）：它们与 README 一样属于**手写源文件**，
+# 不是构建产物，所以要跟着仓库走；其余 Dist/ 内容（exe / zip / 状态文件）仍全部忽略。
+!Dist/Update*.cmd
 
 aha-desktop-*.zip
 pom.xml.tag
