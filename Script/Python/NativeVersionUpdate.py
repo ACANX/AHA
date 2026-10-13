@@ -64,6 +64,7 @@ import os
 import platform as platform_module
 import re
 import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -133,6 +134,12 @@ USER_AGENT = "AHA-NativeVersionUpdate/1.1 (+https://github.com/ACANX/AHA)"
 #: 文档 / 帮助里统一展示的用法（Windows 路径分隔符）。写成 raw 字符串，
 #: 避免 `\P` 被当成转义序列（Python 会给 SyntaxWarning）。
 USAGE_CMD = rf"python3 Script\Python\{KIND.entry}"
+
+#: 取网络数据用的下载器：`urllib`（Python 自带 TLS）或 `curl`（系统 TLS）。
+#: Windows 上 `auto` 会先探测一次 urllib（见 `select_downloader()`）——Python 的 OpenSSL
+#: 打包在部分机器上会**硬失败**（`OPENSSL_Uplink ... no OPENSSL_Applink`），
+#: 而那种错误在进程内**捕捉不到**（进程被直接终结），只能换一条不经过 Python TLS 的路。
+DOWNLOADER = "urllib"
 
 #: 本机平台 -> 发布用的平台标签（顺序即优先级）。注意 Linux 对应的标签是 ubuntu-*，
 #: 不是 linux-*；macOS 当前只发 arm64。
@@ -285,6 +292,53 @@ def configure(kind: str | Kind) -> Kind:
     return KIND
 
 
+def curl_path() -> str | None:
+    """系统 curl。Windows 10 1803+ 自带 `curl.exe`（走系统 TLS，不经过 Python 的 OpenSSL）。"""
+    return shutil.which("curl")
+
+
+def _urllib_https_broken() -> bool:
+    """子进程探一次 HTTPS：True 表示 urllib 这条路在本机不可用。
+
+    **必须放在子进程**：`no OPENSSL_Applink` 会直接终结进程，进程内的 try/except 抓不住
+    ——这正是本函数不用「试一次再捕异常」的原因。探测打的是 github.com 的 HEAD，
+    不消耗 API 限额。
+    """
+    probe = (
+        "import urllib.request;"
+        "urllib.request.urlopen(urllib.request.Request('https://github.com/',"
+        " method='HEAD'), timeout=15)"
+    )
+    try:
+        done = subprocess.run([sys.executable, "-c", probe], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return done.returncode != 0
+
+
+def select_downloader(requested: str) -> str:
+    """定下本轮用哪个下载器，并把结论写进 `DOWNLOADER`。
+
+    `auto`：**只在 Windows 上探测**——applink 是 Windows 专有机制，POSIX 不会出现这个问题，
+    不值得为它每次多付一次子进程启动 + 一次 HTTPS 探测。其他平台 `auto` 即 `urllib`。
+    """
+    global DOWNLOADER
+    if requested in ("urllib", "curl"):
+        DOWNLOADER = requested
+        return DOWNLOADER
+    DOWNLOADER = "urllib"
+    if os.name == "nt" and _urllib_https_broken():
+        if curl_path():
+            DOWNLOADER = "curl"
+            print("  提示：本机 Python 的 HTTPS 不可用（OpenSSL 运行时问题），"
+                  "本轮改用系统 curl 下载。", file=sys.stderr)
+        else:
+            print("  提示：本机 Python 的 HTTPS 不可用，且找不到 curl —— 请重新安装 Python，"
+                  "或把 PATH 上其他软件自带的 libcrypto-3-x64.dll / libssl-3-x64.dll 移开。",
+                  file=sys.stderr)
+    return DOWNLOADER
+
+
 # ── 网络 ─────────────────────────────────────────────────────────────────────
 
 
@@ -310,6 +364,8 @@ def http_open(url: str, timeout: float, extra_headers: dict[str, str] | None = N
 
 
 def http_get_text(url: str, timeout: float) -> str:
+    if DOWNLOADER == "curl":
+        return _curl_text(url, timeout)
     try:
         with http_open(url, timeout) as response:
             return response.read().decode("utf-8", "replace")
@@ -321,8 +377,41 @@ def http_get_text(url: str, timeout: float) -> str:
         raise UpdateError(f"请求 {url} 超时（{timeout:.0f}s）") from error
 
 
+def _curl_text(url: str, timeout: float) -> str:
+    """curl 取文本（元数据用）：`-sS --fail` 把失败交给退出码，错误信息从 stderr 取。"""
+    curl = curl_path()
+    if not curl:
+        raise UpdateError("找不到 curl（Windows 10 1803+ 自带 curl.exe）；也可用 --downloader urllib")
+    command = [curl, "-sS", "-L", "--fail", "--max-time", str(int(timeout))]
+    for key, value in _headers(url).items():
+        command += ["-H", f"{key}: {value}"]
+    command.append(url)
+    try:
+        done = subprocess.run(command, capture_output=True, timeout=timeout + 30)
+    except subprocess.TimeoutExpired as error:
+        raise UpdateError(f"请求 {url} 超时（{timeout:.0f}s）") from error
+    if done.returncode != 0:
+        message = done.stderr.decode("utf-8", "replace").strip() or f"curl 退出码 {done.returncode}"
+        raise UpdateError(f"请求 {url} 失败：{message}")
+    return done.stdout.decode("utf-8", "replace")
+
+
+def _curl_head_ok(url: str, timeout: float) -> bool:
+    """curl 版的 HEAD 探测：不抛错，只看成败（与 urllib 版同语义）。"""
+    curl = curl_path()
+    if not curl:
+        return False
+    command = [curl, "-sS", "-L", "-I", "--fail", "--max-time", str(int(timeout)), url]
+    try:
+        return subprocess.run(command, capture_output=True, timeout=timeout + 30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def http_head_ok(url: str, timeout: float) -> bool:
     """HEAD 探测资产是否存在（会跟随 302 到对象存储）。"""
+    if DOWNLOADER == "curl":
+        return _curl_head_ok(url, timeout)
     try:
         with http_open(url, timeout, method="HEAD") as response:
             return 200 <= response.status < 300
@@ -561,25 +650,43 @@ def select(repo: str, releases: list[Release], labels: list[str], jdk: str,
 # ── 下载与安装 ───────────────────────────────────────────────────────────────
 
 
-def download(asset: Asset, dest: Path, timeout: float, redownload: bool = False) -> None:
-    """下载资产到 dest，支持断点续传；完成后按 digest 校验（若已知）。
+def _fetch_curl(asset: Asset, part: Path, start: int, timeout: float) -> None:
+    """curl 路径：`-C -` 原生续传 + curl 自己的进度条（进度写 stderr）。
 
-    `redownload` 只影响「本地已有完整包」时的复用判断：置位则无视本地文件重下，
-    用于本地包损坏但大小恰好相等的极端情形。
+    存在的理由：Windows 上 Python 的 OpenSSL 打包在部分机器上会硬失败
+    （`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、进程内捕不到），
+    只能换一条不经过 Python TLS 的路——curl 走系统 TLS。
     """
-    if dest.exists() and not redownload:
-        if asset.size and dest.stat().st_size == asset.size:
-            print(f"  复用已下载的包：{dest.name}（{format_size(asset.size)}）")
-            return
-        if asset.digest and verify_digest(dest, asset.digest):
-            print(f"  复用已下载的包：{dest.name}（sha256 校验通过）")
-            return
+    curl = curl_path()
+    if not curl:
+        raise UpdateError("找不到 curl（Windows 10 1803+ 自带 curl.exe）；也可用 --downloader urllib")
 
-    part = dest.with_name(dest.name + ".part")
-    if redownload and part.exists():
-        part.unlink()
+    def command(resume: bool) -> list[str]:
+        args = [curl, "-L", "--fail", "--progress-bar",
+                "--connect-timeout", "30", "--speed-limit", "1024", "--speed-time", "60",
+                "-H", f"User-Agent: {USER_AGENT}", "-o", str(part)]
+        if resume:
+            args += ["-C", "-"]
+        return args + [asset.url]
 
-    start = part.stat().st_size if part.exists() else 0
+    resume = start > 0
+    try:
+        done = subprocess.run(command(resume), timeout=timeout + 300)
+    except subprocess.TimeoutExpired as error:
+        raise UpdateError(f"下载超时（{asset.url}）") from error
+    if done.returncode != 0 and resume:
+        # 与 urllib 路径的 416 同理：服务器不认 Range 时退回完整下载，而不是直接报错。
+        print("  续传不被支持或续传失败，重新完整下载")
+        try:
+            done = subprocess.run(command(False), timeout=timeout + 300)
+        except subprocess.TimeoutExpired as error:
+            raise UpdateError(f"下载超时（{asset.url}）") from error
+    if done.returncode != 0:
+        raise UpdateError(f"下载失败：curl 退出码 {done.returncode}（{asset.url}）")
+
+
+def _fetch_urllib(asset: Asset, part: Path, start: int, timeout: float) -> None:
+    """urllib 路径：Range 续传 + 自绘进度条（进度写 stderr，便于重定向）。"""
     headers = {"Range": f"bytes={start}-"} if start else {}
     try:
         response = http_open(asset.url, timeout, headers)
@@ -630,6 +737,31 @@ def download(asset: Asset, dest: Path, timeout: float, redownload: bool = False)
                     sys.stderr.write(f"\r  下载 {format_size(done)}  {format_size(speed)}/s   ")
                 sys.stderr.flush()
     sys.stderr.write("\r" + " " * 60 + "\r")
+
+
+def download(asset: Asset, dest: Path, timeout: float, redownload: bool = False) -> None:
+    """下载资产到 dest，支持断点续传；完成后按 digest 校验（若已知）。
+
+    `redownload` 只影响「本地已有完整包」时的复用判断：置位则无视本地文件重下，
+    用于本地包损坏但大小恰好相等的极端情形。
+    """
+    if dest.exists() and not redownload:
+        if asset.size and dest.stat().st_size == asset.size:
+            print(f"  复用已下载的包：{dest.name}（{format_size(asset.size)}）")
+            return
+        if asset.digest and verify_digest(dest, asset.digest):
+            print(f"  复用已下载的包：{dest.name}（sha256 校验通过）")
+            return
+
+    part = dest.with_name(dest.name + ".part")
+    if redownload and part.exists():
+        part.unlink()
+
+    start = part.stat().st_size if part.exists() else 0
+    if DOWNLOADER == "curl":
+        _fetch_curl(asset, part, start, timeout)
+    else:
+        _fetch_urllib(asset, part, start, timeout)
 
     if asset.size and part.stat().st_size != asset.size:
         size = part.stat().st_size
@@ -737,6 +869,9 @@ def print_list(repo: str, releases: list[Release], labels: list[str], jdk: str,
 
 
 def run(args: argparse.Namespace) -> int:
+    # 先定下载器（Windows 上可能要探测一次；见 select_downloader 的说明）。
+    # 放在最前面：它决定后面每一次网络访问走哪条路。
+    select_downloader(args.downloader)
     dist = Path(args.dist).expanduser().resolve() if args.dist else ROOT / "Dist"
     labels = [args.platform] if args.platform else platform_labels()
     if not labels:
@@ -835,6 +970,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--dist", help="安装目录（默认仓库根的 Dist/）")
     parser.add_argument("--source", choices=("auto", "api", "atom", "page"), default="auto",
                         help="版本发现路径（默认 auto：api -> atom -> page）")
+    parser.add_argument("--downloader", choices=("auto", "urllib", "curl"), default="auto",
+                        help="取网络数据的下载器（默认 auto：Windows 上先子进程探测 Python 的 "
+                             "HTTPS，不可用则改用系统 curl；其他平台 auto 即 urllib）")
     parser.add_argument("--timeout", type=float, default=30.0,
                         help="元数据请求超时秒数（默认 30）")
     parser.add_argument("--download-timeout", type=float, default=600.0,

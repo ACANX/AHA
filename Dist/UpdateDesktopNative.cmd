@@ -72,8 +72,8 @@ if "%RC%"=="0" (
     echo [DONE] Installed into Dist\ ^(the previous build, if any, is kept as .bak^).
 ) else (
     echo [FAILED] exit code %RC% - see the output above for the reason
-    echo          ^(network unreachable, GitHub rate limit, or a running program
-    echo          holding the executable file^).
+    echo          ^(network unreachable, GitHub rate limit, a running program holding
+    echo          the file, or a Python install whose HTTPS is broken^).
 )
 
 rem Pause only when launched without arguments, i.e. the double-click case;
