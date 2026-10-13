@@ -99,6 +99,10 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
   驱动名 / 厂商 ID / PS 版本 / 多重采样**全部变成真实值**：`ven_1414` 是 **Microsoft**、
   `d3d10warp.dll` 是 **WARP 软件光栅化器** ⇒ 既印证了 runner 无硬件 GPU（与本档预判一致），
   也证明**驱动那一组字段的回写同样成功了**（不是只有 OS 那一组生效）；
+- **真机（ACANX 于 Windows，2026-10-13）**：驱动与设备信息全部变真 ——
+  `Intel(R) UHD Graphics` / `igd10iumd64.dll, version 31.0.101.4502` / `ven_8086, dev_4626, subsys_3AEF17AA`
+  / `Pixel Shader version 3.0` / `Max Multisamples supported: 4`（真机数据由 ACANX 提供）。
+  唯一残留是 OS 版本仍为 `Windows 8.0 build 9200`（**Q3，已转 issue #151 承接**）；
 - **回归**：`NativeImageMetadataTest` 随 `Build` / `Gate` 跑；
 - **真机**：D3D **驱动名 / 厂商 ID / Pixel Shader / Max Multisamples** 这几项依赖真实 GPU，
   CI runner 是无 GPU 的虚拟机 ⇒ **需 ACANX 真机对照**（本机日志里这几项仍可能是零/`null`，不算未修好）。
@@ -195,11 +199,13 @@ closed-world 下查不到成员 ID，字段就保持 Java 默认值（`0` / `nul
 
 **Q1 修复后的真实值验证到哪一步**
 
-现状：**已在 CI 上验证通过**（2026-10-13，job `115292084727`）：driver 那一组全部为真实值，
-OS 版本不再是 `0.0`；唯一遗留是 OS 版本仍为兼容性 shim 值（**已单列为 Q3**）。
-阻塞点（仅剩真机对照）：D3D **驱动名 / 厂商 ID / 多重采样**在**真实 GPU** 机器上的取值——
-CI runner 是虚拟机（`Microsoft Basic Render Driver`），拿到的是 WARP 软件设备。
-按 `IssueTrackingSpec.md` §4，这类人工判断项以 ACANX 的判断为准。
+现状：**CI 与真机双双验证通过**：
+
+- CI（2026-10-13，job `115292084727`）：driver 那一组全部为真实值（WARP 软件设备）；
+- **真机（ACANX 于 Windows）**：`Intel(R) UHD Graphics` / `igd10iumd64.dll, version 31.0.101.4502` /
+  `ven_8086, dev_4626, subsys_3AEF17AA` / `Pixel Shader version 3.0` / `Max Multisamples supported: 4`。
+
+⇒ 本条已关（经 ACANX 授权，`completed`）。唯一遗留是 OS 版本的兼容性 shim，**已单列为 Q3**。
 
 **Q2 同类漏项还有多少（`prism_d3d` 之外）**
 
@@ -208,10 +214,9 @@ CI runner 是虚拟机（`Microsoft Basic Render Driver`），拿到的是 WARP 
 
 **Q3 原生包读到的 Windows 版本仍是兼容性 shim 值（`Windows 8.0 build 9200`）**
 
-现状：字段回写已生效（不再是 `0.0 build 0`），但值是 `8.0 build 9200`——
-这是 `GetVersionEx` 家族在没有「Windows 10 兼容清单」时的经典**兼容性撒谎**。
-**交叉证据**：同一份日志里 D3D 驱动版本是 `10.0.26100.33438`，而 **26100 正是 Windows 11 24H2 的构建号**
-⇒ 系统真实版本远高于 9200，所以这条是**清单问题**（原生 exe 缺 Win10 兼容清单，GraalVM 生成的 exe 默认没有），
-不是「读不到」。
-阻塞点：① 需给原生 exe 补清单；② issue #60 验收标准第 1 条的 **JVM 同机对照**仍未做
-（预期 JVM 侧打印真实版本，因 `java.exe` 自带清单）——这条正好能验证上述机理。
+→ **已转 [issue #151](https://github.com/ACANX/AHA/issues/151) 承接**（2026-10-13，承接单先开好再关 issue #60）。
+概要：字段回写已生效（不再是 `0.0 build 0`），但值是 `8.0 build 9200` ——
+`GetVersionEx` 家族在没有「Windows 10 兼容清单」时的经典**兼容性撒谎**。
+**交叉证据**：同一份日志里 D3D 驱动版本（真机 `31.0.101.4502` / CI `10.0.26100.33438`）与设备 ID 均为真实值
+⇒ 读取链路已通，问题在 **exe 缺清单**（GraalVM 生成的 exe 默认没有；`java.exe` 自带，故 JVM 侧应为真实版本）。
+未做：issue #60 验收标准第 1 条的 **JVM 同机对照**——已并入 #151 的验收标准 3。
