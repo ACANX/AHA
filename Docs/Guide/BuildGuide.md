@@ -260,7 +260,7 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 | `ServiceLoader` 找不到工具 / 适配器 | classpath 模式下 `module-info` 的 `provides` 不生效 | 同时提供 `META-INF/services` 文件（JPMS 与 classpath 双兼容） |
 | `FAIL_ON_NULL_FOR_PRIMITIVES` | Jackson 3 默认拒绝 `null` → `int` | `ConfigLoader` 显式 `disable`，或契约字段改用包装类型 |
 | `SQLITE_CANTOPEN` | 数据库父目录不存在 | `SqliteMemoryStore.init()` 先 `Files.createDirectories` |
-| `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.version` |
+| `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.plugin.version` |
 | `Coverage checks have not been met` | 覆盖率低于门禁阈值 | 补测试；确有必要排除时需登记理由（见 `BuildSpec.md` 第 6 节） |
 | Maven 4 报语法错误 | 使用了 Maven 4 专有语法 | 改回 Maven 3.9.x 兼容写法（见 `BuildSpec.md` 第 5 节） |
 | `Failed to create assembly: Problem copying files : .../Dist/lib/xxx.jar` | **有进程占着 `Dist/lib` 下的 jar**（或 `Dist/bin` 目录）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `Dist/`」的占用者清单与处置 |

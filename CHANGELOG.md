@@ -11,6 +11,13 @@
 ## [Unreleased]
 
 ### 变更
+- **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
+  的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
+  不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。
+  补齐此前硬编码的 3 个插件版本（`compiler` / `surefire` / `jar`），`jacoco.version` →
+  `jacoco.plugin.version`，删除未使用的 `testfx.version`（`D-04` 已定案不引入 TestFX），
+  并在 `dependencyManagement` 补登记 `picocli-codegen`。规范见 `BuildSpec.md` §7。
+  见 `Docs/DevLog/20261013-10.md`。
 - **原生桌面端文本渲染临时缓解（issue #44 / #48）**：真机像素对照确认原生包**丢失了 LCD 次像素抗锯齿**
   （退化为灰度，笔画发虚、偏细；彩色边缘像素为 JVM 的 1/18.4，暗像素反而多 67%）。
   新增 `NativeRenderDefaults`，在**原生镜像内**默认写入 `prism.lcdtext=false`（改走灰度）；

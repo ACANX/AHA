@@ -982,10 +982,13 @@ aha/
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <!-- 依赖版本集中在这里，是本仓库的唯一来源。此处刻意不复制具体版本号：
+        <!-- 依赖与插件版本集中在这里，是本仓库的唯一来源。此处刻意不复制具体版本号：
              升级由 Dependabot 每日提出，抄进文档必然漂移。属性名如下——
-             javafx / jackson / picocli / jline / sqlite / slf4j / log4j /
-             junit / assertj / mockito / testfx / jacoco 及若干插件版本 -->
+             依赖：javafx / jackson / picocli / jline / sqlite / slf4j / log4j /
+                   junit / assertj / mockito；
+             插件：compiler / surefire / jar / jacoco / javadoc / assembly /
+                   flatten / exec / dependency / resources / clean / pmd
+                   （统一命名 <插件名>.plugin.version） -->
     </properties>
 
     <dependencyManagement>
@@ -3227,7 +3230,7 @@ aha-core/src/test/resources/
 
 ### 3.2 JaCoCo 配置
 
-- 扩展：`jacoco-maven-plugin 0.8.15`（`pom.xml` 的 `jacoco.version`）
+- 扩展：`jacoco-maven-plugin`（版本见 `pom.xml` 的 `jacoco.plugin.version`）
 - 目标绑定：`prepare-agent`（initialize）、`report`（verify）、`check`（verify）
 - 门禁规则：`BUNDLE` 级 `LINE COVEREDRATIO ≥ 0.70`，未达标则 `verify` 失败
 - 报告路径：各模块 `target/site/jacoco/index.html`
