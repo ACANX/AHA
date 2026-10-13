@@ -130,6 +130,13 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 就应该是一条 Issue。写法与命令见技能
 [issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
 
+**关闭时（强制）**：先补一条关闭评论，写明**相关修复 PR / 提交**、**关闭理由**
+（现象是否消除；是根治还是缓解；若为缓解，指名根因由**哪条 Issue** 继续跟踪）与
+**可复核的验收依据**（命令与输出、测试运行编号 / 用例数、日志行、产物）——三要素缺一不可，
+**不得只写「已完成」**；仍需跟踪的后续项必须先把承接的 Issue 开好，不允许「关了就没下文」。
+依赖人工判断的项（真机观感、平台行为）要明说「以 ACANX 的判断为准」。
+关闭须经 ACANX 授权；细则与评论模板见技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
+
 **理由**：`TODO.md` 定位是「暂存区」，条目消化完即标记废弃或删除，长期问题放进去
 会被后续条目淹没而遗忘；Issue 有编号、状态、可被引用与检索，才能让「直到解决」有闭环。
 
@@ -206,6 +213,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范
 - [YamlFieldSpec.md](Docs/DevSpec/YamlFieldSpec.md) - YAML 字段规范
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
+- [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) - Issue 管理规范（开单 / 状态 / 关闭）
 - [BranchStrategy.md](Docs/DevSpec/BranchStrategy.md) - 分支策略
 - [CodeReviewChecklist.md](Docs/DevSpec/CodeReviewChecklist.md) - 评审清单
 - [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) - 发布流程
