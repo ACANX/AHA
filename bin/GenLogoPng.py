@@ -38,7 +38,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SVG = ROOT / "aha-core" / "src" / "main" / "resources" / "Logo.svg"
-OUT = ROOT / "aha-desktop" / "src" / "main" / "resources" / "com" / "acanx" / "module" / "aha" / "desktop" / "view" / "logo.png"
+OUT = ROOT / "aha-desktop" / "src" / "main" / "resources" / "com" / "acanx" / "module" / "aha" / "desktop" / "view" / "image" / "logo.png"
 
 BROWSERS = (
     # 原生 Windows

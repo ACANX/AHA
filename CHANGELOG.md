@@ -25,6 +25,13 @@
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
 
 ### 变更
+- **界面静态资源按类型分目录（2026-10-13）**：`aha-desktop` 的静态资源由「与 Java 类同包的平面
+  目录」改为 `view/fxml/`（7 个骨架）/ `view/css/`（2 份主题表）/ `view/image/`（logo.png）。
+  **Java 类与包名不变**，因此 `module-info` 的 `opens`、native-image 的资源白名单（按扩展名匹配）
+  与打包描述符**都不用改**。同时新增 `view/UiResources.java` 把 10 条路径集中到一处
+  （原先散在 7 个控制器 + `ThemePaint` + `LogoImage`），以后调目录只改它；
+  新增 `UiResourcesTest`：**真的去 classpath 取一次**每条路径——这是白名单对账拦不住的那一半
+  （它按扩展名匹配，路径写错也照样命中）。见 `Docs/DevLog/20261013-15.md`。
 - **其余四个对话框迁到 FXML（2026-10-13，批次 4，最后一批）**：`SettingsDialog`（设置）/ 
   `ApprovalDialog`（授权）/ `OutputDialog`（输出）/ `ToolListDialog`（工具列表）共 521 行、
   33 处手写控件迁到各自的 `*-dialog.fxml`，四个类改作 FXML 控制器。决定按钮（复制 / 关闭 /

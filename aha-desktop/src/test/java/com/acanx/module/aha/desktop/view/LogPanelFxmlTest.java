@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LogPanelFxmlTest {
 
-    private static final String FXML = "log-panel.fxml";
+    private static final String FXML = UiResources.LOG_PANEL_FXML;
 
     @Test
     void fxmlShipsNextToTheController() throws IOException {
@@ -61,7 +61,6 @@ class LogPanelFxmlTest {
 
     @Test
     void resourceIsWhitelistedForNativeImage() throws IOException {
-        FxmlViewChecks.assertResourceWhitelisted(
-                "com/acanx/module/aha/desktop/view/" + FXML);
+        FxmlViewChecks.assertResourceWhitelisted(UiResources.relative(FXML));
     }
 }

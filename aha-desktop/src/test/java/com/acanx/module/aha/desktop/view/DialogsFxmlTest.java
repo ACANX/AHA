@@ -21,16 +21,19 @@ class DialogsFxmlTest {
     /** 一个视图：骨架资源名 + 它的控制器（同时是 id 常量的持有者）。 */
     private record View(String resource, Class<?> controller) {
 
+        /** 短名（用于断言消息）：取路径最后一段并去掉扩展名。 */
         String name() {
-            return resource.replace(".fxml", "");
+            String file = resource.substring(resource.lastIndexOf('/') + 1);
+            return file.replace(".fxml", "");
         }
     }
 
+    /** 资源路径统一来自 {@link UiResources}——它也是「目录改动只改一处」的落点。 */
     private static final List<View> VIEWS = List.of(
-            new View("settings-dialog.fxml", SettingsDialog.class),
-            new View("approval-dialog.fxml", ApprovalDialog.class),
-            new View("output-dialog.fxml", OutputDialog.class),
-            new View("tool-list-dialog.fxml", ToolListDialog.class));
+            new View(UiResources.SETTINGS_DIALOG_FXML, SettingsDialog.class),
+            new View(UiResources.APPROVAL_DIALOG_FXML, ApprovalDialog.class),
+            new View(UiResources.OUTPUT_DIALOG_FXML, OutputDialog.class),
+            new View(UiResources.TOOL_LIST_DIALOG_FXML, ToolListDialog.class));
 
     @Test
     void everyViewIsPackagedNextToItsController() throws IOException {
@@ -92,8 +95,7 @@ class DialogsFxmlTest {
     @Test
     void everyResourceIsWhitelistedForNativeImage() throws IOException {
         for (View view : VIEWS) {
-            FxmlViewChecks.assertResourceWhitelisted(
-                    "com/acanx/module/aha/desktop/view/" + view.resource());
+            FxmlViewChecks.assertResourceWhitelisted(UiResources.relative(view.resource()));
         }
     }
 }

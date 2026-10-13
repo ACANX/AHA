@@ -55,8 +55,8 @@ public final class ApprovalDialog {
     /** 本会话始终允许按钮 id。 */
     public static final String ALWAYS_ID = "aha.approval.always";
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "approval-dialog.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.APPROVAL_DIALOG_FXML;
 
     /** 小标题样式（「调用参数」）。 */
     private static final String SECTION_STYLE =

@@ -181,8 +181,8 @@ public final class DesktopShell implements ChatView {
     public static final String COMPOSER_PROMPT =
             "继续输入…（Enter 发送 / Shift+Enter 换行，/ 命令，@ 引用文件）";
 
-    /** FXML 骨架资源（与本类同包）；文件名带 `-`，与类名不构成约定关系。 */
-    private static final String FXML_VIEW = "desktop-shell.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.SHELL_FXML;
 
 
     /** UI 线程投递器（助手流式文本的合流要用它）。 */

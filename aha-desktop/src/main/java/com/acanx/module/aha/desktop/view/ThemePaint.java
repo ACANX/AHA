@@ -47,12 +47,10 @@ public final class ThemePaint {
      * 亮色下碰巧看不出来（亮色本就该是深色字），暗色下就成了一片黑字（issue #49 第四轮）。
      * 换成两份字面量、按主题整份装载，就不存在「查表」这一步（见两份 css 的头部说明）。</p>
      */
-    private static final String DARK_SHEET =
-            "/com/acanx/module/aha/desktop/view/aha-theme-dark.css";
+    private static final String DARK_SHEET = UiResources.THEME_DARK_CSS;
 
     /** 亮色主题补丁样式表，与 {@link #DARK_SHEET} 一一对应。 */
-    private static final String LIGHT_SHEET =
-            "/com/acanx/module/aha/desktop/view/aha-theme-light.css";
+    private static final String LIGHT_SHEET = UiResources.THEME_LIGHT_CSS;
 
     private ThemePaint() {
     }

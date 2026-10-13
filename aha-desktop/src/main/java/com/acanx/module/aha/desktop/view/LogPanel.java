@@ -65,8 +65,8 @@ public final class LogPanel {
     /** 面板里最多渲染多少行（再多没有阅读价值，反而卡界面）。 */
     public static final int MAX_LINES = 3000;
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "log-panel.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.LOG_PANEL_FXML;
 
     private final String effectiveLevel;
 
