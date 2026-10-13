@@ -21,6 +21,24 @@
     - 应当以 `#!` shebang 开头
     - 必须是 LF 行尾
 
+  *.ps1
+    - 含非 ASCII 内容时**必须带 UTF-8 BOM**（纯 ASCII 不强制）
+    原因：Windows PowerShell 5.1 读无 BOM 的文件时按 **ANSI（本机 GBK）** 解码，
+    中文提示会直接变成乱码——不报错，只是用户看到一堆看不懂的字。
+    （姊妦项目 LegionFanControl 的 `Dist\\UpdateNative.ps1` 就是无 BOM 的，属遗留坑。）
+
+  Dist/ 下被跟踪的手写脚本
+    - 同样按上面的规则检查（`Dist/` 整体是构建输出目录，已剪枝；
+      所以用 `git ls-files` 把其中**被跟踪**的那几个手写入口单独捡回来）。
+
+  原生取件：两套实现的一致性
+    - `Dist/UpdateNative.ps1`（Windows，PowerShell）与
+      `Script/Python/NativeVersionUpdate.py`（POSIX，Python）的
+      tag 后缀 / 资产前缀 / 可执行文件名必须**逐字一致**。
+    原因：两套实现刻意并存（Windows 不假设有 Python；POSIX 不假设有 PowerShell，
+    且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
+    ——静默且难查。把它们钉在一起，漂移立刻可见。
+
   *.xml（含 pom.xml）
     - 必须是良构 XML（整体可被解析器解析）
     - 注释里不得出现 `--`，也不得嵌套 `<!--`
@@ -53,6 +71,22 @@ SKIP_DIRS = {"target", ".git", "Dist", "dist", "node_modules", ".idea", ".vscode
 BAT_SUFFIXES = {".bat", ".cmd"}
 SH_SUFFIXES = {".sh", ".bash"}
 PY_SUFFIXES = {".py"}
+PS1_SUFFIXES = {".ps1"}
+
+#: Dist/ 被 SKIP_DIRS 剪掉（里面是构建产物），但其中有几个**被 git 跟踪的手写入口**
+#: 必须照检——用 git 问「哪些是跟踪的」最省事，生成物（Dist/bin/*.bat 等）不在跟踪列表里。
+TRACKED_SCRIPT_DIRS = ("Dist",)
+
+#: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
+NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
+NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+PY_KIND_RE = re.compile(
+    r'key="(\w+)".*?tag_suffix="([^"]+)".*?asset_prefix="([^"]+)".*?exe_base="([^"]+)"',
+    re.S)
+PS_KIND_RE = re.compile(
+    r"^\s*(\w+)\s*=\s*@\{\s*Title\s*=\s*'[^']*';\s*TagSuffix\s*=\s*'([^']+)';"
+    r"\s*AssetPrefix\s*=\s*'([^']+)';\s*ExeBase\s*=\s*'([^']+)'\s*\}",
+    re.M)
 
 
 def collect() -> dict[str, list[Path]]:
@@ -61,7 +95,7 @@ def collect() -> dict[str, list[Path]]:
     在慢文件系统（如 WSL 下的 /mnt/e）上遍历代价很高：既要避免同一棵树
     扫多遍，也要对 SKIP_DIRS 直接剪枝而不要走进去了再逐条判定。
     """
-    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": [], "xml": [], "yml": []}
+    found: dict[str, list[Path]] = {"bat": [], "sh": [], "py": [], "ps1": [], "xml": [], "yml": []}
     for dirpath, dirnames, filenames in os.walk(ROOT):
         # 就地改写 dirnames 实现剪枝，os.walk 不会进入被移除的子目录
         dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
@@ -82,6 +116,23 @@ def collect() -> dict[str, list[Path]]:
                 # 只关心仓库自己的 XML（pom.xml、assembly 描述符等）。
                 # target/ 与 Dist/ 已在 SKIP_DIRS 里剪掉，不会扫到生成物。
                 found["xml"].append(base / name)
+    # Dist/ 整体被剪掉，但其中的手写入口要捡回来：问 git 哪些属于「源码」
+    # （--cached 跟踪的 + --others 未跟踪但未被忽略的），生成物（Dist/bin/*.bat、
+    # 解压出来的 lib/ 等）都在 .gitignore 里，因此不会被误判；新加的文件不 add 也能查到。
+    for directory in TRACKED_SCRIPT_DIRS:
+        tracked = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard",
+                                  "--", directory],
+                                 cwd=ROOT, capture_output=True, text=True)
+        if tracked.returncode != 0:
+            continue
+        for name in tracked.stdout.splitlines():
+            if not name.strip():
+                continue
+            suffix = Path(name).suffix.lower()
+            if suffix in BAT_SUFFIXES:
+                found["bat"].append(ROOT / name)
+            elif suffix in PS1_SUFFIXES:
+                found["ps1"].append(ROOT / name)
     return {group: sorted(paths) for group, paths in found.items()}
 
 
@@ -224,6 +275,59 @@ def check_py(path: Path) -> list[str]:
     return problems
 
 
+def check_ps1(path: Path) -> list[str]:
+    """PowerShell：含非 ASCII 时必须带 UTF-8 BOM。
+
+    无 BOM 的 UTF-8 脚本在 Windows PowerShell 5.1 下会被按 ANSI（GBK）解码：
+    中文提示变乱码，而且**不报错**——只是用户看不懂。加 BOM 是唯一能让 5.1 正确解码的办法。
+    """
+    rel = path.relative_to(ROOT)
+    raw = path.read_bytes()
+    has_bom = raw.startswith(b"\xef\xbb\xbf")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return [f"{rel}: 不是 UTF-8，无法检查"]
+    if text.isascii() or has_bom:
+        return []
+    return [
+        f"{rel}: 含非 ASCII（中文提示）但没有 UTF-8 BOM——"
+        f"Windows PowerShell 5.1 会按 ANSI 解码，中文变乱码（且不报错）"
+    ]
+
+
+def check_native_update_parity() -> list[str]:
+    """两套原生取件实现的命名契约必须逐字一致（见模块 docstring）。"""
+    if not (NATIVE_PS1.exists() and NATIVE_PY.exists()):
+        return []
+    py = {m.group(1).lower(): m.groups()[1:]
+          for m in PY_KIND_RE.finditer(NATIVE_PY.read_text(encoding="utf-8"))}
+    ps = {m.group(1).lower(): m.groups()[1:]
+          for m in PS_KIND_RE.finditer(NATIVE_PS1.read_text(encoding="utf-8-sig"))}
+    if not py or not ps:
+        return [
+            "原生取件实现的一致性检查没能解析出契约："
+            f"Python 侧 {sorted(py)} / PowerShell 侧 {sorted(ps)}——"
+            "请确认 KINDS 表（Python）与 $kinds 表（PowerShell）仍是脚本可识别的写法"
+        ]
+    problems: list[str] = []
+    for key in sorted(set(py) | set(ps)):
+        if key not in ps:
+            problems.append(f"原生取件：Python 侧有种类 {key!r}，PowerShell 侧没有")
+            continue
+        if key not in py:
+            problems.append(f"原生取件：PowerShell 侧有种类 {key!r}，Python 侧没有")
+            continue
+        for field, a, b in zip(("tag 后缀", "资产前缀", "可执行文件名"), py[key], ps[key]):
+            if a != b:
+                problems.append(
+                    f"原生取件：种类 {key!r} 的{field}两套实现不一致——"
+                    f"Python 侧 {a!r}，PowerShell 侧 {b!r}；"
+                    f"这会让某个平台上永远取不到包"
+                )
+    return problems
+
+
 SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
@@ -272,6 +376,7 @@ def main() -> int:
         ("bat", check_bat),
         ("sh", check_sh),
         ("py", check_py),
+        ("ps1", check_ps1),
         ("xml", check_xml),
         ("yml", check_yaml_shell_vars),
     ):
@@ -284,9 +389,13 @@ def main() -> int:
 
     ignored = check_ignored_sources()
     problems.extend(ignored)
+    parity = check_native_update_parity()
+    problems.extend(parity)
 
-    print(f"\n检查 {checked} 个脚本文件（含 {len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
+    print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
+          f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
+    print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
     if problems:
         print("\n[问题]")
         for problem in problems:
