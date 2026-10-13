@@ -200,11 +200,24 @@ POM 与工作流**不需要动**：参数文件是单一来源，且会原样打
 .\mvnw -Pcli-native,native-jdk27 -pl aha-cli-native,aha-cli -am package -DskipTests
 ```
 
+**取件（免编，推荐）**：不想自己编也行——发布页上有 CI 编好的原生包，一条命令取到 `Dist/`：
+
+```bat
+Dist\UpdateCliNative.cmd                                :: Windows 双击（在仓库里运行，需 Python 3）
+python3 Script\Python\CliNativeVersionUpdate.py         :: 等价命令行（Windows / WSL / Linux / macOS）
+python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
+```
+
+与桌面端同构（同一套引擎，见 [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)）；
+`--dry-run` / `--tag` / `--jdk` / `--platform` 都可用，旧版可执行文件保留为 `.bak`。
+
 注意 `-pl aha-cli-native,aha-cli -am`：profile 加入的模块**不会**被 `-am` 带上游，
 必须显式把 `aha-cli` 也列出来，让 `-am` 把五个上游一起拉进来。
 
 ## 8. 相关文档
 
+- [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)：**取件工具的设计**——桌面端与 CLI
+  共用一套引擎（本模块的原生包就是由它取到 `Dist/` 的），也是本文 §7.1「取件」一节的出处
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：**共享方法论**（隔离四面、版本规则、
   产物自证、构建报告、JDK 轴对比实验）——本文不重复
 - [CLIDesign.md](CLIDesign.md)：CLI（JVM 模式）的设计与备选方案

@@ -10,6 +10,17 @@
 
 ## [Unreleased]
 
+### 新增
+- **一键更新原生包（2026-10-13，issue #156 / TD-00015）**：
+  ① `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`——Windows 双击即把最新原生包
+  取到 `Dist/`（依次探测 `py -3` / `python` / `python3`，找不到时给出下载指引）；
+  ② **CLI 原生包首次有自动取件能力**（`Script/Python/CliNativeVersionUpdate.py`），与桌面端
+  **同构**且不写第二份逻辑：引擎抽成 `Script/Python/NativeVersionUpdate.py`，两种包只在
+  `KINDS` 表里差五项（tag 后缀 / 资产前缀 / 可执行文件名 / 状态文件名 / 帮助里展示的用法），
+  新增第三种原生包 = 表里加一行；历史命令名 `DesktopNativeVersionUpdate.py` **保持可用**
+  （现为薄壳）。实测：本机取到 `V0.1.3.00154-aha-cli-native`，`version` 输出 `AHA 0.1.3.00154`。
+  详见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
+
 ### 文档
 - **Troubleshooting 32 篇档案补齐四节必备项（2026-10-13，issue #128，选项 C）**：
   按姊妹项目 `TroubleShootingDocSpec.md`，排查档案有**四节不得缺**——

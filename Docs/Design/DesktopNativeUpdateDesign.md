@@ -1,12 +1,14 @@
 # AHA 桌面端原生镜像版本更新脚本设计（试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.1.0
 > **状态**：草案（试验性能力的配套工具，随实现迭代）
 > **生效日期**：2026-10-09
-> **最后更新**：2026-10-09
+> **最后更新**：2026-10-13
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
-> **定位**：`Script/Python/DesktopNativeVersionUpdate.py` 的设计、参数、边界与验证记录
+> **定位**：原生镜像取件工具的设计、参数、边界与验证记录——**桌面端与 CLI 两种包共用一套引擎**
+> （`Script/Python/NativeVersionUpdate.py`）；用户入口是 `DesktopNativeVersionUpdate.py` /
+> `CliNativeVersionUpdate.py` 两个薄壳，Windows 一键入口为 `Dist/Update*.cmd`
 
 ## 0. 本文定位
 
@@ -29,6 +31,19 @@ python3 Script\Python\DesktopNativeVersionUpdate.py
 
 （POSIX 下把路径分隔符换成 `/`；个别环境里命令是 `python` 而非 `python3`。）
 用法由 `bin/CheckScripts.py` 的脚本规约守卫（`.py` 需 shebang + LF），不需要另立检查。
+
+**2026-10-13（issue #156 / TD-00015）：CLI 原生包并入同一套逻辑。** 引擎抽成
+`Script/Python/NativeVersionUpdate.py`，两种包只在引擎的 `KINDS` 表里差五项——tag 后缀、
+资产前缀、可执行文件名、状态文件名、帮助里展示的用法：
+
+| 种类 | 入口脚本（薄壳） | Windows 一键入口（双击） |
+|---|---|---|
+| 桌面端 | `Script/Python/DesktopNativeVersionUpdate.py` | `Dist\UpdateDesktopNative.cmd` |
+| CLI | `Script/Python/CliNativeVersionUpdate.py` | `Dist\UpdateCliNative.cmd` |
+
+历史命令名 `DesktopNativeVersionUpdate.py` **保持可用且行为不变**（现在只是薄壳）。
+曾考虑给单个入口加 `--kind` 参数，最终选「共享引擎 + 两个薄壳」：薄壳名就是文档名，
+双击入口不必再记参数，而共享逻辑仍然只有一份（这是 TD-00015 明确要求的）。
 
 三条边界先写清楚：
 
@@ -78,11 +93,17 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 资产    = ^AHA-Desktop-Native-(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$
 ```
 
-**只认 `-aha-desktop-native` 后缀**这一条是有代价、也是有意为之的：正式版 tag（`V0.1.0`）、
-历史实验 tag（`native-v0.1.1.00024`、`aha-desktop-native-v0.1.1.00030`）与 `cli-native`
-全都不匹配。宁可「看不见不认识的 tag」，也不要「把正式版当预发行版下载」——后者会静默覆盖
+**只认各自后缀**这一条是有代价、也是有意为之的：正式版 tag（`V0.1.0`）、
+历史实验 tag（`native-v0.1.1.00024`、`aha-desktop-native-v0.1.1.00030`）都不匹配。
+宁可「看不见不认识的 tag」，也不要「把正式版当预发行版下载」——后者会静默覆盖
 用户的本机验证环境。资产名里的 `<version>` 必须与 tag 解析出的版本**精确相等**，
 这也顺手排除了 `-Report.zip`（版本相同但结尾不匹配）。
+
+**CLI 原生包与之同构**（`CliNativeVersionUpdate.py`）：tag 为 `V<基线>.<构建号>-aha-cli-native`，
+资产为 `AHA-Cli-Native-<版本>-<平台标签>-jdk<JDK>.zip`，可执行文件为 `aha-cli-native(.exe)`，
+出处是同名的 `CliNative.yml`。两者正则形状完全一致，只有后缀 / 前缀不同——这正是
+一张 `KINDS` 表能覆盖两种包的原因；也是「桌面端入口永远不会去取 CLI 的包」的原因
+（互不串台：`cli-native` 的 tag 不匹配桌面端的后缀，反之亦然）。
 
 ## 3. 三条发现路径
 
@@ -230,7 +251,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 
 | # | 事项 | 触发条件 |
 |---|---|---|
-| U-1 | 与 `cli-native` 共用同一脚本（加 `--kind`，命名同族） | 需要频繁验证 CLI 原生镜像时 |
+| U-1 | ✅ **已完成**（2026-10-13，issue #156）：与 `cli-native` 共用同一套逻辑——共享引擎 + 两个薄壳（见第 0 节） | — |
 | U-2 | `--json` / `--check` 输出，便于 CI 或桌面端「检查更新」复用 | 有第二个调用方时 |
 | U-3 | macOS 真机验证 | 拿到 macOS 环境后与 `DesktopNativeDesign.md` 第 7 节 `N-1` 一起做 |
 | U-4 | 目录归属：按 `TODO.md` `F-07` 的结论决定是否并入 `bin/` | `F-07` 有结论时 |
@@ -239,6 +260,11 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 ## 12. 相关文档
 
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：原生镜像的构建管线、隔离与迭代指南
+- [CliNativeDesign.md](CliNativeDesign.md)：CLI 原生镜像的构建管线（取件由本工具覆盖）
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（含跨平台脚本规约）
+- [TD-00015](../TODO/TD-00015-CliNativeVersionUpdateScript.md)：CLI 原生镜像自动取件脚本（已收尾）
 - [TODO.md](../TODO.md)：`F-07`（`Script/` 目录归属）、`N-04`（JDK 轴）
-- 实现：`Script/Python/DesktopNativeVersionUpdate.py`
+- Issue #156：一键入口与 CLI 取件的来源单
+- 实现：`Script/Python/NativeVersionUpdate.py`（共享引擎）、
+  `DesktopNativeVersionUpdate.py` / `CliNativeVersionUpdate.py`（两个薄壳）、
+  `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`（Windows 一键入口）
