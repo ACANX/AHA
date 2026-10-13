@@ -331,7 +331,14 @@ public final class AhaDesktopApp extends Application {
         // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
+        // 注意：FXML 的装载已经挪进 DesktopShell 的构造器（loadView），**失败标记也印在那里**。
+        // 这里**故意不再包一圈 try/catch 打印失败标记**——buildRoot() 现在只是取字段
+        // （`return rootNode;`），包在它外面的 catch 会被静态分析判为死代码而删掉，
+        // 标记连字符串一起从产物里消失（实测，见 TS-2610-032 第三轮）。
+        // 「守卫写在证不出会抛的位置，等于没有守卫。」
         Parent root = shell.buildRoot();
+        System.out.println("[ui-fxml-loaded] desktop-shell.fxml");
+        System.out.flush();
         // 构建期用的是「当时」的色表：这里幂等地再刷一次，保证所有登记过的节点与当前色表一致。
         // 原生镜像里出现过「部分节点停在构建期主题」的混合状态——底色一套、文字另一套（issue #49），
         // 这一步把「构建期取值」这个不确定性直接抹掉。
@@ -552,6 +559,23 @@ public final class AhaDesktopApp extends Application {
      * @param args 参数
      */
     public static void main(String[] args) {
+        // 启动第一件事：把「这次跑的到底是哪一版」打到 stdout。
+        //
+        // 为什么要走 stdout、而不只用日志：日志的 console appender 级别是 ERROR，
+        // INFO 级的版本行在真机控制台上根本看不见——而排障时第一句要问的就是「你跑的是哪一版」。
+        //
+        // 版本必须带**构建号**（如 0.1.3.00134）：同一条 dev 分支会因 PR 不同构建出几十个包，
+        // 只报基线版本（0.1.3）无法定位到具体哪一个。
+        //
+        // 标记用**纯 ASCII**、且显式 flush：
+        //   ① 冒烟可能在中文 Windows（GBK）下跑，中文会乱码；
+        //   ② 重定向到文件时 System.out 不自动刷，标记会丢（TS-2610-003 的教训）。
+        // 它同时是原生冒烟的**正面断言**落点：见到它，才说明程序真的走到了启动路径。
+        System.out.println("[aha-version] version=" + AppVersion.buildVersion()
+                + " baseline=" + AppVersion.version()
+                + " prerelease=" + AppVersion.isPreRelease());
+        System.out.flush();
+
         // 临时缓解措施（issue #44 / #48，非最终方案）：原生镜像内默认关闭 LCD 次像素合成。
         // prism.lcdtext 只在 PrismFontFactory 静态初始化时读取一次，必须早于工具包启动；
         // 开关、回退与「为什么是临时措施」见 NativeRenderDefaults 的类注释。

@@ -122,8 +122,8 @@
         </dependency>
 
         <!--
-            OpenJFX 三件套：显式再声明一次，不用「从 aha-desktop 传递过来」这条隐性路径。
-            理由：原生镜像对「classpath 上究竟是哪三个 JavaFX jar」极其敏感
+            OpenJFX 四件套：显式再声明一次，不用「从 aha-desktop 传递过来」这条隐性路径。
+            理由：原生镜像对「classpath 上究竟是哪四个 JavaFX jar」极其敏感
             （分类器错了会拿到别的平台的原生库），显式声明让这里成为可读、可审的一处。
             分类器由父 POM 的 javafx-* profile 按当前 OS/架构解析（`javafx.platform`）。
         -->
@@ -164,7 +164,7 @@
                 那是一堆 0 KB 的空壳 jar。实测（本模块首次跑通时）它们确实混进了
                 target/native/lib：classpath 上无害，但会给 native-image 引入
                 两个什么都不含的同名模块，白白增加「为什么有这个 jar」的疑问。
-                排除后 classpath 里只剩本平台的三个真 javafx jar。
+                排除后 classpath 里只剩本平台的四个真 javafx jar。
             -->
             <exclusions>
                 <exclusion>
@@ -174,6 +174,35 @@
                 <exclusion>
                     <groupId>org.openjfx</groupId>
                     <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.platform}</classifier>
+            <scope>runtime</scope>
+            <!--
+                界面骨架（desktop-shell.fxml）的装载体。与其余三件同理：
+                带分类器的工件会拉进「无分类器」空壳，必须排除；
+                它自己也是带平台分类器的（含原生库），所以不能只声明无分类器版本。
+                三个都要排（base / graphics / controls）：fxml 的 POM 三个都声了
+                无分类器版本，漏一个就在 classpath 上留一个空壳（实测 `javafx-controls-25.jar`，
+                306 字节 —— 工作流的 `-size 0` 检查抓不到）。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-controls</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>

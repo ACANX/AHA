@@ -10,7 +10,34 @@
 
 ## [Unreleased]
 
+### 修复
+- **FXML 骨架在原生包里启动即崩（2026-10-13）**：`desktop-shell.fxml` 漏写 `<?import?>`，原生包双击后抛
+  `LoadException: BorderPane is not a valid type.`——而 `Build`、原生构建、GUI 冒烟**三方全绿**。
+  修了三层：① 补 15 个 `<?import?>`；② 新增**静态对账**（元素类型名必须能在 import 表里找到；
+  对改前的文件跑同一条规则，15 个类型全部命中）；③ 把原生 GUI 冒烟从「进程存活 20 秒」改为
+  **正面断言**——必须命中 `[aha-version]` 与 `[ui-fxml-loaded]`、不得出现 `[ui-fxml-load-failed]`、
+  不得在 20 秒内以非 0 退出。另修：`javafx-fxml` 传递进来的 `javafx-controls` 无分类器空壳未排除
+  （**306 字节**，而工作流原先的 `-size 0` 判据抓不到），已收紧为 `-size -2k`。
+  见 `TS-2610-032-FXML-Missing-Import-And-Smoke-Blind-Spot.md`。
+- **启动即输出全量版本（含构建号）**：`main` 的第一件事打印
+  `[aha-version] version=0.1.3.00134 baseline=0.1.3 prerelease=true`（纯 ASCII + 显式 flush）。
+  走 stdout 而不是日志，是因为 console appender 级别为 ERROR，INFO 级的版本行在真机控制台上看不见
+  ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
+
 ### 变更
+- **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
+  状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
+  `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
+  冒烟测试按 id 的 `lookup` 全部照旧。新增 `javafx-fxml` 依赖（父 POM 的
+  `dependencyManagement` 一并登记）。原生镜像侧：`.fxml` 并入 `-H:IncludeResources`
+  扩展名白名单（**刻意不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像、
+  触发运行期 `defineClass` 而启动即崩），并按「**按声明类登记**」的规律补齐反射元数据
+  （`FXMLLoader` / `FXML` / 各控件与布局 / StAX 实现，并把 `Node` / `Parent` / `Region` /
+  `Pane` / `Control` / `Labeled` 升级为 `allDeclared*`）。自证：`NativeImageMetadataTest`
+  新增 FXML 用例，新增 `DesktopShellFxmlTest`（fx:id ↔ 字段 / id ↔ 常量 / 资源白名单
+  三向对账，不启 JavaFX）；启动时打印 ASCII 正面标记 `[ui-fxml-loaded]` /
+  `[ui-fxml-load-failed]`（带 flush）。参考姊妹项目 `TS-2610-003`（FXML 重构后
+  原生包启动即崩的两层踩坑）。见 `Docs/DevLog/20261013-11.md`。
 - **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
   的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
   不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。

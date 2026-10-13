@@ -66,7 +66,7 @@
 - 凡在「没有工具链 / 属于试验」前提下可能失败的步骤都加 `continue-on-error: true`；
 - 每个作业末尾把**真实结论**写进 Job Summary（编了没有 / 产物在哪 / 多大 / 为什么没成）；
 - 产物自证改成**诊断式**：判据只留真正的不变式（存在、≥5 MB、平台魔法数、
-  OpenJFX 三件套齐全且无 0 KB 空壳），结论一律写摘要而**不变红叉**；
+  OpenJFX 四件套齐全且无 0 KB 空壳），结论一律写摘要而**不变红叉**；
 - 发布作业在「一个包都没收上来」时**不发版、也不失败**，只写摘要。
 
 **取舍写明白**：原生编译真坏了，CI **不会红**——只表现为摘要里少一版、发布页少一个包。
@@ -309,6 +309,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | R7 | 三个平台的关键差异被「只在 Windows 试」掩盖 | 已知 | 每次改参数后,至少在本机（Windows）+ 一条 Linux 腿上看结论 |
 | R8 | 工作流 shell 的跨平台差异（变量名、`find`、宿主环境变量） | **已踩坑（run 37744912968）**：macOS 的 bash 把 `$bin（` 当变量名 → unbound，步骤 outputs 丢失，**macos 镜像包没上传**；Windows runner 自带 VS 的 `PLATFORM`，与 step 注入冲突 | 自证脚本：命中产物**立刻**写 `produced=true` + `trap 'exit 0' EXIT`；注入变量加 `LEG_` 前缀并用 `${VAR:-}`；不用 `find -maxdepth`；`bin/CheckScripts.py` 新增 YAML shell 变量守卫 |
 | R9 | 原生镜像丢失 LCD 次像素抗锯齿 ⇒ 文字发虚、偏细（issue #44 / #48） | **已缓解、未根治**：真机像素对照确认 native = 灰度、JVM = 次像素（彩色边缘像素 18.4 倍差距）；成因指向 DirectWrite 渲染参数在 closed-world 下读不到（与 #60 同源） | 临时缓解：原生内默认写 `prism.lcdtext=false`（`NativeRenderDefaults`）；可用 `-Dprism.lcdtext=…` / `-Daha.desktop.nativeTextGreyscale=false` 回退；**根因修复（补渲染参数读取或等上游）后删除本类与调用点** |
+| R10 | **FXML 界面骨架**引入后，反射登记与资源收录各多一层（登记要**按声明类**、`.fxml` 必须进镜像），且**fxml 自身的错误在编译期完全不可见** | **已处理（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 / 状态栏 / 输入区）迁到 `desktop-shell.fxml`，本类改作 FXML 控制器；**真机已踩一次**：fxml 漏写 `<?import?>` ⇒ 原生包启动即 `LoadException: BorderPane is not a valid type.`，而当时 `Build` / 原生构建 / GUI 冒烟**三方全绿**（详见 `TS-2610-032`） | 资源：`.fxml` 并入扩展名白名单（**不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像 → 运行期 `defineClass` → 崩，见 TS-2610-003）；元数据：新增 20 条（`FXMLLoader` / `FXML` / 骨架里各控件与布局 / StAX 实现），并把 `Node` / `Parent` / `Region` / `Pane` / `Control` / `Labeled` 从「只有类名」升级为 `allDeclared*`；守卫：`NativeImageMetadataTest` 新增 FXML 用例 + `DesktopShellFxmlTest`（含**元素类型名必须已 import** 的静态对账）；可观测：启动打印 ASCII 标记 `[aha-version]`（含构建号）与 `[ui-fxml-loaded]` / `[ui-fxml-load-failed]`；**冒烟已改为正面断言**（必须命中 `[aha-version]` 与 `[ui-fxml-loaded]`） |
 
 **已踩的反射坑：JavaFX 入口（issue #26，2026-10-08）**：
 

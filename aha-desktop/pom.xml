@@ -75,6 +75,33 @@
             <artifactId>javafx-base</artifactId>
             <classifier>${javafx.platform}</classifier>
         </dependency>
+        <!--
+            FXML：桌面端界面骨架（`desktop-shell.fxml`）由它装载。
+            与 controls 同理——带分类器的工件会拉进「无分类器」空壳，必须排除，
+            只留当前平台的真 jar。
+            注意三个都要排：fxml 的 POM 声明的是无分类器的 base / graphics / controls
+            （实测：只排 base+graphics 时，classpath 上会多出 `javafx-controls-25.jar`
+            ——306 字节的空壳，而工作流的 `-size 0` 检查抓不到它）。
+        -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <classifier>${javafx.platform}</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-controls</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>

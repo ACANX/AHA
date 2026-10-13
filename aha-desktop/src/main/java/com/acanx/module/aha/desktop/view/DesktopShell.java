@@ -14,6 +14,8 @@ import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
@@ -49,6 +51,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.nio.file.Path;
@@ -95,6 +98,9 @@ public final class DesktopShell implements ChatView {
 
     /** 中栏容器 id。 */
     public static final String CENTER_ID = "aha.center";
+
+    /** 三栏所在那一行的 id。 */
+    public static final String MIDDLE_ROW_ID = CENTER_ID + ".row";
 
     /** 消息流容器 id。 */
     public static final String MESSAGES_ID = "aha.messages";
@@ -175,6 +181,9 @@ public final class DesktopShell implements ChatView {
     public static final String COMPOSER_PROMPT =
             "继续输入…（Enter 发送 / Shift+Enter 换行，/ 命令，@ 引用文件）";
 
+    /** FXML 骨架资源（与本类同包）；文件名带 `-`，与类名不构成约定关系。 */
+    private static final String FXML_VIEW = "desktop-shell.fxml";
+
 
     /** UI 线程投递器（助手流式文本的合流要用它）。 */
     private final FxDispatcher dispatcher;
@@ -185,20 +194,32 @@ public final class DesktopShell implements ChatView {
     /** 配置摘要提供者（帮助 → 关于 里展示）。 */
     private final Supplier<String> configSummary;
 
-    private final VBox messages = new VBox(ShellLayout.GAP);
+    /** 消息流容器（FXML 注入）。 */
+    @FXML
+    private VBox messages;
 
     /** 空态节点；首条消息到来时整体移除，清空对话后重建。 */
     private VBox emptyState;
 
-    private final Label status = new Label(STATUS_INITIAL);
+    /** 底部状态标签（FXML 注入）。 */
+    @FXML
+    private Label status;
 
-    private final Label config = new Label();
+    /** 配置摘要标签（FXML 注入）。 */
+    @FXML
+    private Label config;
 
-    private final TextArea composer = new TextArea();
+    /** 输入框（FXML 注入）。 */
+    @FXML
+    private TextArea composer;
 
-    private final VBox leftContent;
+    /** 左栏内容区（FXML 注入）。 */
+    @FXML
+    private VBox leftContent;
 
-    private final VBox rightContent;
+    /** 右栏内容区（FXML 注入）。 */
+    @FXML
+    private VBox rightContent;
 
     /** 助手流式文本的合流器：每个 token 一次界面更新会拖慢界面，这里合并成每帧一次。 */
     private FxBridge<String> assistantBridge;
@@ -221,10 +242,12 @@ public final class DesktopShell implements ChatView {
      */
     private final List<Runnable> restylers = new ArrayList<>();
 
-    /** 发送按钮（生成中禁用）。 */
+    /** 发送按钮（生成中禁用，FXML 注入）。 */
+    @FXML
     private Button sendButton;
 
-    /** 底栏用量标签。 */
+    /** 底栏用量标签（FXML 注入）。 */
+    @FXML
     private Label usageLabel;
 
     /** 发送动作（由宿主接到对话内核）。 */
@@ -248,10 +271,12 @@ public final class DesktopShell implements ChatView {
     /** 导出会话动作（会话 ID, 格式 md/json）。 */
     private BiConsumer<String, String> onSessionExport = (id, format) -> { };
 
-    /** 会话搜索框。 */
+    /** 会话搜索框（FXML 注入）。 */
+    @FXML
     private TextField sessionSearch;
 
-    /** 会话列表。 */
+    /** 会话列表（FXML 注入）。 */
+    @FXML
     private ListView<SessionList.Item> sessionList;
 
     /** 输入历史（↑ / ↓）。 */
@@ -293,17 +318,154 @@ public final class DesktopShell implements ChatView {
     /** 日志面板（未接线时导航按钮说明原因，而不是假动作）。 */
     private LogPanel logPanel;
 
-    private final HBox leftBox;
+    @FXML
+    private HBox leftBox;
 
-    private final HBox rightBox;
+    @FXML
+    private HBox rightBox;
 
-    private final CheckMenuItem collapseLeft;
+    /** 视图菜单里的「折叠左栏」（FXML 注入）。 */
+    @FXML
+    private CheckMenuItem collapseLeft;
 
-    private final CheckMenuItem collapseRight;
+    /** 视图菜单里的「折叠右栏」（FXML 注入）。 */
+    @FXML
+    private CheckMenuItem collapseRight;
 
-    private final Button leftToggle = new Button();
+    @FXML
+    private Button leftToggle;
 
-    private final Button rightToggle = new Button();
+    @FXML
+    private Button rightToggle;
+
+    // ── FXML 注入的其余部件 ──────────────────────────────────────────────────
+    //
+    // 字段名必须与 desktop-shell.fxml 的 fx:id 一一对应。原生镜像下这些**私有字段**
+    // 由 FXMLLoader 反射写入，因此 DesktopShell 的字段必须登记进 reachability-metadata
+    // （见 NativeImageMetadataTest 的 FXML 用例）。
+
+    /** 根容器。 */
+    @FXML
+    private BorderPane root;
+
+    @FXML
+    private MenuBar menuBar;
+
+    @FXML
+    private Menu fileMenu;
+
+    @FXML
+    private Menu editMenu;
+
+    @FXML
+    private Menu sessionMenu;
+
+    @FXML
+    private Menu toolsMenu;
+
+    @FXML
+    private Menu viewMenu;
+
+    @FXML
+    private Menu helpMenu;
+
+    @FXML
+    private MenuItem exitItem;
+
+    @FXML
+    private MenuItem copyItem;
+
+    @FXML
+    private MenuItem clearItem;
+
+    @FXML
+    private MenuItem toolListItem;
+
+    @FXML
+    private MenuItem revokeItem;
+
+    @FXML
+    private MenuItem themeItem;
+
+    @FXML
+    private MenuItem aboutItem;
+
+    /** 三栏所在的那一行。 */
+    @FXML
+    private HBox middleRow;
+
+    /** 左栏折叠手柄所在的常驻窄条。 */
+    @FXML
+    private HBox leftStrip;
+
+    @FXML
+    private Button newSessionButton;
+
+    @FXML
+    private Button providerButton;
+
+    @FXML
+    private Button toolsButton;
+
+    @FXML
+    private Button memoryButton;
+
+    @FXML
+    private Button extensionButton;
+
+    @FXML
+    private Button logButton;
+
+    @FXML
+    private Button settingsButton;
+
+    /** 左栏底部的撑高垫（把导航按钮顶到上方）。 */
+    @FXML
+    private Region leftSpacer;
+
+    /** 左栏「会话」分组标题。 */
+    @FXML
+    private Label sessionSection;
+
+    @FXML
+    private VBox centerColumn;
+
+    /** 消息流的滚动区。 */
+    @FXML
+    private ScrollPane messageScroll;
+
+    @FXML
+    private VBox composerBox;
+
+    @FXML
+    private HBox composerActions;
+
+    /** 右栏折叠手柄所在的常驻窄条。 */
+    @FXML
+    private HBox rightStrip;
+
+    /** 右栏标题。 */
+    @FXML
+    private Label rightTitle;
+
+    @FXML
+    private HBox statusBar;
+
+    /** 底栏左侧的连接指示灯。 */
+    @FXML
+    private Label connectionLabel;
+
+    /** 底栏的快捷键提示。 */
+    @FXML
+    private Label statusHint;
+
+    /** 底栏右侧的版本号。 */
+    @FXML
+    private Label versionLabel;
+
+    /** 底栏里的撑高垫（把右侧内容推到最右）。 */
+    @FXML
+    private Region statusSpacer;
 
     /** 左栏折叠状态（菜单 / Ctrl+B / 窄条按钮共用）。 */
     private final FoldState leftFold = new FoldState("左栏", ShellLayout.LEFT_WIDTH, true);
@@ -320,12 +482,8 @@ public final class DesktopShell implements ChatView {
         this.dispatcher = dispatcher;
         this.onExit = onExit;
         this.configSummary = configSummary;
-        this.collapseLeft = new CheckMenuItem("折叠左栏");
-        this.collapseRight = new CheckMenuItem("折叠右栏");
-        this.leftContent = buildLeftContent();
-        this.rightContent = buildRightContent();
-        this.leftBox = buildLeftColumn();
-        this.rightBox = buildRightColumn();
+        // 界面骨架从 FXML 装载（详见 desktop-shell.fxml 顶部的说明）
+        loadView();
         this.assistantBridge = new FxBridge<>(dispatcher, text -> {
             if (currentAssistant != null) {
                 currentAssistant.setText(text);
@@ -335,18 +493,66 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
-     * 构建窗口根节点。
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>本类既是界面骨架的持有者，也是它的 **FXML 控制器**（{@code setController(this)}）。
+     * 这样做的好处：现有的公开方法（冒烟测试与真机自证都按它们对账）一个都不用改，
+     * 而「节点长什么样」搬进了 {@code desktop-shell.fxml}。</p>
+     */
+    private void loadView() {
+        FXMLLoader loader = new FXMLLoader(DesktopShell.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        try {
+            rootNode = loader.load();
+        } catch (IOException e) {
+            // 装载失败必须**看得见**：窗口根本不会出现，而构建是绿的。
+            //
+            // 【为什么失败标记印在这里、而不是印在宿主的 start()】
+            // FXML 的装载已经挪到构造器（本方法），宿主里那圈
+            // `try { shell.buildRoot(); } catch (...)` 包的是 buildRoot()——而它现在只是
+            // `return rootNode;`，**静态分析能证明它不可能抛异常**，于是那段 catch
+            // 连同字符串常量一起被当成死代码删掉：实测 exe 里 grep 不到
+            // `[ui-fxml-load-failed]`（见 TS-2610-032 第三轮）。
+            // **守卫写在「证不出会抛」的位置，等于没有守卫。**
+            // 这里的 catch 是真的会执行到的那一个（真机崩溃的栈就停在这一层）。
+            //
+            // 纯 ASCII + 显式 flush：冒烟可能在中文 Windows（GBK）下跑；
+            // 重定向到文件时 System.err 不自动刷，标记会丢。
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            // 不吞异常：装不起来时窗口会是空白，静默失败会让排障从「一行堆栈」变成「猜」
+            throw new IllegalStateException("桌面端界面骨架装载失败：" + FXML_VIEW, e);
+        }
+        wireView();
+    }
+
+    /**
+     * 把注入的节点接起来：样式、事件、监听、初始状态。
+     *
+     * <p>原先是「建节点时就顺手配好」，拆成 FXML 之后变成「先注入、再统一配」。
+     * 分成五个部分，与 {@code desktop-shell.fxml} 的层级对应，便于两边对着看。</p>
+     */
+    private void wireView() {
+        // 根节点样式：主题 + 字号（字号属于设置，见 SettingsDialog）
+        themed(root, this::rootStyle);
+        wireMenus();
+        wireLeftColumn();
+        wireCenterColumn();
+        wireRightColumn();
+        wireStatusBar();
+    }
+
+    /**
+     * 窗口根节点。
+     *
+     * <p>骨架在构造时就装好了，这里只把同一个根返回——**重复调用必须拿到同一棵树**：
+     * 冒烟测试会多次 {@code buildRoot()} 再往消息流里塞内容，若每次都重建，
+     * 先前塞进去的节点就全被换掉了。</p>
      *
      * @return 根节点
      */
     public Parent buildRoot() {
-        BorderPane root = new BorderPane();
-        themed(root, this::rootStyle);
-        root.setTop(new VBox(buildMenuBar()));
-        root.setCenter(buildMiddleRow());
-        root.setBottom(buildStatusBar());
-        rootNode = root;
-        return root;
+        return rootNode;
     }
 
     /** 根节点样式：主题 + 字号（字号属于设置，见 SettingsDialog）。 */
@@ -1029,83 +1235,72 @@ public final class DesktopShell implements ChatView {
     /**
      * 左栏导航按钮。
      *
-     * @param text    文案
-     * @param action  点击动作
-     * @return 按钮
+     * @param button 按钮（FXML 注入）
+     * @param text   文案
+     * @param action 点击动作
      */
-    private Button navButton(String text, Runnable action) {
-        Button button = new Button(text);
+    private void navButton(Button button, String text, Runnable action) {
+        button.setText(text);
         button.setMaxWidth(Double.MAX_VALUE);
         button.setAlignment(Pos.CENTER_LEFT);
         themed(button, () -> "-fx-background-color: transparent; -fx-text-fill: "
                 + Palette.FOREGROUND + ";");
         button.setOnAction(event -> action.run());
-        return button;
     }
 
-    private MenuBar buildMenuBar() {
-        MenuBar bar = new MenuBar();
-        bar.setId(MENU_BAR_ID);
+    /** 菜单栏：文本、快捷键与动作（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireMenus() {
         // 菜单栏是顶层容器，暗色下若不显式套主题会露出 modena 默认白底（issue #49）
-        themed(bar, () -> "-fx-background-color: " + Palette.BASE + ";"
+        themed(menuBar, () -> "-fx-background-color: " + Palette.BASE + ";"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";");
 
-        Menu file = new Menu("文件(_F)");
-        MenuItem exit = new MenuItem("退出");
-        exit.setOnAction(event -> onExit.run());
-        file.getItems().add(exit);
+        fileMenu.setText("文件(_F)");
+        exitItem.setText("退出");
+        exitItem.setOnAction(event -> onExit.run());
 
         // 编辑与工具菜单随功能接入；先保留占位项，避免出现「点了没反应」的假动作
-        Menu edit = new Menu("编辑(_E)");
-        MenuItem copy = new MenuItem("复制（待接入）");
-        copy.setDisable(true);
-        edit.getItems().add(copy);
+        editMenu.setText("编辑(_E)");
+        copyItem.setText("复制（待接入）");
+        copyItem.setDisable(true);
 
-        Menu session = new Menu("会话(_S)");
-        MenuItem clear = new MenuItem("清空对话");
-        clear.setOnAction(event -> clearConversation());
-        session.getItems().add(clear);
+        sessionMenu.setText("会话(_S)");
+        clearItem.setText("清空对话");
+        clearItem.setOnAction(event -> clearConversation());
 
-        Menu tools = new Menu("工具(_T)");
-        MenuItem toolList = new MenuItem("工具列表");
-        toolList.setOnAction(event -> openToolDialog());
+        toolsMenu.setText("工具(_T)");
+        toolListItem.setText("工具列表");
+        toolListItem.setOnAction(event -> openToolDialog());
         // 会话内「始终允许」必须有一个显眼的撤回入口（GUIDesign 第 5.1 节）
-        MenuItem revoke = new MenuItem("全部撤销本会话授权");
-        revoke.setAccelerator(new KeyCodeCombination(KeyCode.R,
+        revokeItem.setText("全部撤销本会话授权");
+        revokeItem.setAccelerator(new KeyCodeCombination(KeyCode.R,
                 KeyCombination.SHORTCUT_DOWN, KeyCombination.SHIFT_DOWN));
-        revoke.setOnAction(event -> {
+        revokeItem.setOnAction(event -> {
             if (onRevokeApprovals == null) {
                 appendNotice("撤销授权尚不可用（未接线）。");
             } else {
                 onRevokeApprovals.run();
             }
         });
-        tools.getItems().addAll(toolList, new SeparatorMenuItem(), revoke);
 
-        Menu view = new Menu("视图(_V)");
+        viewMenu.setText("视图(_V)");
         collapseLeft.setSelected(!leftFold.isExpanded());
         collapseLeft.setAccelerator(new KeyCodeCombination(KeyCode.B, KeyCombination.SHORTCUT_DOWN));
         collapseLeft.setOnAction(event -> toggleLeft());
         collapseRight.setSelected(!rightFold.isExpanded());
         collapseRight.setAccelerator(new KeyCodeCombination(KeyCode.J, KeyCombination.SHORTCUT_DOWN));
         collapseRight.setOnAction(event -> toggleRight());
-        MenuItem theme = new MenuItem("主题（暗色 / 亮色 / 跟随系统）");
-        theme.setOnAction(event -> {
+        themeItem.setText("主题（暗色 / 亮色 / 跟随系统）");
+        themeItem.setOnAction(event -> {
             if (onThemeCycle == null) {
                 appendNotice("主题切换尚不可用（未接线）。");
             } else {
                 onThemeCycle.run();
             }
         });
-        view.getItems().addAll(collapseLeft, collapseRight, new SeparatorMenuItem(), theme);
 
-        Menu help = new Menu("帮助(_H)");
-        MenuItem about = new MenuItem("关于 AHA");
-        about.setOnAction(event -> showAbout());
-        help.getItems().add(about);
-
-        bar.getMenus().addAll(file, edit, session, tools, view, help);
-        return bar;
+        helpMenu.setText("帮助(_H)");
+        aboutItem.setText("关于 AHA");
+        aboutItem.setOnAction(event -> showAbout());
     }
 
     private void showAbout() {
@@ -1122,40 +1317,30 @@ public final class DesktopShell implements ChatView {
         alert.showAndWait();
     }
 
-    private HBox buildMiddleRow() {
-        HBox row = new HBox();
-        row.setId(CENTER_ID + ".row");
-        row.getChildren().addAll(leftBox, buildCenterColumn(), rightBox);
-        HBox.setHgrow(row.getChildren().get(1), Priority.ALWAYS);
-        return row;
-    }
-
-    private VBox buildLeftContent() {
-        VBox box = new VBox(ShellLayout.GAP);
-        box.setId(LEFT_CONTENT_ID);
-        box.setPadding(new Insets(ShellLayout.GAP));
-        box.setPrefWidth(ShellLayout.LEFT_WIDTH);
-        box.setMinWidth(ShellLayout.LEFT_WIDTH);
-        box.setMaxWidth(ShellLayout.LEFT_WIDTH);
+    /** 左栏：搜索、会话列表、导航按钮、折叠手柄（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireLeftColumn() {
+        leftContent.setSpacing(ShellLayout.GAP);
+        leftContent.setPadding(new Insets(ShellLayout.GAP));
+        leftContent.setPrefWidth(ShellLayout.LEFT_WIDTH);
+        leftContent.setMinWidth(ShellLayout.LEFT_WIDTH);
+        leftContent.setMaxWidth(ShellLayout.LEFT_WIDTH);
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
-        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 1 0 0;");
+        themed(leftContent, () -> "-fx-border-color: " + Palette.BORDER
+                + "; -fx-border-width: 0 1 0 0;");
 
-        TextField search = new TextField();
-        search.setId(SESSION_SEARCH_ID);
-        search.setPromptText("⌕ 搜索会话");
+        sessionSearch.setId(SESSION_SEARCH_ID);
+        sessionSearch.setPromptText("⌕ 搜索会话");
         // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
-        themed(search, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+        themed(sessionSearch, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
                 // 显式背景属性：只设 looked-up color 时，原生镜像下偶发不向子节点（.content / .text）传播（issue #49）
                 + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";"
                 + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
-        search.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
+        sessionSearch.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
         // TextField 的 maxWidth 默认是「按内容算」，于是它会比左栏还宽并盖到中栏上
         // （真机截图里能看到搜索框横向溢出）。必须显式放开，让 VBox 把它收进栏内。
-        search.setMaxWidth(Double.MAX_VALUE);
-        this.sessionSearch = search;
+        sessionSearch.setMaxWidth(Double.MAX_VALUE);
 
-        sessionList = new ListView<>();
         sessionList.setId(SESSION_LIST_ID);
         sessionList.setPrefHeight(200);
         sessionList.setMaxWidth(Double.MAX_VALUE);
@@ -1177,18 +1362,35 @@ public final class DesktopShell implements ChatView {
         });
         sessionList.setContextMenu(buildSessionMenu());
 
-        box.getChildren().addAll(search,
-                navButton("＋ 新建会话", () -> onNewSession.run()),
-                section("会话"),
-                sessionList,
-                navButton("供应商", this::openProviderDialog),
-                navButton("工具", this::openToolDialog),
-                navButton("记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。")),
-                navButton("扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。")),
-                navButton("日志", this::openLogPanel),
-                navButton("⚙ 设置", this::openSettings),
-                spacer());
-        return box;
+        sessionSection.setText("会话");
+        themed(sessionSection, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
+
+        navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
+        navButton(providerButton, "供应商", this::openProviderDialog);
+        navButton(toolsButton, "工具", this::openToolDialog);
+        navButton(memoryButton, "记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。"));
+        navButton(extensionButton, "扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。"));
+        navButton(logButton, "日志", this::openLogPanel);
+        navButton(settingsButton, "⚙ 设置", this::openSettings);
+        VBox.setVgrow(leftSpacer, Priority.ALWAYS);
+
+        // 常驻窄条上的折叠手柄：设置与事件都在这儿
+        leftToggle.setId(LEFT_TOGGLE_ID);
+        leftToggle.setOnAction(event -> toggleLeft());
+        leftToggle.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+        leftToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+        leftToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+        // 不要拉满整列高度：否则 ‹ 会飘到栏底，看不出它属于哪一栏
+        leftToggle.setMaxHeight(Region.USE_PREF_SIZE);
+        themed(leftToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + ";");
+
+        leftStrip.setAlignment(Pos.TOP_CENTER);
+        leftStrip.setPadding(new Insets(ShellLayout.GAP, 0, 0, 0));
+        leftStrip.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+
+        // 左栏与其窄条的横向顺序由 FXML 决定：窄条在前、内容在后（见 desktop-shell.fxml）
+        leftBox.setId(LEFT_ID);
     }
 
     /**
@@ -1305,55 +1507,21 @@ public final class DesktopShell implements ChatView {
         }
     }
 
-    /** 左栏分组标题。 */
-    private Label section(String text) {
-        Label label = new Label(text);
-        themed(label, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
-        return label;
-    }
-
-    private VBox buildRightContent() {
-        VBox box = new VBox(ShellLayout.GAP);
-        box.setId(RIGHT_CONTENT_ID);
-        box.setPadding(new Insets(ShellLayout.GAP));
-        box.setPrefWidth(ShellLayout.RIGHT_WIDTH);
-        box.setMinWidth(ShellLayout.RIGHT_WIDTH);
-        box.setMaxWidth(ShellLayout.RIGHT_WIDTH);
-        themed(box, () -> "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 0 0 0 1;");
-        Label title = new Label("本轮");
+    /** 右栏：标题、空态提示与折叠手柄（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireRightColumn() {
+        rightContent.setSpacing(ShellLayout.GAP);
+        rightContent.setPadding(new Insets(ShellLayout.GAP));
+        rightContent.setPrefWidth(ShellLayout.RIGHT_WIDTH);
+        rightContent.setMinWidth(ShellLayout.RIGHT_WIDTH);
+        rightContent.setMaxWidth(ShellLayout.RIGHT_WIDTH);
+        themed(rightContent, () -> "-fx-border-color: " + Palette.BORDER
+                + "; -fx-border-width: 0 0 0 1;");
+        rightTitle.setText("本轮");
         // 标题也必须登记主题：它是裸控件，默认文字色在暗色底上对比度不足（issue #44）
-        themed(title, () -> "-fx-text-fill: " + Palette.FOREGROUND
+        themed(rightTitle, () -> "-fx-text-fill: " + Palette.FOREGROUND
                 + "; -fx-font-size: 12px; -fx-font-weight: bold;");
-        box.getChildren().addAll(title, emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
-        return box;
-    }
-
-    private HBox buildLeftColumn() {
-        HBox box = new HBox();
-        box.setId(LEFT_ID);
-
-        leftToggle.setId(LEFT_TOGGLE_ID);
-        leftToggle.setOnAction(event -> toggleLeft());
-        leftToggle.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-        leftToggle.setMinWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-        leftToggle.setMaxWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-        // 不要拉满整列高度：否则 ‹ 会飘到栏底，看不出它属于哪一栏
-        leftToggle.setMaxHeight(Region.USE_PREF_SIZE);
-        themed(leftToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
-                + Palette.MUTED + ";");
-
-        HBox strip = new HBox(leftToggle);
-        strip.setAlignment(Pos.TOP_CENTER);
-        strip.setPadding(new Insets(ShellLayout.GAP, 0, 0, 0));
-        strip.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
-
-        box.getChildren().addAll(strip, leftContent);
-        return box;
-    }
-
-    private HBox buildRightColumn() {
-        HBox box = new HBox();
-        box.setId(RIGHT_ID);
+        // 空态提示是随数据变化的内容，留在 Java 里建（FXML 只钉骨架）
+        rightContent.getChildren().add(emptyNote("暂无本轮数据（用量 / 工具调用 / 记忆命中）"));
 
         rightToggle.setId(RIGHT_TOGGLE_ID);
         rightToggle.setOnAction(event -> toggleRight());
@@ -1364,37 +1532,42 @@ public final class DesktopShell implements ChatView {
         themed(rightToggle, () -> "-fx-background-color: transparent; -fx-text-fill: "
                 + Palette.MUTED + ";");
 
-        HBox strip = new HBox(rightToggle);
-        strip.setAlignment(Pos.TOP_CENTER);
-        strip.setPadding(new Insets(ShellLayout.GAP, 0, 0, 0));
-        strip.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+        rightStrip.setAlignment(Pos.TOP_CENTER);
+        rightStrip.setPadding(new Insets(ShellLayout.GAP, 0, 0, 0));
+        rightStrip.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
 
-        box.getChildren().addAll(rightContent, strip);
-        return box;
+        // 右栏与其窄条的横向顺序由 FXML 决定：内容在前、窄条在后（见 desktop-shell.fxml）
+        rightBox.setId(RIGHT_ID);
     }
 
-    private VBox buildCenterColumn() {
-        VBox center = new VBox(ShellLayout.GAP);
-        center.setId(CENTER_ID);
-        center.setPadding(new Insets(ShellLayout.GAP));
+    /** 中栏：消息流与输入区（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireCenterColumn() {
+        // 中栏吃掉剩余宽度：三栏里只有它会随窗口伸缩
+        HBox.setHgrow(centerColumn, Priority.ALWAYS);
+
+        centerColumn.setSpacing(ShellLayout.GAP);
+        centerColumn.setPadding(new Insets(ShellLayout.GAP));
+        centerColumn.setId(CENTER_ID);
 
         messages.setId(MESSAGES_ID);
+        messages.setSpacing(ShellLayout.GAP);
         messages.getChildren().add(createEmptyState());
-        ScrollPane scroll = new ScrollPane(messages);
-        scroll.setFitToWidth(true);
+
+        messageScroll.setFitToWidth(true);
         // 滚动区底色跟随主题，避免暗色下露出 modena 默认白底（issue #49）
-        themed(scroll, () -> "-fx-background: " + Palette.BASE + ";"
+        themed(messageScroll, () -> "-fx-background: " + Palette.BASE + ";"
                 + "-fx-background-color: " + Palette.BASE + ";");
-        VBox.setVgrow(scroll, Priority.ALWAYS);
+        VBox.setVgrow(messageScroll, Priority.ALWAYS);
         // 关键：ScrollPane 默认最小高度由内容撑开，会把下面的输入区顶出窗口
         // （第一次启动就是只能看到消息区，输入框不见踪影）。
-        scroll.setMinHeight(0);
+        messageScroll.setMinHeight(0);
 
-        center.getChildren().addAll(scroll, buildComposerBox());
-        return center;
+        wireComposer();
     }
 
-    private VBox buildComposerBox() {
+    /** 输入区：输入框 + 发送按钮（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireComposer() {
+        composerBox.setSpacing(ShellLayout.GAP);
         composer.setId(COMPOSER_ID);
         composer.setPromptText(COMPOSER_PROMPT);
         // 输入框同样显式套主题：否则暗色下是白底 + 浅色文字，看不清（issue #49）
@@ -1476,15 +1649,12 @@ public final class DesktopShell implements ChatView {
         composer.textProperty().addListener((observable, old, now) -> updateCompletion());
         composer.caretPositionProperty().addListener((observable, old, now) -> updateCompletion());
 
-        sendButton = new Button("发送");
+        sendButton.setText("发送");
         sendButton.setId(SEND_ID);
         sendButton.setOnAction(event -> submitComposer());
 
-        HBox actions = new HBox(ShellLayout.GAP, sendButton);
-        actions.setAlignment(Pos.CENTER_RIGHT);
-
-        VBox box = new VBox(ShellLayout.GAP, composer, actions);
-        return box;
+        composerActions.setSpacing(ShellLayout.GAP);
+        composerActions.setAlignment(Pos.CENTER_RIGHT);
     }
 
     /** 光标是否在第一行。 */
@@ -1507,33 +1677,33 @@ public final class DesktopShell implements ChatView {
         composer.positionCaret(composer.getText().length());
     }
 
-    private HBox buildStatusBar() {
-        HBox bar = new HBox(ShellLayout.GAP * 2);
-        bar.setId(STATUS_BAR_ID);
-        bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(0, ShellLayout.GAP, 0, ShellLayout.GAP));
-        bar.setPrefHeight(ShellLayout.STATUS_BAR_HEIGHT);
-        bar.setMinHeight(ShellLayout.STATUS_BAR_HEIGHT);
-        bar.setMaxHeight(ShellLayout.STATUS_BAR_HEIGHT);
+    /** 底部状态栏（节点本身在 desktop-shell.fxml 里）。 */
+    private void wireStatusBar() {
+        statusBar.setSpacing(ShellLayout.GAP * 2);
+        statusBar.setId(STATUS_BAR_ID);
+        statusBar.setAlignment(Pos.CENTER_LEFT);
+        statusBar.setPadding(new Insets(0, ShellLayout.GAP, 0, ShellLayout.GAP));
+        statusBar.setPrefHeight(ShellLayout.STATUS_BAR_HEIGHT);
+        statusBar.setMinHeight(ShellLayout.STATUS_BAR_HEIGHT);
+        statusBar.setMaxHeight(ShellLayout.STATUS_BAR_HEIGHT);
 
-        Label connection = new Label("● 未连接");
-        themed(connection, () -> "-fx-text-fill: " + Palette.FAILURE + ";");
+        connectionLabel.setText("● 未连接");
+        themed(connectionLabel, () -> "-fx-text-fill: " + Palette.FAILURE + ";");
+        status.setText(STATUS_INITIAL);
         status.setId(STATUS_ID);
         themed(status, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         config.setId(CONFIG_ID);
         themed(config, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        usageLabel = new Label("");
+        usageLabel.setText("");
         usageLabel.setId(USAGE_ID);
         themed(usageLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        Label hint = new Label("[Esc] 中断");
-        themed(hint, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        Label version = new Label("v" + AppVersion.buildVersion());
-        themed(version, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+        statusHint.setText("[Esc] 中断");
+        themed(statusHint, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+        versionLabel.setText("v" + AppVersion.buildVersion());
+        themed(versionLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        bar.getChildren().addAll(connection, status, config, spacer, usageLabel, hint, version);
-        return bar;
+        // 撑高垫把右侧的用量 / 提示 / 版本推到栏底右边
+        HBox.setHgrow(statusSpacer, Priority.ALWAYS);
     }
 
     /**
@@ -1879,11 +2049,5 @@ public final class DesktopShell implements ChatView {
         ToolCardNode(String toolName) {
             this.toolName = toolName;
         }
-    }
-
-    private static Region spacer() {
-        Region region = new Region();
-        VBox.setVgrow(region, Priority.ALWAYS);
-        return region;
     }
 }

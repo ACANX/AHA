@@ -174,7 +174,7 @@ git push origin V0.1.2                                         # 这次由人推
 | 类别 | 数量 | 内容 |
 |---|---|---|
 | 本项目模块 | 5 | `aha-desktop` / `aha-core` / `aha-common` / `aha-extension-api` / `aha-tool` |
-| 本平台 OpenJFX | 3 | `javafx-base` / `javafx-graphics` / `javafx-controls`（带平台分类器，且**只有本平台**） |
+| 本平台 OpenJFX | 4 | `javafx-base` / `javafx-graphics` / `javafx-controls` / `javafx-fxml`（带平台分类器，且**只有本平台**） |
 | 第三方 | 10 | Jackson 4 件、Log4j2 3 件 + SLF4J、snakeyaml-engine、sqlite-jdbc |
 
 **不含**：JDK 运行时（JVM 便携包要求用户自备 JDK 25；免 JDK 的场景走原生镜像单文件，见 3.3）、
