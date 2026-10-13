@@ -133,6 +133,11 @@ public final class AhaDesktopApp extends Application {
         LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
                 property("prism.order"), property("prism.lcdtext"), property("prism.text"),
                 property("glass.platform"));
+        // 上面的 prism.lcdtext 只说明「值是多少」，这一行说明「这个值是谁设的」：
+        // 原生包默认改成灰度是我们的临时缓解（issue #44 / #48），不是在骗自己「本来就如此」。
+        LOG.info("渲染诊断：原生文本灰度默认 {}；开关 {}={}",
+                NativeRenderDefaults.decision(), NativeRenderDefaults.GREYSCALE_DEFAULT_SWITCH,
+                property(NativeRenderDefaults.GREYSCALE_DEFAULT_SWITCH));
         LOG.info("渲染诊断：JavaFX 版本={} JVM={}", property("javafx.runtime.version"),
                 System.getProperty("java.vm.name", "<未知>"));
 
@@ -547,6 +552,11 @@ public final class AhaDesktopApp extends Application {
      * @param args 参数
      */
     public static void main(String[] args) {
+        // 临时缓解措施（issue #44 / #48，非最终方案）：原生镜像内默认关闭 LCD 次像素合成。
+        // prism.lcdtext 只在 PrismFontFactory 静态初始化时读取一次，必须早于工具包启动；
+        // 开关、回退与「为什么是临时措施」见 NativeRenderDefaults 的类注释。
+        NativeRenderDefaults.applyIfNativeImage();
+
         // 排查 issue #48（原生镜像与 JVM 模式的字体渲染不一致）：
         // 让 JavaFX 自己把渲染管线打出来（"Prism pipeline name = …"）。
         // 用户交上来的启动日志里就带着答案，不必再让谁去改代码加日志；

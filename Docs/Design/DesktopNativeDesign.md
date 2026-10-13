@@ -308,6 +308,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | R6 | 未签名 → macOS Gatekeeper 拦截、Windows SmartScreen 提示 | 已知 | `README.txt` 里写明放行方式；签名是另一件事 |
 | R7 | 三个平台的关键差异被「只在 Windows 试」掩盖 | 已知 | 每次改参数后,至少在本机（Windows）+ 一条 Linux 腿上看结论 |
 | R8 | 工作流 shell 的跨平台差异（变量名、`find`、宿主环境变量） | **已踩坑（run 37744912968）**：macOS 的 bash 把 `$bin（` 当变量名 → unbound，步骤 outputs 丢失，**macos 镜像包没上传**；Windows runner 自带 VS 的 `PLATFORM`，与 step 注入冲突 | 自证脚本：命中产物**立刻**写 `produced=true` + `trap 'exit 0' EXIT`；注入变量加 `LEG_` 前缀并用 `${VAR:-}`；不用 `find -maxdepth`；`bin/CheckScripts.py` 新增 YAML shell 变量守卫 |
+| R9 | 原生镜像丢失 LCD 次像素抗锯齿 ⇒ 文字发虚、偏细（issue #44 / #48） | **已缓解、未根治**：真机像素对照确认 native = 灰度、JVM = 次像素（彩色边缘像素 18.4 倍差距）；成因指向 DirectWrite 渲染参数在 closed-world 下读不到（与 #60 同源） | 临时缓解：原生内默认写 `prism.lcdtext=false`（`NativeRenderDefaults`）；可用 `-Dprism.lcdtext=…` / `-Daha.desktop.nativeTextGreyscale=false` 回退；**根因修复（补渲染参数读取或等上游）后删除本类与调用点** |
 
 **已踩的反射坑：JavaFX 入口（issue #26，2026-10-08）**：
 
