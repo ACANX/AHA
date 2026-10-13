@@ -1,9 +1,9 @@
 # 构建规范
 
-**文档版本**：v1.28.0
+**文档版本**：v1.29.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-09
+**最后更新**：2026-10-13
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -41,6 +41,7 @@
 | v1.25.0 | 2026-10-09 | §4.1 与 §7 的「分平台构建」依据由 `jpackage` 改为 **JavaFX 平台分类器**——发行形态已决策只保留「JVM JAR 聚合包」与「原生镜像二进制」两种，`jpackage` 跳过不采用（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-09 | 新增第 10 节「原生镜像产物（试验性）」：把 E-02 ~ E-09 的可达性结论固化为规范、明确 E-10 的验收边界（门禁不覆盖 native、独立冒烟测试尚未定义）；§7 新增「发行形态矩阵」（E-11）；§6 注明门禁不覆盖 native 产物（issue #80 / TD-00009） | @ACANX / CNXNC |
 | v1.27.0 | 2026-10-09 | §10.3 由「验收边界」扩为「验收边界与冒烟」：E-10 落地为**三层**（产物自证 → CLI 运行冒烟硬断言 → Windows GUI 存活冒烟非阻塞），并写明「GUI 冒烟只在 Windows、不阻塞」的理由（CI 无 GPU、覆盖不到 D3D；真实渲染与交互验证留在本地 / 真机） | @ACANX / CNXNC |
+| v1.29.0 | 2026-10-13 | §8.1 登记 `Build.yml` 新增的**可选**作业 `ui-smoke`（Linux + Xvfb 跑 `AhaDesktopSmokeTest`）：它补上界面路径的第三段——此前静态对账只管「fxml 自身写对没有」、原生冒烟只管「界面装起来没有」，而**装起来之后的交互**在 CI 上从未执行；同时把「可选作业」的适用面从独立工作流扩到「同一工作流内的可选作业」，并记 `DesktopNative.yml` 增加带路径过滤的 `pull_request` 触发（issue #144） | @ACANX / CNXNC |
 | v1.28.0 | 2026-10-09 | §10.3 修正：CLI 运行冒烟由「硬断言」改为**步骤级容错**（失败写 `::warning::` + 摘要，并把失败输出打进日志）——与第 7 节「试验性管线的失败必须在步骤级容错」保持一致；首次执行即抓到 `aha-cli-native --help` 在三平台一致退出码非 0（另开 Issue 跟踪） | @ACANX / CNXNC |
 
 ---
@@ -231,7 +232,13 @@ POM 语法必须兼容 Maven 3.9.x：
   - **例外**：CLI 的 assembly 输出的是 `Dist/` 内的**解包目录**（`bin/` + `lib/`），
     因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `Dist/…`；
     CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`（直接在 `Dist/` 内写会把归档自身收进去）
-- **可选工作流的作业不得进必需检查（强制）**：
+- **可选管线的作业不得进必需检查（强制）**：
+  适用于**独立的可选工作流**（`DesktopNative.yml` 的 `native-image` / `native-publish`、`CliNative.yml`）与**必需工作流里的可选作业**（`Build.yml` 的 `ui-smoke`）。
+  `DesktopNative.yml` 另有一条：**PR 事件下不发布**——它现在也监听 `pull_request`（带路径过滤，只为让「原生包能不能起」在合并前可见），若 PR 也走发布，就会在尚未合并时
+  往发布页推预发行包、留下无人认领的 tag；制品仍走 Actions artifact，PR 页面可取。
+  注意 `ui-smoke` 与独立可选工作流的**容错层级不同**：它在作业级 `continue-on-error`（作业绿、摘要留真相），因为它是「同一份必需检查里的一个可选作业」，红叉会被误读成
+  「必需检查挂了」；而独立可选工作流按下面的步骤级容错处理。
+- **（原表述，仍适用于独立可选工作流）**：
   试验性 / 非交付物管线（如 `DesktopNative.yml`、`CliNative.yml`）的作业名**不得**写进分支保护的必需检查，
   且其失败必须**在步骤级**容错（作业级 `continue-on-error` 只保住整次运行的颜色，
   作业本身仍显示红叉，观感上会被误读成「流程挂了」）。
@@ -313,7 +320,7 @@ POM 语法必须兼容 Maven 3.9.x：
 
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
-| **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿 |
+| **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 作业 `build`：编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿。<br>作业 `ui-smoke`（**可选、非必需检查**）：Linux + Xvfb 真开窗口跑 `AhaDesktopSmokeTest`——静态对账只能证明「fxml 自身写对」，原生冒烟只能证明「界面装起来了」，而**装起来之后的交互**（三栏折叠三条路、Enter 发送、工具卡片、会话列表）此前在 CI 上从未执行 |
 | **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：按「平台 × JDK」矩阵构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`）；JDK 轴为 25（基线，release=25）与 27（`-jdk27` 后缀，release=27，issue #65）；不影响 Build 快检查 |
 | **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |

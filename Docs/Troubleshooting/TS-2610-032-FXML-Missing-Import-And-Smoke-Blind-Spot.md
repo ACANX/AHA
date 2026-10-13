@@ -202,7 +202,8 @@ FXML 的装载在本 PR 里已经**挪进构造器**（`DesktopShell.loadView()`
 
 > **仍存在的盲区（诚实记录）**：`AhaDesktopSmokeTest`（真开窗口、验三栏折叠、Enter 发送等）在 CI 上**仍然不跑**
 > ——它要图形环境。本轮新增的静态对账只能拦住「fxml 自身写错」这一类，**拦不住**「装载成功但布局 / 交互出错」。
-> 后者仍然只能靠原生冒烟（正面标记）与真机。是否给 CI 加 Xvfb 跑完整 GUI 测试，见 issue #133 的待拍板项。
+> **该盲区已于 2026-10-13 由 issue #144 补齐**：`Build.yml` 新增可选作业 `ui-smoke`（Linux + Xvfb 跑 `AhaDesktopSmokeTest`），`DesktopNative.yml` 增加带路径过滤的 `pull_request` 触发。
+但两点仍要记住：① `ui-smoke` 是**非必需检查**（`continue-on-error`），失败不挡合并，只以红叉 + 摘要暴露；② 它跑的是**JVM 模式**，原生包里的交互仍未自动化——那一段继续由原生冒烟与真机负责。
 
 ## 7. 涉及文件
 
