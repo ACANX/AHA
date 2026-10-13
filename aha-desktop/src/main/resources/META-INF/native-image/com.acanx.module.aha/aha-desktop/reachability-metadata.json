@@ -465,6 +465,7 @@
     {"type": "com.sun.xml.internal.stream.XMLInputFactoryImpl", "allDeclaredConstructors": true},
 
     {"type": "com.acanx.module.aha.desktop.view.ProviderDialog", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.desktop.view.LogPanel", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "javafx.scene.control.ChoiceBox", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.ComboBox", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.MenuButton", "allDeclaredConstructors": true, "allDeclaredMethods": true},

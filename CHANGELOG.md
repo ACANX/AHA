@@ -25,6 +25,12 @@
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
 
 ### 变更
+- **日志面板迁到 FXML（2026-10-13，批次 3）**：`LogPanel`（240 行 / 9 处手写控件）的结构迁到
+  `log-panel.fxml`，本类改作 FXML 控制器；工具栏（级别过滤 / 刷新 / 复制 / 清空 / 统计行）与
+  只读日志区在 fxml 里一眼可见。「关闭」仍是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  本批是第一次真正复用批次 2 抽出的 `FxmlViewChecks`——并把「节点 id 必须来自公开常量」
+  也搬进助手，主窗口与日志面板共用。元数据新增 1 条（`LogPanel` 控制器字段注入）。
+  见 `Docs/DevLog/20261013-13.md`。
 - **供应商对话框迁到 FXML（2026-10-13，批次 2）**：`ProviderDialog`（617 行 / 61 处手写控件）
   的界面结构迁到 `provider-dialog.fxml`，两个 `GridPane` 的全部行由 `GridPane.rowIndex`
   定位；本类改作 FXML 控制器（`setController(this)`），接线收敛到
