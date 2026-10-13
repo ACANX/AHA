@@ -26,8 +26,8 @@
 |---|---|---|
 | 编译桌面端便携包 | `python3 Script\Python\DesktopDistBuild.py` | `python3 Script/Python/DesktopDistBuild.py` |
 | 解压并更新 `Dist/` | `python3 Script\Python\DesktopDistExtract.py` | `python3 Script/Python/DesktopDistExtract.py` |
-| 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
-| 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
+| 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击，无需 Python）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
+| 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击，无需 Python）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
 | 启动桌面端（Dist 版） | `Dist\bin\AhaDesktop.bat` | `./Dist/bin/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
 | 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
@@ -113,16 +113,18 @@ mvnw.cmd -pl aha-cli exec:java -Dexec.args="provider list"
 
 ## 4. 原生镜像（试验性，免 JDK）
 
-> 取件时若本机 Python 的 HTTPS 不可用（Windows 上偶见 `no OPENSSL_Applink`），Windows 版会
-> **自动改用系统 `curl.exe`**；也可显式指定 `--downloader curl`。见 `TS-2610-036`。
+> Windows 一键入口是 **PowerShell 原生实现**（`Dist\UpdateNative.ps1`，由 `Dist\Update*.cmd` 调用），
+> **不需要 Python**；POSIX 用 Python 版（`Script/Python/{Desktop,Cli}NativeVersionUpdate.py`，功能更多：
+> 多源发现 / 断点续传）。两者的命名契约由 `bin/CheckScripts.py` 断言一致。
 
 ### 4.1 桌面端原生镜像
 
 **取件（一键，Windows 双击）**：
 
 ```bat
-Dist\UpdateDesktopNative.cmd            :: 双击即可（在仓库里运行；需 Python 3）
-Dist\UpdateDesktopNative.cmd --list     :: 带参数时不暂停，便于在终端里用
+Dist\UpdateDesktopNative.cmd            :: 双击即可（PowerShell 实现，不需要 Python）
+Dist\UpdateDesktopNative.cmd -List      :: 列出最近版本（也可写 --list）
+Dist\UpdateDesktopNative.cmd -DryRun    :: 只预览（也可写 --dry-run）
 ```
 
 **取件（脚本）**：
@@ -167,7 +169,7 @@ Dist\aha-desktop-native.exe                                     :: 双击或命�
 发布页资产名为 `AHA-Cli-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`，包内是可执行文件
 `aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。
 
-**取件（一键，Windows 双击 / 脚本）**（与桌面端同构；`--list` / `--dry-run` / `--tag` / `--jdk` 都可用）：
+**取件（一键，Windows 双击 / 脚本）**（与桌面端同构；`-List` / `-DryRun` / `-Tag` / `-Jdk` 都可用）：
 
 ```bat
 Dist\UpdateCliNative.cmd                                        :: 双击：装到 Dist\aha-cli-native.exe
@@ -235,8 +237,9 @@ Dist/
 ├── aha-desktop-native-*.zip           桌面端原生镜像包
 ├── aha-desktop-native.exe             桌面端原生镜像（更新脚本或手动解压落在这里）
 ├── aha-cli-native.exe                 CLI 原生镜像（一键脚本或手动从发布页取出）
-├── UpdateDesktopNative.cmd            一键更新桌面端原生镜像（双击；在仓库里运行，需 Python 3）
+├── UpdateDesktopNative.cmd            一键更新桌面端原生镜像（双击；调同目录的 UpdateNative.ps1，无需 Python）
 ├── UpdateCliNative.cmd                一键更新 CLI 原生镜像（同上）
+├── UpdateNative.ps1                  上述两个入口的 PowerShell 实现（UTF-8 with BOM）
 ├── README.md               项目 README（由 CLI assembly 复制）
 └── README.commands.md      本速查（由 DesktopDistExtract.py 刷新）
 ```

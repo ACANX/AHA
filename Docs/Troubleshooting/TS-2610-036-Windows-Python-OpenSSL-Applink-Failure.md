@@ -47,7 +47,20 @@ OPENSSL_Uplink(00007FFC93DDCB00,08): no OPENSSL_Applink
 
 ## 4. 修复与对策
 
-**工具侧（本轮已做）**：把「取网络数据」做成两条路，并让 Windows 上默认自动兜底：
+**最终落地（2026-10-13 晚，按 ACANX 的要求对齐 LegionFanControl 的 Windows 原生做法）**：
+Windows 一键入口改成 **PowerShell 实现**——`Dist/UpdateNative.ps1`（由 `Dist/Update*.cmd` 调用）：
+
+- `Invoke-RestMethod` / `Invoke-WebRequest` 走 .NET / Schannel，**根本不经过 Python**，从根上绕开本档案的问题；
+- PowerShell 是 Windows 自带的（`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`），
+  **不需要用户装 Python**；
+- 实现要点与 LegionFanControl 那份同源：不走 `/releases/latest`（原生包全是预发行，会 404）、
+  按版本降序找「真的带本平台资产」的 release、解压后覆盖并留 `.bak`、下载前先探「exe 是否被占用」、
+  sha256 校验（API 提供 digest 时）、状态文件防重复下载。
+
+下面那套「两条路 + 子进程探测」**保留给 POSIX 的 Python 路径**（WSL / Linux / macOS 上没有
+Windows PowerShell），并作为「Python 自身 HTTPS 坏掉」的自救。
+
+**Python 路径的对策（保留）**：把「取网络数据」做成两条路，并让 Windows 上默认自动兜底：
 
 | 下载器 | 走谁 | 说明 |
 |---|---|---|
@@ -130,11 +143,13 @@ OPENSSL_Uplink(00007FFC93DDCB00,08): no OPENSSL_Applink
 
 ## 未决问题
 
-**Q1 真机兜底是否生效**
+**Q1 Windows 真机是否已解决**
 
-现状：工具侧已能自动改走系统 `curl.exe`，但**未在 Windows 真机复测**。
-阻塞点：需 ACANX 再双击一次 `UpdateDesktopNative.cmd`（预期输出里会有一行
-「本机 Python 的 HTTPS 不可用…本轮改用系统 curl 下载」）。若仍失败，请把完整输出贴回。
+现状：Windows 一键入口已改为**不经 Python** 的 PowerShell 实现（§4），本档案描述的问题在
+Windows 上不再存在；**仍需 ACANX 双击复测**（预期直接拿到包）。
+Python 路径的 curl 兜底在 POSIX 上保留（本机 WSL 已验：curl 路径下载 41.2 MiB、断点续传、
+`size`/`sha256` 校验均通过），但 Windows 上已用不到它。
+阻塞点：真机一键复测。
 
 **Q2 该 Python 到底哪里坏了**
 
