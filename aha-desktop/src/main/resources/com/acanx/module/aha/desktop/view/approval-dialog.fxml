@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    授权弹窗的界面骨架（批次 4 / issue #137）。
+
+    比系统默认 Alert 多出来的、都是「不看就会点错」的东西：
+    首行写清「哪个工具、动什么」并按操作类别着色；权限单独一行附人话说明；
+    完整参数（执行类是完整命令）——`rm -rf build` 与 `rm -rf /` 必须一眼可分。
+
+    「拒绝 / 本次允许 / 本会话始终允许」是 Dialog 自己的 ButtonType（默认焦点在拒绝，
+    Esc 也是拒绝），不进本文件；控制器负责给它们挂 id、并把选中项映射成 Decision。
+-->
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:id="content">
+    <children>
+        <Label fx:id="headline"/>
+
+        <GridPane fx:id="grid">
+            <children>
+                <Label fx:id="permissionKey" GridPane.rowIndex="0" GridPane.columnIndex="0" text="所需权限"/>
+                <Label fx:id="permissionValue" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                <Label fx:id="targetKey" GridPane.rowIndex="1" GridPane.columnIndex="0" text="目标"/>
+                <Label fx:id="targetValue" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+            </children>
+        </GridPane>
+
+        <Label fx:id="argsSection" text="调用参数"/>
+        <TextArea fx:id="args" id="aha.approval.args"/>
+
+        <!-- 「本会话已放行」提示：无内容时由控制器把本节点移除（原逻辑只在非空时添加） -->
+        <Label fx:id="noteLabel"/>
+    </children>
+</VBox>

@@ -25,6 +25,13 @@
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
 
 ### 变更
+- **其余四个对话框迁到 FXML（2026-10-13，批次 4，最后一批）**：`SettingsDialog`（设置）/ 
+  `ApprovalDialog`（授权）/ `OutputDialog`（输出）/ `ToolListDialog`（工具列表）共 521 行、
+  33 处手写控件迁到各自的 `*-dialog.fxml`，四个类改作 FXML 控制器。决定按钮（复制 / 关闭 /
+  拒绝 / 本次允许 / 本会话始终允许）是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  `FxmlViewChecks` 再添两条：**fxml 必须是良构 XML**（JDK 解析器，无需 JavaFX 工具包）
+  与**扫元素前剔除 XML 注释**（修掉注释里 `List<T>` 造成的假阳性）。
+  元数据新增 4 条（控制器字段注入）。见 `Docs/DevLog/20261013-14.md`。
 - **日志面板迁到 FXML（2026-10-13，批次 3）**：`LogPanel`（240 行 / 9 处手写控件）的结构迁到
   `log-panel.fxml`，本类改作 FXML 控制器；工具栏（级别过滤 / 刷新 / 复制 / 清空 / 统计行）与
   只读日志区在 fxml 里一眼可见。「关闭」仍是 `Dialog` 自己的 `ButtonType`，不进 fxml。
