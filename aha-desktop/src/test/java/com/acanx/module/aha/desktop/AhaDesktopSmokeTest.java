@@ -123,19 +123,19 @@ class AhaDesktopSmokeTest {
         // Enter 发送 / Shift+Enter 换行
         TextArea composer = (TextArea) uiGet(() -> byId(stage.getScene(), DesktopShell.COMPOSER_ID));
         VBox messages = (VBox) uiGet(() -> byId(stage.getScene(), DesktopShell.MESSAGES_ID));
-        int before = uiGet(() -> messages.getChildren().size());
+        int before = uiGet(() -> messageRows(messages));
         onUi(() -> {
             composer.setText("你好");
             composer.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
                     KeyCode.ENTER, true, false, false, false));
         });
-        assertThat(uiGet(() -> messages.getChildren().size()))
+        assertThat(uiGet(() -> messageRows(messages)))
                 .as("Shift+Enter 只换行，不发送")
                 .isEqualTo(before);
         onUi(() -> composer.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
                 KeyCode.ENTER, false, false, false, false)));
-        assertThat(uiGet(() -> messages.getChildren().size()))
-                .as("Enter 应把输入作为消息发出")
+        assertThat(uiGet(() -> messageRows(messages)))
+                .as("Enter 应把输入作为消息发出（注意：首条消息会移除空态，所以 children 总数并不变大）")
                 .isGreaterThan(before);
 
         // 工具卡片（GUIDesign 第 4.2 节）：默认折叠 → 可展开 → 失败卡片直接摊开且带重试入口
@@ -166,8 +166,15 @@ class AhaDesktopSmokeTest {
         // 会话列表（GUIDesign 第 4.5 节）：当前会话高亮、搜索可用、右键菜单在位
         DesktopShell sessionShell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
         long created = System.currentTimeMillis() - 120_000;
+        // 必须真的放进一个**已显示**的 Scene：否则布局根本不会发生，下面两条
+        // 「宽度不能超出左栏」的断言会拿到 0 而**空过**（0 ≤ 220 永远成立）——
+        // 那是「看着有断言、其实什么也没保证」。
+        AtomicReference<Stage> sessionStage = new AtomicReference<>();
         onUi(() -> {
-            sessionShell.buildRoot();
+            Stage extra = new Stage();
+            extra.setScene(new Scene(sessionShell.buildRoot(), 1280, 800));
+            extra.show();
+            sessionStage.set(extra);
             sessionShell.refreshSessions(List.of(
                     new SessionSummary("AAA11111", "看看代码", created, 12),
                     new SessionSummary("BBB22222", "写文档", created, 1)), "BBB22222");
@@ -191,6 +198,7 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(1);
         onUi(() -> sessionShell.searchSessions(""));
         assertThat(uiGet(sessionShell::sessionRowCount)).isEqualTo(2);
+        onUi(() -> sessionStage.get().close());
 
         // 输入区增强（GUIDesign 第 4.3 节）：/ 命令面板、↑↓ 历史、@ 文件引用
         DesktopShell inputShell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
@@ -215,8 +223,10 @@ class AhaDesktopSmokeTest {
 
         // Enter 执行命令：/help 应当把命令一览写进对话流，而不是发给模型
         onUi(inputShell::submitComposer);
-        assertThat(uiGet(() -> (int) ((VBox) byId(inputStage.get().getScene(), DesktopShell.MESSAGES_ID)).getChildren().size()))
-                .isGreaterThan(1);
+        assertThat(uiGet(() -> messageRows(
+                (VBox) byId(inputStage.get().getScene(), DesktopShell.MESSAGES_ID))))
+                .as("/help 的输出应当写进对话流（同样按「非空态节点」计数）")
+                .isGreaterThan(0);
         assertThat(uiGet(() -> inputShell.history().size())).isEqualTo(1);
         assertThat(uiGet(inputShell::helpTextContainsCatalog))
                 .as("/help 的输出应当列出命令").isTrue();
@@ -246,7 +256,10 @@ class AhaDesktopSmokeTest {
         onUi(() -> inputShell.applyTheme(Theme.LIGHT));
         assertThat(uiGet(() -> inputStage.get().getScene().getRoot().getStyle()))
                 .as("换主题要连根节点的样式一起换").contains(Palette.BASE);
-        assertThat(uiGet(() -> ((Button) byId(inputStage.get().getScene(), DesktopShell.SEND_ID)).getStyle()))
+        // 注意这里用**输入框**而不是发送按钮来验「样式被重刷」：发送按钮没有内联样式
+        // （它的外观由 CSS 补丁表的 .button 规则负责，getStyle() 本来就是空串），
+        // 拿它断言永远不成立——这是套件从未真跑过时留下的又一处错设。
+        assertThat(uiGet(() -> byId(inputStage.get().getScene(), DesktopShell.COMPOSER_ID).getStyle()))
                 .as("已建好的控件也必须被重刷，而不是只换新控件").contains(Palette.FOREGROUND);
         onUi(() -> inputShell.applyTheme(Theme.DARK));
         onUi(() -> inputStage.get().close());
@@ -276,8 +289,9 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(() -> ((Button) approve.get().getDialogPane().lookupButton(
                 approve.get().getDialogPane().getButtonTypes().get(2))).getText()))
                 .as("按钮上要写出被放宽的权限名").contains("WRITE");
-        assertThat(uiGet(() -> ((TextArea) approve.get().getDialogPane().lookup(
-                "#" + ApprovalDialog.ARGS_ID)).getText())).contains("path: a.txt");
+        assertThat(uiGet(() -> ((TextArea) byId(
+                approve.get().getDialogPane(), ApprovalDialog.ARGS_ID)).getText()))
+                .contains("path: a.txt");
 
         assertThat(awaitStatus(stage)).startsWith("后台线程已就绪");
 
@@ -336,6 +350,23 @@ class AhaDesktopSmokeTest {
                 .filter(node -> id.equals(node.getId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * 消息流里的「**消息行**」数量（**不含**空态提示节点）。
+     *
+     * <p>为什么不直接数 {@code messages.getChildren().size()}：<strong>首条消息会「移除空态（−1）
+     * + 加入消息行（+1）」，总数不变</strong>。实测（2026-10-13，ui-smoke 第二次运行）：
+     * 断言「Enter 后总数变大」永远不成立（actual 1 不大于 1）——这一条从一开始就是错的，
+     * 只是从未被执行过。数「非空态」的节点才表达得出「真的多了一条消息」。</p>
+     *
+     * @param messages 消息流容器
+     * @return 消息行数
+     */
+    private static int messageRows(VBox messages) {
+        return (int) messages.getChildren().stream()
+                .filter(node -> !DesktopShell.EMPTY_ID.equals(node.getId()))
+                .count();
     }
 
     private static void startToolkit() throws InterruptedException {
