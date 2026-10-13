@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class DesktopShellFxmlTest {
 
-    private static final String FXML = "desktop-shell.fxml";
+    private static final String FXML = UiResources.SHELL_FXML;
 
     @Test
     void fxmlShipsNextToTheController() throws IOException {
@@ -52,8 +52,7 @@ class DesktopShellFxmlTest {
 
     @Test
     void resourceIsWhitelistedForNativeImage() throws IOException {
-        FxmlViewChecks.assertResourceWhitelisted(
-                "com/acanx/module/aha/desktop/view/" + FXML);
+        FxmlViewChecks.assertResourceWhitelisted(UiResources.relative(FXML));
     }
 
     /**

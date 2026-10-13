@@ -64,8 +64,8 @@ import java.util.Map;
  */
 public final class ProviderDialog {
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "provider-dialog.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.PROVIDER_DIALOG_FXML;
 
     /** 分区标题样式（fxml 里只放文案，样式统一在控制器）。 */
     private static final String SECTION_TITLE_STYLE =

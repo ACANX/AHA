@@ -45,8 +45,8 @@ public final class SettingsDialog {
     /** 默认模型入口 id。 */
     public static final String MODEL_ID = "aha.settings.model";
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "settings-dialog.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.SETTINGS_DIALOG_FXML;
 
     /** 辅助说明的样式（设置名与底部三段说明）。 */
     private static final String MUTED_STYLE = "-fx-text-fill: " + Palette.MUTED + ";";

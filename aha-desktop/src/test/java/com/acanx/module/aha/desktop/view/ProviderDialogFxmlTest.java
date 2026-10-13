@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ProviderDialogFxmlTest {
 
-    private static final String FXML = "provider-dialog.fxml";
+    private static final String FXML = UiResources.PROVIDER_DIALOG_FXML;
 
     @Test
     void fxmlShipsNextToTheController() throws IOException {
@@ -58,8 +58,7 @@ class ProviderDialogFxmlTest {
 
     @Test
     void resourceIsWhitelistedForNativeImage() throws IOException {
-        FxmlViewChecks.assertResourceWhitelisted(
-                "com/acanx/module/aha/desktop/view/" + FXML);
+        FxmlViewChecks.assertResourceWhitelisted(UiResources.relative(FXML));
     }
 
     /**

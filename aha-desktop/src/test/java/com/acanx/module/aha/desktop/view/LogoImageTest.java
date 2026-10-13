@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LogoImageTest {
 
-    private static final String RESOURCE = "logo.png";
+    private static final String RESOURCE = UiResources.LOGO_PNG;
 
     private static final int MIN_SIZE = 128;
 

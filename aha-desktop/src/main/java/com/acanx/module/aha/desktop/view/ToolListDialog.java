@@ -27,8 +27,8 @@ import java.util.function.Supplier;
  */
 public final class ToolListDialog {
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "tool-list-dialog.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.TOOL_LIST_DIALOG_FXML;
 
     private final Supplier<List<ToolDescriptor>> tools;
 

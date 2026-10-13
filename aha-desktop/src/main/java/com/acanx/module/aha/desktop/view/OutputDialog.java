@@ -36,8 +36,8 @@ public final class OutputDialog {
     /** 复制按钮 id。 */
     public static final String COPY_ID = "aha.output.copy";
 
-    /** FXML 骨架资源（与本类同包）。 */
-    private static final String FXML_VIEW = "output-dialog.fxml";
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.OUTPUT_DIALOG_FXML;
 
     private final String title;
 

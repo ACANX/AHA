@@ -357,7 +357,7 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
 矢量来源是 `aha-core/src/main/resources/Logo.svg`（README 用的同一份）。
 JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化一次、把 PNG 作为资源入库：
-`aha-desktop/src/main/resources/com/acanx/module/aha/desktop/view/logo.png`，
+`aha-desktop/src/main/resources/com/acanx/module/aha/desktop/view/image/logo.png`，
 由 `bin/GenLogoPng.py` 生成（与 `bin/GenPixelLogo.py` 同一模式：生成器入库、产物入库）。
 同一张图两处使用：**窗口 / 任务栏图标**（`stage.getIcons()`）与**空会话状态的展示**（`LogoImage`）。
 
@@ -370,6 +370,35 @@ JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化�
 3. **渲染后自己解码 PNG、按 alpha 裁掉透明边，并自检**：
    结果必须近似正方形，且不小于目标尺寸的 90%。这三条合起来才让「图标只剩一角 / 只剩上半」
    这类问题**当场失败**，而不是悄悄产出半张图。
+
+### 9.2 静态资源的目录约定（2026-10-13 起）
+
+界面静态资源不再与 Java 类挤在同一个平面目录，而是按**类型**分子目录：
+
+```
+com/acanx/module/aha/desktop/view/
+├── fxml/    7 个界面骨架
+├── css/     2 份主题补丁样式表
+└── image/   logo.png
+```
+
+**Java 类仍在 `view/`，包名不变。** 四条要记住的事：
+
+| 项 | 结论 |
+|---|---|
+| 资源路径与 Java 包是否必须对应 | **不必**。资源只是 classpath 上的路径；放进子目录不影响 JPMS |
+| `module-info` 的 `opens ...view to javafx.fxml` | **不用改**——它约束的是**控制器类所在的包**，与资源位置无关 |
+| native-image 的资源白名单（`-H:IncludeResources`） | **不用改**——它**按扩展名**匹配（`.*\.(png\|…\|css\|fxml\|…)$`），与目录无关 |
+| 打包描述符（`dist-desktop.xml`） | **不用改**——资源在 jar 内，`dependencySet` 直接铺 `lib/` |
+
+**路径全部集中在 `UiResources`**（原先散在 7 个控制器 + `ThemePaint` + `LogoImage` 共 10 处）。
+下一次再调目录，只改这一个类。
+
+> 两个要记的坑：
+> 1. `Class.getResource("x")` 是**相对同包**，`getResource("/x")` 是**绝对**——搬目录时漏掉前导 `/`
+>    就是运行期「资源找不到」。这是把路径集中到 `UiResources` 的主要原因之一。
+> 2. **静态对账拦不住「路径写错」**：白名单按扩展名匹配，写错目录也照样命中。真正拦住它的是
+>    `UiResourcesTest`（真的去 classpath 取一次）与真机点一遍。
 
 > 第一次实现时只验了「是 PNG、是正方形、够大」——裁切产物全部通过，
 > 直到在 Windows 上真机启动才被看出来。**尺寸/格式正确 ≠ 图像内容正确**，
