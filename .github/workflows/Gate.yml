@@ -77,6 +77,11 @@ jobs:
         run: python3 bin/CheckSkills.py
       - name: 脚本编码与行尾
         run: python3 bin/CheckScripts.py
+      - name: 主题色号来自色表
+        # issue #153：颜色只能有一个来源（Palette 色表），CSS 里的字面量是它的投影。
+        # 查三件事：两份主题补丁表的选择器集合一致 / 同一选择器的属性集合一致 /
+        # 每个色号部属于该主题的色表——任一不满足就会出现「只有某一主题下不对」的配色问题。
+        run: python3 bin/CheckTheme.py
       - name: 像素标志与生成器一致
         run: python3 bin/GenPixelLogo.py --verify
       - name: 重复代码率：生成 CPD 报告
