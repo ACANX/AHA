@@ -213,6 +213,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范
 - [YamlFieldSpec.md](Docs/DevSpec/YamlFieldSpec.md) - YAML 字段规范
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
+- [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) - Issue 管理规范（开单 / 状态 / 关闭）
 - [BranchStrategy.md](Docs/DevSpec/BranchStrategy.md) - 分支策略
 - [CodeReviewChecklist.md](Docs/DevSpec/CodeReviewChecklist.md) - 评审清单
 - [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) - 发布流程

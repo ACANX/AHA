@@ -4,11 +4,14 @@ description: 遗留事项的跟踪载体与写法：把未闭环的问题、待�
 license: GPL-3.0-or-later
 compatibility: 需要已登录的 `gh` CLI；对仓库 Issue 的写权限。无需构建工具链。
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   owner: ACANX
 ---
 
 # 遗留事项用 Issue 跟踪
+
+> **规范**（状态机、开单与关闭判定、状态与 TD 看板对应）：`Docs/DevSpec/IssueTrackingSpec.md`；
+> 本文只保留**操作**（判定速查、命令、正文骨架、关闭评论模板）。两者冲突以规范为准。
 
 ## 何时使用
 
