@@ -283,3 +283,193 @@ ClearType 设置解析而来）。原生镜像里若这条读取路径失败，D
 - `aha-desktop/src/test/java/com/acanx/module/aha/desktop/NativeRenderDefaultsTest.java`（新增）
 - `Docs/Guide/NativeRenderDiagnosticsGuide.md`、`Docs/Design/DesktopNativeDesign.md` §6.1、
   `Docs/DevLog/20261013-08.md`、`CHANGELOG.md`
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- **本机首次具备复现条件**：`V0.1.1.00055-aha-desktop-native` 除了 Windows 包，
+  **还有 `ubuntu-amd64` 包**，而本机 WSL 有 WSLg（`DISPLAY=:0` 可用）⇒ 可直接跑 Linux 原生包。
+- **原生包的启动日志（原文节选）**：
+
+  ```text
+  Prism pipeline init order: es2 sw
+  Using Double Precision Marlin Rasterizer
+  Opting in for HiDPI pixel scaling
+  Prism pipeline name = com.sun.prism.es2.ES2Pipeline
+  Loading ES2 native library ... prism_es2
+  Loaded library /libprism_es2.so from resource
+  	succeeded.
+  GLFactory using com.sun.prism.es2.X11GLFactory
+  Failed Graphics Hardware Qualifier check.
+  System GPU doesn't meet the es2 pipe requirement
+  *** Fallback to Prism SW pipeline
+  Prism pipeline name = com.sun.prism.sw.SWPipeline
+  Loaded library /libprism_sw.so from resource
+  Loaded library /libglass.so from resource
+  Loaded library /libglassgtk3.so from resource
+  Loaded library /libjavafx_font.so from resource
+  Loaded library /libjavafx_font_freetype.so from resource
+  Loaded library /libjavafx_font_pango.so from resource
+  ```
+
+  由此**确认三件事**：① 原生镜像里 JavaFX 的**原生库加载链路是通的**
+  （`Loaded library … from resource`）；② 本机回退 `SWPipeline` 是因为 **WSL 没有 GPU**
+  （`System GPU doesn't meet the es2 pipe requirement`），**属预期行为，不能据此推断 Windows**；
+  ③ `Opting in for HiDPI pixel scaling` 说明 **HiDPI 处理是打开**的。
+- **证伪「软件管线没有 LCD 文本」**（最小探针 `LcdProbe.java`：同一段文字、同一管线
+  `-Dprism.order=sw`，只改 `prism.lcdtext`，快照成 PNG 比像素）：
+
+  | 文件 | 大小 | md5 |
+  | --- | --- | --- |
+  | `sw-true.png`（`lcdtext=true`） | **4375 B** | `d478d9708df4a35d8c72e7d37ff05b05` |
+  | `sw-false.png`（`lcdtext=false`） | **3025 B** | `78668459b11627a6d302e9fb50e16739` |
+
+  两者**渲染结果不同**，且 `lcdtext=true` 的产物**更大**（次像素渲染会给每个像素的 R/G/B
+  留下不同值，PNG 更难压）⇒ **软件管线同样支持 LCD 次像素抗锯齿**。
+- 顺带确认：`Font.getDefault().getFamily()` 在原生镜像里返回 **`System`**，与 JVM 模式一致
+  （至少 Linux 上如此）⇒ **字体族没有在原生镜像里退化**。
+- DPI 方面：HiDPI 已 opt-in；`AhaDesktopApp` 的窗口尺寸**已经**按 `Screen.getOutputScaleX/Y`
+  换算过 ⇒ 「DPI 缩放没读到」**也缺少证据**。
+- 顺手发现的真实缺陷：每加载一个原生库之前都会先报一次
+  `WARNING: java.lang.UnsatisfiedLinkError: Invalid URL for class: resource://app/17!/com/sun/glass/utils/NativeLibLoader.class`
+  ——`NativeLibLoader` 会去读**自己的 `.class`**，而原生镜像里资源的 URL 形如 `resource://app/17!/…`，
+  它按 `jar:file:` 解析失败；随后走另一条路径并成功 ⇒ **良性警告、不是崩溃原因**，
+  但 `native-image-args.txt` 里那条 `-H:IncludeResources=com.sun.glass.utils.NativeLibLoader\.class`
+  **显然没达到预期效果**。
+- 本地先跑诊断代码（避免真机拿到「不可用」）：JVM 模式下字体工厂那一项打「不可用」——
+  `com.sun.javafx.font` 是 `javafx.graphics` 的**非导出包**；补 `--add-opens
+  javafx.graphics/com.sun.javafx.font=ALL-UNNAMED` 后打出
+  `com.sun.javafx.font.freetype.FTFactory`。
+- **真机数据（`0.1.1.00061`，ACANX 提供原生与 JVM 对照截图，两张 2560×1600、亮色，可逐像素对齐）**：
+
+  | 项 | 原生实测 | 结论 |
+  | --- | --- | --- |
+  | Prism 管线 | `com.sun.prism.d3d.D3DPipeline`（D3D9Ex） | 正常，**排除** |
+  | 字体实现 | `com.sun.javafx.font.directwrite.DWFactory` | 与系统同路径，**排除** |
+  | 字体枚举 | 可用字体族 **248** | 完整，**排除**（本档案「3、」的方向 ② 被否掉） |
+  | **抗锯齿方式** | **无彩色边缘 ⇒ 灰度 AA** | **← 根因** |
+
+- **像素统计**（同一坐标系直接比对）：
+
+  | 指标 | JVM 模式 | native | 比值 |
+  | --- | --- | --- | --- |
+  | **彩色边缘像素**（R/G/B 明显不等 ⇒ 次像素抗锯齿的证据） | **165,783** | **9,025** | **18.4×** |
+  | 暗像素（笔画覆盖量） | 122,662 | 204,260 | 0.60 |
+  | 亮度梯度总量 | 44,808,100 | 52,384,420 | 0.86 |
+  | 两图不同像素 | — | 648,241（15.9%） | — |
+
+- **缓解已落地**：`NativeRenderDefaults`（原生内默认写 `prism.lcdtext=false`，
+  在 `AhaDesktopApp.main` **第一条语句**调用，因 `prism.lcdtext` 只在 `PrismFontFactory`
+  静态初始化时读取一次），优先级 `-Dprism.lcdtext=…` ＞
+  `-Daha.desktop.nativeTextGreyscale=false` ＞ 原生内程序默认；JVM 版不受影响；
+  诊断增打「原生文本灰度默认 …；开关 …=…」；**回退三条**（单次 `-Dprism.lcdtext=true` /
+  关默认值 / 删调用点或 `git revert`）。
+
+### 机制 / 行为模型
+
+- **诊断先行**：在拿到真机数据之前，先把「原生包到底走的哪条路」变成**可观测事实**
+  （`main` 默认开 `prism.verbose`；`start(Stage)` 新增 `logRenderingDiagnostics()` 打 6 行：
+  属性 / 版本 / 字体 / 字体工厂 / 字形度量 / 屏幕）。
+  **诊断代码只加日志、不改渲染行为**——在拿到数据前改参数属于猜测。
+- **最小探针证伪优先于采信假设**：「软件管线 → 没有 LCD → 发虚」用一次像素实验就被否掉
+  （两 PNG 的 md5 不同且大小差 44%）。
+- **像素统计优于肉眼比图**：**彩色边缘像素的数量**是「是否次像素抗锯齿」的客观判据
+  （JVM 165,783 vs native 9,025）。
+- **判据要设计成「两边不同即锁定根因」**：最初把希望押在「字体实现工厂两边不同」
+  （Windows 上 JavaFX 有 `DWFactory`（DirectWrite）与 `FTFactory`（内置 FreeType）两条路径）；
+  实测**两边相同**（都是 `DWFactory`）⇒ 该假设被否，根因转到**抗锯齿方式**。
+  **能证伪的判据本身就是有价值的产出。**
+- **观感差异的量化解释**：native 的**暗像素反而多 67%**——灰度抗锯齿把「部分覆盖」的像素
+  **均匀变暗**，笔画边缘因此扩散，这正是「发虚、偏细」的成因。
+- **成因指向 closed-world**：`DWFactory` 的 ClearType 取决于 `IDWriteRenderingParams`
+  （由系统 / 显示器 ClearType 设置解析）；原生镜像里若这条**运行期读系统状态**的路径失败，
+  DirectWrite 会退回默认渲染参数（无 ClearType、gamma 1.0）⇒ 灰度 AA。
+  这与 **issue #60**（原生读不到系统与驱动信息：`Windows version 0.0 build 0`、
+  D3D 驱动信息全 `null`）**很可能是同一类成因**。
+- **良性警告要记下但不必追**：`NativeLibLoader` 的 URL 解析失败后**走了另一条成功路径**
+  （`Loaded library … from resource`），故不是崩溃原因；但其对应的资源条目确实**没起作用**。
+
+### 未定位 / 未复现
+
+- **本机无法复现 Windows 的渲染路径**：WSL **没有 GPU**，只能复现 `SWPipeline` 分支；
+  Windows 的 D3D 路径**只能靠真机数据**。
+- **第 3 节的两条待排查方向中，方向 ② 已被真机数据否掉**（字体枚举完整：248 个字体族）；
+  方向 ①（DPI 缩放）基本排除。**新的根因方向是「抗锯齿方式」**。
+- **根因未修**：本档案只落地**临时缓解**（原生内默认灰度抗锯齿）。
+  「原生灰度」与「JVM 次像素」**不是同一观感**：本措施消除的是「**发虚、发糊**」，
+  **不是**「与 JVM 逐像素一致」。根治（补上渲染参数读取或等上游修复）**转 issue #60**；
+  修复后**应删除 `NativeRenderDefaults` 与其调用点**。
+- **`NativeLibLoader` 的资源条目未修**：`-H:IncludeResources=…NativeLibLoader\.class`
+  显然没达到预期效果，值得后续单独收掉。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 原生包可跑 | `DISPLAY=:0 timeout 20 ./aha-desktop-native -Dprism.verbose=true -Djavafx.verbose=true` | 正常启动并打印完整管线日志 |
+| 原生库加载 | 同上 | `Loaded library /libprism_sw.so from resource`（另有 glass / gtk3 / javafx_font / freetype / pango） |
+| 本机回退 SW 的原因 | 同上 | `Failed Graphics Hardware Qualifier check.` + `System GPU doesn't meet the es2 pipe requirement`（WSL 无 GPU） |
+| HiDPI | 同上 | `Opting in for HiDPI pixel scaling` |
+| **证伪「软件管线无 LCD」** | `LcdProbe.java`（`-Dprism.order=sw`） | `sw-true.png` **4375 B** / md5 `d478d9708df4a35d8c72e7d37ff05b05`；`sw-false.png` **3025 B** / md5 `78668459b11627a6d302e9fb50e16739` ⇒ **不同** |
+| 默认字体族 | 原生包诊断 | `System`（与 JVM 一致） |
+| 良性警告原文 | 原生包日志 | `WARNING: java.lang.UnsatisfiedLinkError: Invalid URL for class: resource://app/17!/com/sun/glass/utils/NativeLibLoader.class` |
+| JVM 侧字体工厂 | `--add-opens javafx.graphics/com.sun.javafx.font=ALL-UNNAMED` 后实测 | `渲染诊断：字体实现工厂=com.sun.javafx.font.freetype.FTFactory` |
+| — | 不 `--add-opens` 时 | `渲染诊断：字体实现工厂=不可用（InaccessibleObjectException）` |
+| **真机：管线** | `0.1.1.00061` 诊断日志 | `com.sun.prism.d3d.D3DPipeline`（D3D9Ex）✅ |
+| **真机：字体实现** | 同上 | `com.sun.javafx.font.directwrite.DWFactory` ✅（与系统同路径） |
+| **真机：字体枚举** | 同上 | 可用字体族 **248** ✅ |
+| **真机：抗锯齿方式** | 对照截图逐像素 | **无彩色边缘 ⇒ 灰度 AA** ← 根因 |
+| **像素统计** | 两张 2560×1600 截图比对 | 彩色边缘 **165,783 : 9,025 = 18.4×**；暗像素 122,662 : 204,260 = 0.60；梯度总量 44,808,100 : 52,384,420 = 0.86；不同像素 648,241（15.9%） |
+| 缓解的优先级 | 实现 + 文档 | `-Dprism.lcdtext` ＞ `-Daha.desktop.nativeTextGreyscale=false` ＞ 原生内默认 |
+| 元数据登记 | `reachability-metadata.json` | 439 → **440 条**（字体工厂反射）；`NativeImageMetadataTest` 12 → **13 条** |
+| 配套材料 | 仓库 | `NativeRenderDiagnosticsGuide.md`；`Script/Python/CollectRenderDiagnostics.py`（已用含两次启动的假日志实测）；`bin/AhaDesktop.{bat,sh}` 补 `--add-opens` |
+| **仍未闭环** | — | 根治（DirectWrite 渲染参数读取 / 上游修复）⇒ **issue #60** |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「DPI 缩放没读到」（ACANX 猜测①） | HiDPI 已 opt-in；窗口尺寸已按 `outputScale` 换算（「2.1」「2.3」） |
+| 「编译配置导致管线回退 SW、SW 没有 LCD」（猜测②） | 像素实验：SW 管线**照样**有 LCD 次像素（两 PNG 的 md5/大小不同）（「2.2」） |
+| 「本机回退 SW ⇒ Windows 也回退 SW」 | 本机回退的原因是 **WSL 无 GPU**（日志原文），**不能据此推断 Windows**（「2.1」） |
+| 「字体族在原生镜像里退化了」 | `Font.getDefault().getFamily()` 返回 `System`，与 JVM 一致（「2.2」） |
+| 「字体枚举不完整」（本档案第 3 节的待排查方向②） | 真机诊断：可用字体族 **248**，完整（「6.1」） |
+| 「字体实现走了另一条路（`FTFactory`）」（最初的判据假设） | 真机实测两边**都是 `DWFactory`** ⇒ 该假设被否，根因转为**抗锯齿方式**（「6.1」） |
+| 「Prism 管线不对」 | 真机为 `D3DPipeline`（D3D9Ex），正常（「6.1」） |
+| 「`NativeLibLoader` 的警告是崩溃原因」 | 警告后**走了另一条路径并成功**（`Loaded library … from resource`）⇒ 良性（「2.4」） |
+
+## 未决问题
+
+**Q1 根因（原生镜像读不到 DirectWrite 渲染参数）何时修？**
+
+现状：**未修**，本轮只落地**临时缓解**（原生内默认写 `prism.lcdtext=false`，走灰度 AA）。
+根治方向：补上渲染参数的读取（首选）或等上游修复；与 **issue #60**
+（原生读不到系统与驱动信息）**同源**。
+阻塞点：closed-world 下运行期读系统状态的能力缺失，需要具体定位读取路径。
+> **口径**：本措施消除的是「发虚、发糊」，**不是**「与 JVM 逐像素一致」；
+> 根治后**应删除 `NativeRenderDefaults` 与其调用点**。
+
+**Q2 「原生灰度」与「JVM 次像素」的观感差异能接受吗？**
+
+现状：这是**产品取舍**（临时缓解换来的是「不发虚」，代价是与 JVM 观感不同）。
+阻塞点：需要 ACANX 在真机上确认缓解后的观感可接受（`N-05` / issue #44 的验收）。
+
+**Q3 `NativeLibLoader` 的资源条目为什么没生效？**
+
+现状：**未修**——`-H:IncludeResources=com.sun.glass.utils.NativeLibLoader\.class`
+显然没达到预期（仍报 `Invalid URL for class: resource://app/17!/…`）。
+阻塞点：属性本身是良性的，优先级低，但**这条配置是「写了不起作用」的典型**，
+值得单独收掉以免误导后来者。
+
+**Q4 Windows 的渲染路径今后怎么持续观测？**
+
+现状：本机（WSL 无 GPU）**无法复现 Windows 的 D3D 路径**，
+只能靠真机跑诊断（默认开 `prism.verbose` + `logRenderingDiagnostics()` + 一键收集脚本）。
+阻塞点：**每次都需要真机配合**；若能在 CI 里跑「原生包启动 + 抓日志」可部分缓解
+（本项目的 `ui-smoke` 已证明 Xvfb 方案可行，但那是 JVM 端）。

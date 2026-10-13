@@ -183,3 +183,97 @@ git rev-list <head> | while read c; do \
 2. **教训已升级为规范。** `ReleaseProcess.md` §4.1 增加「长期集成分支被误用 squash 后
    必须立刻接回血缘」；更根本的预防——**关闭仓库的 squash / rebase 合并，只留
    `Create a merge commit`**——登记为 `TODO.md` `G-05`。靠人记得住，不如靠平台不让做。
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「一、二、…」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- PR #8（`dependa` → `dev`）在 GitHub 上 `mergeable=false`、`mergeable_state=dirty`，
+  显示 28 个提交、40 文件 `+1853/−117`，**始终合不进去**。
+- 本地 `git merge --no-commit --no-ff dev` → `Already up to date.`（当时本地 `dev` 陈旧在 `4f12cef`）；
+  `git fetch --all` 之后才出现 `4f12cef..5d938f3  dev -> origin/dev`。
+- `git log -1 --format='%h %p %s' origin/dev` →
+  `5d938f3 4f12cef Merge pull request #6 from ACANX/dependa`——消息写着 "Merge pull request"，
+  但**只有一个父提交**。
+- **树逐字节比对**：`git rev-parse origin/dev^{tree} cea8cce^{tree}` 两次输出**完全相同**
+  （`6a594528cb5a2d67d95cabe118717b8457009366`）⇒ `dev` 的内容等于 `dependa` 祖先 `cea8cce` 的内容。
+- 修复后（`git merge -s ours origin/dev` → `06c6121 3ee32fd 5d938f3`）：
+  `git diff --name-only HEAD~1 HEAD` = **0 个文件**、树 `92e697b…` **前后一致**、
+  `git merge-base --is-ancestor origin/dev HEAD` **退出码 0**、
+  在 `origin/dev` 上模拟合并 **0 冲突**（修复前实测 **9 个**，含 `Gate.yml` 的 `add/add`）；
+  PR 净 diff 收敛为 17 文件 `+553/−23`。
+- 同日补记（形态重现）：PR #8 最终以 **squash** 合入 `dev`（`aeadec4` 是单父提交、父为 `5d938f3`）
+  → 在 `dependa` 的历史里找到 `dev` 的树（等于 `dependa@1518056` 的树）→ `git merge -s ours origin/dev`
+  得到 `d1de175`；三项验证同样通过（`git diff HEAD^ HEAD` 为空、树 `555e596…` 一致、模拟合并 0 冲突）。
+
+### 机制 / 行为模型
+
+- **合并不只是搬运内容，还要留下血缘。** 把内容「重新落一遍」（`git merge --squash` + 手工提交、
+  或 cherry-pick 全部提交）会造出**内容相同、血缘无关**的提交：上游收下了内容，
+  源分支却**没有成为祖先**，于是该源分支之后的每个 PR 都永久 `dirty`。
+  依据：两次独立发生的树相等 + `%p` 只显示一个父提交。
+- **`mergeable_state=dirty` 是结论，不是原因。** GitHub 只告诉你「合不了」；
+  根因要靠**比内容**来定——先比树、再比文件，最后才谈策略。
+- **`-s ours` 在这里是「带证明的操作」**，不是「忽略对方」的偷懒做法：
+  用它的前提是能证明对方内容已被包含（树逐字节相等）；证明不了就不该用。
+- **本地分支引用会过期。** `Already up to date` 只反映本地的陈旧 `dev`，与远端无关。
+
+### 未定位 / 未复现
+
+- **未保留修复前「9 个冲突」的完整清单**：档案只记了数量与「`Gate.yml` 是 `add/add`」，
+  没有冲突文件全表，事后无法逐项复核。
+- **未在 GitHub 侧实测**「补上血缘后 `mergeable_state` 何时转绿」——只做了**本地模拟合并**
+  （`git merge --no-ff` 0 冲突），没有记录平台上状态变化的时序。
+- **未落地**「关闭仓库的 squash / rebase 合并」：补记中登记为 `TODO.md` `G-05`，当时未确认是否已改仓库设置。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| PR 状态 | GitHub | `mergeable=false`、`mergeable_state=dirty`；28 提交 / 40 文件 `+1853/−117` |
+| 误导性的「无分叉」 | `git merge --no-commit --no-ff dev` | `Already up to date.`（**该结论建立在过期引用上**） |
+| 远端确实已推进 | `git fetch --all` | `4f12cef..5d938f3  dev        -> origin/dev` |
+| 「假合并」的直接证据 | `git log -1 --format='%h %p %s' origin/dev` | `5d938f3 4f12cef Merge pull request #6 from ACANX/dependa`（**单父**） |
+| 树逐字节相同（**决定性**） | `git rev-parse origin/dev^{tree} cea8cce^{tree}` | 两次均为 `6a594528cb5a2d67d95cabe118717b8457009366` |
+| 修复未动内容 | `git diff --name-only HEAD~1 HEAD` | 0 个文件；树 `92e697b…` 前后一致 |
+| 血缘已补上 | `git merge-base --is-ancestor origin/dev HEAD` | 退出码 `0` |
+| 模拟 GitHub 合并 | 在 `origin/dev` 上 `git merge --no-ff dependa` | `Automatic merge went well`，**0 冲突**（修复前 9 个） |
+| 补记一轮的树归属 | 在 `dependa` 历史里比对 `dev` 的树 | 等于 `dependa@1518056` 的树 |
+
+> 复现入口：档案「附：自查（可粘贴）」给出了三条 `git log` 与一段「按树归属判定能否 `-s ours`」的循环命令。
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「GitHub 状态是缓存 / 重推一次就好」 | `git fetch --all` 输出 `4f12cef..5d938f3`，证明本地 `dev` 陈旧、远端确实推进（「二、2.1」） |
+| 「两边根本没分叉」（`Already up to date`） | 该结论建立在过期引用上，改用 `origin/dev` 重测后不成立（「二、2.1」） |
+| 「`dev` 侧有独有内容，用 `-s ours` 会丢东西」 | 两棵树**逐字节相同**（`6a594528…`），`dev` 内容是 `dependa` 的真子集（「二、2.2」） |
+| 「补血缘会把内容一起改掉」 | `git diff --name-only HEAD~1 HEAD` 为 0 个文件，树 `92e697b…` 前后一致（「三、」） |
+| 「修完仍然合不进去」 | 在 `origin/dev` 上模拟合并 **0 冲突**（修复前 9 个）（「三、」） |
+| 「参照物可以随便挑」 | 补记中把参照物拿成 `HEAD` 的历史，属**循环论证**、什么都没证明，必须重跑（「补记」第 1 点） |
+
+## 未决问题
+
+**Q1 「关闭仓库的 squash / rebase 合并」落地了吗？**
+
+现状：只在补记里登记为 `TODO.md` `G-05`（「靠人记得住，不如靠平台不让做」）。
+阻塞点：仓库设置与分支保护 / ruleset 的现状（见 `TS-2610-005`）需要先核对，且**变更需 ACANX 操作**。
+
+**Q2 血缘补上后，GitHub 侧的 `mergeable_state` 何时转绿？**
+
+现状：**未实测**（只做了本地模拟合并）。是否需要重开 PR 或再推一次，没有对照结论。
+
+**Q3 「参照物拿错」这类循环论证能不能机器拦？**
+
+现状：只在档案里写成文字要求（「参照物只能是**源分支自己的历史**」）。
+阻塞点：能否做成一个一键脚本（输入 base / head，输出「base 的树是否属于 head 的历史」并直接判定能否 `-s ours`），尚未评估。
+
+**Q4 修复前那 9 个冲突还剩多少可复核？**
+
+现状：只记了数量与 `Gate.yml` 是 `add/add`，**未保留冲突文件全表**，已不可完整复核。

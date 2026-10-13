@@ -144,3 +144,76 @@ continue-on-error: ${{ matrix.os == 'macos-latest' }}
 | `Docs/DevSpec/BuildSpec.md` | §8.1 新增「作业名是分支保护的契约（强制）」，含本次事故实例 |
 | `Docs/TODO.md` | 新增 `F-08`（含取证对照表）；`G-02` 按分支保护实况重写并补维护约定 |
 | `CHANGELOG.md` | 补记该修复 |
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「一、二、…」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- 分支保护的三条必需检查停在 `Expected — Waiting for status to be reported`，**重跑无效、重开 PR 无效**，且 Workflow 页面上**没有任何失败步骤**。
+- 四个作业**都真实执行过**，step 级状态正常，上报的名字是：
+  `build (windows-latest, wrapper, false)`、`build (ubuntu-latest, wrapper, false)`、
+  `build (ubuntu-latest, system, false)`、`build (macos-latest, wrapper, true)`。
+- 把「分支保护要求」与「实际上报」逐条对照，三条必需腿**全部多出一个 `, false`**（对照表见「二、2.2」）。
+- 本地比对修复后的矩阵键与作业名：`矩阵键: ['maven', 'os']` →
+  `build (windows-latest, wrapper)` / `build (ubuntu-latest, wrapper)` /
+  `build (ubuntu-latest, system)` / `build (macos-latest, wrapper)`。
+
+### 机制 / 行为模型
+
+- GitHub Actions 的**矩阵作业名会把矩阵的全部键值拼进去**：`<作业名> (<值1>, <值2>, …)`；
+  键的集合一变，作业名就变——`{os, maven}` 得到 `build (windows-latest, wrapper)`，
+  再加一个 `optional` 键就变成 `build (windows-latest, wrapper, false)`。
+- **分支保护的必需检查严格按名字匹配**。名字对不上时，检查停在「等待上报」——
+  它**不是失败**：不报错、不超时、页面无提示，只让 PR 永久不可合并。
+- 依据：`Expected — Waiting for status to be reported` 的语义（「挂着必需检查，但没有任何 check run 以此名上报过」）
+  与上表的逐条对照结果。此处是**由实测对照推出的行为模型**，未引用上游源码。
+
+### 未定位 / 未复现
+
+- 本档案写作时**修复尚未推送**，因此「作业名恢复后必需检查立即正常上报」在当时**只是预期，未实测**
+  （原文：「推送后三条必需检查即可正常上报（本文件写作时提交尚未推送）」）。
+- **未做对照实验**：矩阵键变更后，**已在途 PR** 的必需检查是否会自行恢复，或必须重新触发一次。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 分支保护等待状态 | GitHub PR 合并框原文 | `build (ubuntu-latest, system)    Expected — Waiting for status to be reported   Required` |
+| 实际上报的作业名（4 条） | 抓 Actions 运行页 HTML，`grep -oE 'build \([^)]+\)'` | `build (windows-latest, wrapper, false)` / `build (ubuntu-latest, wrapper, false)` / `build (ubuntu-latest, system, false)` / `build (macos-latest, wrapper, true)` |
+| 要求 vs 实际差异 | 同上逐条对照 | 三条必需腿**均多出 `, false`**；根因指向本轮新增的 `optional: false` |
+| 本地比对矩阵键 | 读 `Build.yml` 与作业名推导 | `矩阵键: ['maven', 'os']`（已无 `optional`） |
+| 复现取证的命令 | 见「二、2.5」 | `curl -sS -H "User-Agent: Mozilla/5.0" "https://github.com/ACANX/AHA/actions?query=branch%3Adependa" \| grep -oE '/ACANX/AHA/actions/runs/[0-9]+' \| head -3` |
+
+> **可复现性缺口（如实记录）**：原档案**未保留具体的 run id / run 链接**，也没记录取证时的绝对时间；
+> 上表第 2、3 行只能凭「抓运行页」的方法重取当次运行来对照。
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| workflow 根本没触发 / 被 `if` 跳过 | 抓运行页确认四个作业**都真实执行过**，step 级状态正常（「二、2.1」） |
+| runner 排队堵塞 / 配额不足 | 作业已执行完毕（有 step 级状态），不是排队中；且页面上无排队提示 |
+| CI 真的失败、只是没看红叉 | Workflow 页面**无任何失败步骤**，只有「等待上报」（「一、背景」） |
+| 分支保护挂的检查指向了别的工作流 / 别的作业 | 三条等待中的名字与实际作业名**只差 `, false`**，说明要求指向的正是这些作业（「二、2.2」） |
+| 重跑 / 重开 PR 可以自愈 | 实测**重跑无效、重开 PR 无效**（「一、背景」） |
+
+## 未决问题
+
+**Q1 矩阵键一改就改掉必需检查的名字——能不能上机器强制？**
+
+现状：本档案只落了**人工约定**（「改名必须成对操作」，见「四、关键教训」第 5 条），
+没有任何 CI 断言去比对「必需腿的作业名集合」与分支保护配置是否一致。
+阻塞点：读分支保护配置需要 GitHub API + 相应 token 权限，尚未评估可行性与放置位置（`Gate.yml`？）。
+
+**Q2 修复推送后必需检查是否立即恢复上报？**
+
+现状：写作时提交未推送，**未实测**。若未立即恢复，需要补一次「推送前后的上报状态」对照。
+
+**Q3 改名之后，已在途 PR 要不要重新触发？**
+
+现状：**未做对照实验**——「重跑无效」是在**名字还没修好**的前提下测的，不能推出「名字修好后无需重新触发」。

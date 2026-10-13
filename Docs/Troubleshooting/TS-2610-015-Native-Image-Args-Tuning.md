@@ -146,3 +146,131 @@ The build process encountered 9 warnings.
 - `Docs/Design/DesktopNativeDesign.md`（§5.4 参数调优记录）
 - `Docs/TODO.md`（N-13 资源清单收窄、N-14 删弃用协议开关）
 - `CHANGELOG.md`
+
+---
+
+<!-- 以下四节按 issue #128「选项 C：补齐四节必备项」补入（2026-10-13）。
+     正文其余部分保持原样；四节不带序号，以免与本文既有的「1. …」编号冲突。 -->
+
+## 结论分层
+
+### 已观测事实
+
+- **首次真编日志（Windows + jdk25）证明管线是通的**：
+  `GraalVM Native Image: Generating 'aha-desktop-native.exe' (executable)...`、
+  `Build artifacts: …\target\native\aha-desktop-native.exe (executable, **77.75MiB**)`、
+  `Finished generating 'aha-desktop-native' in **3m 16s**.`、
+  `The build process encountered **9 warnings**.`
+- 输出里共有 **9 条警告、5 条 Recommendations、1 条 Security 报告**，逐条处置结论如下：
+
+  | 日志里的说法 | 处置 | 理由 |
+  | --- | --- | --- |
+  | `--no-fallback` 已弃用且**无效果** | **删** | 无作用，还引出 `FallbackThreshold` 的弃用警告 |
+  | `-H:IncludeResources` 属实验性 | **加 `-H:+UnlockExperimentalVMOptions`** | 不解锁，将来版本直接失败；**解锁项必须排在实验性选项之前** |
+  | `-H:Path` / `-H:Name` 属实验性，建议用 `-o` | **改 `-o <路径>`** | 官方明确替代；POM 里传参 |
+  | `--enable-url-protocols` 已弃用 | **暂留**（唯一不立刻改的） | 它是 HTTPS 开关，删掉后构建仍成功、进程仍启动，**只是发不出请求** |
+  | sqlite-jdbc 自带同款弃用项 | **记录，不改** | 来自第三方 jar 的 `native-image.properties` |
+  | GC 建议 G1 | **采纳 `--gc=G1`** | 桌面 GUI 关心停顿；serial 是默认、epsilon 无回收 |
+  | `--future-defaults=all` | **采纳** | 提前用上未来默认值，为「JDK 29 铺路」做早期预警 |
+  | 设置最大堆 | **采纳 `-R:MaxHeapSize=1g`** | 默认堆按机器内存百分比算，同一二进制在不同机器行为不同 |
+  | `--pgo` | **不采纳** | 日志的 builder configuration 已显示 **`PGO: ML-inferred`**，推测式 PGO 已在生效；手工 PGO 需两阶段且要负载样本 |
+  | `-march=native` | **不采纳** | 会把产物绑死构建机 CPU 特性，分发出去可能非法指令崩溃 |
+  | `-H:AdvancedObfuscation=""` | **不采纳**（列入实验位） | 会污染栈与诊断信息，与「可诊断优先」冲突 |
+  | Security：含 Java 反序列化 | **记录可达性，不猜选项** | 先确认业务不对不可信数据反序列化，再按构建报告定位 |
+
+- 两份参数文件（`native-image-args.txt` / `native-image-args-jdk27.txt`）**同步了全部改动**，
+  且**保持行序完全一致**；逐条理由只写在基线那份里，jdk27 那份加一行指向它。
+- 新增两个可对账设施：**`emit build report`**（报告落 `target/native/`、随包进 zip、
+  工作流自证检查有 / 无）；**exec 工作目录**由模块根改为 `target/native/`
+  （前提：参数文件、`-cp`、`-o` **全部用绝对路径**）。
+- 本机验证（不装 GraalVM）：用 `-Dnative.image.executable=/bin/echo` 替身，实测打印出
+  `@…/native-image-args.txt -cp <完整 classpath> -o …/target/native/aha-desktop-native com.acanx.module.aha.desktop.AhaDesktopApp`
+  ——`-H:Path` / `-H:Name` 已消失、`-o` 生效、classpath 里三个 `javafx-*-25-linux.jar` 正确。
+- 量出但本轮不动：镜像里有 **27.69 MiB 的 `byte[]` 内嵌资源**，来自过宽的资源通配
+  （`.*\.(png|…|dll)$`）；应迁移成 `resource-config.json` 的精确清单（`TODO.md` **N-13**）。
+- 本轮踩的坑：POM 注释里写 `--emit build-report` → `not well-formed (invalid token)`
+  （**XML 注释体禁止出现 `--`**）；同轮还发现技能模板资产里**嵌套了注释**（外层被内层 `-->` 提前闭合）。
+  已固化为守卫：`bin/CheckScripts.py` 新增 `check_xml`（反向验证塞探针即点名，
+  并**当场抓出技能模板里的那处嵌套注释**）；检查范围从 **27 个脚本**扩到「27 个脚本 + **14 个 XML**」。
+- `Check{Docs,Skills,Scripts}` 全绿；`-Dnative.skip=true` 自检模式仍 `BUILD SUCCESS`。
+- **真正的效果（警告是否清零、G1 / `future-defaults` / 堆上限对启动与内存的影响）当时未验证**，
+  由下一次 `DesktopNative` 运行给出，实测数字填进 `DesktopNativeDesign.md` §5.3。
+
+### 机制 / 行为模型
+
+- **三类输出必须分开处置**（Warning / Recommendations / Security report）。
+  混在一起最容易犯的错是「**为了让警告清零而删掉功能开关**」。
+  本档案据此立了一条优先级：**「静默坏掉」优先于「警告清零」**。
+- 弃用项允许**带着警告存在**，但必须**写下退出路径与验证条件**（见「2.3」的四条）——
+  否则没人敢动它，也没人知道什么时候能删。
+- **不采纳的建议也要写理由**，否则下一个人会把它们再试一遍。
+- **不要用不可预期的方式换性能**：`-march=native` 在「给自己编」时很香，
+  在「给别人分发」时会让对方崩溃；分发产物只写可预期目标。
+- **参数文件是成对资产**：两份文件保持行序一致，**它们的 diff 才有信息量**；
+  只改一份等于把对比实验作废。
+- **同一条规则踩两次就该写守卫**：XML 注释禁 `--` 已踩过一次、本轮又踩（还连带嵌套注释），
+  于是固化进 `bin/CheckScripts.py`。
+- **环境差异是免费的验证器**：换 `echo` 替身就能在没有工具链的机器上核对命令行。
+
+### 未定位 / 未复现
+
+- **采纳项的实际效果未验证**：警告是否清零、G1 / `future-defaults` / `MaxHeapSize` 对
+  **启动时间与内存**的影响，要等下一次 `DesktopNative` 运行，实测数字填入
+  `DesktopNativeDesign.md` §5.3。
+- **27.69 MiB 内嵌资源的收窄本轮不做**：资源清单**漏一项的后果是运行期缺文件**，
+  必须先有真机走查兜住再收窄（`TODO.md` N-13）。
+- **Security 报告里的反序列化可达路径未定位**：档案只写了「先确认业务不对不可信数据反序列化」，
+  没有给出可达路径。
+
+## 观测数据
+
+| 数据 | 来源 / 命令 | 原始输出或取值 |
+| --- | --- | --- |
+| 首次真编成功 | native-image 日志（Windows + jdk25） | `Finished generating 'aha-desktop-native' in **3m 16s**` |
+| 产物大小 | 同上 | `Build artifacts: …\aha-desktop-native.exe (executable, **77.75MiB**)` |
+| 警告与建议的规模 | 同上 | **9 warnings** + **5 Recommendations** + **1** Security 报告 |
+| PGO 已在生效的判据 | 日志的 builder configuration | **`PGO: ML-inferred`** |
+| 传参正确性的替身验证 | `-Dnative.image.executable=/bin/echo` | 打印：`@…/native-image-args.txt -cp <完整 classpath> -o …/target/native/aha-desktop-native com.acanx.module.aha.desktop.AhaDesktopApp` |
+| classpath 正确性 | 同上 | 含三个 `javafx-*-25-linux.jar` ✅ |
+| 体积优化余地（**量出未动**） | 构建报告的 `byte[]` 类目 | **27.69 MiB** 内嵌资源（过宽通配 `.*\.(png\|…\|dll)$`） |
+| XML 注释踩坑 | `mvn` 解析报错 | `not well-formed (invalid token)`（注释体里写了 `--emit build-report`） |
+| 守卫的反向验证 | 塞探针后跑 `bin/CheckScripts.py` | 当场点名；且**抓出技能模板里的嵌套注释** |
+| 守卫覆盖面 | `check_xml` 的扫描范围 | **27 个脚本 + 14 个 XML** |
+| 自检模式 | `-Dnative.skip=true` | `BUILD SUCCESS`（不影响常规构建） |
+
+## 排除项
+
+| 已排除的可能 | 依据 |
+| --- | --- |
+| 「警告必须清零（哪怕删功能开关）」 | 明确优先级：**静默坏掉优先于警告清零**；`--enable-url-protocols` 暂留并写退出路径（「2.1」「2.2」） |
+| 「`--no-fallback` 还有用」 | 日志指出它已弃用且**无效果**（「2.2」） |
+| 「再手动加一次 `--pgo` 会更快」 | 日志显示 `PGO: ML-inferred` 已在生效，手工 PGO 是重复劳动（「2.2」） |
+| 「`-march=native` 白拿性能」 | 会绑死构建机 CPU 特性，分发出去可能**非法指令崩溃**（「2.2」） |
+| 「只改基线那份参数文件即可」 | 两份是**逐条对应**的资产，只改一份会把对比实验作废（「2.4」） |
+| 「XML 注释里写 `--` 无所谓」 | 实测 `not well-formed (invalid token)`；技能模板里还有嵌套注释（「2.6」） |
+| 「本机没 GraalVM 就无法验证传参」 | `echo` 替身能打印完整命令行（「2.7」） |
+
+## 未决问题
+
+**Q1（`TODO.md` N-14）什么时候能删掉 `--enable-url-protocols`？**
+
+现状：退出路径已写明**四条**——① 元数据已备好（`reachability-metadata.json` 随 jar 进 classpath）；
+② 真机验证原生二进制能完成一次真实对话（HTTPS 成功）；
+③ 构建报告里没有 http / https 协议处理器的未决条目；④ 三条都满足后才删。**目前未满足**。
+
+**Q2（`TODO.md` N-13）资源清单何时收窄？**
+
+现状：**27.69 MiB** 的内嵌 `byte[]` 是目前最大的体积优化余地（过宽通配所致）。
+阻塞点：清单**漏一项的后果是运行期缺文件**，必须先有真机走查兜住，再迁移到
+`resource-config.json` 的精确清单。
+
+**Q3 采纳项（G1 / `future-defaults` / `MaxHeapSize`）的实际收益是多少？**
+
+现状：**未测**——启动时间与内存的实测数字待下一次 `DesktopNative` 运行后填入
+`DesktopNativeDesign.md` §5.3。
+阻塞点：需要真机采集数据，本机无 GraalVM。
+
+**Q4 Security 报告里的「含 Java 反序列化」可达路径在哪？**
+
+现状：**未定位**——只记录了「先确认业务不对不可信数据反序列化，再按构建报告定位可达路径」。
+阻塞点：需要读构建报告的可达性条目 + 业务侧的数据来源梳理。
