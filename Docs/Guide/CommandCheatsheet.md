@@ -26,7 +26,8 @@
 |---|---|---|
 | 编译桌面端便携包 | `python3 Script\Python\DesktopDistBuild.py` | `python3 Script/Python/DesktopDistBuild.py` |
 | 解压并更新 `Dist/` | `python3 Script\Python\DesktopDistExtract.py` | `python3 Script/Python/DesktopDistExtract.py` |
-| 下载最新桌面端原生镜像 | `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
+| 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
+| 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
 | 启动桌面端（Dist 版） | `Dist\bin\AhaDesktop.bat` | `./Dist/bin/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
 | 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
@@ -114,7 +115,14 @@ mvnw.cmd -pl aha-cli exec:java -Dexec.args="provider list"
 
 ### 4.1 桌面端原生镜像
 
-**取件（脚本，推荐）**：
+**取件（一键，Windows 双击）**：
+
+```bat
+Dist\UpdateDesktopNative.cmd            :: 双击即可（在仓库里运行；需 Python 3）
+Dist\UpdateDesktopNative.cmd --list     :: 带参数时不暂停，便于在终端里用
+```
+
+**取件（脚本）**：
 
 ```bat
 python3 Script\Python\DesktopNativeVersionUpdate.py            :: 下载并装到 Dist\aha-desktop-native.exe
@@ -154,7 +162,17 @@ Dist\aha-desktop-native.exe                                     :: 双击或命�
 ### 4.2 CLI 原生镜像
 
 发布页资产名为 `AHA-Cli-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`，包内是可执行文件
-`aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。**目前没有自动取件脚本，需手动下载解压**：
+`aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。
+
+**取件（一键，Windows 双击 / 脚本）**（与桌面端同构；`--list` / `--dry-run` / `--tag` / `--jdk` 都可用）：
+
+```bat
+Dist\UpdateCliNative.cmd                                        :: 双击：装到 Dist\aha-cli-native.exe
+python3 Script\Python\CliNativeVersionUpdate.py                 :: 等价命令行
+python3 Script\Python\CliNativeVersionUpdate.py --list          :: 看有哪些版本
+```
+
+**取件（手动：下载 zip → 解压出 exe → 放到 `Dist/`）**：
 
 ```bat
 :: Windows
@@ -213,7 +231,9 @@ Dist/
 ├── aha-desktop-<版本>-<平台>.zip      桌面端便携包
 ├── aha-desktop-native-*.zip           桌面端原生镜像包
 ├── aha-desktop-native.exe             桌面端原生镜像（更新脚本或手动解压落在这里）
-├── aha-cli-native.exe                 CLI 原生镜像（手动从发布页 zip 取出）
+├── aha-cli-native.exe                 CLI 原生镜像（一键脚本或手动从发布页取出）
+├── UpdateDesktopNative.cmd            一键更新桌面端原生镜像（双击；在仓库里运行，需 Python 3）
+├── UpdateCliNative.cmd                一键更新 CLI 原生镜像（同上）
 ├── README.md               项目 README（由 CLI assembly 复制）
 └── README.commands.md      本速查（由 DesktopDistExtract.py 刷新）
 ```
