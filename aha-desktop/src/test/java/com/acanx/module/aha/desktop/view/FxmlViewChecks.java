@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.view;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,6 +15,12 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -54,6 +61,15 @@ final class FxmlViewChecks {
      */
     private static final Pattern ELEMENT = Pattern.compile("<([A-Z][\\w.]*)[\\s/>]");
 
+    /**
+     * XML 注释。
+     *
+     * <p>扫元素 / 属性之前必须先剔除注释：实测踩过一次——注释里写
+     * {@code Supplier<List<ToolDescriptor>>}，其中 {@code <ToolDescriptor>}
+     * 被当成一个元素类型，报“缺 import”（假阳性）。注释不是元素。</p>
+     */
+    private static final Pattern COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
+
     private FxmlViewChecks() {
     }
 
@@ -70,11 +86,16 @@ final class FxmlViewChecks {
     }
 
     static List<String> fxIds(String fxml) {
-        return group(FX_ID, fxml);
+        return group(FX_ID, withoutComments(fxml));
     }
 
     static List<String> nodeIds(String fxml) {
-        return group(NODE_ID, fxml);
+        return group(NODE_ID, withoutComments(fxml));
+    }
+
+    /** 剔掉 XML 注释后的正文（扫元素 / 属性都基于它）。 */
+    static String withoutComments(String fxml) {
+        return COMMENT.matcher(fxml).replaceAll("");
     }
 
     /** 简单类名 → 全限定名（来自 {@code <?import?>} 表）。 */
@@ -88,10 +109,10 @@ final class FxmlViewChecks {
         return bySimpleName;
     }
 
-    /** fxml 里出现的元素类型（简单名，去重）。 */
+    /** fxml 里出现的元素类型（简单名，去重；注释不算）。 */
     static Set<String> elementTypes(String fxml) {
         Set<String> names = new TreeSet<>();
-        Matcher matcher = ELEMENT.matcher(fxml);
+        Matcher matcher = ELEMENT.matcher(withoutComments(fxml));
         while (matcher.find()) {
             String name = matcher.group(1);
             if (!name.contains(".")) {
@@ -102,6 +123,31 @@ final class FxmlViewChecks {
     }
 
     // ------------------------------------------------------------------ 对账
+
+    /**
+     * FXML 必须是**良构 XML**。
+     *
+     * <p>为什么值得单独一条：{@code FXMLLoader} 对格式的要求就是 XML 本身，而手写 fxml 时
+     * 漏一个闭合标签、写一个非法实体、重复一个属性，编辑器不一定报——只有在装载那一刻才炸。
+     * 这里用 JDK 自带的解析器先过一遍，**不需要 JavaFX 工具包**（
+     * 它没有显示设备也能跑，所以能进 CI）。</p>
+     *
+     * <p>注：它拦不住「类型不存在」那类问题（那是 import 表的事），也拦不住运行期行为——
+     * 后者只能靠真机对照。</p>
+     */
+    static void assertWellFormedXml(String view, String fxml) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            // 不读外部实体：fxml 里没有 DOCTYPE，且默认行为可能联网
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.newDocumentBuilder().parse(
+                    new InputSource(new StringReader(fxml)));
+        } catch (ParserConfigurationException | SAXException | IOException e) {
+            throw new AssertionError(view + "：fxml 不是良构 XML（FXMLLoader 装载时会直接失败）："
+                    + e.getMessage(), e);
+        }
+    }
 
     /** 每个元素类型都必须能在 {@code <?import?>} 表里找到。 */
     static void assertElementsImported(String view, String fxml) {
