@@ -1,4 +1,4 @@
-# TS-yyyyMM-大驼峰英文标题
+# TS-yyMM-NNN · 中文标题
 
 > 事件日期：YYYY-MM-DD
 > 作者：@使用者

@@ -88,7 +88,7 @@
    - **手工应急**（不走 workflow 时）：只需改 **`version` 文件与根 POM 的 `<revision>` 两处**，
      两者必须相同；子模块与文档声明由分发脚本负责。当初「为何要改 10 处」的历史口径见
      [VersionBumpGuide.md](../Guide/VersionBumpGuide.md) 第 7 节与
-     [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)。
+     [TS-2610-006-Version-Bump-Missed-Modules.md](../Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md)。
    - CLI 的 `aha version` / `aha -V` 由资源过滤注入（`version.properties`），改 POM 即生效
    - **构建版本（预发行）**：`version.properties` 另有 `build=${aha.build.version}` 项；正式发版与
      本地构建不传，等于基线版本；PR 合并到 `dev` 后自动出包的工作流（`DesktopNative.yml` /
@@ -240,13 +240,13 @@ git push origin V0.1.2                                         # 这次由人推
 2. **禁止「把内容重新落一遍」**。例如 `git merge --squash` 后再手工提交、
    把分支上全部提交 cherry-pick 到目标分支等。这类做法会让上游收下内容却没有
    把源分支变成祖先，源分支之后的**每一个** PR 都会永久冲突
-   （`mergeable_state=dirty`）。详见 [TS-202610-FakeMergeDirtyPr.md](../Troubleshooting/TS-202610-FakeMergeDirtyPr.md)。
+   （`mergeable_state=dirty`）。详见 [TS-2610-003-Fake-Merge-Dirty-PR.md](../Troubleshooting/TS-2610-003-Fake-Merge-Dirty-PR.md)。
 3. **用了 squash / rebase 就必须删源分支**。这两种合并的代价就是失去血缘、补不回来；
    若源分支还要继续用，就只能真合并。
 4. **长期集成分支被误用 squash 之后，必须立刻接回血缘**：在源分支上
    `git merge -s ours <上游>`（先按第 6 条的办法证明上游内容是源分支的子集），
    把上游记为父提交、树保持不变。**不接回的后果是必然的**——下一次 `dependa → dev`
-   的 PR 又会 `dirty`，本次已实际复发过一次（见 `Troubleshooting/TS-202610-FakeMergeDirtyPr.md` 补记）。
+   的 PR 又会 `dirty`，本次已实际复发过一次（见 `Troubleshooting/TS-2610-003-Fake-Merge-Dirty-PR.md` 补记）。
    若选择**不复位也不接回**、任源分支落后于上游，则第一次整合时的实测后果是：
    两侧相对分叉点都改过的文件会冲突（本次实测 6 个文档文件），虽然取上游版本即可解决，
    但那是一次纯人工的重复劳动——所以正解是第 5 条。

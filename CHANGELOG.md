@@ -19,7 +19,7 @@
   （`渲染诊断：原生文本灰度默认 …`）已同步。
   **这是临时措施、不是根治**——成因指向 DirectWrite 渲染参数在 closed-world 下读不到
   （与 #60 同源），上游修复或补上参数读取后应删除本类与调用点。
-  见 `Docs/DevLog/20261013-08.md` 与 `TS-202610-NativeFontRenderingDiff.md` §6。
+  见 `Docs/DevLog/20261013-08.md` 与 `TS-2610-030-Native-Font-Rendering-Diff.md` §6。
 - **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
   `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
   （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
@@ -28,6 +28,13 @@
   且更彻底；③ 现有两种形态可沿用同一套产物名自证与完整性自证链路。
   口径见 `ReleaseProcess.md` §3.3；受影响的文档已同步（`BuildSpec.md` / `AHA-Design-V1.md` /
   `DesktopDesign.md` / `DesktopNativeDesign.md` / `TD-00007` / `TD-00009`）。
+- **排查档案（TS）命名规范收敛（2026-10-13）**：`Docs/Troubleshooting/` 下 31 篇档案由
+  `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，
+  对齐姊妹项目 LegionFanControl 的 `TroubleShootingDocSpec.md`）；序号按原索引登记顺序重编
+  （`001`~`031`），全仓引用、各档案 H1 编号、`bin/CheckDocs.py` 命名正则与
+  `DocumentationSpec.md` §1 / `Docs/Troubleshooting/README.md` §1 同步。
+  正文骨架的对齐另开 issue [#128](https://github.com/ACANX/AHA/issues/128)。
+  见 `Docs/DevLog/20261013-09.md`。
 
 ## [0.1.2] - 2026-10-09
 
@@ -88,7 +95,7 @@
   `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` 与 `CliNative.yml` 在构建时传
   `-Daha.build.version=<a.b.c.PPPPP>`（正式发版不传，等于基线版本，不做强制）。
   展示点：桌面端「关于」与启动日志、CLI 启动页顶栏、`/help`、`aha version` / `--version`。
-  详见 `Docs/Troubleshooting/TS-202610-BuildVersionPreRelease.md`。
+  详见 `Docs/Troubleshooting/TS-2610-027-Build-Version-Pre-Release.md`。
 - **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
   把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
   定位是「验证线」：正式交付仍是 JVM 模式。
@@ -217,7 +224,7 @@
   另补一层「文字兜底」覆盖 `.label` / `.cell` / `.menu-item > .label` 等全部文字载体，
   并单独处理 **`Text` 节点（走 `-fx-fill`）**。守卫 `PaletteTest` 新增两条：两表声明里不得含
   变量查表与 CSS 函数、两表必须真的不同（暗 `#E4E4E4` / 亮 `#1F1F1F`）。
-  详见 `Docs/Troubleshooting/TS-202610-DarkTextCssPatchFailure.md`。
+  详见 `Docs/Troubleshooting/TS-2610-031-Dark-Text-CSS-Patch-Failure.md`。
 - **原生桌面镜像字体渲染与 JVM 模式不一致（issue #48）——本轮先做诊断**：真机报原生包的字发虚、
   字形偏细，明显不如 JVM 模式锐利。本轮把「原生包到底走的哪条路」变成可观测的事实：
   ① 实测 `V0.1.1.00055` 的 **Ubuntu 原生包**（本机 WSLg 可跑），确认原生镜像里 JavaFX 的原生库
@@ -233,7 +240,7 @@
   诊断代码已先在本地 JVM 模式实跑：`字体实现工厂` 在 Windows 上应为 DirectWrite 的
   `DWFactory`、非 Windows / 无 DirectWrite 时为内置 FreeType 的 `FTFactory`——**两边若不同，
   即说明字形栅格化走了另一条路**，这正是「笔画偏细、发虚」最可能的解释。
-  详见 `Docs/Troubleshooting/TS-202610-NativeFontRenderingDiff.md`。
+  详见 `Docs/Troubleshooting/TS-2610-030-Native-Font-Rendering-Diff.md`。
 - **原生桌面镜像渲染诊断的操作手册与收集脚本（issue #48）**：把「真机上各跑一次原生包与
   JVM 模式、把同样的几行日志拿出来对照」落成可照做的材料——新增
   `Docs/Guide/NativeRenderDiagnosticsGuide.md`（步骤、日志位置、判定表、诊断行含义、常见问题）
@@ -248,7 +255,7 @@
   JavaFX 默认（modena）背景，只靠根节点的 looked-up color 传不到位。修法：`theme()` 去缓存、
   每次按当前色表现算；`applyTheme` 逐个节点异常隔离（一个失败不中断整屏重刷）；搜索框、输入框、
   会话单元格、菜单栏、中栏滚动区改为显式套主题。守卫 `PaletteTest` 新增一条，
-  钉住「切换后样式串立即反映新色表」。详见 `Docs/Troubleshooting/TS-202610-DarkModeControlColors.md`。
+  钉住「切换后样式串立即反映新色表」。详见 `Docs/Troubleshooting/TS-2610-026-Dark-Mode-Control-Colors.md`。
 - **原生桌面镜像主题残留的第二轮修复（issue #49）**：上一轮合入后真机仍报「暗色下左栏文字深色、
   亮色下供应商对话框底色深色」。经 build-report 核对（`modena.css` 已随镜像打包）与 JVM 探针
   验证（`Label` / `Button` / `Menu` / `DialogPane` 两套主题下均正确）后确认：问题只在原生镜像
@@ -263,7 +270,7 @@
   搜索框、输入框、状态栏、菜单栏与 7 个对话框全部覆盖）；搜索框 / 输入框再补显式
   `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
   另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
-  `PaletteTest` 新增两条守卫。详见 `Docs/Troubleshooting/TS-202610-ThemeLookupTableFailure.md`。
+  `PaletteTest` 新增两条守卫。详见 `Docs/Troubleshooting/TS-2610-028-Theme-Lookup-Table-Failure.md`。
 - **原生桌面镜像输入框 / 下拉框 / 按钮 / 滚动条背景发黑（issue #49 第三轮）**：亮色与暗色下，
   文本输入框、「发送」按钮、下拉选择框与会话列表滚动条的背景都是黑的，且与主题切换无关。
   查 `modena.css` 确认根因：这些控件的 `-fx-background-color` 写成 `derive(...)` /
@@ -273,7 +280,7 @@
   `HOVER_BACKGROUND` / `SCROLL_TRACK` / `SCROLL_THUMB` / `ON_ACCENT`，并把 modena 依赖的中间量
   （`-fx-body-color` / `-fx-text-box-border` / `-fx-outer-border` / `-fx-box-border` …）全换成字面量。
   守卫 `PaletteTest` 新增三条：主题样式串与补丁表均不得含 CSS 函数、亮色下控件面色必须为浅色、
-  补丁表必须在 classpath 上。详见 `Docs/Troubleshooting/TS-202610-ModenaCssFunctionFailure.md`。
+  补丁表必须在 classpath 上。详见 `Docs/Troubleshooting/TS-2610-029-Modena-CSS-Function-Failure.md`。
 - **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
   ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
   改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，
@@ -285,7 +292,7 @@
   改用默认深色文字；现统一走 `themed(...)` 登记。
   遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决，已另开 **issue #48** 长期跟踪
   （`Docs/TODO.md` 的 `N-24` 只作索引），需真机对比渲染管线后才能定位。
-  详见 `Docs/Troubleshooting/TS-202610-ThemeNotFollowingSystem.md`。
+  详见 `Docs/Troubleshooting/TS-2610-025-Theme-Not-Following-System.md`。
 - **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
   但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
   com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：
@@ -295,7 +302,7 @@
   **未登记 peer 本身**。修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
   过滤 abstract 后把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`（340 → 439 条）。
   守卫 `NativeImageMetadataTest` 11 → 12 条（已反向验证），产物自证第 ⑧ 条补 peer 检查。
-  详见 `Docs/Troubleshooting/TS-202610-PrismEffectPeerMissing.md`。
+  详见 `Docs/Troubleshooting/TS-2610-023-Prism-Effect-Peer-Missing.md`。
 - **原生桌面镜像 Windows 启动即崩：平台子类的 JNI 成员查找未登记（issue #39）**：修完 #37（JNI 可达**类**）后，
   真机在 `WinWindow.<clinit>` 报 `NoSuchMethodError:
   com.sun.glass.ui.win.WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。根因：`WinWindow._initIDs` 用
@@ -305,13 +312,13 @@
   native 源码里所有 `Get*ID` 的**目标类**，把 Windows / macOS 的平台实现类逐类补进
   `jni-config.json`（62 → 85 条），并顺带补上 `Class.forName` 现查的 `WinDnDClipboard` / `EventLoop`。
   守卫 `NativeImageMetadataTest` 10 → 11 条（已反向验证），产物自证第 ⑧b 条补 4 项。
-  详见 `Docs/Troubleshooting/TS-202610-WinWindowJniMemberMissing.md`。
+  详见 `Docs/Troubleshooting/TS-2610-022-Win-Window-JNI-Member-Missing.md`。
 - **原生桌面镜像启动即 segfault：JNI 可达类未注册（issue #37）**：修完 #35（JavaFX 启动链路反射）后，
   真机在 Glass 初始化处报 `NoClassDefFoundError: java/lang/Runnable`，随后段错误。
   根因是 native-image 只允许「JNI accessible」的类被 `FindClass` 查到——反射元数据解决「类可达」，
   不解决「JNI 可达」。修法：新增 `jni-config.json`（62 个类，来自对 openjfx 三平台 native 源码
   506 个文件里所有 `FindClass` 的静态扫描），并在单测与产物自证里加守卫。
-  详见 `Docs/Troubleshooting/TS-202610-JniFindClassSegfault.md`。
+  详见 `Docs/Troubleshooting/TS-2610-021-JNI-Find-Class-Segfault.md`。
 - **原生镜像管线两个跨平台缺陷（run 37744912968）**：
   ① macOS 腿的产物自证里 `$bin（` 被 bash 当成变量名 → `set -u` 下
   `bin（: unbound variable` 退出，步骤 outputs 丢失，下游改名/上传被静默跳过——
@@ -440,7 +447,7 @@
 - **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
   把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
   无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
-- **开发日志**：新增 `Docs/Troubleshooting/TS-202610-CoverageGateInvisible.md`，记录门禁静默这一问题的核实方法
+- **开发日志**：新增 `Docs/Troubleshooting/TS-2610-002-Coverage-Gate-Invisible.md`，记录门禁静默这一问题的核实方法
   （配置检查 + 抬阈值使其失败一次）与结论
 - **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
   （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；

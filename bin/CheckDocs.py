@@ -208,14 +208,14 @@ def check_naming() -> list[str]:
     """检查按命名规范建立的目录里的文件名（`DocumentationSpec.md` §1）。
 
     这几条命名规则光写在规范里是不会执行的：`TD-PPPPP-*.md`（待办详情）、
-    `TS-yyyyMM-*.md`（问题排查）、`yyyyMMdd-HH.md`（开发日志）都有固定的机器可判形式，
+    `TS-yyMM-NNN-*.md`（问题排查）、`yyyyMMdd-HH.md`（开发日志）都有固定的机器可判形式，
     所以在这里变成检查——否则一旦写错就只能靠人偶然发现，而文件名是检索的入口。
 
     `Archive/` 不参与：归档资料保留原名，且不再维护。
     """
     rules = {
         "Docs/TODO": re.compile(r"^TD-\d{5}-[A-Za-z0-9]+\.md$"),
-        "Docs/Troubleshooting": re.compile(r"^TS-\d{6}-[A-Za-z0-9]+\.md$"),
+        "Docs/Troubleshooting": re.compile(r"^TS-\d{4}-\d{3}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\.md$"),
         "Docs/DevLog": re.compile(r"^\d{8}-\d{2}\.md$"),
     }
     # 目录内允许的固定名（目录说明与模板）

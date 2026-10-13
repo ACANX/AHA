@@ -37,7 +37,7 @@ metadata:
 |---|---|
 | 本轮就能改完的缺陷 | 直接改，不必开 Issue |
 | 待办清单登记 | `Docs/TODO/`：`TD-PPPPP-*.md`（详情）+ `README.md`（清单与进度） |
-| 排障 / 事故复盘 | `Docs/Troubleshooting/`（`TS-yyyyMM-PascalCaseTitle.md`），必要时再开 Issue 长期跟踪 |
+| 排障 / 事故复盘 | `Docs/Troubleshooting/`（`TS-yyMM-NNN-英文词序.md`），必要时再开 Issue 长期跟踪 |
 | 已完成事项的记录 | `Docs/DevLog/`（`yyyyMMdd-HH.md`，规范与模板见该目录 `README.md`） |
 | 「做不到 / 已暂缓」的**结论**及其依据 | `Docs/PLAN.md`（只追加结论，不追加待办） |
 | 已废弃的历史资料 | `Archive/`（保持原名，头部注明「已废弃」） |

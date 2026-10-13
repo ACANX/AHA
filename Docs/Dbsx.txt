@@ -142,7 +142,7 @@ AHA 待办事项
 
 （模块与工作流的需求、构建报告、构建契约、产物落点等**已完成项**已归档到
  Docs/DevLog/20261009-16.md；排查过程见
- Docs/Troubleshooting/TS-202610-NativeSkipSilentOverride.md 等）
+ Docs/Troubleshooting/TS-2610-014-Native-Skip-Silent-Override.md 等）
 
 计划与跟踪（详见 Docs/Design/DesktopNativeDesign.md §7）
 -------------------------------------------------------

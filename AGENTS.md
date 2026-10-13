@@ -138,7 +138,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 ### 排障 / 事故类事项的留痕
 
 排障 / 事故类事项写一篇 [Docs/Troubleshooting/](Docs/Troubleshooting/) 下的
-`TS-yyyyMM-大驼峰英文标题.md`（模板：[TS-Template.md](Docs/Troubleshooting/TS-Template.md)），
+`TS-yyMM-NNN-英文词序.md`（模板：[TS-Template.md](Docs/Troubleshooting/TS-Template.md)），
 必备「现象 / 排查过程（含取证）/ 根因 / 修复 / 验证 / 教训 / 涉及文件」各节
 （见 `DocumentationSpec.md` §4）。需要长期跟踪时另开 Issue。
 
@@ -155,7 +155,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | 何时写 | 写哪里 | 命名与规范入口 |
 |---|---|---|
 | 完成一个功能 / 改动 / 修复 | `Docs/DevLog/` | `yyyyMMdd-HH.md` → [README](Docs/DevLog/README.md)（含模板） |
-| 排查完一个问题 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyyyMM-大驼峰英文标题.md` → [README](Docs/Troubleshooting/README.md) + [TS-Template.md](Docs/Troubleshooting/TS-Template.md) |
+| 排查完一个问题 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyMM-NNN-英文词序.md` → [README](Docs/Troubleshooting/README.md) + [TS-Template.md](Docs/Troubleshooting/TS-Template.md) |
 | 产生一个本轮不做的待办 | `Docs/TODO/`（+ 长期跟踪开 Issue） | `TD-PPPPP-大驼峰英文标题.md` → [README](Docs/TODO/README.md) |
 | 需要长期跟踪的遗留问题 / 待决策 / 需人工执行 | **GitHub Issue**（并在 `Docs/TODO/` 登记） | 技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md) |
 | 认定「做不到 / 已暂缓」 | `Docs/PLAN.md`（只追加结论，不追加待办） | `DocumentationSpec.md` §4 |
@@ -256,7 +256,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 - **GitHub Issue** — 遗留事项、待决策项、需人工 / 平台执行的事项（总览 #86）
 - [Docs/TODO/README.md](Docs/TODO/README.md) — 待办清单与进度看板；待办详情为同目录的 `TD-PPPPP-*.md`（每轮工作结束前扫一遍）
-- [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyyyMM-标题.md`）
+- [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyMM-NNN-英文词序.md`）
 - [Docs/DevLog/](Docs/DevLog/) — 已完成事项的开发记录（`yyyyMMdd-HH.md`，规范见该目录 README）
 - [TODO.md](Docs/TODO.md) — 历史待办与调整项（冻结，仅供追溯）
 - [PLAN.md](Docs/PLAN.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）

@@ -1,9 +1,9 @@
 # 文档规范
 
-**文档版本**：v1.21.0
+**文档版本**：v1.22.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-09
+**最后更新**：2026-10-13
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -35,6 +35,7 @@
 | v1.19.0 | 2026-10-09 | §1 / §2 / §4 登记 **`Archive/`**（已废弃历史资料的归档目录）：文件名保持原样、头部注明「已废弃」、`git mv` 保留 Git 历史 | @ACANX / CNXNC |
 | v1.20.0 | 2026-10-09 | §4 补登 `bin/CheckDocs.py` 的检查项：新增**目录命名规范检查**（`TD-PPPPP-*` / `TS-yyyyMM-*` / `yyyyMMdd-HH`）与 `TD-` 编号重复检查；明确 `Archive/` 不在扫描范围内 | @ACANX / CNXNC |
 | v1.21.0 | 2026-10-09 | §4 新增**记录纪律（强制）**：代码与记录同变更内完成；三类记录（待办 / 开发日志 / 排查记录）的时机与写法统一由 `AGENTS.md`「文档记录去向」与技能 `doc-recording` 承接 | @ACANX / CNXNC |
+| v1.22.0 | 2026-10-13 | §1 问题排查记录命名由 `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，对齐 LegionFanControl 的 `TroubleShootingDocSpec.md`）；`Docs/Troubleshooting/` 下 31 篇档案**全部改名并重编序号**（`001`~`031`，按原索引登记顺序），全仓引用与 H1 编号同步；`bin/CheckDocs.py` 命名正则同步 | @ACANX / CNXNC |
 
 ---
 
@@ -49,7 +50,7 @@
 - `.agents/skills/` 下的技能目录与 `SKILL.md` frontmatter 的 `name` 采用 **kebab-case**（小写字母 + 连字符），二者一致；技能目录内的 Markdown 资源（`references/` 下）同样使用 kebab-case，不受本文档 PascalCase 规则约束
 - **开发日志**（`Docs/DevLog/`）按 **`yyyyMMdd-HH.md`** 命名：`yyyyMMdd` 为事件日期，`HH` 为 24 小时制的**小时**（本地时间，取事件处理时点）。这是为「按时间线排序、一眼看出何时发生」而设的**显式例外**。同一小时内若确有第二件独立事项，**把 `HH` 顺延一位**（21 时的第二件记为 `20261007-22.md`），**不得加 `-2` 之类的后缀**——同一目录里只保留一种文件名形态，纯字符串排序即时间线顺序；当日编号单调递增，不回头复用。
 - **开发日志规范与模板**：`Docs/DevLog/README.md`（目录内除它以外，只应有 `yyyyMMdd-HH.md` 形态的文件）。
-- **问题排查记录**（`Docs/Troubleshooting/`）按 **`TS-yyyyMM-大驼峰英文标题.md`** 命名：`TS` 为固定前缀，`yyyyMM` 为事件发生的年月，标题为概括问题的**英文大驼峰**（2~5 个词，如 `CiRequiredCheckHang`）；同月多篇按标题字母序排列，**不加序号**。模板为 `Docs/Troubleshooting/TS-Template.md`（同样是显式例外）。
+- **问题排查记录**（`Docs/Troubleshooting/`）按 **`TS-yyMM-NNN-英文词序.md`** 命名：`TS` 为固定前缀，`yyMM` 为事件发生的年月（`2610` = 2026 年 10 月），`NNN` 为同期间内的**三位顺序号**（按登记时间递增，从 `001` 起，不复用、不跳号），标题为**英文词序**且**逐词用 `-` 连接**（如 `CI-Required-Check-Name-Mismatch`）；缩写（`CI` / `PR` / `JNI` / `CSS` / `JVM` / `LCD` …）整体大写，产品名按原厂写法（如 `GraalVM`、`JavaFX`），不用下划线、不连写、不出中文。模板为 `Docs/Troubleshooting/TS-Template.md`（同样是显式例外）。
 - **待办详情**（`Docs/TODO/`）按 **`TD-PPPPP-大驼峰英文标题.md`** 命名：`TD` 为固定前缀，`PPPPP` 为**五位数字，从 `00001` 开始全局自增**（不复用、不跳号），标题为英文大驼峰。`Docs/TODO/README.md` 是清单索引，为目录固定的保留名，**不走**该规则；新文件取当前最大编号 + 1。
 - **归档资料**（`Archive/`）：文件名**保持原样**（不强制改名），但必须在文件头部注明「**已废弃（YYYY-MM-DD）**」与替代物（如有）；`Archive/README.md` 为目录说明，按保留名处理。
 - 反例（禁止）：`agent-service-design.md`、`agent_service_design.md`、`AgentServiceDesign.MD`、`module-architecture.svg`、`TestingRule.md`、`Docs/DevSpec/BuildGuide.md`（构建规范应置于 DevSpec 并以 `Spec.md` 结尾）
