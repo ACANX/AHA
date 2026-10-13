@@ -32,7 +32,7 @@
   `./mvnw ... clean test`、`./mvnw ... verify`、`mvn ...`，以及任何等价的构建 / 测试动作
   （包括加 `-pl <模块> -am`、加 `-Djacoco.skip=true` 的「快检查」变体）；
 - 提交 / 推送前本地**只允许**跑静态检查脚本：
-  `python3 bin/Check{Changed,Docs,Skills,Scripts}.py`；
+  `python3 bin/Check{Changed,Docs,Skills,Scripts,Theme}.py`；
 - 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Build` / `Gate` 日志取**，不要在本机重跑；
 - **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 想先确认能不能编译」
   就本地补跑——直接推送，看 CI 结果；

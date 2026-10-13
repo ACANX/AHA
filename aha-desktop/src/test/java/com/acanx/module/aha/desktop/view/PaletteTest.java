@@ -43,6 +43,23 @@ class PaletteTest {
     }
 
     @Test
+    void darkContentSurfacesMatchThePageWhileLightKeepsWhiteInputs() {
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.CONTROL_INNER)
+                .as("暗色：内容面（输入框 / 文本域 / 列表 / 滚动容器）与页底同色（issue #153）")
+                .isEqualTo(Palette.BASE);
+        assertThat(Palette.RAISED_BACKGROUND)
+                .as("暗色：抬起控件（按钮 / 菜单 / 弹层）仍比页底亮一档，保留层次")
+                .isNotEqualTo(Palette.BASE);
+
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.CONTROL_INNER)
+                .as("亮色：白底输入框是既有观感（本轮未报问题，不动）")
+                .isEqualTo("#FFFFFF");
+        assertThat(Palette.RAISED_BACKGROUND).isEqualTo("#FFFFFF");
+    }
+
+    @Test
     void lightThemeIsAReadableTableNotTheDarkOne() {
         Palette.setTheme(Theme.LIGHT);
 
