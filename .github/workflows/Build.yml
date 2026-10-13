@@ -103,13 +103,18 @@ jobs:
           for pkg in libxtst6 libxss1 libgl1 libglib2.0-0 libasound2t64 libasound2 fonts-dejavu; do
             sudo apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 || true
           done
-      - name: 跑 GUI 冒烟（xvfb-run）
+      - name: 预装依赖模块（只编译，不跑它们的测试）
+        run: |
+          # 关键：分两步走。直接用 `-pl aha-desktop -am test` 会把**依赖模块的测试也跑一遍**
+          # （实测首轮跑了 211 个用例，其中 180 多个是 aha-common / aha-core 的）——
+          # 既拖时间，又会把「别的模块挂了」误报成「GUI 挂了」。
+          # 先 install 依赖（skipTests），再**只测 aha-desktop**。
+          ./mvnw -B -q -pl aha-desktop -am install -DskipTests -Djacoco.skip=true
+      - name: 跑 GUI 冒烟（xvfb-run，只测 aha-desktop）
         id: smoke
         run: |
           set -o pipefail
-          # -am：aha-desktop 依赖 aha-core / aha-common / aha-extension-api / aha-tool，
-          #     只 -pl 它会在本地仓库里找不到依赖（首次跑这条腿最容易踩的坑）。
-          xvfb-run -a ./mvnw -B -pl aha-desktop -am test \
+          xvfb-run -a ./mvnw -B -pl aha-desktop test \
             -Daha.ui.tests=true -Djacoco.skip=true 2>&1 | tee /tmp/ui-smoke.log
       - name: 结论写进摘要
         if: always()

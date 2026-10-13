@@ -22,6 +22,8 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
@@ -80,47 +82,47 @@ class AhaDesktopSmokeTest {
         Stage stage = stageRef.get();
         assertThat(stage).isNotNull();
         assertThat(stage.getTitle()).contains(AppVersion.version());
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.STATUS_ID)))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.STATUS_ID)))
                 .isInstanceOf(Label.class);
         // D-11：窗口里必须能看到配置来源与生效日志级别
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.CONFIG_ID)))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.CONFIG_ID)))
                 .isInstanceOf(Label.class);
 
         // 三栏骨架与输入区都在
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.MENU_BAR_ID))).isNotNull();
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_CONTENT_ID))).isNotNull();
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.RIGHT_CONTENT_ID))).isNotNull();
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.MESSAGES_ID))).isInstanceOf(VBox.class);
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.COMPOSER_ID))).isInstanceOf(TextArea.class);
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.MENU_BAR_ID))).isNotNull();
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_CONTENT_ID))).isNotNull();
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.RIGHT_CONTENT_ID))).isNotNull();
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.MESSAGES_ID))).isInstanceOf(VBox.class);
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.COMPOSER_ID))).isInstanceOf(TextArea.class);
         // 右栏默认收起（本轮无数据），中栏因此更宽
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.RIGHT_CONTENT_ID).isVisible()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.RIGHT_CONTENT_ID).isVisible()))
                 .isFalse();
 
         // 折叠 → 展开：走的是窄条按钮本身，也就是鼠标用户点的那颗
-        Button leftToggle = (Button) uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_TOGGLE_ID));
+        Button leftToggle = (Button) uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_TOGGLE_ID));
         assertThat(leftToggle).isNotNull();
         onUi(leftToggle::fire);
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_CONTENT_ID).isVisible()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_CONTENT_ID).isVisible()))
                 .isFalse();
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_CONTENT_ID).isManaged()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_CONTENT_ID).isManaged()))
                 .isFalse();
         // 折叠后按钮必须还在，否则用户没有任何办法展开（本次要钉住的正是这件事）
         assertThat(uiGet(leftToggle::isVisible)).isTrue();
         onUi(leftToggle::fire);
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_CONTENT_ID).isVisible()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_CONTENT_ID).isVisible()))
                 .isTrue();
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.LEFT_CONTENT_ID).isManaged()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.LEFT_CONTENT_ID).isManaged()))
                 .isTrue();
 
         // 右栏同理：收起的栏也能从窄条按钮拉回来
-        Button rightToggle = (Button) uiGet(() -> stage.getScene().lookup("#" + DesktopShell.RIGHT_TOGGLE_ID));
+        Button rightToggle = (Button) uiGet(() -> byId(stage.getScene(), DesktopShell.RIGHT_TOGGLE_ID));
         onUi(rightToggle::fire);
-        assertThat(uiGet(() -> stage.getScene().lookup("#" + DesktopShell.RIGHT_CONTENT_ID).isVisible()))
+        assertThat(uiGet(() -> byId(stage.getScene(), DesktopShell.RIGHT_CONTENT_ID).isVisible()))
                 .isTrue();
 
         // Enter 发送 / Shift+Enter 换行
-        TextArea composer = (TextArea) uiGet(() -> stage.getScene().lookup("#" + DesktopShell.COMPOSER_ID));
-        VBox messages = (VBox) uiGet(() -> stage.getScene().lookup("#" + DesktopShell.MESSAGES_ID));
+        TextArea composer = (TextArea) uiGet(() -> byId(stage.getScene(), DesktopShell.COMPOSER_ID));
+        VBox messages = (VBox) uiGet(() -> byId(stage.getScene(), DesktopShell.MESSAGES_ID));
         int before = uiGet(() -> messages.getChildren().size());
         onUi(() -> {
             composer.setText("你好");
@@ -174,19 +176,15 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(sessionShell::sessionRows))
                 .anySatisfy(row -> assertThat(row).contains("看看代码"))
                 .anySatisfy(row -> assertThat(row).contains("12 条").contains("2 分钟前"));
-        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) sessionShell.buildRoot()
-                .lookup("#" + DesktopShell.SESSION_LIST_ID)) == null))
+        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) byId(sessionShell.buildRoot(), DesktopShell.SESSION_LIST_ID)) == null))
                 .as("会话列表必须真的在左栏里（且有右键菜单）")
                 .isFalse();
-        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) sessionShell.buildRoot()
-                .lookup("#" + DesktopShell.SESSION_LIST_ID)).getContextMenu().getItems().size()))
+        assertThat(uiGet(() -> ((javafx.scene.control.ListView<?>) byId(sessionShell.buildRoot(), DesktopShell.SESSION_LIST_ID)).getContextMenu().getItems().size()))
                 .isGreaterThanOrEqualTo(4);
         // 左栏宽度是硬约束：控件溢出会盖住中栏（真机截图里搜索框曾经横向溢出）
-        assertThat(uiGet(() -> sessionShell.buildRoot()
-                .lookup("#" + DesktopShell.SESSION_SEARCH_ID).getLayoutBounds().getWidth()))
+        assertThat(uiGet(() -> byId(sessionShell.buildRoot(), DesktopShell.SESSION_SEARCH_ID).getLayoutBounds().getWidth()))
                 .as("搜索框不能超出左栏").isLessThanOrEqualTo(ShellLayout.LEFT_WIDTH);
-        assertThat(uiGet(() -> sessionShell.buildRoot()
-                .lookup("#" + DesktopShell.SESSION_LIST_ID).getLayoutBounds().getWidth()))
+        assertThat(uiGet(() -> byId(sessionShell.buildRoot(), DesktopShell.SESSION_LIST_ID).getLayoutBounds().getWidth()))
                 .as("会话列表不能超出左栏").isLessThanOrEqualTo(ShellLayout.LEFT_WIDTH);
 
         onUi(() -> sessionShell.searchSessions("文档"));
@@ -203,8 +201,7 @@ class AhaDesktopSmokeTest {
             extra.show();
             inputStage.set(extra);
         });
-        TextArea input = (TextArea) uiGet(() -> inputStage.get().getScene()
-                .lookup("#" + DesktopShell.COMPOSER_ID));
+        TextArea input = (TextArea) uiGet(() -> byId(inputStage.get().getScene(), DesktopShell.COMPOSER_ID));
         onUi(() -> {
             input.setText("/he");
             input.positionCaret(3);
@@ -218,8 +215,7 @@ class AhaDesktopSmokeTest {
 
         // Enter 执行命令：/help 应当把命令一览写进对话流，而不是发给模型
         onUi(inputShell::submitComposer);
-        assertThat(uiGet(() -> (int) ((VBox) inputStage.get().getScene()
-                .lookup("#" + DesktopShell.MESSAGES_ID)).getChildren().size()))
+        assertThat(uiGet(() -> (int) ((VBox) byId(inputStage.get().getScene(), DesktopShell.MESSAGES_ID)).getChildren().size()))
                 .isGreaterThan(1);
         assertThat(uiGet(() -> inputShell.history().size())).isEqualTo(1);
         assertThat(uiGet(inputShell::helpTextContainsCatalog))
@@ -250,8 +246,7 @@ class AhaDesktopSmokeTest {
         onUi(() -> inputShell.applyTheme(Theme.LIGHT));
         assertThat(uiGet(() -> inputStage.get().getScene().getRoot().getStyle()))
                 .as("换主题要连根节点的样式一起换").contains(Palette.BASE);
-        assertThat(uiGet(() -> ((Button) inputStage.get().getScene()
-                .lookup("#" + DesktopShell.SEND_ID)).getStyle()))
+        assertThat(uiGet(() -> ((Button) byId(inputStage.get().getScene(), DesktopShell.SEND_ID)).getStyle()))
                 .as("已建好的控件也必须被重刷，而不是只换新控件").contains(Palette.FOREGROUND);
         onUi(() -> inputShell.applyTheme(Theme.DARK));
         onUi(() -> inputStage.get().close());
@@ -293,13 +288,54 @@ class AhaDesktopSmokeTest {
     private static String awaitStatus(Stage stage) throws Exception {
         String text = DesktopShell.STATUS_INITIAL;
         for (int i = 0; i < POLL_ROUNDS && DesktopShell.STATUS_INITIAL.equals(text); i++) {
-            text = uiGet(() -> ((Label) stage.getScene()
-                    .lookup("#" + DesktopShell.STATUS_ID)).getText());
+            text = uiGet(() -> ((Label) byId(stage.getScene(), DesktopShell.STATUS_ID)).getText());
             if (DesktopShell.STATUS_INITIAL.equals(text)) {
                 Thread.sleep(50);
             }
         }
         return text;
+    }
+
+    /**
+     * 按**节点 id** 取节点。
+     *
+     * <p><strong>为什么不用 {@code scene.lookup("#" + id)}</strong>：本项目的节点 id 形如
+     * {@code aha.status}（带点），而 CSS 选择器里 {@code .} 是**类选择器**——
+     * {@code lookup("#aha.status")} 会被解析成「id=aha **且** class=status」，永远找不到。
+     * 这不是产品缺陷（id 只是个字符串），而是「用 CSS 选择器表达带点 id」的固有限制。</p>
+     *
+     * <p><strong>实测（2026-10-13，ui-smoke 首次运行）</strong>：本套件里 25 处
+     * {@code lookup("#…")} 全部返回 {@code null}——也就是说这套断言写好后
+     * <em>从未真正通过过</em>，因为它从未被真正执行（一直开着
+     * {@code -Daha.ui.tests=true} 这个门）。第一个真跑它的就是那个新的 CI 作业。</p>
+     *
+     * <p>这里改为遍历场景图、直接比 {@link Node#getId()}——不经过 CSS 选择器，
+     * 因此对含点的 id 安全。</p>
+     *
+     * @param scene 场景（可为 {@code null}）
+     * @param id    节点 id
+     * @return 节点；找不到返回 {@code null}
+     */
+    private static Node byId(Scene scene, String id) {
+        return scene == null ? null : byId(scene.getRoot(), id);
+    }
+
+    /**
+     * 按节点 id 在某个父节点下取节点（与 {@link #byId(Scene, String)} 同理，
+     * 供对话框的 {@code DialogPane} 这类非 Scene 根使用）。
+     *
+     * @param root 父节点（可为 {@code null}）
+     * @param id   节点 id
+     * @return 节点；找不到返回 {@code null}
+     */
+    private static Node byId(Parent root, String id) {
+        if (root == null) {
+            return null;
+        }
+        return root.lookupAll("*").stream()
+                .filter(node -> id.equals(node.getId()))
+                .findFirst()
+                .orElse(null);
     }
 
     private static void startToolkit() throws InterruptedException {
