@@ -3,7 +3,7 @@
 **文档版本**：v1.1.0
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-09
+**最后更新**：2026-10-13
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -78,7 +78,9 @@ TD-00014-ManualAndExternalActions.md
 ## 3. 当前编号
 
 - 已用：`TD-00001` ~ `TD-00017`
-- **下一个可用编号：`TD-00017`**
+- **下一个可用编号：`TD-00018`**
+
+> 订正（2026-10-13）：本行此前停在 `TD-00017`（已用区间与之矛盾）。
 
 ## 4. 清单
 
@@ -122,7 +124,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00013](TD-00013-EngineeringAndDocHygiene.md) | CI 日志噪音、工作流与文档检查、脚本目录、暂存区文档去留 | ☐ 未开始 | [#84](https://github.com/ACANX/AHA/issues/84) | |
 | [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ⏸ 阻塞 | [#85](https://github.com/ACANX/AHA/issues/85) | 需仓库 / 平台权限或外部环境 |
 | [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | [#92](https://github.com/ACANX/AHA/issues/92)（父；子 [#93](https://github.com/ACANX/AHA/issues/93)~[#97](https://github.com/ACANX/AHA/issues/97)） | 含根因反思；分 5 阶段（P1 校验 → P2 读取收敛 → P3 `${revision}` → P4 分发器 → P5 文档） |
-| [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 31 篇排查档案正文对齐 TroubleShootingDocSpec 的 12 节骨架 | ⏸ 待拍板 | [#128](https://github.com/ACANX/AHA/issues/128) | 命名已于 2026-10-13 对齐；本项只涉**正文骨架**，待选 A / B / C |
+| [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 排查档案正文对齐 TroubleShootingDocSpec 的**四节必备项** | ✅ 已完成 | [#128](https://github.com/ACANX/AHA/issues/128) | 2026-10-13 拍板取**选项 C**：32 篇 + 模板补齐四节；规范新增 §5；`CheckDocs.py` 新增机器检查 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）
 
