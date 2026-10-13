@@ -19,7 +19,11 @@
   `KINDS` 表里差五项（tag 后缀 / 资产前缀 / 可执行文件名 / 状态文件名 / 帮助里展示的用法），
   新增第三种原生包 = 表里加一行；历史命令名 `DesktopNativeVersionUpdate.py` **保持可用**
   （现为薄壳）。实测：本机取到 `V0.1.3.00154-aha-cli-native`，`version` 输出 `AHA 0.1.3.00154`。
-  详见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
+  ③ **网络层两条路（2026-10-13 追加）**：Windows 上若本机 Python 的 HTTPS **硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、进程内 `try/except` 捕不到），
+  `auto` 会用**子进程**探一次并自动改用系统 `curl.exe`（系统 TLS）；也可用
+  `--downloader auto|urllib|curl` 显式指定。详见 `TS-2610-036`。
+  整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
 - **Troubleshooting 32 篇档案补齐四节必备项（2026-10-13，issue #128，选项 C）**：

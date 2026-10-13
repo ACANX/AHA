@@ -162,6 +162,13 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - **校验**：下载完成后按 `sha256:<hex>` 校验（仅 `api` 路径有 digest），
   失败即删除文件并报错，不留下「看起来下完了」的坏包。`size` 作为第二道兜底。
 - **进度输出到 `stderr`**，`stdout` 只留结果与计划，便于管道与日志分流。
+- **下载器有两条路（2026-10-13，issue #156）**：默认 `urllib`（Python 自带的 TLS）；
+  Windows 上 `auto` 会先用**子进程**探一次 HTTPS，不可用就改用系统 `curl.exe`（系统 TLS）。
+  为什么非要多这一层：部分 Windows 机器上 Python 的 OpenSSL 运行时会**硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`），而那种失败**在进程内捕捉不到**——进程被直接终结，
+  连 traceback 都打不出来，只能靠「换一条不经过 Python TLS 的路」自救；
+  探测之所以必须放在子进程，就是因为它连异常都来不及抛。详见 [`TS-2610-036`](../Troubleshooting/TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md)。
+  curl 路径同样支持续传（`-C -`，服务器不认 Range 时自动退回完整下载）。
 
 ## 6. 安装
 
@@ -211,6 +218,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 | `--jdk` | `25` | JDK 分支；无该分支时报错而非静默替换 |
 | `--dist` | 仓库根 `Dist/` | 安装目录 |
 | `--source` | `auto` | `auto` / `api` / `atom` / `page` |
+| `--downloader` | `auto` | `auto` / `urllib` / `curl`；Windows 的 `auto` 先探 Python 的 HTTPS，失败则用系统 curl |
 | `--timeout` | `30` | 元数据请求超时（秒） |
 | `--download-timeout` | `600` | 下载超时（秒） |
 | `--force` | 关 | 忽略「已是最新」 |
@@ -246,6 +254,9 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - 未做限流后的重试与退避：`auto` 会退到 `atom`，对当前使用频率足够；
 - `.gitignore` 里的 `Dist/` 在大小写不敏感的文件系统上同时命中 `Dist/`，
   因此状态文件与 zip 不会被误提交——这是依赖既有规则，不是本脚本额外做的保护。
+- **Windows 上 Python 自身的 HTTPS 可能不可用**（OpenSSL `no OPENSSL_Applink`）：
+  工具已自动改走系统 `curl.exe` 兜底（§5），但**下载器救不了 Python 完全坏掉**的情形——
+  `bin/Check*.py`、`DesktopDistBuild.py` 等仍需可用的 Python。
 
 ## 11. 后续路线
 

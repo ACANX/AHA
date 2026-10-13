@@ -113,6 +113,9 @@ mvnw.cmd -pl aha-cli exec:java -Dexec.args="provider list"
 
 ## 4. 原生镜像（试验性，免 JDK）
 
+> 取件时若本机 Python 的 HTTPS 不可用（Windows 上偶见 `no OPENSSL_Applink`），Windows 版会
+> **自动改用系统 `curl.exe`**；也可显式指定 `--downloader curl`。见 `TS-2610-036`。
+
 ### 4.1 桌面端原生镜像
 
 **取件（一键，Windows 双击）**：
