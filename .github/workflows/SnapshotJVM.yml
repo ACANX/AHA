@@ -143,6 +143,11 @@ jobs:
           set -euo pipefail
           pr="${{ steps.pr.outputs.pr }}"
           baseline=$(python3 .github/Python/ProjectVersion.py --resolve)
+          # `pr` 与 `owns_comment` 在**任何分支**都要产出：评论作业的门是
+          # `pr != '' && owns_comment != 'false'`；早先只有成功分支写了 pr，
+          # 于是「非法命令 ⇒ 回复用法」这条路径**根本不会回写评论**（真机实测抓到）。
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+          # `owns_comment` 不在这里写：判定脚本给出 false（纯原生目标）时必须生效 ⇒ 由各分支显式写
           # 评论正文一律由脚本生成（含「未构建」说明）——YAML 里只出现单行调用，
           # 避免多行字符串在块标量里被提前截断（本文件曾因此写坏三次）。
           # 注意：多行输出必须用 heredoc 形式（`name<<EOF` … `EOF`）；直接 `comment=多行`
@@ -170,6 +175,7 @@ jobs:
               OWNER|MEMBER|COLLABORATOR) ;;
               *)
                 echo "should_build=false" >> "$GITHUB_OUTPUT"
+                echo "owns_comment=true" >> "$GITHUB_OUTPUT"
                 # 注意：**不能**用反引号包 `/snapshot` —— 双引号内反引号会被 bash 当命令替换执行（实测报 `/snapshot\: No such file or directory`）
                 echo "owns_comment=true" >> "$GITHUB_OUTPUT"
                 emit_notice "/snapshot 命令只对**本仓库有写权限**的账号生效（当前账号关联：${ASSOCIATION:-NONE}）"
@@ -188,13 +194,13 @@ jobs:
           if [ "${code}" -ne 0 ]; then
             # 参数非法 ⇒ 回复用法、不构建（#165 验收 26）
             echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "owns_comment=true" >> "$GITHUB_OUTPUT"
             emit_notice "$(head -1 plan.err)"
             exit 0
           fi
 
           {
             echo "should_build=$(echo "$json" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["should_build"]).lower())')"
-            echo "pr=${pr}"
             echo "version=$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
             echo "targets=$(echo "$json" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["targets"]))')"
             echo "matrix=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["matrix"], separators=(",",":")))')"
