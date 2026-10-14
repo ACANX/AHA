@@ -75,7 +75,7 @@ defaults:
 jobs:
   # ── 1. 判定：该不该出、出哪几个目标与平台、版本号、评论正文 ───────────────────
   plan:
-    name: plan（判定）
+    name: Plan
     runs-on: ubuntu-latest
     # 评论触发的：只认 `/snapshot` 开头的评论，其它评论一律不理会（否则每条评论都起一次 run）。
     if: >-
