@@ -783,6 +783,11 @@ jobs:
           # 可判别性：改前该串必然出现（今天两条原生构建都是），改后应当消失 ⇒ 是真「前/后」对照。
           $hasOsInfo  = $text -match 'OS Information:'
           $zeroOsInfo = $text -match 'Windows version 0\.0 build 0'
+          # issue #151：没有「Windows 10 兼容清单」的 exe，GetVersionEx 家族一律返回 6.2.9200
+          # （= Windows 8.0），而 CI runner 是 Windows Server（10.0 家族）。
+          # 因此这两条在 CI 上都有判别力：改前必然命中 shim，改后应当是 10.x。
+          $shimOsInfo = $text -match 'Windows version 8\.0 build 9200'
+          $realOsInfo = $text -match 'Windows version 10\.'
 
           # 把现场打全（TS-2610-003 的教训）。为什么**无条件**打印而不是只在失败时：
           # 判定依赖「捕获到了什么」，而「什么都没捕获到」本身也是一种结论——
@@ -795,7 +800,7 @@ jobs:
           if (Test-Path $stderr) { Get-Content $stderr -TotalCount 25 | ForEach-Object { Write-Host "ERR| $_" } }
 
           $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded `
-                -and $hasOsInfo -and (-not $zeroOsInfo)
+                -and $hasOsInfo -and (-not $zeroOsInfo) -and (-not $shimOsInfo) -and $realOsInfo
           if ($hasFailed) {
             $verdict = '失败：界面装载失败（命中 [ui-fxml-load-failed]）'
           } elseif ($exited -and $code -ne 0) {
@@ -804,8 +809,12 @@ jobs:
             $verdict = '失败：未命中正面标记 [ui-fxml-loaded]（界面没有装起来）'
           } elseif ($zeroOsInfo) {
             $verdict = '失败：OS 信息全零（Windows version 0.0 build 0）——prism_d3d 按名回写字段失败（issue #60 回归）'
+          } elseif ($shimOsInfo) {
+            $verdict = '失败：OS 版本仍被兼容性 shim 报成 Windows 8.0 build 9200（issue #151：清单未嵌入或未生效）'
           } elseif (-not $hasOsInfo) {
-            $verdict = '失败：未打印 OS Information（prism.verbose 输出缺失，本步的 #60 断言会空过）'
+            $verdict = '失败：未打印 OS Information（prism.verbose 输出缺失，本步的 #60 / #151 断言会空过）'
+          } elseif (-not $realOsInfo) {
+            $verdict = '失败：OS 版本不是 10.x（既不是 shim 的 8.0，也不是期望的真实版本——需看上面捕获的输出）'
           } elseif (-not $hasVersion) {
             $verdict = '可疑：命中 [ui-fxml-loaded] 但没有 [aha-version]'
           } else {
@@ -824,6 +833,7 @@ jobs:
             "- 结论：$verdict"
             "- 正面标记：``[aha-version]``=${hasVersion}，``[ui-fxml-loaded]``=${hasLoaded}，``[ui-fxml-load-failed]``=${hasFailed}"
             "- OS / 驱动信息：``OS Information:``=${hasOsInfo}，全零（``Windows version 0.0 build 0``）=${zeroOsInfo}"
+            "- OS 版本真实性（issue #151）：命中 shim（``Windows version 8.0 build 9200``）=${shimOsInfo}，命中 10.x=${realOsInfo}"
             "- 退出：exited=${exited}，code=${code}"
             "- 可执行文件：$bin"
             '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，D3D **驱动名 / 厂商 ID 等依赖真实 GPU 的字段仍可能是零值**（runner 是虚拟机）；能在这里判别的是 **Windows 版本号**（与 GPU 无关）。'
@@ -860,6 +870,38 @@ jobs:
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
+
+      - name: 自证：Windows 10 兼容清单已嵌进 exe（issue #151）
+        # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。
+        if: steps.verify.outputs.produced == 'true' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 光看「加了参数」不算数：参数写错位置、被当应用参数、相对路径没解析到——
+          # 这些都表现得跟「成功」一模一样。所以到打好的包里把清单**找出来**。
+          python3 - <<'PY'
+          import sys, zipfile, pathlib
+
+          DIST = pathlib.Path("Dist")
+          guid = b"8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a"
+          zips = [p for p in DIST.glob("AHA-Desktop-Native-*.zip") if "-Report" not in p.name]
+          if not zips:
+              sys.exit("找不到镜像包（Dist/AHA-Desktop-Native-*.zip）")
+          zips.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+          zip_path = zips[0]
+          with zipfile.ZipFile(zip_path) as archive:
+              exes = [i for i in archive.infolist() if i.filename.lower().endswith(".exe")]
+              if not exes:
+                  sys.exit(f"包内没有 exe：{archive.namelist()}")
+              data = archive.read(exes[0])
+          if guid not in data:
+              sys.exit(
+                  f"{zip_path.name} 的 {exes[0].filename} 里没有找到 Win10 兼容清单的 GUID\n"
+                  "  清单没嵌进去：检查 native.image.extra.argsfile 是否指向了 native-image-args-windows.txt\n"
+                  "  （在 Windows 上由 native-windows-manifest profile 自动设置）"
+              )
+          print(f"✅ 清单已嵌入：{zip_path.name} → {exes[0].filename}（命中 GUID {guid.decode()}）")
+          PY
 
       - name: 上传制品
         # 只有真的产出了二进制才上传；没有就跳过（不算失败——这是可选管线）

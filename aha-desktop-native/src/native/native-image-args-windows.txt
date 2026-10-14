@@ -1,0 +1,20 @@
+# Windows 专用参数（issue #151）：把 Windows 10 兼容清单嵌进 exe。
+#
+# 为什么单独一份文件，而不是写进 native-image-args.txt：
+#   下面两条是 **MSVC 链接器**参数，在 Linux / macOS 上会让链接直接失败，
+#   因此只能对 Windows 腿生效。生效方式见 pom 的 native-windows-manifest profile
+#   （在 Windows 上把 native.image.extra.argsfile 指向本文件；其他平台指向
+#   native-image-args-extra.txt，那份只有注释，等于什么都不加）。
+#
+# 选项名的出处：GraalVM 25 的 com.oracle.svm.hosted.image.CCLinkerInvocation$Options
+#   （NativeLinkerOption 是**可累加的多值选项**，所以这里重复两次）。
+#
+# 清单路径用相对名 `app.manifest`：pom 会把 src/native/app.manifest 拷进
+#   native-image 的工作目录（target/native/），而链接器就在该目录下被调起，因此
+#   相对名可解析。若哪天工作目录变了，链接会明确报「找不到 app.manifest」而失败——
+#   不会静默丢掉清单（这正是 issue #151 验收标准 4 要防的事）。
+#
+# /MANIFEST:EMBED 必须写：只给 /MANIFESTINPUT 时，合并后的清单会落到**单独的
+#   .manifest 文件**里，而不是嵌进 exe。
+-H:NativeLinkerOption=/MANIFEST:EMBED
+-H:NativeLinkerOption=/MANIFESTINPUT:app.manifest
