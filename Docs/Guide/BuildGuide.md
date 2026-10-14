@@ -1,9 +1,9 @@
 # 构建指南
 
-**文档版本**：v1.10.0
+**文档版本**：v1.12.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-09
+**最后更新**：2026-10-14
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -25,6 +25,7 @@
 | v1.9.0 | 2026-10-07 | §5 补终端查看覆盖率汇总的方式（`bin/ReportCoverage.py`）并说明门禁静默、脚本只报数不判定 | @ACANX |
 | v1.10.0 | 2026-10-09 | §3.1.1 新增桌面端便携包的一键构建与更新脚本（`Script/Python/DesktopDistBuild.py`、`DesktopDistExtract.py`）与命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，随 `mvn package` 重建） | @ACANX |
 | v1.11.0 | 2026-10-09 | 明确 Agent 不在本地执行 Maven 编译 / 测试，以 PR 的 CI checks 为准；§3.2 自查说明区分「人类开发者」与「Agent」 | @ACANX |
+| v1.12.0 | 2026-10-14 | 新增 §3.3「快照包（PR 试包）」：触发方式（标签 / 平台限定 / `/snapshot` 命令）、产物命名（`V<快照版本>-AHA-<目标>-SNAPSHOT` + `AHA-Desktop-JVM-…` / `AHA-Cli-JVM-…`）、变更分类 A/B/C 与清单单一来源、清理与本地取件（issue #165 / #171） | @cnxnc |
 
 ---
 
@@ -200,6 +201,44 @@ mvn -B clean verify            # 用本机的 Maven 3.9.x；CI 由 Compat.yml �
 
 何时**必须**跑完整 `verify` 见 [BuildSpec.md](../DevSpec/BuildSpec.md) 第 8 节。
 CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没必要省。
+
+### 3.3 快照包（PR 试包：先出包再合并）
+
+给**尚未合并**的 PR 出一版可下载的 JVM 便携包，把自测提前到合并之前
+（方案与验收见 [issue #165](https://github.com/ACANX/AHA/issues/165)，实施见 #171）。
+本条只覆盖 JVM 线；原生线见 #172。
+
+**触发方式**
+
+| 方式 | 用法 | 生效范围 |
+|---|---|---|
+| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` | 打上后每次 push 都重出；移除标签即停 |
+| 平台限定标签 | 同时打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu` | 收窄到单平台；**不能单独使用** |
+| PR 评论命令（一次性） | `/snapshot <target> [os ...]` | 大小写不敏感；仅对仓库有写权限的账号生效 |
+
+未打任何触发标签时，四类目标都不出包。
+
+**产物**
+
+| 项 | 值 |
+|---|---|
+| 发布页 tag 与名称 | `V<快照版本>-AHA-<目标>-SNAPSHOT`（**每个目标一条** pre-release，不进 `releases/latest`） |
+| 快照版本 | `<基线>.<PR 号补零 5 位>.<MMddHHmm（北京时间）>` |
+| 桌面包 | `AHA-Desktop-JVM-<版本>-<平台>-jdk25.zip` |
+| CLI 包 | `AHA-Cli-JVM-<版本>-<平台>-jdk25.zip` |
+| 平台标签 | `ubuntu-x64`（构建与冒烟**只验过 Ubuntu 24.04**，其他发行版未验证）/ `windows-x64` |
+| JDK | **只有 25**（快照线不产 JDK 27 包；dev 线才有 JDK 27） |
+
+**变更分类**：改动路径决定「本次要不要出包」——A 组（影响产物）与 C 组（未列到的一切）**出包**，
+B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因；清单是
+`.github/snapshot-paths.yml`（单一来源，由 `bin/CheckScripts.py` 守住一致性）。
+**只改文档的 PR 不会出包**，除非新打了触发标签（此时属显式请求，照出）。
+判定逻辑在 `.github/Python/SnapshotPlan.py`，可本地跑 `--self-test`。
+
+**清理**：同一 PR 的快照保留最近 3 条、有效期 7 天；PR 关闭或合并后自动删除
+（`snapshot-cleanup.yml`，见 #174）。
+
+**本地取件**：`Dist\UpdateSnapshot.cmd -Pr <N>`（随 #173 落地）。
 
 ## 4. 单模块构建
 
