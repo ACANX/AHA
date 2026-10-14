@@ -1,9 +1,9 @@
 # 文档规范
 
-**文档版本**：v1.23.1
+**文档版本**：v1.24.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-13
+**最后更新**：2026-10-14
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -38,6 +38,7 @@
 | v1.22.0 | 2026-10-13 | §1 问题排查记录命名由 `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，对齐 LegionFanControl 的 `TroubleShootingDocSpec.md`）；`Docs/Troubleshooting/` 下 31 篇档案**全部改名并重编序号**（`001`~`031`，按原索引登记顺序），全仓引用与 H1 编号同步；`bin/CheckDocs.py` 命名正则同步 | @ACANX / CNXNC |
 | v1.23.0 | 2026-10-13 | 新增 **§5「TS 档案正文骨架」**：明确四节必备项（结论分层 / 观测数据 / 排除项 / 未决问题）的写法与「补入块」形式；`TS-Template.md` 与 32 篇档案同步补齐；`bin/CheckDocs.py` 新增对应的机器检查（issue #128） | @ACANX / CNXNC |
 | v1.23.1 | 2026-10-13 | §4「问题排查记录」一条**加指向 §5 的引用**：issue #128 的验收标准按当时写法点名「写入 §4」，而 §4 已被「更新制度」占用且被 `AGENTS.md` / `IssueTrackingSpec.md` 引用，**不得重编号** ⇒ 在 §4 留下入口，避免读者按 §4 去找而找不到（issue #128） | @ACANX / CNXNC |
+| v1.24.0 | 2026-10-14 | §2 末尾加指向 `Docs/Guide/PlanWritingGuide.md` 的引用（方案类文档体例参考，非强制） | @cnxnc |
 
 ---
 
@@ -72,6 +73,9 @@
 | 待办清单（`README.md`）与待办详情（`TD-*.md`） | `Docs/TODO/` |
 | 已废弃的历史资料（归档，不再维护） | `Archive/` |
 | AGENT 技能 | `.agents/skills/` |
+
+> **方案类文档**（较大方案变更 / 新特性）的体例与写法参考：
+> [`Docs/Guide/PlanWritingGuide.md`](../Guide/PlanWritingGuide.md)（**参考性，非强制**；命名与骨架仍以本规范为准）。
 
 ## 3. 文档头部
 
