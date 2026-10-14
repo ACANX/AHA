@@ -384,7 +384,7 @@ def check_snapshot_fetch_parity() -> list[str]:
                     f"快照命名契约：tag 的字面量 {literal!r}（来自 SnapshotPlan.py 的 TAG_FORMAT）"
                     f"没有出现在 UpdateSnapshot.ps1 的 $TagPattern 里（或其右侧被改动过）"
                 )
-        for target in ("Desktop", "Cli", "NativeDesktop", "NativeCli"):
+        for target in ("Desktop", "Cli", "Desktop-Native", "Cli-Native", "NativeDesktop", "NativeCli"):
             if target not in pattern.group(1):
                 problems.append(f"快照命名契约：$TagPattern 里没有目标 {target!r}——该目标的快照本地取不到")
 
