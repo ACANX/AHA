@@ -13,6 +13,8 @@
 
     python3 .github/Python/JvmMatrix.py --validate ''                 # 用默认六条腿
     python3 .github/Python/JvmMatrix.py --validate '[{"os":"ubuntu-latest",…}]'  # 用给定矩阵
+
+输出两行：第 1 行人类可读摘要，第 2 行腿清单（`<label>/jdk<JDK>` 逗号分隔，供步骤级 if 过滤）。
     python3 .github/Python/JvmMatrix.py --self-test               # 自检（正 / 反例）
 
 退出码：0 = 通过；1 = 选择不合法；2 = 用法错误。
@@ -106,19 +108,19 @@ SELF_TEST_CASES: list[tuple[str, bool, str]] = [
 
 def self_test() -> int:
     """自检解析边界。"""
-    print("JVM 腿选择自检：")
+    print("JVM 构建矩阵自检：")
     failed = 0
     for raw, should_pass, note in SELF_TEST_CASES:
         try:
-            legs = parse_legs(raw)
-            ok, detail = True, legs
-        except LegsError as exc:
+            matrix = parse_matrix(raw)
+            ok, detail = True, describe(matrix)
+        except MatrixError as exc:
             ok, detail = False, str(exc)
-        # `all` 与具体腿混用：本实现按「不认识」拦下，属于期望的失败
         good = ok == should_pass
         failed += 0 if good else 1
+        shown = raw if len(raw) <= 52 else raw[:49] + "..."
         print(
-            f"  {'✅' if good else '❌'} {raw!r} → {'通过' if ok else '失败'}"
+            f"  {'✅' if good else '❌'} {shown!r} → {'通过' if ok else '失败'}"
             f"（应为{'通过' if should_pass else '失败'}）—— {note}；{detail}"
         )
     if failed:
@@ -126,6 +128,16 @@ def self_test() -> int:
         return 1
     print(f"\n✅ {len(SELF_TEST_CASES)} 条自检全部符合预期")
     return 0
+
+
+def leg_keys(matrix: list[dict]) -> str:
+    """腿清单（逗号分隔的 `<label>/jdk<JDK>`），供**步骤级** if 用 `contains` 过滤。
+
+    为什么不用 job 级 if / 动态矩阵：见模块 docstring —— job 级 `if` 读不到 `matrix`
+    （实测 `Unrecognized named-value: 'matrix'`），动态矩阵会让作业被静默丢弃。
+    步骤级 `if` 能同时读到 `matrix` 与 `needs` 输出，因此收窄只能在步骤里做。
+    """
+    return ",".join(f"{leg['label']}/jdk{leg['jdk']}" for leg in matrix)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -144,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[问题] {exc}", file=sys.stderr)
         return 1
     print(describe(matrix))
+    print(leg_keys(matrix))
     return 0
 
 

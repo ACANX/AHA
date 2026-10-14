@@ -94,18 +94,26 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
       base: ${{ steps.compute.outputs.base }}
       pr: ${{ steps.compute.outputs.pr }}
+      #: 要出的腿（`<label>/jdk<JDK>` 逗号分隔）。腿作业的**步骤级** if 用它过滤——
+      #: job 级 if 读不到 matrix，动态矩阵又会让作业被静默丢弃，都不可用。
+      selected: ${{ steps.matrix.outputs.selected }}
     steps:
       - uses: actions/checkout@v7
-      - name: 自证构建矩阵（非法就响亮失败，别留个空 job 列表让人猜）
+      - name: 自证构建矩阵并算出要出的腿（非法就响亮失败）
+        id: matrix
         env:
           INPUT_MATRIX: ${{ inputs.matrix }}
+          RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
           # 矩阵逻辑在仓库脚本里（.github/Python/JvmMatrix.py）：可本地跑、可自检。
           # **不要**把 Python 写进这里的块标量：代码行顶格会被 YAML 当成新的键，
           # 块标量 + 管道 + 重定向叠加还会吃掉行尾空格（两坑都已踩过）。
-          python3 .github/Python/JvmMatrix.py --validate "${INPUT_MATRIX}" > /dev/null
-          echo "矩阵校验通过（--self-test 可本地跑）"
+          python3 .github/Python/JvmMatrix.py --validate "${INPUT_MATRIX}" > "$RUNNER_TEMP/matrix.txt"
+          head -n1 "$RUNNER_TEMP/matrix.txt"
+          selected=$(tail -n1 "$RUNNER_TEMP/matrix.txt")
+          echo "本次要出的腿：${selected}"
+          printf 'selected=%s\n' "${selected}" >> "$GITHUB_OUTPUT"
 
       - name: 计算版本（a.b.c.PPPPP，与原生线同规则）
         id: compute
@@ -171,21 +179,51 @@ jobs:
     strategy:
       # 一条腿失败不取消其余：各平台 × 各 JDK 的包是并列交付物。
       fail-fast: false
-      # 矩阵由调用方传入（快照线传收窄后的 JSON）；留空 ⇒ 默认六条腿（与改造前逐条一致）。
-      # 必须用 **inputs.matrix**，不能用 fromJSON(needs.<job>.outputs…)：后者在本仓库
-      # 会让整个作业被静默丢弃（run=failure、作业根本不存在、日志无任何线索），
-      # 排查代价极高（靠二分实验才定位）。job 级 if 也拿不到 matrix（实测报
-      # `Unrecognized named-value: 'matrix'`），因此腿的收窄只能在规划期做。
-      matrix: ${{ fromJSON(inputs.matrix || '[{"os":"ubuntu-latest","label":"linux-x64","jdk":25,"upload_cli":true},{"os":"windows-latest","label":"windows-x64","jdk":25,"upload_cli":false},{"os":"macos-latest","label":"macos-arm64","jdk":25,"upload_cli":false},{"os":"ubuntu-latest","label":"linux-x64","jdk":27,"upload_cli":true},{"os":"windows-latest","label":"windows-x64","jdk":27,"upload_cli":false},{"os":"macos-latest","label":"macos-arm64","jdk":27,"upload_cli":false}]') }}
+      # 静态六腿矩阵。**不要**改成 fromJSON(needs…) 或 fromJSON(inputs…)：
+      # 本仓库实测两者都会让这个作业被静默丢弃（run=failure、作业不存在、日志无解释），
+      # 而 job 级 if 又读不到 matrix（`Unrecognized named-value: 'matrix'`）。
+      # 因此收窄靠「步骤级 if + needs.build-version.outputs.selected」实现：
+      # 未选中的腿仍然会起一个 runner，但所有步骤都被跳过（秒级、不耗编译时间）。
+      matrix:
+        include:
+          # ── JDK 25（基线，release=25）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 25
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 25
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 25
+            upload_cli: false
+          # ── JDK 27（release=27）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 27
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 27
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 27
+            upload_cli: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
       - uses: actions/setup-java@v6
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
         with:
           distribution: temurin
           java-version: ${{ matrix.jdk }}
 
       - name: 构建 aha-desktop 与 aha-cli（含本平台 OpenJFX 分类器）
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
         # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
         # -Daha.build.version：注入 version.properties 的 build 项，供「关于」/ 启动页显示。
         # 复用现有 assembly 链路：package 阶段即产出 Dist/aha-desktop-<版本>-<平台>.zip
@@ -200,6 +238,7 @@ jobs:
             -Daha.build.version=${{ needs.build-version.outputs.version }}
 
       - name: 产物自证（class 文件确为 JDK ${{ matrix.jdk }} 字节码）
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
         # 只看「构建成功」不够：release 没生效时仍会以默认 25 编出来。
         # 直接读任一 class 的 major version：Java 25 = 69，Java 27 = 71。
         shell: bash
@@ -224,6 +263,7 @@ jobs:
           echo "自证通过：Java ${JDK} 字节码（major=${major}）"
 
       - name: 规范桌面端包名（加构建版本与平台标签；JDK 27 另带 -jdk27）
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
         shell: bash
         env:
           VERSION: ${{ needs.build-version.outputs.version }}
@@ -249,7 +289,8 @@ jobs:
           echo "桌面端包：${target}（${size}，含本平台 OpenJFX jar ${jars} 个）"
 
       - name: 打 CLI 便携包（平台无关，只在一个腿产出）
-        if: matrix.upload_cli
+        # 既有条件（CLI 包平台无关，只在 Ubuntu 腿产出）与「本次要不要这条腿」叠加
+        if: matrix.upload_cli && (needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk)))
         shell: bash
         env:
           VERSION: ${{ needs.build-version.outputs.version }}
@@ -267,6 +308,7 @@ jobs:
           ls -lh "$target"
 
       - name: 上传制品（Actions 制品仓库）
+        if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
         uses: actions/upload-artifact@v7
         with:
           # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
