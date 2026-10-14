@@ -1,7 +1,0 @@
-.github/Python/JvmMatrix.py
-.github/Python/SnapshotPlan.py
-.github/workflows/BuildJVMArtifacts.yml
-.github/workflows/Release.yml
-.github/workflows/SnapshotJVM.yml
-Docs/DevSpec/ReleaseProcess.md
-plan.err
