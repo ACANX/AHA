@@ -59,7 +59,7 @@ on:
       target:
         description: 手动出快照时的目标（留空则按 PR 标签判定）
         required: false
-        default: 'NativeCli'
+        default: 'Cli-Native'
       os:
         description: 手动出快照时的平台限定（Win / MacOS / Ubuntu，可空格分隔多个；留空 = 全部平台）
         required: false
@@ -86,7 +86,7 @@ defaults:
 
 jobs:
   # ── 0. 判定（快照出包要不要出、出哪些腿、版本号；逻辑全在 .github/Python/SnapshotPlan.py）──
-  #    本工作流只负责**一个**原生目标：`NativeCli`（桌面目标由 DesktopNative.yml 负责）。
+  #    本工作流只负责**一个**原生目标：`Cli-Native`（桌面目标由 DesktopNative.yml 负责）。
   #    请求里不含本目标时，`owns_comment=false` ⇒ 不构建、也**不动 PR 评论**（两条线互不覆盖）。
   plan:
     name: Plan
@@ -141,7 +141,7 @@ jobs:
           echo "改动文件数：$(wc -l < changed-files.txt)"
           PR="${pr}" CHANGED_FILES=changed-files.txt \
             BASELINE="$(python3 .github/Python/ProjectVersion.py --resolve)" \
-            python3 .github/Python/SnapshotPlan.py --line native --native-target NativeCli --emit-outputs
+            python3 .github/Python/SnapshotPlan.py --line native --native-target Cli-Native --emit-outputs
 
   # ── 1. 算版本（单独一个作业：三条腿共用同一个版本号）────────────────────────
   cli-native-version:
@@ -744,7 +744,7 @@ jobs:
             echo "> 两类包**同名族**（版本 / 系统 / 架构 / JDK 轴一致），下载时按需取件、一一对应。"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 决定发布载体（快照 ⇒ `<快照版本>-AHA-NativeCli-SNAPSHOT`；dev ⇒ `native-v` 族）
+      - name: 决定发布载体（快照 ⇒ `<快照版本>-AHA-Cli-Native-SNAPSHOT`；dev ⇒ `native-v` 族）
         id: carrier
         env:
           RELEASES: ${{ needs.plan.outputs.releases }}
@@ -768,7 +768,7 @@ jobs:
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          # 快照 ⇒ `V<快照版本>-AHA-NativeCli-SNAPSHOT`（prerelease: true；`Release.yml` 已排除 `-SNAPSHOT`）；
+          # 快照 ⇒ `V<快照版本>-AHA-Cli-Native-SNAPSHOT`（prerelease: true；`Release.yml` 已排除 `-SNAPSHOT`）；
           # dev 线 ⇒ 原有的 `native-v` 语义（tag 里带 -aha-cli-native 与桌面端区分）。
           tag_name: ${{ steps.carrier.outputs.tag }}
           name: ${{ steps.carrier.outputs.name }}
