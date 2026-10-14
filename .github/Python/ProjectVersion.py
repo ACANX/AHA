@@ -27,7 +27,7 @@
     python3 .github/Python/ProjectVersion.py --resolve [<版本>]  # 解析版本（显式输入优先）
     python3 .github/Python/ProjectVersion.py --verify            # 一致性校验（CI 用）
     python3 .github/Python/ProjectVersion.py                     # 裸调用：输出当前版本号
-    python3 .github/Python/ProjectVersion.py --self-test         # 自检：版本号格式的正 / 反例
+    python3 .github/Python/ProjectVersion.py --self-test         # 自检：版本号格式的正 / 反例（--resolve <值> 的边界）
 
 `--self-test` 把「版本号格式放宽到哪、放宽到什么程度为止」变成**可重复执行的断言**
 （验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `static-guards` 作业每次
@@ -215,7 +215,7 @@ SELF_TEST_CASES: list[tuple[str, bool, str]] = [
 
 def self_test() -> int:
     """自检版本号格式的放宽边界（正 / 反例都要过）。"""
-    print("版本号格式自检（`--resolve --version <值>` 的接受 / 拒绝边界）：")
+    print("版本号格式自检（`--resolve <值>` 的接受 / 拒绝边界；本脚本没有 `--version` 选项）：")
     failed = 0
     for value, should_pass, note in SELF_TEST_CASES:
         try:
