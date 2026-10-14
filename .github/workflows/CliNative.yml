@@ -67,6 +67,12 @@ on:
 
 permissions:
   contents: write
+  # 评论作业要新建 / 修改 PR 评论 ⇒ `gh api` 走 issues 接口，缺这一项会 403
+  # （实测：`gh: Resource not accessible by integration (HTTP 403)`）。
+  # 顶层 `permissions` 会**覆盖**仓库默认权限，所以必须显式写上（与 SnapshotJVM.yml 对齐）。
+  issues: write
+  # 快照发布按目标挂 pre-release 时也要读 / 写 PR 信息（关联说明）。
+  pull-requests: write
 
 # 同一分支只保留最新一次：原生镜像构建慢，旧的运行没有价值。
 concurrency:
