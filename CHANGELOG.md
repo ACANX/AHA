@@ -75,6 +75,19 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **切主题后输入框 / 对话框组件的颜色不跟着变（2026-10-14，issue #153）**：颜色是**内联在样式串里**的，
+  换色表不会自动影响已建节点 ⇒ 主窗口靠 `DesktopShell.restylers` 登记重刷，但主窗口之外与
+  「一次性上色」的路径**不在重刷范围内**。本轮查出四类并存漏洞：① `static final String` 样式常量
+  （常量在**类加载时**求值，颜色被**冻死**——重开对话框也还是旧色）——
+  `ProviderDialog.SECTION_TITLE_STYLE` / `SettingsDialog.MUTED_STYLE` / `NOTE_STYLE` /
+  `ApprovalDialog.SECTION_STYLE`；② 对话框内容用 `ThemePaint.themed(node, Palette.dialogTheme())`
+  这种**已求值字符串**一次性上色；③ 打开中的对话框**场景**不换样式表；
+  ④ `ThemePaint.apply()` 的 API 兜底缺 `-fx-control-inner-background`（输入类控件的底色来源）。
+  修法：`ThemePaint` 新增 `onThemeChange` / `refreshAll` / 对话框面板登记表（弱引用）/
+  `themedForever(node, supplier)`；`DesktopShell.applyTheme` 调 `refreshAll`；
+  4 个静态常量→按需求值；对话框内容与日志 `stats` 登记重刷；`apply()` 补上那一条兜底。
+  **并加机器守卫**：`bin/CheckTheme.py` 第 6 项禁止 `static final String` 里出现 `Palette.`
+  （反向验证：注入一个 `BAD_STYLE` 即被点名）。详见 `TS-2610-038`。
 - **暗色下日志区 / 对话输入框的底色与其他页面、对话框不一致（2026-10-13，issue #153）**：
   根因**不是**色号漂移（实测两份主题补丁表选择器 **42/42 一致**、色号 **0 个野生**），
   而是 **一个常量承担了两种语义**：`CONTROL_INNER` 同时用于「内容面」（输入框 / 文本域 / 列表 /

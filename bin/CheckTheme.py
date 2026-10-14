@@ -19,6 +19,11 @@
   5. 两份模板的**角色序列完全一致**：同一个控件在暗色 / 亮色下必须用同一个**角色**上色
      （值当然不同）。这是「同族控件在两主题下逐项一致」的机器证明——
      能挡住「暗色下用前景色、亮色下却用边框色」这类错位。
+  6. **不得把颜色写进 `static final String`**：常量在**类加载时**求值，颜色会被冻在那一刻，
+     之后切主题再也不变。2026-10-14 实测的「切了主题、输入框 / 供应商对话框的部分组件仍是旧色」
+     就是这个：`ProviderDialog.SECTION_TITLE_STYLE`、`SettingsDialog.MUTED_STYLE`、
+     `ApprovalDialog.SECTION_STYLE` 全是静态常量。要一次性上色就写成方法 / lambda，
+     并用 `ThemePaint.themedForever(...)` 登记重刷。
 
 用法：
 
@@ -43,6 +48,11 @@ PALETTE = (ROOT / "aha-desktop" / "src" / "main" / "java" / "com" / "acanx"
            / "module" / "aha" / "desktop" / "view" / "Palette.java")
 CSS_DIR = (ROOT / "aha-desktop" / "src" / "main" / "resources" / "com" / "acanx"
            / "module" / "aha" / "desktop" / "view" / "css")
+VIEW_DIR = (ROOT / "aha-desktop" / "src" / "main" / "java" / "com" / "acanx"
+            / "module" / "aha" / "desktop" / "view")
+
+# 静态样式常量（颜色被冻在类加载时——见检查项 6）
+STYLE_CONST = re.compile(r"static final String\s+(\w+)\s*=")
 
 # 主题 → Palette 里对应的方法（该主题的色表）
 THEMES = {"dark": "applyDark", "light": "applyLight"}
@@ -133,6 +143,46 @@ def check_generated() -> list[str]:
     return problems
 
 
+def _initializer(text: str, start: int) -> str:
+    """取赋值语句的初始化文本：跳过字符串字面量，遇到顶层分号 / 右花括号结束。"""
+    depth = 0
+    index = start
+    while index < len(text):
+        if text.startswith('"""', index):
+            index = text.find('"""', index + 3)
+            index = len(text) if index < 0 else index + 3
+            continue
+        char = text[index]
+        if char == '"':
+            index += 1
+            while index < len(text) and text[index] != '"':
+                index += 2 if text[index] == "\\" else 1
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif (char == ";" or char == "}") and depth <= 0:
+            break
+        index += 1
+    return text[start:index]
+
+
+def check_frozen_style_constants() -> list[str]:
+    """禁止把颜色放进 `static final String`（见检查项 6）。"""
+    problems: list[str] = []
+    for path in sorted(VIEW_DIR.rglob("*.java")):
+        text = path.read_text(encoding="utf-8")
+        for match in STYLE_CONST.finditer(text):
+            initializer = _initializer(text, match.end())
+            if "Palette." in initializer:
+                line = text.count("\n", 0, match.start()) + 1
+                problems.append(
+                    f"{path.name}:{line} 的静态常量 {match.group(1)} 引用了 Palette（"
+                    f"{initializer.strip()[:50]}）——常量在**类加载时**求值，颜色会被冻在那一刻，"
+                    f"切主题后不再变；请改成方法 / lambda 并用 ThemePaint.themedForever 登记重刷")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 主题色一致性检查")
     parser.add_argument("--verbose", action="store_true", help="打印逐项统计")
@@ -154,7 +204,7 @@ def main() -> int:
         palettes[theme] = palette
 
     problems = (check_selectors(rules) + check_properties(rules) + check_colors(rules, palettes)
-                + check_generated())
+                + check_generated() + check_frozen_style_constants())
 
     if args.verbose:
         for theme, table in rules.items():
@@ -171,7 +221,7 @@ def main() -> int:
 
     print("✅ 主题色一致性检查通过"
           f"（两份表的选择器 / 属性集合一致，色号全部来自各自主题的 Palette 色表，"
-          f"且两份 CSS 都能由模板 + Palette 逐字节重现、角色序列完全一致）")
+          f"且两份 CSS 都能由模板 + Palette 逐字节重现、角色序列一致、无静态常量冻色）")
     return 0
 
 

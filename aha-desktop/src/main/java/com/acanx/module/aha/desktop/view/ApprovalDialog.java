@@ -58,10 +58,15 @@ public final class ApprovalDialog {
     /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
     private static final String FXML_VIEW = UiResources.APPROVAL_DIALOG_FXML;
 
-    /** 小标题样式（「调用参数」）。 */
-    private static final String SECTION_STYLE =
-            "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;";
-
+    /**
+     * 小标题样式（「调用参数」）。
+     *
+     * <p><strong>刻意不做成 {@code static final} 常量</strong>：常量在**类加载时**求值，
+     * 颜色会被冻在那一刻，之后切主题再也不变（2026-10-14 实测的漏刷就是这么来的）。
+     */
+    private static String sectionStyle() {
+        return "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;";
+    }
     /** 等宽样式（参数区：执行类是完整命令，必须一眼可分）。 */
     private static final String CODE_STYLE =
             "-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace; -fx-font-size: 12px;";
@@ -229,7 +234,7 @@ public final class ApprovalDialog {
             GridPane.setHgrow(value, Priority.ALWAYS);
         }
 
-        argsSection.setStyle(SECTION_STYLE);
+        ThemePaint.themedForever(argsSection, ApprovalDialog::sectionStyle);
 
         String argumentsText = ApprovalText.argumentsText(arguments);
         args.setId(ARGS_ID);

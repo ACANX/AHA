@@ -49,11 +49,8 @@ public final class SettingsDialog {
     private static final String FXML_VIEW = UiResources.SETTINGS_DIALOG_FXML;
 
     /** 辅助说明的样式（设置名与底部三段说明）。 */
-    private static final String MUTED_STYLE = "-fx-text-fill: " + Palette.MUTED + ";";
 
     /** 每行设置下方那行小字（字号略小）。 */
-    private static final String NOTE_STYLE =
-            "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;";
 
     private final DesktopSettings settings;
 
@@ -204,14 +201,14 @@ public final class SettingsDialog {
         // 每一列都要显式套色：不能只靠根节点的 looked-up colors，否则暗色下对比度不足
         // （issue #44 / #49 的老症状）。
         for (Label key : List.of(themeKey, fontKey, modelKey)) {
-            key.setStyle(MUTED_STYLE);
+            ThemePaint.themedForever(key, () -> "-fx-text-fill: " + Palette.MUTED + ";");
         }
         for (VBox box : List.of(themeBox, fontBox, modelBox)) {
             box.setSpacing(2);
             GridPane.setHgrow(box, Priority.ALWAYS);
         }
         for (Label note : List.of(themeNote, fontNote, modelNote)) {
-            note.setStyle(NOTE_STYLE);
+            ThemePaint.themedForever(note, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
         }
         modelRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -257,15 +254,15 @@ public final class SettingsDialog {
                 ? "设置文件：不可用（未取到用户目录）"
                 : "设置文件：" + settings.path());
         pathLabel.setWrapText(true);
-        pathLabel.setStyle(MUTED_STYLE);
+        ThemePaint.themedForever(pathLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         configLabel.setText(configSummary.get());
         configLabel.setWrapText(true);
-        configLabel.setStyle(MUTED_STYLE);
+        ThemePaint.themedForever(configLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         todoLabel.setText("记忆策略、身份文件查看 / 编辑：0.2 后续"
                 + "（现在改身份请直接编辑 ~/.aha/AHA.md 或项目的 AHA.md）");
         todoLabel.setWrapText(true);
-        todoLabel.setStyle(MUTED_STYLE);
+        ThemePaint.themedForever(todoLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
     }
 }
