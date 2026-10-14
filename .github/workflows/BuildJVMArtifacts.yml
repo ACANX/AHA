@@ -14,6 +14,9 @@ name: BuildJVMArtifacts
 #    原生线（`-aha-desktop-native` / `-aha-cli-native`）区分，不进 releases/latest。
 # 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
 # 4. **可被打断**：同一分支的新一次运行会取消上一次（见 concurrency）。
+# 5. **可被复用**：暴露 `workflow_call`（输入 pr / version / matrix / publish），
+#    快照线 SnapshotJVM.yml 直接调用它，**不复制**构建与打包步骤——两套实现必然漂移。
+#    默认矩阵与发布行为与改造前逐条一致（push dev 行为不变）。
 #
 # ── JDK 轴：25（基线）+ 27 ──────────────────────────────────────────────────
 # 矩阵同时出 **JDK 25**（默认，release=25）与 **JDK 27**（`-Dmaven.compiler.release=27`）
@@ -39,6 +42,34 @@ on:
         description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
         required: false
         default: ''
+      matrix:
+        description: 构建矩阵（JSON 数组；留空 = 默认三平台 × JDK 25/27 共六条腿）
+        required: false
+        default: ''
+      publish:
+        description: 是否挂到发布页（true / false；快照线由调用方自己发布，故传 false）
+        required: false
+        default: 'true'
+  # 可被其它工作流复用（快照线 SnapshotJVM.yml 就是调用方，见 issue #165）。
+  # **默认不发布**：载体由调用方决定（快照走 `snapshot-pr<N>`），避免误往 dev 线的 tag 上写。
+  workflow_call:
+    inputs:
+      pr:
+        type: string
+        required: false
+        default: ''
+      version:
+        type: string
+        required: false
+        default: ''
+      matrix:
+        type: string
+        required: false
+        default: ''
+      publish:
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -63,8 +94,42 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
       base: ${{ steps.compute.outputs.base }}
       pr: ${{ steps.compute.outputs.pr }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
+      - name: 解析构建矩阵（默认六条腿；快照线与自证可传 JSON 收窄）
+        id: matrix
+        env:
+          INPUT_MATRIX: ${{ inputs.matrix }}
+        run: |
+          set -euo pipefail
+          # 默认矩阵 = 三平台 × JDK 25/27（与改造前逐条一致，保证 dev 线行为不变）。
+          # 之所以做成「步骤里算、作业输出」，是因为 workflow_call 的输入默认值
+          # 无法直接写成 JSON 字面量再交给 fromJSON。
+          default_matrix='[
+            {"os":"ubuntu-latest","label":"linux-x64","jdk":25,"upload_cli":true},
+            {"os":"windows-latest","label":"windows-x64","jdk":25,"upload_cli":false},
+            {"os":"macos-latest","label":"macos-arm64","jdk":25,"upload_cli":false},
+            {"os":"ubuntu-latest","label":"linux-x64","jdk":27,"upload_cli":true},
+            {"os":"windows-latest","label":"windows-x64","jdk":27,"upload_cli":false},
+            {"os":"macos-latest","label":"macos-arm64","jdk":27,"upload_cli":false}
+          ]'
+          matrix="${INPUT_MATRIX:-$default_matrix}"
+          # 自证：合法 JSON、非空、每条腿字段齐全且 jdk 只认 25 / 27、label 只认三种。
+          # 矩阵写错的表现是「某个平台静默没出包」，因此在这里就拦下。
+          echo "$matrix" | python3 - <<'PYEOF'
+          import json, sys
+          data = json.load(sys.stdin)
+          assert isinstance(data, list) and data, "矩阵必须是非空 JSON 数组"
+          for leg in data:
+              assert set(leg) == {"os", "label", "jdk", "upload_cli"}, f"腿的字段不对：{leg}"
+              assert leg["jdk"] in (25, 27), f"jdk 只支持 25 / 27：{leg}"
+              assert leg["label"] in ("linux-x64", "windows-x64", "macos-arm64"), f"label 不认识：{leg}"
+          print(f"矩阵自证通过：{len(data)} 条腿 -> " + ", ".join(f'{l["label"]}/jdk{l["jdk"]}' for l in data))
+          PYEOF
+          # 压成单行写进 GITHUB_OUTPUT（多行会破坏 output 语法）
+          printf 'matrix=%s\n' "$(echo "$matrix" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), separators=(",",":")))')" >> "$GITHUB_OUTPUT"
+
       - name: 计算版本（a.b.c.PPPPP，与原生线同规则）
         id: compute
         env:
@@ -128,34 +193,9 @@ jobs:
     strategy:
       # 一条腿失败不取消其余：各平台 × 各 JDK 的包是并列交付物。
       fail-fast: false
-      matrix:
-        include:
-          # ── JDK 25（基线，release=25）──
-          - os: ubuntu-latest
-            label: linux-x64
-            jdk: 25
-            upload_cli: true
-          - os: windows-latest
-            label: windows-x64
-            jdk: 25
-            upload_cli: false
-          - os: macos-latest
-            label: macos-arm64
-            jdk: 25
-            upload_cli: false
-          # ── JDK 27（release=27）──
-          - os: ubuntu-latest
-            label: linux-x64
-            jdk: 27
-            upload_cli: true
-          - os: windows-latest
-            label: windows-x64
-            jdk: 27
-            upload_cli: false
-          - os: macos-latest
-            label: macos-arm64
-            jdk: 27
-            upload_cli: false
+      # 矩阵来自 build-version 的 `matrix` 输出（默认六条腿 = 三平台 × JDK 25/27）。
+      # 快照线（SnapshotJVM.yml）传 JSON 收窄：只出 JDK 25、只出被标签选中的平台。
+      matrix: ${{ fromJSON(needs.build-version.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -262,8 +302,11 @@ jobs:
   build-publish:
     name: build-publish
     needs: [build-version, build-mvn-artifact]
-    # 即使某条腿失败也要发布已成功的那几个平台（部分可用也有价值）。
-    if: always() && needs.build-version.result == 'success'
+    # 即使某条腿失败也要发布已成功的那几个平台（部分可用也有价值）；
+    # 但显式给了 publish=false 时（快照线 / 自证）不发布——载体由调用方自己决定。
+    if: >-
+      always() && needs.build-version.result == 'success'
+      && inputs.publish != false && inputs.publish != 'false'
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部制品
