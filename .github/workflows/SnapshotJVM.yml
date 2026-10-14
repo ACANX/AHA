@@ -227,7 +227,7 @@ jobs:
 
   # ── 3. 发布到 pre-release `snapshot-pr<N>`（#165 §七 路线 A）────────────────
   publish:
-    name: publish（挂 snapshot-pr<N>）
+    name: publish（按目标挂 pre-release）
     needs: [plan, build]
     # `always()` 是为了「上游失败也让 publish 跑一次以给出明确结论」；
     # 但**被并发取消**的 run 必须排除：取消时发布只会留下半成品，且会把 PR 检查染红
