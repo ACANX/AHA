@@ -40,11 +40,11 @@ SNAPSHOT_LABELS: dict[str, str] = {
     "SNAPSHOT:NativeCli": "NativeCli",
 }
 
-#: 平台限定标签 → 平台键（#165 §三）。键与 JVM 线的腿标签一致：Win→windows-x64，Ubuntu→linux-x64。
+#: 平台限定标签 → 平台键（#165 §三）。键与 JVM 线的腿标签一致：Win→windows-x64，Ubuntu→ubuntu-x64。
 OS_LABELS: dict[str, str] = {
     "OS:Win": "windows-x64",
     "OS:MacOS": "macos-arm64",
-    "OS:Ubuntu": "linux-x64",
+    "OS:Ubuntu": "ubuntu-x64",
 }
 
 #: PR 注释命令 `/snapshot <target> [os…]`（大小写不敏感，见 #165 §三「补充触发方式 ②」）。
@@ -59,7 +59,7 @@ NATIVE_TARGETS = ("NativeDesktop", "NativeCli")
 #: 因此 `OS:MacOS` + JVM 目标 = 没有可用的腿 ⇒ 判定为不出包并说明原因（自检里有这条用例）。
 JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
     # (runner, label, jdk, upload_cli)
-    "linux-x64": [("ubuntu-latest", "linux-x64", 25, True)],
+    "ubuntu-x64": [("ubuntu-latest", "ubuntu-x64", 25, True)],
     "windows-x64": [("windows-latest", "windows-x64", 25, False)],
 }
 
@@ -160,7 +160,7 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
         matched = [key for key in OS_LABELS.values() if _os_word(key) == item.lower()]
         if not matched:
             matched = [key for word, key in (("win", "windows-x64"), ("macos", "macos-arm64"),
-                                             ("ubuntu", "linux-x64")) if word == item.lower()]
+                                             ("ubuntu", "ubuntu-x64")) if word == item.lower()]
         if not matched:
             raise PlanError(f"不认识的平台 {item!r}；合法取值：Win / MacOS / Ubuntu")
         platforms.extend(matched)
@@ -168,8 +168,8 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
 
 
 def _os_word(platform: str) -> str:
-    """平台键 → `/snapshot` 命令里的词（windows-x64→win、macos-arm64→macos、linux-x64→ubuntu）。"""
-    return {"windows-x64": "win", "macos-arm64": "macos", "linux-x64": "ubuntu"}[platform]
+    """平台键 → `/snapshot` 命令里的词（windows-x64→win、macos-arm64→macos、ubuntu-x64→ubuntu）。"""
+    return {"windows-x64": "win", "macos-arm64": "macos", "ubuntu-x64": "ubuntu"}[platform]
 
 
 def build_version(baseline: str, pr: int, now: datetime) -> str:
@@ -180,7 +180,7 @@ def build_version(baseline: str, pr: int, now: datetime) -> str:
 
 def build_legs(targets: list[str], platforms: list[str]) -> list[dict]:
     """JVM 线的构建腿：只出 JDK 25，只出被选中的平台（未选则两个平台都出）。"""
-    labels = platforms or ["linux-x64", "windows-x64"]
+    labels = platforms or ["ubuntu-x64", "windows-x64"]
     legs: list[dict] = []
     for label in labels:
         for runner, leg_label, jdk, upload_cli in JVM_LEGS.get(label, []):
@@ -190,7 +190,7 @@ def build_legs(targets: list[str], platforms: list[str]) -> list[dict]:
 
 def asset_names(targets: list[str], version: str, platforms: list[str]) -> list[str]:
     """资产名列表（#165 §八）：`<前缀>-<版本>-<平台>-jdk25.zip`。"""
-    labels = platforms or ["linux-x64", "windows-x64"]
+    labels = platforms or ["ubuntu-x64", "windows-x64"]
     names: list[str] = []
     for target in targets:
         fmt = ASSET_FORMATS.get(target)
@@ -253,7 +253,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
             "should_build": False, "pr": pr, "targets": jvm, "platforms": platforms,
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": explicit_command,
-            "reason": f"选中的平台 {platforms} 在 JVM 线上没有对应的腿（JVM 线只有 linux-x64 / windows-x64）",
+            "reason": f"选中的平台 {platforms} 在 JVM 线上没有对应的腿（JVM 线只有 ubuntu-x64 / windows-x64）",
         }
     version = build_version(baseline, pr, now)
     return {
@@ -289,13 +289,12 @@ def comment_body(plan: dict, run_url: str = "") -> str:
     expiry = (datetime.now(timezone.utc).date()
               + timedelta(days=SNAPSHOT_TTL_DAYS)).isoformat()
     asset_lines = "\n".join(f"- `{name}`" for name in plan["assets"])
-    # 平台名的**语义边界**：`linux-x64` 是「产物适用于哪个平台 / 架构」的技术标识，
-    # 不表示「在所有 Linux 发行版上都验证过」。实际验证环境只有构建它的那台 runner，
-    # 因此把这层事实显式写出来——否则 `linux-x64` 会被读成「全 Linux 都支持」，
-    # 而 CentOS / RHEL 等根本没验证。
+    # 平台名直接用**发行版名**（`ubuntu-x64`）而不是 `linux-x64`：后者会被读成
+    # 「所有 Linux 发行版都支持」，而我们只在 Ubuntu 上构建与验证过。
+    # 这层事实仍然显式写一次，避免读者自行放大范围。
     platform_note = (
         "\n**平台验证范围**（不是「全 Linux 都支持」的意思）：\n"
-        "- `linux-x64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
+        "- `ubuntu-x64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
         "CentOS / RHEL 等其他发行版**未验证**；\n"
         "- `windows-x64`：构建与冒烟环境为 GitHub Actions 的 Windows runner（`windows-latest`，本 run 的镜像是 `windows-2025-vs2026`）。\n"
     ) if any(name.startswith(("AHA-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
@@ -336,7 +335,7 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
      True, "windows-x64"),
     ("命令带多个平台 ⇒ 多腿",
      {"labels": [], "changed": ["aha-common/pom.xml"],
-      "command": "/snapshot Desktop Win Ubuntu"}, True, "linux-x64"),
+      "command": "/snapshot Desktop Win Ubuntu"}, True, "ubuntu-x64"),
     ("纯原生目标 ⇒ 本工作流不构建（交给原生线）",
      {"labels": ["SNAPSHOT:NativeDesktop"], "changed": ["aha-common/pom.xml"]}, False, "原生线"),
     ("JVM 目标 + OS:MacOS ⇒ JVM 线没有该平台的腿",
@@ -378,7 +377,7 @@ def self_test() -> int:
     ok = version == f"0.1.3.00171.{beijing}" and beijing != utc
     problems += 0 if ok else 1
     print(f"  {'✅' if ok else '❌'} 版本号 {version}（UTC 段 {utc}，北京时间段 {beijing}，二者不同）")
-    # 评论正文必须写清平台名的语义边界（本轮实测：linux-x64 的验证环境只有 Ubuntu）
+    # 评论正文必须写清平台名的语义边界（本轮实测：该腿的验证环境只有 Ubuntu）
     plan = decide(labels=["SNAPSHOT:Desktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
                   pr=171, now=now, groups=groups)
     body = comment_body(plan, "https://example/run")

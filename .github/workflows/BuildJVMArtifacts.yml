@@ -188,7 +188,7 @@ jobs:
         include:
           # ── JDK 25（基线，release=25）──
           - os: ubuntu-latest
-            label: linux-x64
+            label: ubuntu-x64
             jdk: 25
             upload_cli: true
           - os: windows-latest
@@ -201,7 +201,7 @@ jobs:
             upload_cli: false
           # ── JDK 27（release=27）──
           - os: ubuntu-latest
-            label: linux-x64
+            label: ubuntu-x64
             jdk: 27
             upload_cli: true
           - os: windows-latest

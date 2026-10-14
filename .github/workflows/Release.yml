@@ -81,7 +81,7 @@ jobs:
         # 静静挂到 release 页面。
         include:
           - os: ubuntu-latest
-            label: linux-x64
+            label: ubuntu-x64
             expected: linux
           - os: windows-latest
             label: windows-x64
