@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+    Windows 兼容清单（issue #151）
+
+    为什么必须有它：GetVersionEx / GetVersion 家族在**没有**这份清单的可执行文件里
+    一律返回 6.2.9200（也就是 Windows 8.0），不管你真实跑在哪个版本上。Prism/D3D 的
+    「OS Information:」打印的正是这个值，于是真机上会看到「Windows 8.0 build 9200」。
+
+    这里只声明 Windows 10/11（{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}）：声明之后
+    GetVersionEx 返回真实版本。低于 Win10 的系统本就不是目标平台
+    （见 Docs/Design/DesktopDesign.md 的目标平台清单），因此不再补 7 / 8 / 8.1 的 GUID。
+
+    刻意**不带 assemblyIdentity**：本文件是作为「清单输入」交给链接器与它自动生成的
+    那份合并的（link.exe /MANIFESTINPUT），再声明一次 identity 会与之冲突。
+
+    嵌入方式（只在 Windows 腿生效，见 src/native/native-image-args-windows.txt）：
+        -H:NativeLinkerOption=/MANIFEST:EMBED
+        -H:NativeLinkerOption=/MANIFESTINPUT:app.manifest
+
+    自证：构建后工作流会在打出来的 exe 里搜本文件的 GUID。理由是「加了参数但没生效」
+    这类静默失败必须被挡住（issue #151 验收标准 4）。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+</assembly>
