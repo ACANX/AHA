@@ -10,12 +10,15 @@
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
       2. 挑出**本机平台**该取哪个资产（JVM 线 `windows-x64`、原生线 `windows-amd64`）；
       3. 下载 zip 到 `Dist\`（已有同尺寸的包则复用；带 sha256 则校验）；
-      4. 解压到**按资产命名的目录**里（绝不覆盖既有文件）。
+      4. 解压到**按资产命名的目录**里；若是**本机平台的原生包**，再把 exe
+         **安装（替换）到 `-Out`（默认 = 启动器所在目录）**，旧版留 `.bak`（`-NoInstall` 可只取件）。
 
     为什么和 `UpdateNative.ps1` 分开、且不复用它：
 
-      * 语义不同：`UpdateNative.ps1` 是**替换**正在用的原生可执行文件（旧版留 `.bak`）；
-        快照是**并排试包**——取件只落成独立目录，不碰任何既有文件；
+      * 语义不同：`UpdateNative.ps1` 走 dev 线、按「最新一版」替换；
+        快照是**并排试包**——总是先落成独立目录，再对本机平台的原生包**顺手替换** exe
+        （这样「取件后双击 `Dist\aha-desktop-native.exe` 就是刚取的那版」）。
+        除了这个 exe（与它的 `.bak`）之外不碰任何既有文件；
       * 状态不同：它用 `.aha-desktop-native.json` / `.aha-cli-native.json`（「已装哪一版」），
         本脚本用 `.aha-snapshot.json`（「取过哪一次快照」）。两者互不读写，
         因此**不会**把「已装版本」记错（issue #173 的隔离性要求）。
@@ -37,6 +40,7 @@
       -Out <dir>          落地目录（默认本脚本所在目录，即 `Dist\`）
       -DryRun             只预览：会下载哪个包、解压到哪里
       -Force              即使本地已取过同一版，也重新下载
+      -NoInstall          只取件：不替换任何既有可执行文件（纯并排试包）
       -Repo <owner/repo>  仓库（默认 ACANX/AHA）
 
     退出码：0 成功；1 失败。
@@ -50,6 +54,7 @@ param(
     [ValidateSet('', 'jvm', 'desktop-native', 'cli-native')][string]$Kind = '',
     [string]$Out = '',
     [switch]$Force,
+    [switch]$NoInstall,
     [switch]$DryRun,
     [string]$Repo = 'ACANX/AHA'
 )
@@ -74,6 +79,36 @@ $kinds = @{
     'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop', 'Cli');   Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
     'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
     'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
+}
+
+#: 目标 → 本机要替换的可执行文件基名。JVM 便携包没有单一 exe（是整包），不安装。
+$installExeBase = @{
+    'Desktop-Native' = 'aha-desktop-native'
+    'NativeDesktop'  = 'aha-desktop-native'   # 旧拼写（清理 / 取件都兼容）
+    'Cli-Native'     = 'aha-cli-native'
+    'NativeCli'      = 'aha-cli-native'
+}
+
+function Install-NativeBinary {
+    # 与 `UpdateNative.ps1` 同一套规则：只装可执行文件本体（外加同目录的 *.dll，若有），
+    # 旧版先备份成 `<名字>.exe.bak`。目标被占用时返回原因，由调用方决定怎么报。
+    param([string]$ExtractDir, [string]$TargetExe)
+    $exeName = [IO.Path]::GetFileName($TargetExe)
+    $src = Get-ChildItem -LiteralPath $ExtractDir -Recurse -File -Filter $exeName |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $src) { return @{ ok = $false; reason = "解压目录里没有 $exeName" } }
+    if (Test-Path -LiteralPath $TargetExe) {
+        Copy-Item -LiteralPath $TargetExe -Destination ($TargetExe + '.bak') -Force
+    }
+    Copy-Item -LiteralPath $src -Destination $TargetExe -Force
+    $sidecars = @()
+    $srcDir = Split-Path -Parent $src
+    $dstDir = Split-Path -Parent $TargetExe
+    foreach ($dll in (Get-ChildItem -LiteralPath $srcDir -File -Filter '*.dll' -ErrorAction SilentlyContinue)) {
+        Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $dstDir $dll.Name) -Force
+        $sidecars += $dll.Name
+    }
+    return @{ ok = $true; src = $src; sidecars = $sidecars }
 }
 
 $OutDir = if ($Out) { $Out } else { $PSScriptRoot }
@@ -246,57 +281,86 @@ if ($DryRun) {
     Write-Host '[dry-run] 只预览，不下载、不解压：'
     Write-Host ("  下载：{0}" -f $pick.Asset.browser_download_url)
     Write-Host ("  解压：{0}" -f $extractDir)
+    if ($NoInstall) {
+        Write-Host '  安装：（-NoInstall：只取件）'
+    } elseif ($installExeBase.ContainsKey($pick.Target)) {
+        Write-Host ("  安装：{0}" -f (Join-Path $OutDir ($installExeBase[$pick.Target] + '.exe')))
+    } else {
+        Write-Host '  安装：（该目标没有单一可执行文件）'
+    }
     Write-Host ("  状态：{0}" -f $StateFile)
     exit 0
 }
 
+# 先探「能不能替换」：Windows 上正在运行的 exe 既不能覆盖也不能改名。
+# 不先探的话，用户会在下完 50+ MB 之后才吃到一个错误（与 UpdateNative.ps1 同思路）。
+$targetExe = ''
+if (-not $NoInstall -and $installExeBase.ContainsKey($pick.Target)) {
+    $targetExe = Join-Path $OutDir ($installExeBase[$pick.Target] + '.exe')
+    if (Test-Path -LiteralPath $targetExe) {
+        try {
+            $probe = [IO.File]::Open($targetExe, 'Open', 'ReadWrite', 'None')
+            $probe.Close()
+        } catch {
+            Write-Host ''
+            Write-Host '[错误] 目标可执行文件正在运行（被占用），无法替换：' -ForegroundColor Red
+            Write-Host ("        {0}" -f $targetExe)
+            Write-Host '        请先关闭它（含后台 / 托盘进程）再重试；不需要替换就加 -NoInstall。'
+            exit 1
+        }
+    }
+}
+
+$reuse = $false
 if ((-not $Force) -and (Test-Path -LiteralPath $zip) -and (Test-Path -LiteralPath $extractDir)) {
     Write-Host ''
     Write-Host ("✅ 本地已有这一版：{0}" -f $extractDir) -ForegroundColor Green
-    Write-Host '   （加 -Force 可重新下载）'
-    exit 0
+    Write-Host '   （加 -Force 可重新下载；仍会执行安装步骤）'
+    $reuse = $true
 }
 
 try {
-    # ── 2. 下载（同尺寸的包直接复用；带 sha256 则校验）──────────────────────────
-    if ((Test-Path -LiteralPath $zip) -and (Get-Item -LiteralPath $zip).Length -eq $pick.Asset.size) {
-        Write-Host ("复用已下载的包：{0}" -f $pick.Asset.name)
-    } else {
-        Write-Host ("下载中：{0}" -f $pick.Asset.browser_download_url)
-        try {
-            Invoke-WebRequest -Uri $pick.Asset.browser_download_url -Headers $downloadHeaders -OutFile $zip
-        } catch {
-            # 兜底：Windows 10/11 自带 curl.exe。某些环境的 .NET TLS 被策略改动过，
-            # 这时 curl 往往还能用（issue #173 要求「下载走 curl 兜底」）。
-            Write-Host ("  Invoke-WebRequest 失败（{0}），改用 curl 兜底" -f $_.Exception.Message) -ForegroundColor Yellow
-            # 不能写死 `$env:SystemRoot\System32\curl.exe`：`$env:SystemRoot` 在非 Windows 上是空的，
-            # `Join-Path` 拿到 null 会直接抛参数绑定错误（实测把兜底本身弄崩）。
-            # 用 PATH 查找，并同时兼容 `curl.exe`（Windows 10/11 自带）与 `curl`。
-            $curlCmd = Get-Command curl.exe, curl -ErrorAction SilentlyContinue |
-                Select-Object -First 1 -ExpandProperty Source
-            if (-not $curlCmd) { throw '没有 curl 兜底可用（PATH 里找不到 curl / curl.exe）' }
-            & $curlCmd -fsSL -A 'AHA-UpdateSnapshot' -o $zip $pick.Asset.browser_download_url
-            if ($LASTEXITCODE -ne 0) { throw "curl 下载失败（退出码 $LASTEXITCODE）" }
+    if (-not $reuse) {
+        # ── 2. 下载（同尺寸的包直接复用；带 sha256 则校验）──────────────────────────
+        if ((Test-Path -LiteralPath $zip) -and (Get-Item -LiteralPath $zip).Length -eq $pick.Asset.size) {
+            Write-Host ("复用已下载的包：{0}" -f $pick.Asset.name)
+        } else {
+            Write-Host ("下载中：{0}" -f $pick.Asset.browser_download_url)
+            try {
+                Invoke-WebRequest -Uri $pick.Asset.browser_download_url -Headers $downloadHeaders -OutFile $zip
+            } catch {
+                # 兜底：Windows 10/11 自带 curl.exe。某些环境的 .NET TLS 被策略改动过，
+                # 这时 curl 往往还能用（issue #173 要求「下载走 curl 兜底」）。
+                Write-Host ("  Invoke-WebRequest 失败（{0}），改用 curl 兜底" -f $_.Exception.Message) -ForegroundColor Yellow
+                # 不能写死 `$env:SystemRoot\System32\curl.exe`：`$env:SystemRoot` 在非 Windows 上是空的，
+                # `Join-Path` 拿到 null 会直接抛参数绑定错误（实测把兜底本身弄崩）。
+                # 用 PATH 查找，并同时兼容 `curl.exe`（Windows 10/11 自带）与 `curl`。
+                $curlCmd = Get-Command curl.exe, curl -ErrorAction SilentlyContinue |
+                    Select-Object -First 1 -ExpandProperty Source
+                if (-not $curlCmd) { throw '没有 curl 兜底可用（PATH 里找不到 curl / curl.exe）' }
+                & $curlCmd -fsSL -A 'AHA-UpdateSnapshot' -o $zip $pick.Asset.browser_download_url
+                if ($LASTEXITCODE -ne 0) { throw "curl 下载失败（退出码 $LASTEXITCODE）" }
+            }
+            Write-Host ("已下载：{0} MB" -f [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1))
         }
-        Write-Host ("已下载：{0} MB" -f [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1))
-    }
 
-    if ($pick.Asset.digest -and $pick.Asset.digest.StartsWith('sha256:')) {
-        $expected = $pick.Asset.digest.Substring(7).ToUpper()
-        $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-        if ($actual -ne $expected) {
-            Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-            throw "sha256 校验失败，文件已删除，请重试（$($pick.Asset.name)）"
+        if ($pick.Asset.digest -and $pick.Asset.digest.StartsWith('sha256:')) {
+            $expected = $pick.Asset.digest.Substring(7).ToUpper()
+            $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+            if ($actual -ne $expected) {
+                Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+                throw "sha256 校验失败，文件已删除，请重试（$($pick.Asset.name)）"
+            }
+            Write-Host ("  sha256 校验通过：{0}" -f $actual.Substring(0, 16) + '…')
+        } else {
+            Write-Host '  （该资产没有提供 sha256，跳过校验）'
         }
-        Write-Host ("  sha256 校验通过：{0}" -f $actual.Substring(0, 16) + '…')
-    } else {
-        Write-Host '  （该资产没有提供 sha256，跳过校验）'
-    }
 
-    # ── 3. 解压到**按资产命名**的目录（不覆盖任何既有文件）──────────────────────
-    if (Test-Path -LiteralPath $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
-    [IO.Compression.ZipFile]::ExtractToDirectory($zip, $extractDir)
+        # ── 3. 解压到**按资产命名**的目录（不覆盖任何既有文件）──────────────────────
+        if (Test-Path -LiteralPath $extractDir) { Remove-Item -LiteralPath $extractDir -Recurse -Force }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $extractDir)
+    }
     $files = Get-ChildItem -LiteralPath $extractDir -Recurse -File
     Write-Host ''
     Write-Host ("✅ 已取件：{0}" -f $pick.Tag) -ForegroundColor Green
@@ -305,6 +369,30 @@ try {
     $files | Select-Object -First 6 | ForEach-Object { Write-Host ("    - {0}" -f $_.FullName.Substring($extractDir.Length + 1)) }
     if ($files.Count -gt 6) { Write-Host ("    …（另有 {0} 个文件）" -f ($files.Count - 6)) }
     Write-Host ("  zip 保留在：{0}（便于离线重装；不需要可删）" -f $zip)
+
+    # ── 4. 安装（替换）本机平台的原生可执行文件 ────────────────────────────────
+    if ($NoInstall) {
+        Write-Host '  （-NoInstall：只取件，不替换任何既有文件）'
+    } elseif (-not $targetExe) {
+        Write-Host ("  （{0} 没有单一可执行文件，只取件不安装）" -f $pick.Target)
+    } else {
+        $res = Install-NativeBinary -ExtractDir $extractDir -TargetExe $targetExe
+        if (-not $res.ok) {
+            Write-Host ("  [警告] 没能替换 {0}：{1}" -f $targetExe, $res.reason) -ForegroundColor Yellow
+        } else {
+            $fi = Get-Item -LiteralPath $targetExe
+            Write-Host ''
+            Write-Host ("✅ 已替换：{0}" -f $fi.FullName) -ForegroundColor Green
+            Write-Host ("   大小 {0} MB   时间 {1}" -f [math]::Round($fi.Length / 1MB, 1), $fi.LastWriteTime)
+            if ($res.sidecars.Count -gt 0) {
+                Write-Host ("   附带 {0} 个 DLL：{1}" -f $res.sidecars.Count, ($res.sidecars -join ', '))
+            }
+            if (Test-Path -LiteralPath ($targetExe + '.bak')) {
+                Write-Host ("   旧版备份：{0}.bak" -f $targetExe)
+            }
+            Write-Host ("   双击运行：{0}" -f $targetExe)
+        }
+    }
 } catch {
     Write-Host ''
     Write-Host ("[错误] {0}" -f $_.Exception.Message) -ForegroundColor Red
@@ -323,6 +411,7 @@ $state = @{
     pr          = $pick.Pr
     asset       = $pick.Asset.name
     extractedTo = $extractDir
+    installedTo = $targetExe
     fetchedAt   = (Get-Date).ToString('s')
 } | ConvertTo-Json
 [IO.File]::WriteAllText($StateFile, $state)
