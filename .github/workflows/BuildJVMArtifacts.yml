@@ -177,7 +177,12 @@ jobs:
       fail-fast: false
       # 矩阵来自 build-version 的 `matrix` 输出（默认六条腿 = 三平台 × JDK 25/27）。
       # 快照线（SnapshotJVM.yml）传 JSON 收窄：只出 JDK 25、只出被标签选中的平台。
-      matrix: ${{ fromJSON(needs.build-version.outputs.matrix) }}
+      # 【临时二分实验】先用硬编码单腿，验证「job 是否被创建」
+      include:
+        - os: ubuntu-latest
+          label: linux-x64
+          jdk: 25
+          upload_cli: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
