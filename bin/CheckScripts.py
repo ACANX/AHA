@@ -31,6 +31,15 @@
     - 同样按上面的规则检查（`Dist/` 整体是构建输出目录，已剪枝；
       所以用 `git ls-files` 把其中**被跟踪**的那几个手写入口单独捡回来）。
 
+  快照清单：单一来源与消费方一致（issue #165）
+    - `.github/snapshot-paths.yml` 是「触发标签 + 变更分类路径」的**单一来源**；
+      `SnapshotJVM.yml` / `DesktopNative.yml` 与文档都必须与它一致：
+        * 全仓出现的标签字面量必须与清单**逐字一致（含大小写）**——写错的表现是
+          「打了标签却毫无反应」，静默且难查；
+        * 快照工作流必须**引用**该清单文件（不许自己再写一套路径），其 `paths:`
+          字面量必须在清单的 A / B / C 组里。
+    - 清单自身不存在时跳过本检查（例如 `main` / `release` 分支尚未引入）。
+
   原生取件：两套实现的一致性
     - `Dist/UpdateNative.ps1`（Windows，PowerShell）与
       `Script/Python/NativeVersionUpdate.py`（POSIX，Python）的
@@ -80,6 +89,36 @@ TRACKED_SCRIPT_DIRS = ("Dist",)
 #: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
 NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+#: 快照出包的单一来源（issue #165）：触发标签与变更分类路径清单。
+#: 消费方是 `SnapshotJVM.yml` / `DesktopNative.yml` 与文档——三者一旦漂移，表现是**静默**的
+#: （某个改动悄悄不出包 / 打错标签毫无反应），因此在这里钉成断言。
+SNAPSHOT_MANIFEST = ROOT / ".github" / "snapshot-paths.yml"
+
+#: 仓库里**真实存在**的 7 个标签（`gh label list` 可查）。这是全仓唯一一处把标签名写死的地方——
+#: 名字必须与 GitHub 上的既有事实对齐，不能由清单自定义；清单与所有消费方都要与它逐字一致。
+SNAPSHOT_LABELS = (
+    "SNAPSHOT:Desktop",
+    "SNAPSHOT:Cli",
+    "SNAPSHOT:NativeDesktop",
+    "SNAPSHOT:NativeCli",
+    "OS:Win",
+    "OS:MacOS",
+    "OS:Ubuntu",
+)
+
+#: 标签字面量。**故意不区分大小写地粗扫**，再与清单逐字比对——这样才能抓出
+#: 「平台名写成小写」这类大小写漂移（GitHub 的标签匹配是区分大小写的）。
+SNAPSHOT_LABEL_RE = re.compile(r"\b(SNAPSHOT|OS):([A-Za-z]+)\b", re.I)
+
+#: 扫描标签字面量时只读这些文本类型（二进制与压缩包不读）
+SCANNABLE_SUFFIXES = {
+    ".md", ".markdown", ".yml", ".yaml", ".py", ".ps1", ".psm1", ".cmd", ".bat",
+    ".sh", ".bash", ".java", ".xml", ".json", ".txt",
+}
+
+#: 快照工作流必须出现的清单引用（不许自己再写一套路径）
+SNAPSHOT_MANIFEST_REF = "snapshot-paths.yml"
+
 PY_KIND_RE = re.compile(
     r'key="(\w+)".*?tag_suffix="([^"]+)".*?asset_prefix="([^"]+)".*?exe_base="([^"]+)"',
     re.S)
@@ -342,6 +381,151 @@ def check_native_update_parity() -> list[str]:
 SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
+def maybe_scannable_files():
+    """遍历被 git 跟踪（或未跟踪但未被忽略）的文本文件，产出 (路径, 内容)。
+
+    用 git 问「哪些是源码」而不是自己 walk：`Dist/` 等目录里既有生成物又有手写入口，
+    `--exclude-standard` 已经把生成物排除了（与 `collect()` 同一套判断）。
+    """
+    listed = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=ROOT, capture_output=True, text=True)
+    if listed.returncode != 0:
+        return
+    for name in listed.stdout.splitlines():
+        if not name.strip():
+            continue
+        path = ROOT / name
+        if path.suffix.lower() not in SCANNABLE_SUFFIXES or not path.is_file():
+            continue
+        try:
+            yield path, path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+
+
+def read_snapshot_manifest(path: Path) -> tuple[list[str], dict[str, list[str]]]:
+    """解析快照清单，返回 (标签列表, {组名: [路径]})。
+
+    只认本文件固定的形状（顶层 `labels:` / `paths:`，其下 `组名:` 与 `- 值`）——
+    形状变了会解析成空，由调用方报「无法解析」而**不是**静默放行。
+    不依赖 PyYAML：CI 与本地都不假设装了第三方库。
+    """
+    labels: list[str] = []
+    groups: dict[str, list[str]] = {}
+    section: str | None = None
+    group: str | None = None
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        body = raw.split("#", 1)[0].rstrip()  # 去注释与行尾空白
+        if not body.strip():
+            continue
+        indent = len(body) - len(body.lstrip())
+        stripped = body.strip()
+        if indent == 0 and stripped.endswith(":"):
+            section, group = stripped[:-1], None
+            continue
+        if stripped.startswith("- "):
+            value = stripped[2:].strip().strip("'\"")
+            if section == "labels":
+                labels.append(value)
+            elif section == "paths" and group:
+                groups[group].append(value)
+            continue
+        if indent > 0 and stripped.endswith(":") and section == "paths":
+            group = stripped[:-1]
+            groups.setdefault(group, [])
+    return labels, groups
+
+
+def paths_block_literals(text: str) -> list[tuple[int, str]]:
+    """取工作流 `paths:` / `paths-ignore:` 块下的字面量（如 `- 'aha-cli/**'`）与行号。"""
+    literals: list[tuple[int, str]] = []
+    inside = False
+    for number, line in enumerate(text.splitlines(), 1):
+        body = line.split("#", 1)[0].rstrip()
+        stripped = body.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("paths:", "paths-ignore:")):
+            inside = True
+            continue
+        if inside:
+            if stripped.startswith("- "):
+                value = stripped[2:].strip().strip("'\"")
+                if value:
+                    literals.append((number, value))
+                continue
+            inside = False  # 块结束（同级或更浅的键）
+    return literals
+
+
+def check_snapshot_manifest() -> list[str]:
+    """快照清单与它的消费方必须一致（见模块 docstring）。"""
+    if not SNAPSHOT_MANIFEST.exists():
+        return []  # 尚未引入（如 main / release 分支）⇒ 本检查随之跳过
+    rel = SNAPSHOT_MANIFEST.relative_to(ROOT)
+    labels, groups = read_snapshot_manifest(SNAPSHOT_MANIFEST)
+    if not labels or set(groups) != {"a", "b", "c"} or not all(groups.values()):
+        return [
+            f"{rel} 无法解析出「标签 + A/B/C 三组路径」——"
+            "清单形状变了，请同步 bin/CheckScripts.py 的 self-check 逻辑"
+        ]
+
+    problems: list[str] = []
+
+    # ① 标签集合：与仓库里真实存在的 7 个逐字一致（含大小写）
+    missing = [name for name in SNAPSHOT_LABELS if name not in labels]
+    extra = [name for name in labels if name not in SNAPSHOT_LABELS]
+    if missing or extra:
+        problems.append(
+            f"{rel} 的标签与仓库里真实存在的 7 个不一致："
+            f"缺少 {missing}、多出 {extra}（GitHub 上的标签是既有事实，清单必须照抄）"
+        )
+
+    # ② C 组必须含兜底项 `**`，否则「未列到的一切」没有落点
+    if "**" not in groups["c"]:
+        problems.append(f"{rel} 的 C 组必须包含 `**`（未列到的一切按 A 组处理，保守兜底）")
+
+    # ③ 全仓标签字面量：任何文件里出现的标签都必须与清单逐字一致
+    listed = set(labels)
+    # 豁免「权威侧」的两个文件：清单本身是来源，本脚本的 SNAPSHOT_LABELS 是「GitHub 上的既有事实」
+    # ——它们**必须**写着标签名，若一并扫描就会自判违规（本检查初版就踩了这一脚，反向验证抓出来的）。
+    authorities = {SNAPSHOT_MANIFEST, Path(__file__).resolve()}
+    for path, text in maybe_scannable_files():
+        if path.resolve() in authorities:
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            for match in SNAPSHOT_LABEL_RE.finditer(line):
+                literal = match.group(0)
+                if literal not in listed:
+                    problems.append(
+                        f"{path.relative_to(ROOT)}:{number} 出现清单之外的标签 {literal!r}——"
+                        f"标签名必须与 {rel} 逐字一致（含大小写）；"
+                        "写错的表现是「打了标签却毫无反应」，不报错、只是没反应"
+                    )
+
+    # ④ 快照工作流：必须引用清单，且 `paths:` 字面量必须在清单里
+    allowed = set(groups["a"]) | set(groups["b"]) | set(groups["c"])
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        if not (SNAPSHOT_LABEL_RE.search(text) or SNAPSHOT_MANIFEST_REF in text):
+            continue
+        wrel = workflow.relative_to(ROOT)
+        if SNAPSHOT_MANIFEST_REF not in text:
+            problems.append(
+                f"{wrel} 像是快照工作流，但没有引用 `{SNAPSHOT_MANIFEST_REF}`——"
+                "路径清单是单一来源，工作流里不许再写一套（否则两处必然漂移）"
+            )
+        for number, literal in paths_block_literals(text):
+            if literal not in allowed:
+                problems.append(
+                    f"{wrel}:{number} 的 paths 字面量 {literal!r} 不在 {rel} 里——"
+                    "清单是单一来源：要么把它写进清单（并说明归 A 还是 B），要么改这里"
+                )
+
+    return problems
+
+
 def check_yaml_shell_vars(path: Path) -> list[str]:
     """YAML（主要是 GitHub Actions 的 shell 片段）：`$VAR` 后不得紧跟非 ASCII。
 
@@ -402,11 +586,14 @@ def main() -> int:
     problems.extend(ignored)
     parity = check_native_update_parity()
     problems.extend(parity)
+    snapshot = check_snapshot_manifest()
+    problems.extend(snapshot)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
+    print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
     if problems:
         print("\n[问题]")
         for problem in problems:
