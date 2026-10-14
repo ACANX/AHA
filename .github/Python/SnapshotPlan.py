@@ -72,7 +72,9 @@ JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
 #:   2. 保持 `prerelease: true`（不进 `releases/latest`）。
 #: 每个目标一条 tag（一次运行若同时选中 Desktop 与 Cli，会得到两条并列的 pre-release）。
 TAG_FORMAT = "V{version}-AHA-{target}-SNAPSHOT"
-RELEASE_NAME_FORMAT = "V{version}-AHA-{target}-SNAPSHOT（PR #{pr} 快照）"
+# 发行名与 tag **完全相同**：再加「（PR #N 快照）」只是重复（PR 号已经在版本段 `.<PR 补零 5 位>.` 里，
+# 「快照」也已经在 `-SNAPSHOT` 后缀里）——ACANX 定案删掉。
+RELEASE_NAME_FORMAT = TAG_FORMAT
 
 #: 快照包资产名（#165 §八）。`{label}` 用平台标签；CLI 包平台无关，但按 §八 仍带平台段。
 ASSET_FORMATS = {
@@ -219,7 +221,7 @@ def release_groups(targets: list[str], version: str, platforms: list[str], pr: i
         groups.append({
             "target": target,
             "tag": TAG_FORMAT.format(version=version, target=target),
-            "name": RELEASE_NAME_FORMAT.format(version=version, target=target, pr=pr),
+            "name": RELEASE_NAME_FORMAT.format(version=version, target=target),
             "assets": asset_names([target], version, platforms),
         })
     return groups
@@ -321,7 +323,6 @@ def comment_body(plan: dict, run_url: str = "") -> str:
               + timedelta(days=SNAPSHOT_TTL_DAYS)).isoformat()
     release_blocks = "\n".join(
         f"#### `{group['tag']}`\n"
-        f"- 发行名：{group['name']}\n"
         + "".join(f"- 资产：`{name}`\n" for name in group["assets"])
         + f"- 发布页：https://github.com/ACANX/AHA/releases/tag/{group['tag']}\n"
         for group in plan.get("releases", [])
@@ -435,6 +436,10 @@ def self_test() -> int:
     problems += 0 if tags_ok else 1
     print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
           + "、".join(g["tag"] for g in plan["releases"]))
+    name_ok = all(g["name"] == g["tag"] for g in plan["releases"])
+    problems += 0 if name_ok else 1
+    print(f"  {'✅' if name_ok else '❌'} 发行名与 tag 完全相同（无多余后缀）："
+          + "、".join(g["name"] for g in plan["releases"]))
     old_tag_ok = "snapshot-pr" not in comment_body(plan, "https://example/run")
     problems += 0 if old_tag_ok else 1
     print(f"  {'✅' if old_tag_ok else '❌'} 评论正文不再出现旧 tag 形式（`snapshot-pr<N>`）")
