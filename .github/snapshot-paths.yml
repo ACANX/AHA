@@ -35,10 +35,15 @@ paths:
     - aha-cli/**
     - aha-common/**
     - aha-desktop-native/**
+    - aha-cli-native/**
     - '**/pom.xml'
     - version
     - .github/Python/**
     - .github/workflows/**
+    # 原生线的两条工作流：改它们会改「原生包怎么出」，因此显式列出（比 `.github/workflows/**`
+    # 更精确，也满足守卫「消费方字面量与清单逐条一致」的要求）。
+    - .github/workflows/DesktopNative.yml
+    - .github/workflows/CliNative.yml
     # 本文件自身决定「怎么分类」。它与 C 组同效（都出包），显式列出是为了意图明确。
     - .github/snapshot-paths.yml
   # B. 不出包：不进产物，但 PR 评论与 run 摘要要写明原因

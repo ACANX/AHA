@@ -50,11 +50,22 @@ on:
   # 【重要】PR 事件下**不发布**（见 native-publish 的 if）：避免 PR 阶段就往发布页推预发行包、
   # 留下无人认领的 tag。制品仍会上传为 Actions artifact，在 PR 页面底部可见。
   pull_request:
+    # 【注意】`types` 一旦写出来就会**覆盖**默认值（默认只有 opened / synchronize / reopened），
+    # 所以必须把默认的三个一并列出，否则「PR 上跑一次」这条既有能力会静默消失。
+    # `labeled` / `unlabeled` 是快照出包用的（#165 §三：打 `SNAPSHOT:NativeDesktop` 才出包）。
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - 'aha-desktop/**'
       - 'aha-desktop-native/**'
-      - 'pom.xml'
+      - '**/pom.xml'
+      # 判定脚本与路径清单也会改变本工作流的行为（改清单 = 改「哪些改动算出包」）
+      - '.github/Python/**'
+      - '.github/snapshot-paths.yml'
       - '.github/workflows/DesktopNative.yml'
+  # 评论命令触发（`/snapshot NativeDesktop [os ...]`，见 #165 §三 补充触发方式 ②）。
+  # 与标签的区别：命令是**一次性**的，标签是**粘性**的。
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       pr:
@@ -63,6 +74,14 @@ on:
         default: ''
       version:
         description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
+        required: false
+        default: ''
+      target:
+        description: 手动出快照时的目标（留空则按 PR 标签判定）
+        required: false
+        default: 'NativeDesktop'
+      os:
+        description: 手动出快照时的平台限定（Win / MacOS / Ubuntu，可空格分隔多个；留空 = 全部平台）
         required: false
         default: ''
 
@@ -81,6 +100,67 @@ defaults:
     shell: bash
 
 jobs:
+  # ── 0. 判定（快照出包要不要出、出哪些腿、版本号；逻辑全在 .github/Python/SnapshotPlan.py）──
+  #    本工作流只负责**一个**原生目标：`NativeDesktop`（CLI 目标由 CliNative.yml 负责）。
+  #    请求里不含本目标时，`owns_comment=false` ⇒ 不构建、也**不动 PR 评论**（两条线互不覆盖）。
+  plan:
+    name: plan（判定）
+    runs-on: ubuntu-latest
+    # 评论触发的：只认 `/snapshot` 开头的评论（否则每条评论都起一次 run）。
+    if: >-
+      github.event_name != 'issue_comment'
+      || (github.event.issue.pull_request != null
+          && startsWith(github.event.comment.body, '/snapshot'))
+    outputs:
+      should_build: ${{ steps.plan.outputs.should_build }}
+      pr: ${{ steps.plan.outputs.pr }}
+      version: ${{ steps.plan.outputs.version }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      legs: ${{ steps.plan.outputs.legs }}
+      releases: ${{ steps.plan.outputs.releases }}
+      assets: ${{ steps.plan.outputs.assets }}
+      owns_comment: ${{ steps.plan.outputs.owns_comment }}
+      marker: ${{ steps.plan.outputs.marker }}
+      comment: ${{ steps.plan.outputs.comment }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 判定（取上下文 + 单行调用脚本产出 outputs）
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_PR: ${{ inputs.pr }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          COMMENT: ${{ github.event.comment.body }}
+          ASSOCIATION: ${{ github.event.comment.author_association }}
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_OS: ${{ inputs.os }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "${EVENT}" in
+            pull_request) pr="${EVENT_PR}" ;;
+            issue_comment) pr="${EVENT_ISSUE}" ;;
+            *) pr="${INPUT_PR:-}" ;;
+          esac
+          if [ -z "${pr}" ]; then
+            echo "::error::没能确定 PR 号（workflow_dispatch 需要显式传 pr）"
+            exit 1
+          fi
+          echo "PR #${pr}"
+          gh api --paginate "repos/${REPO}/pulls/${pr}/files" --jq '.[].filename' > changed-files.txt || true
+          echo "改动文件数：$(wc -l < changed-files.txt)"
+          # 判定与 outputs 生成**都在脚本里**：YAML 块标量写多行字符串会被提前截断、
+          # `comment=多行` 会报 `Invalid format`（两处都实测踩过）。这里只有这一行。
+          PR="${pr}" CHANGED_FILES=changed-files.txt \
+            BASELINE="$(python3 .github/Python/ProjectVersion.py --resolve)" \
+            python3 .github/Python/SnapshotPlan.py --line native --native-target NativeDesktop --emit-outputs
+
   # ── 1. 算版本（单独一个作业：三条腿共用同一个版本号）────────────────────────
   native-version:
     name: native-version
@@ -150,7 +230,20 @@ jobs:
   #    每个 runner 只能产出自己平台的二进制（native-image 不能交叉编译）。
   native-image:
     name: native-image-${{ matrix.label }}-jdk${{ matrix.jdk }}
-    needs: native-version
+    # `plan` 只为拿快照判定与版本号；dev/push 时它被跳过（那时 outputs 为空，回落到 native-version）。
+    needs: [plan, native-version]
+    # 什么时候构建：
+    #   * push 到 dev / 手动指定版本 ⇒ 照旧全腿构建（既有行为不变）；
+    #   * PR / 评论命令 ⇒ **只有判定说该出包时才构建**（#165：四类目标默认都不出包）。
+    if: >-
+      always() && !cancelled()
+      && needs.native-version.result == 'success'
+      && (github.event_name == 'push'
+          || needs.plan.outputs.should_build == 'true')
+    env:
+      # 快照出包用判定脚本给的 5 段版本（`<基线>.<PR 补零 5 位>.<MMddHHmm>`）；
+      # dev/push 用 native-version 算的 4 段版本（`<基线>.<PR 补零 5 位>`）—— 规则不变。
+      AHA_VERSION: ${{ needs.plan.outputs.version || needs.native-version.outputs.version }}
     strategy:
       # 一条腿失败不取消其余：三个平台的产物是并列交付物，缺哪个都要看得见。
       fail-fast: false
@@ -196,6 +289,13 @@ jobs:
       # GraalVM（含 native-image）。用社区版：开源项目无需商用授权顾虑，
       # 同样带 native-image；换 Oracle GraalVM 只需把 distribution 改成 graalvm。
       - name: 安装 GraalVM（JDK ${{ matrix.jdk }}）
+        # 腿级收窄（#165 验收 12）：静态矩阵 + **步骤级** `if`。
+        # 不能用动态矩阵（`fromJSON(needs/inputs)` 实测会让作业被静默丢弃），
+        # 也不能在作业级 `if` 里读 `matrix`（实测 `Unrecognized named-value: 'matrix'`）。
+        # 本步一旦跳过，其余步骤都被 `steps.graal.outcome == 'success'` 挡住 ⇒ 整条腿安静跳过。
+        if: >-
+          needs.plan.outputs.should_build != 'true'
+          || contains(needs.plan.outputs.legs, format('"{0}/jdk{1}"', matrix.label, matrix.jdk))
         # 容错原因：GraalVM 的某个 JDK 大版本可能**还没发布**（实测 JDK 27 就是这样，
         # 这一步当时红了）。那是上游发布节奏，不是本项目的问题，不该染红本工作流。
         id: graal
@@ -265,7 +365,7 @@ jobs:
         env:
           LEG_PLATFORM: ${{ matrix.platform }}
           LEG_LABEL: ${{ matrix.label }}
-          LEG_VERSION: ${{ needs.native-version.outputs.version }}
+          LEG_VERSION: ${{ env.AHA_VERSION }}
 
       - name: 构建原生镜像
         # 容错：原生编译失败在本工作流里**不算整体失败**（可选项，见文件头）。
@@ -294,8 +394,8 @@ jobs:
             ./mvnw -B -P${{ steps.leg.outputs.profiles }}
             -pl aha-desktop-native,aha-desktop -am package
             -DskipTests -Djacoco.skip=true
-            -Daha.native.version=${{ needs.native-version.outputs.version }}
-            -Daha.build.version=${{ needs.native-version.outputs.version }}
+            -Daha.native.version=${{ env.AHA_VERSION }}
+            -Daha.build.version=${{ env.AHA_VERSION }}
             -Dnative.image.executable=${{ steps.leg.outputs.executable }}
             -Dnative.skip=false
 
@@ -349,7 +449,7 @@ jobs:
             echo "::warning::runner 上没有 python，无法打独立报告包"
             exit 0
           fi
-          out="Dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
+          out="Dist/AHA-Desktop-Native-${{ env.AHA_VERSION }}-${{ matrix.label }}-jdk${{ matrix.jdk }}-Report.zip"
           "$py" -c "import sys,zipfile,glob,os; out,work=sys.argv[1],sys.argv[2]; files=sorted(glob.glob(work+'/*build-report.*')+glob.glob(work+'/*.build_artifacts.txt')+glob.glob(work+'/reachability-metadata.json')+glob.glob('aha-desktop-native/src/native/native-image-args*.txt')); z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [z.write(f,os.path.basename(f)) for f in files]; z.close(); print(out, len(files), 'files')" "$out" "$work"
           ls -lh "$out"
           "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
@@ -393,7 +493,7 @@ jobs:
                 echo "### 构建报告（${{ matrix.label }}，jdk${{ matrix.jdk }}）"
                 echo ""
                 echo "- 文件：\`$(basename "$report")\`（$((rsize / 1024 / 1024)) MB，HTML，不在此处解析）"
-                echo "- 下载：发布页的独立报告包 \`AHA-Desktop-Native-Report-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip\`"
+                echo "- 下载：发布页的独立报告包 \`AHA-Desktop-Native-Report-${{ env.AHA_VERSION }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip\`"
               } >> "$GITHUB_STEP_SUMMARY"
               exit 0
               ;;
@@ -866,7 +966,7 @@ jobs:
           # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
           # 产物统一落 Dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
           src=$(ls Dist/aha-desktop-native-*.zip)
-          target="Dist/AHA-Desktop-Native-${{ needs.native-version.outputs.version }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
+          target="Dist/AHA-Desktop-Native-${{ env.AHA_VERSION }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
           echo "发布资产：${target}"
@@ -934,14 +1034,23 @@ jobs:
   #    因此先各自上传制品，再由这里一次性挂到发布页。
   native-publish:
     name: native-publish
-    needs: [native-version, native-image]
+    needs: [plan, native-version, native-image]
+    env:
+      AHA_VERSION: ${{ needs.plan.outputs.version || needs.native-version.outputs.version }}
     # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
     #
     # 【PR 事件下不发布】issue #144 给本工作流加了 pull_request 触发——那只是为了让
     # 「原生包能不能起」在合并前可见。若 PR 也走发布，就会在还没合并的时候往发布页推
     # 预发行包、并留下一个无人认领的 tag（PR 号版本号，合不入 dev 就永远是孤儿）。
     # 制品仍由各腿的 upload-artifact 上传，PR 页面底部能直接下。
-    if: always() && needs.native-version.result == 'success' && github.event_name != 'pull_request'
+    # 发布条件（只有这两种情况才发）：
+    #   * push 到 dev（既有行为）：发 `V<版本>-aha-desktop-native`；
+    #   * 快照请求（判定 should_build）且构建成功：发 `V<快照版本>-AHA-NativeDesktop-SNAPSHOT`。
+    #   其它 PR（没打触发标签）：**不发**——只留 Actions 制品，供 PR 页面直接下载（issue #144 的既有行为）。
+    if: >-
+      always() && !cancelled()
+      && needs.native-version.result == 'success'
+      && (github.event_name == 'push' || needs.plan.outputs.should_build == 'true')
     runs-on: ubuntu-latest
     steps:
       # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 Dist/ 不是一回事，
@@ -1006,15 +1115,38 @@ jobs:
             echo "> 两类包**同名族**（版本 / 系统 / 架构 / JDK 轴一致），下载时按需取件、一一对应。"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: 决定发布载体（快照 ⇒ `<快照版本>-AHA-NativeDesktop-SNAPSHOT`；dev ⇒ `native-v` 族）
+        id: carrier
+        env:
+          RELEASES: ${{ needs.plan.outputs.releases }}
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.plan.outputs.should_build }}" = "true" ]; then
+            # 判定脚本已给出「每个目标一条 tag」的清单（快照线命名定案见 #165 §八）
+            tag=$(python3 -c 'import json,os; g=json.loads(os.environ["RELEASES"]); print(g[0]["tag"] if g else "")')
+            name="${tag}"
+            echo "载体：快照 pre-release（${tag}）"
+          else
+            # dev 线的既有载体
+            tag="V${AHA_VERSION}-aha-desktop-native"
+            name="V${AHA_VERSION}-AHA-Desktop-Native-Image"
+            echo "载体：dev 线预发行版（${tag}）"
+          fi
+          {
+            echo "tag=${tag}"
+            echo "name=${name}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: PreRelease-AHA-Desktop-Native-VPR
         # 只有真的收上来包才发版：没有产物却去建一个空 release，比不发更糟
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          # tag 前缀刻意用 native-v：不匹配 Release.yml 的 V* / v*，
-          # 因此这一条不会触发正式发版流程。
-          tag_name: V${{ needs.native-version.outputs.version }}-aha-desktop-native
-          name: V${{ needs.native-version.outputs.version }}-AHA-Desktop-Native-Image
+          # 快照用 `V<快照版本>-AHA-NativeDesktop-SNAPSHOT`（保持 prerelease: true，
+          # 且 `Release.yml` 的 tag 过滤已排除 `-SNAPSHOT`，不会触发正式发版）；
+          # dev 线仍用 `native-v` 族前缀。
+          tag_name: ${{ steps.carrier.outputs.tag }}
+          name: ${{ steps.carrier.outputs.name }}
           # 预发行版：不出现在 releases/latest，不会被误当成正式版本
           prerelease: true
           files: artifacts/*.zip
@@ -1029,7 +1161,7 @@ jobs:
             > 遇到问题时请先用 JVM 版对照一次，以区分「原生镜像特有」与「功能本身」的问题。
 
             ## 版本
-            - 本版版本号：`${{ needs.native-version.outputs.version }}`
+            - 本版版本号：`${{ env.AHA_VERSION }}`
             - 基线版本：`${{ needs.native-version.outputs.base }}`（读自根 pom.xml）
             - 来源 PR：#${{ needs.native-version.outputs.pr }}
 
@@ -1047,3 +1179,40 @@ jobs:
             内含 native-image 构建报告、该版使用的镜像参数与可达性元数据。
             报告是「为什么编得这么大 / 这么慢」与「下一步加什么参数」的唯一依据；
             文件名与镜像包一一对应（版本、系统、架构、JDK 轴全在名里），按需取件即可。
+
+  # ── 4. 回写 PR 评论（**幂等**：同一条评论反复编辑，见 #165 §六）──────────────
+  #    原生线用**自己的**标记 `<!-- aha-snapshot-native -->`：与 JVM 线各管各的评论，
+  #    互不覆盖（两条线可能同时被请求；共用一个标记会把对方的结论改写掉）。
+  comment:
+    name: comment（幂等回写 PR 评论）
+    needs: [plan, native-publish]
+    # 即使构建失败也要回写（评论要反映「本次没出包 / 失败了」）；没有 PR 号则无事可做。
+    # `!cancelled()`：被并发取消的 run 不回写（否则 PR 检查被染红，且评论内容是过期的）。
+    if: >-
+      always() && !cancelled() && needs.plan.outputs.pr != ''
+      && needs.plan.outputs.owns_comment != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 找到既有评论并更新（没有则新建）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.plan.outputs.pr }}
+          MARKER: ${{ needs.plan.outputs.marker }}
+          BODY: ${{ needs.plan.outputs.comment }}
+        run: |
+          set -euo pipefail
+          # 标记由判定脚本给出（原生线 = `<!-- aha-snapshot-native -->`）：
+          # 只**更新**自己那一条评论，不新建、也不碰另一条线的评论。
+          existing=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
+                       --jq --arg m "${MARKER}" '[.[] | select(.body | startswith($m))] | .[0].id // empty' \
+                     | head -n1)
+          body_file="$(mktemp)"
+          printf '%s\n' "${BODY}" > "${body_file}"
+          if [ -n "${existing}" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -F body=@"${body_file}" > /dev/null
+            echo "已更新既有评论 ${existing}（幂等：不新增）"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@"${body_file}" > /dev/null
+            echo "已新建评论"
+          fi
