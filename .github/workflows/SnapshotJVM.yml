@@ -170,7 +170,9 @@ jobs:
               OWNER|MEMBER|COLLABORATOR) ;;
               *)
                 echo "should_build=false" >> "$GITHUB_OUTPUT"
-                emit_notice "\\`/snapshot\\` 只对**本仓库有写权限**的账号生效（当前账号关联：${ASSOCIATION:-NONE}）"
+                # 注意：**不能**用反引号包 `/snapshot` —— 双引号内反引号会被 bash 当命令替换执行（实测报 `/snapshot\: No such file or directory`）
+                echo "owns_comment=true" >> "$GITHUB_OUTPUT"
+                emit_notice "/snapshot 命令只对**本仓库有写权限**的账号生效（当前账号关联：${ASSOCIATION:-NONE}）"
                 exit 0
                 ;;
             esac
@@ -197,6 +199,7 @@ jobs:
             echo "targets=$(echo "$json" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["targets"]))')"
             echo "matrix=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["matrix"], separators=(",",":")))')"
             echo "releases=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["releases"], separators=(",",":")))')"
+            echo "owns_comment=$(echo "$json" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("owns_comment", True)).lower())')"
           } >> "$GITHUB_OUTPUT"
           # 评论正文多行 ⇒ 必须 heredoc 形式（见上）
           printf 'comment<<AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
