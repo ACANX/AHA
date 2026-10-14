@@ -198,6 +198,11 @@ jobs:
             echo "—— ${check} ——"
             python3 "bin/${check}.py"
           done
+      - name: 版本号格式自检（ProjectVersion.py --self-test）
+        # 快照版本是 5 段（`<基线>.<PR 号补零 5 位>.<MMddHHmm>`），而 6 段与乱码必须被拒。
+        # 这条边界放在静态守卫里，是因为它一旦被改宽（"什么都接受"）不会立刻暴露——
+        # 打错的版本号会被静默一路带进产物名与 tag。
+        run: python3 .github/Python/ProjectVersion.py --self-test
 
   tag:
     name: tag（V<版本号>）
