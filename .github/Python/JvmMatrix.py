@@ -71,7 +71,7 @@ def parse_matrix(raw: str | None) -> list[dict]:
             raise MatrixError(f"第 {index} 条腿的 os 为空")
         if leg["label"] not in PLATFORM_LABELS:
             raise MatrixError(
-                f"第 {index} 条腿的 label {leg['label']!r} 不认识（只认 {list(PLATFORM_LABELS)}）"
+                f"第 {index} 条腿的 label {leg['label']!r} 不在 JVM 线允许的取值里（{list(PLATFORM_LABELS)}）"
             )
         if leg["jdk"] not in SUPPORTED_JDKS:
             raise MatrixError(f"第 {index} 条腿的 jdk {leg['jdk']!r} 不支持（只认 {list(SUPPORTED_JDKS)}）")
@@ -100,7 +100,7 @@ SELF_TEST_CASES: list[tuple[str, bool, str]] = [
     ("not json", False, "非法 JSON"),
     ('[{"os":"ubuntu-latest","label":"linux-x64","jdk":25}]', False, "缺 upload_cli 字段"),
     ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25,"upload_cli":true}]', False,
-     "label 写错（现存 JVM 线是 linux-x64，不是 ubuntu-x64）"),
+     "label 与现有 JVM 线不一致（JVM 线用 linux-x64；原生线用 ubuntu-amd64）"),
     ('[{"os":"ubuntu-latest","label":"linux-x64","jdk":26,"upload_cli":true}]', False, "jdk 越界"),
     ('[{"os":"","label":"linux-x64","jdk":25,"upload_cli":true}]', False, "os 为空"),
 ]

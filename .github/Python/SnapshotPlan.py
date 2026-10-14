@@ -289,6 +289,16 @@ def comment_body(plan: dict, run_url: str = "") -> str:
     expiry = (datetime.now(timezone.utc).date()
               + timedelta(days=SNAPSHOT_TTL_DAYS)).isoformat()
     asset_lines = "\n".join(f"- `{name}`" for name in plan["assets"])
+    # 平台名的**语义边界**：`linux-x64` 是「产物适用于哪个平台 / 架构」的技术标识，
+    # 不表示「在所有 Linux 发行版上都验证过」。实际验证环境只有构建它的那台 runner，
+    # 因此把这层事实显式写出来——否则 `linux-x64` 会被读成「全 Linux 都支持」，
+    # 而 CentOS / RHEL 等根本没验证。
+    platform_note = (
+        "\n**平台验证范围**（不是「全 Linux 都支持」的意思）：\n"
+        "- `linux-x64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
+        "CentOS / RHEL 等其他发行版**未验证**；\n"
+        "- `windows-x64`：构建与冒烟环境为 GitHub Actions 的 Windows runner（`windows-latest`，本 run 的镜像是 `windows-2025-vs2026`）。\n"
+    ) if any(name.startswith(("AHA-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
     return (
         "<!-- aha-snapshot -->\n"
         f"### 快照包：`{plan['version']}`\n\n"
@@ -296,6 +306,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         f"- 判定：{plan['reason']}\n"
         f"- 资产（挂在 pre-release `snapshot-pr{plan['pr']}`）：\n{asset_lines}\n"
         f"- 有效期至：**{expiry}**（{SNAPSHOT_TTL_DAYS} 天；过期后仍可下载，只作提示）\n"
+        f"{platform_note}"
         f"- 构建：{run_url or '（见本 PR 的 Actions 运行）'}\n\n"
         "取件（在仓库的 `Dist/` 下运行，无需 token / 无需 gh）：\n"
         "```\n"
@@ -367,6 +378,13 @@ def self_test() -> int:
     ok = version == f"0.1.3.00171.{beijing}" and beijing != utc
     problems += 0 if ok else 1
     print(f"  {'✅' if ok else '❌'} 版本号 {version}（UTC 段 {utc}，北京时间段 {beijing}，二者不同）")
+    # 评论正文必须写清平台名的语义边界（本轮实测：linux-x64 的验证环境只有 Ubuntu）
+    plan = decide(labels=["SNAPSHOT:Desktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
+                  pr=171, now=now, groups=groups)
+    body = comment_body(plan, "https://example/run")
+    ok_note = "平台验证范围" in body and "Ubuntu 24.04" in body and "未验证" in body
+    problems += 0 if ok_note else 1
+    print(f"  {'✅' if ok_note else '❌'} 评论正文写明平台验证范围（Ubuntu 24.04 / 其他发行版未验证）")
     if problems:
         print(f"\n[问题] {problems} 条自检不符合预期")
         return 1
