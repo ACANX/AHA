@@ -815,8 +815,12 @@ jobs:
           BODY: ${{ needs.plan.outputs.comment }}
         run: |
           set -euo pipefail
+          # 注意：`gh api --jq` 只接受**一个**参数，不支持 `--arg`（那是独立 jq 命令的语法）。
+          # 写成 `--jq --arg m …` 会被直接拒（实测 `accepts 1 arg(s), received 4`），
+          # 于是整个评论作业失败、评论既不发也不更新（真机在 #183 上踩到）。
+          # 标记由判定脚本给出、不含双引号，直接插值即可。
           existing=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
-                       --jq --arg m "${MARKER}" '[.[] | select(.body | startswith($m))] | .[0].id // empty' \
+                       --jq '[.[] | select(.body | startswith("'"${MARKER}"'"))] | .[0].id // empty' \
                      | head -n1)
           body_file="$(mktemp)"
           printf '%s\n' "${BODY}" > "${body_file}"
