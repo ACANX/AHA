@@ -75,6 +75,19 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **切主题后输入框 / 对话框组件的颜色不跟着变（2026-10-14，issue #153）**：颜色是**内联在样式串里**的，
+  换色表不会自动影响已建节点 ⇒ 主窗口靠 `DesktopShell.restylers` 登记重刷，但主窗口之外与
+  「一次性上色」的路径**不在重刷范围内**。本轮查出四类并存漏洞：① `static final String` 样式常量
+  （常量在**类加载时**求值，颜色被**冻死**——重开对话框也还是旧色）——
+  `ProviderDialog.SECTION_TITLE_STYLE` / `SettingsDialog.MUTED_STYLE` / `NOTE_STYLE` /
+  `ApprovalDialog.SECTION_STYLE`；② 对话框内容用 `ThemePaint.themed(node, Palette.dialogTheme())`
+  这种**已求值字符串**一次性上色；③ 打开中的对话框**场景**不换样式表；
+  ④ `ThemePaint.apply()` 的 API 兜底缺 `-fx-control-inner-background`（输入类控件的底色来源）。
+  修法：`ThemePaint` 新增 `onThemeChange` / `refreshAll` / 对话框面板登记表（弱引用）/
+  `themedForever(node, supplier)`；`DesktopShell.applyTheme` 调 `refreshAll`；
+  4 个静态常量→按需求值；对话框内容与日志 `stats` 登记重刷；`apply()` 补上那一条兜底。
+  **并加机器守卫**：`bin/CheckTheme.py` 第 6 项禁止 `static final String` 里出现 `Palette.`
+  （反向验证：注入一个 `BAD_STYLE` 即被点名）。详见 `TS-2610-038`。
 - **原生桌面 exe 的 `OS Information:` 报 `Windows 8.0 build 9200`（2026-10-14，issue #151）**：
   机理不是「读错字段」——`GetVersionEx` / `GetVersion` 家族在**没有 Windows 10 兼容清单**的
   可执行文件里一律返回 **6.2.9200**（Windows 的既定兼容性行为，与真实版本无关）；`java.exe`

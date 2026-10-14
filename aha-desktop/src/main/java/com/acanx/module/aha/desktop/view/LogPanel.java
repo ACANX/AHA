@@ -191,7 +191,7 @@ public final class LogPanel {
         toolbar.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        stats.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        ThemePaint.themedForever(stats, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
         filter.setId(FILTER_ID);
         filter.getItems().setAll(LogLevel.DISPLAY_ORDER);

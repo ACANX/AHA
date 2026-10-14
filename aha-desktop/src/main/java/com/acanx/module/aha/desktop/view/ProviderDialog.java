@@ -67,9 +67,15 @@ public final class ProviderDialog {
     /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
     private static final String FXML_VIEW = UiResources.PROVIDER_DIALOG_FXML;
 
-    /** 分区标题样式（fxml 里只放文案，样式统一在控制器）。 */
-    private static final String SECTION_TITLE_STYLE =
-            "-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: " + Palette.FOCUS_BORDER + ";";
+    /**
+     * 分区标题样式（fxml 里只放文案，样式统一在控制器）。
+     *
+     * <p>刻意用方法而不是 {@code static final} 常量：常量在类加载时就把颜色冻住了，
+     * 切主题后不会变（2026-10-14 实测的「供应商 部分组件颜色不跟着切」）。</p>
+     */
+    private static String sectionTitleStyle() {
+        return "-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: " + Palette.FOCUS_BORDER + ";";
+    }
 
     /** 底部提示文案：较长且含换行，留在 Java 里 setText。 */
     private static final String HINT_TEXT = """
@@ -341,14 +347,14 @@ public final class ProviderDialog {
     /** 把注入的节点接起来：样式、事件、监听（原来在建节点时顺手做的那些）。 */
     private void wireView(Runnable onChanged) {
         // 主题必须铺到对话框：Dialog 有自己的场景根，不继承主窗口样式
-        ThemePaint.themed(root, Palette.dialogTheme());
+        ThemePaint.themedForever(root, Palette::dialogTheme);
 
         content.setSpacing(8);
         content.setPadding(new Insets(6));
-        ThemePaint.themed(content, Palette.dialogTheme());
+        ThemePaint.themedForever(content, Palette::dialogTheme);
 
         scroll.setFitToWidth(true);
-        ThemePaint.themed(scroll, Palette.dialogTheme());
+        ThemePaint.themedForever(scroll, Palette::dialogTheme);
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
         body.setSpacing(14);
@@ -386,8 +392,8 @@ public final class ProviderDialog {
             }
         });
 
-        editSectionTitle.setStyle(SECTION_TITLE_STYLE);
-        createSectionTitle.setStyle(SECTION_TITLE_STYLE);
+        ThemePaint.themedForever(editSectionTitle, ProviderDialog::sectionTitleStyle);
+        ThemePaint.themedForever(createSectionTitle, ProviderDialog::sectionTitleStyle);
 
         hintLabel.setText(HINT_TEXT);
         hintLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");

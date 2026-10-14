@@ -1,6 +1,12 @@
 package com.acanx.module.aha.desktop.view;
 
 import java.net.URL;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -52,6 +58,20 @@ public final class ThemePaint {
     /** 亮色主题补丁样式表，与 {@link #DARK_SHEET} 一一对应。 */
     private static final String LIGHT_SHEET = UiResources.THEME_LIGHT_CSS;
 
+    /**
+     * 换了主题要重刷的组件（对话框内容、面板、弹层等自己登记的）。
+     *
+     * <p><strong>为什么需要它</strong>：颜色是内联在样式串里的，换色表不会自动影响已建节点。
+     * 主窗口有 {@code DesktopShell.restylers} 管着，但对话框 / 面板 / 弹层不在那棵树上——
+     * 早先把它们漏了，于是切主题后「输入框还是切之前的底色、对话框里的小标题还是旧颜色」
+     * （2026-10-14 实测反馈）。凡是用一次性字符串上色的地方，都在这里登记重刷。</p>
+     */
+    private static final List<Runnable> THEME_LISTENERS = new CopyOnWriteArrayList<>();
+
+    /** 已套过主题的对话框面板（弱引用：窗口关掉后自动消失，不会攒住旧场景）。 */
+    private static final Set<DialogPane> DIALOG_PANES =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+
     private ThemePaint() {
     }
 
@@ -68,6 +88,48 @@ public final class ThemePaint {
         apply(pane, css);
         install(pane.getScene());
         pane.sceneProperty().addListener((observable, oldScene, newScene) -> install(newScene));
+        // 记下来：换主题时它可能还开着，得一并重刷（见 refreshAll）
+        DIALOG_PANES.add(pane);
+    }
+
+    /**
+     * 登记「换主题后怎么重刷」。
+     *
+     * <p>给那些**不在主窗口节点树里**的组件用（对话框内容、独立面板、弹层）：它们拿不到
+     * {@code DesktopShell.themed} 的登记，不登记就会停在切之前的颜色上。</p>
+     *
+     * @param listener 重刷动作
+     */
+    public static void onThemeChange(Runnable listener) {
+        THEME_LISTENERS.add(listener);
+    }
+
+    /**
+     * 主题已切换：重刷还开着的对话框面板，再跑一遗登记过的重刷动作。
+     *
+     * @see #onThemeChange(Runnable)
+     */
+    public static void refreshAll() {
+        List<DialogPane> panes;
+        synchronized (DIALOG_PANES) {
+            panes = List.copyOf(DIALOG_PANES);
+        }
+        for (DialogPane pane : panes) {
+            // dialog() 会重算 dialogTheme()、重装场景样式表，完全幂等；个别窗口已释放时跳过
+            try {
+                dialog(pane);
+            } catch (RuntimeException e) {
+                LOG.warn("重刷对话框主题失败（已跳过该窗口）：{}", e.toString());
+            }
+        }
+        for (Runnable listener : THEME_LISTENERS) {
+            // 逐个隔离：一个组件重刷失败，不该让其余组件停在旧主题
+            try {
+                listener.run();
+            } catch (RuntimeException e) {
+                LOG.warn("重刷主题失败（已跳过该组件）：{}", e.toString());
+            }
+        }
     }
 
     /**
@@ -124,6 +186,17 @@ public final class ThemePaint {
     }
 
     /**
+     * 设样式**并登记重刷**：与 {@code DesktopShell.themed} 同一语义，供对话框 / 面板使用。
+     *
+     * @param node  节点
+     * @param style 样式提供者（每次重刷时重新求值，因此能拿到新主题的色值）
+     */
+    static void themedForever(Node node, Supplier<String> style) {
+        onThemeChange(() -> themed(node, style.get()));
+        themed(node, style.get());
+    }
+
+    /**
      * 按样式串里的 {@code -fx-text-fill} / {@code -fx-background-color} 同步属性。
      *
      * @param node  节点
@@ -138,6 +211,12 @@ public final class ThemePaint {
         }
         if (node instanceof Region region) {
             String background = value(style, "-fx-background-color");
+            if (background == null) {
+                // 输入类控件的底色走这个属性（modena 的 .text-input 用的也是它），
+                // 而 setStyle 在原生镜像下未必传到 TextArea 的 .content（见类注释），
+                // 所以这里也接受它，让 API 兜底真正盖住输入框。
+                background = value(style, "-fx-control-inner-background");
+            }
             if (background != null) {
                 if (background.startsWith("transparent")) {
                     // 刻意透明也要落到属性上，否则会留着上一次设过的背景

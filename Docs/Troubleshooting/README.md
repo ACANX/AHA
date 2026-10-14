@@ -104,6 +104,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-035-Theme-Content-Surface-Color-Roles.md](TS-2610-035-Theme-Content-Surface-Color-Roles.md) | 暗色下内容面「亮一档」被放大感知：按角色拆分底色（issue #153） | 2026-10-13 21:00 | 见 issue #153 |
 | [TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md](TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md) | Windows 上 Python 的 HTTPS 硬失败：`no OPENSSL_Applink`（一键入口的 curl 兜底） | 2026-10-13 22:00 | 见 issue #156 |
 | [TS-2610-037-Windows-Exe-Manifest-For-OS-Version.md](TS-2610-037-Windows-Exe-Manifest-For-OS-Version.md) | 原生桌面 exe 的 `OS Information:` 报 `Windows 8.0 build 9200`（Win10 兼容清单；链接器工作目录之坑） | 2026-10-14 10:00 | 见 issue #151 |
+| [TS-2610-038-Theme-Switch-Stale-Inline-Colors.md](TS-2610-038-Theme-Switch-Stale-Inline-Colors.md) | 切主题后输入框 / 对话框组件的颜色不跟着变（静态常量冻色 + 未登记重刷 + 场景未换表） | 2026-10-14 12:00 | 见 issue #153 |
 
 ## 3. 维护规则
 
