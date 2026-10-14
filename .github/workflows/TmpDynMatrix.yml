@@ -1,0 +1,18 @@
+name: TmpDynMatrix（判别实验，用完即删）
+on:
+  workflow_dispatch:
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: echo 'matrix=[{"os":"ubuntu-latest","n":1},{"os":"ubuntu-latest","n":2}]' >> "$GITHUB_OUTPUT"
+  leg:
+    needs: plan
+    strategy:
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: echo "leg n=${{ matrix.n }}"
