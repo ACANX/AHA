@@ -42,8 +42,8 @@ on:
         description: 直接指定完整版本号（覆盖 PR 推导，用于重打某一版）
         required: false
         default: ''
-      matrix:
-        description: 构建矩阵（JSON 数组；留空 = 默认三平台 × JDK 25/27 共六条腿）
+      legs:
+        description: 要出的腿（`all` 或逗号分隔，如 `linux-x64/jdk25,windows-x64/jdk25`；留空 = all）
         required: false
         default: ''
       publish:
@@ -62,7 +62,7 @@ on:
         type: string
         required: false
         default: ''
-      matrix:
+      legs:
         type: string
         required: false
         default: ''
@@ -94,23 +94,21 @@ jobs:
       version: ${{ steps.compute.outputs.version }}
       base: ${{ steps.compute.outputs.base }}
       pr: ${{ steps.compute.outputs.pr }}
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      legs: ${{ steps.legs.outputs.legs }}
     steps:
       - uses: actions/checkout@v7
-      - name: 解析构建矩阵（默认六条腿；快照线与自证可传 JSON 收窄）
-        id: matrix
+      - name: 解析要出的腿（默认六条腿；快照线与自证可传选择）
+        id: legs
         env:
-          INPUT_MATRIX: ${{ inputs.matrix }}
-          RUNNER_TEMP: ${{ runner.temp }}
+          INPUT_LEGS: ${{ inputs.legs }}
         run: |
           set -euo pipefail
-          # 矩阵逻辑在仓库脚本里（.github/Python/JvmMatrix.py）：可本地跑、可自检、
-          # 也能被快照线复用。**不要**把 Python 写进这里的块标量——代码行顶格会被 YAML
-          # 当成新的键，块标量 + 管道 + 重定向叠加还会吃掉行尾空格（两坑都踩过）。
-          python3 .github/Python/JvmMatrix.py --validate "${INPUT_MATRIX}" > "$RUNNER_TEMP/matrix.txt"
-          head -n1 "$RUNNER_TEMP/matrix.txt"
-          tail -n1 "$RUNNER_TEMP/matrix.txt" > "$RUNNER_TEMP/matrix.json"
-          printf 'matrix=%s\n' "$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+          # 腿选择逻辑在仓库脚本里（.github/Python/JvmMatrix.py）：可本地跑、可自检。
+          # **不要**把 Python 写进这里的块标量：代码行顶格会被 YAML 当成新的键，
+          # 块标量 + 管道 + 重定向叠加还会吃掉行尾空格（两坑都已踩过）。
+          legs=$(python3 .github/Python/JvmMatrix.py --legs "${INPUT_LEGS}")
+          echo "本次要出的腿：${legs}"
+          printf 'legs=%s\n' "${legs}" >> "$GITHUB_OUTPUT"
 
       - name: 计算版本（a.b.c.PPPPP，与原生线同规则）
         id: compute
@@ -170,20 +168,46 @@ jobs:
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
   #    CLI 包平台无关，只在一条腿产出。
   build-mvn-artifact:
+    # 作业名里带腿标识，便于在 run 页面直接看出哪条腿。
     name: build-mvn-artifact-${{ matrix.label }}-jdk${{ matrix.jdk }}
     needs: build-version
+    # 未选中的腿在这里被 **skip**（不耗机时）。用静态矩阵 + 腿级 if，而不是
+    # fromJSON(needs…) 动态矩阵——后者在本仓库会让整个作业被静默丢弃
+    # （run 记 failure，作业却根本没被创建），排查代价极高。判别过程见 BuildSpec。
+    if: >-
+      needs.build-version.outputs.legs == 'all'
+      || contains(needs.build-version.outputs.legs, format('{0}/jdk{1}', matrix.label, matrix.jdk))
     strategy:
       # 一条腿失败不取消其余：各平台 × 各 JDK 的包是并列交付物。
       fail-fast: false
-      # 矩阵来自 build-version 的 `matrix` 输出（默认六条腿 = 三平台 × JDK 25/27）。
-      # 快照线（SnapshotJVM.yml）传 JSON 收窄：只出 JDK 25、只出被标签选中的平台。
-      # 【临时二分实验】先用硬编码单腿，验证「job 是否被创建」
       matrix:
         include:
+          # ── JDK 25（基线，release=25）──
           - os: ubuntu-latest
             label: linux-x64
             jdk: 25
             upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 25
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 25
+            upload_cli: false
+          # ── JDK 27（release=27）──
+          - os: ubuntu-latest
+            label: linux-x64
+            jdk: 27
+            upload_cli: true
+          - os: windows-latest
+            label: windows-x64
+            jdk: 27
+            upload_cli: false
+          - os: macos-latest
+            label: macos-arm64
+            jdk: 27
+            upload_cli: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
