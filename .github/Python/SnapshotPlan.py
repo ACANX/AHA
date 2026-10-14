@@ -33,12 +33,12 @@ from pathlib import Path
 SNAPSHOT_TTL_DAYS = 7
 
 #: 触发标签 → 出包目标（#165 §三 标签矩阵）。
-#: 值是「目标名」：JVM 线出 JVM 便携包（Desktop / Cli），原生线出原生包（Desktop-Native / Cli-Native ——
+#: 值是「目标名」：JVM 线出 JVM 便携包（Desktop-JVM / Cli-JVM），原生线出原生包（Desktop-Native / Cli-Native ——
 #: 与资产前缀 `AHA-Desktop-Native-…` **同序**；触发标签名沿用既有的 `SNAPSHOT:NativeDesktop`，
 #: 改标签名要动仓库上的标签本体，与 tag 命名是两件事）。
 SNAPSHOT_LABELS: dict[str, str] = {
-    "SNAPSHOT:Desktop": "Desktop",
-    "SNAPSHOT:Cli": "Cli",
+    "SNAPSHOT:Desktop": "Desktop-JVM",
+    "SNAPSHOT:Cli": "Cli-JVM",
     "SNAPSHOT:NativeDesktop": "Desktop-Native",
     "SNAPSHOT:NativeCli": "Cli-Native",
 }
@@ -57,12 +57,18 @@ OS_LABELS: dict[str, str] = {
 COMMAND_RE = re.compile(r"^\s*/snapshot\s+(\S+)((?:\s+\S+)*)\s*$", re.IGNORECASE)
 
 #: 本条工作流覆盖的目标（原生线由 DesktopNative.yml / CliNative.yml 负责，见 S4）。
-JVM_TARGETS = ("Desktop", "Cli")
+JVM_TARGETS = ("Desktop-JVM", "Cli-JVM")
 NATIVE_TARGETS = ("Desktop-Native", "Cli-Native")
 
-#: 旧拼写的**命令**兼容别名（`/snapshot NativeDesktop …` 仍然可用）：命令是贴在 PR 上的文本，
-#: 直接删旧拼法会让历史评论里的命令失效。只影响命令解析，tag / 标题 / 资产名一律用新拼写。
-NATIVE_TARGET_ALIASES = {"nativedesktop": "Desktop-Native", "nativecli": "Cli-Native"}
+#: **命令**的兼容别名（`/snapshot Desktop …`、`/snapshot NativeDesktop …` 都仍然可用）：命令写在
+#: PR 评论里，直接删旧拼法会让历史命令失效。只影响命令解析，
+#: tag / 标题 / 资产名一律用 `*_TARGETS` 里的新拼写。
+TARGET_ALIASES = {
+    "desktop": "Desktop-JVM",           # JVM 线旧拼法（`-JVM` 后缀是这次补上的）
+    "cli": "Cli-JVM",
+    "nativedesktop": "Desktop-Native",  # 原生线旧拼法（词序与资产前缀不一致）
+    "nativecli": "Cli-Native",
+}
 
 #: JVM 快照线的腿：**没有 macOS**、**只有 JDK 25**（#165 验收 1 明写「不得出现 macOS / JDK27」）。
 #: 注意这与 dev 线（BuildJVMArtifacts 默认六腿）不同 —— dev 线出 macOS/JDK27，快照线不出。
@@ -93,8 +99,8 @@ RELEASE_NAME_FORMAT = TAG_FORMAT
 # 早先桌面端写成 `AHA-JVM-…`（不带 `Desktop`）：标签写的是 `…-AHA-Desktop-SNAPSHOT`，
 # 资产却叫 `AHA-JVM-…`，两处对不上，也读不出「这是桌面包」。
 ASSET_FORMATS = {
-    "Desktop": "AHA-Desktop-JVM-{version}-{label}-jdk25.zip",
-    "Cli": "AHA-Cli-JVM-{version}-{label}-jdk25.zip",
+    "Desktop-JVM": "AHA-Desktop-JVM-{version}-{label}-jdk25.zip",
+    "Cli-JVM": "AHA-Cli-JVM-{version}-{label}-jdk25.zip",
 }
 
 #: 原生线的范围标签 → 原生腿标签（#165 §三）：Win→windows-amd64，Ubuntu→ubuntu-amd64。
@@ -214,7 +220,7 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
     if not match:
         raise PlanError("命令格式应为 `/snapshot <target> [os ...]`")
     raw_target = match.group(1)
-    canonical = NATIVE_TARGET_ALIASES.get(raw_target.lower(), raw_target)
+    canonical = TARGET_ALIASES.get(raw_target.lower(), raw_target)
     targets = [name for name in (*JVM_TARGETS, *NATIVE_TARGETS) if name.lower() == canonical.lower()]
     if not targets:
         raise PlanError(
@@ -467,6 +473,10 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
       "command": "/snapshot Desktop Win Ubuntu"}, True, "ubuntu-x64"),
     ("纯原生目标 ⇒ 本工作流不构建（交给原生线）",
      {"labels": ["SNAPSHOT:NativeDesktop"], "changed": ["aha-common/pom.xml"]}, False, "原生线"),
+    # 旧拼写的命令别名必须仍然可用（`-JVM` 后缀是这次补上的，历史 PR 评论里写的是 `/snapshot Cli …`）
+    ("命令旧拼写 `/snapshot Cli Ubuntu` 等价可用（命令别名，不影响 tag 命名）",
+     {"labels": [], "changed": ["aha-common/pom.xml"], "command": "/snapshot Cli Ubuntu"},
+     True, "ubuntu-x64"),
     ("JVM 目标 + OS:MacOS ⇒ JVM 线没有该平台的腿",
      {"labels": ["SNAPSHOT:Desktop", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, False, "没有对应的腿"),
 ]
@@ -560,11 +570,11 @@ def self_test() -> int:
     print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
           + "、".join(g["tag"] for g in plan["releases"]))
     prefix_ok = all(
-        all(name.startswith(f"AHA-{group['target']}-JVM-") for name in group["assets"])
+        all(name.startswith(f"AHA-{group['target']}-") for name in group["assets"])
         for group in plan["releases"]
     )
     problems += 0 if prefix_ok else 1
-    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标对称（AHA-<目标>-JVM-…）："
+    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标对称（AHA-<目标>-…）："
           + "；".join(f"{g['target']}→{g['assets'][0]}" for g in plan["releases"]))
     name_ok = all(g["name"] == g["tag"] for g in plan["releases"])
     problems += 0 if name_ok else 1
