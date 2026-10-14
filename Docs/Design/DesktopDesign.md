@@ -547,6 +547,17 @@ com/acanx/module/aha/desktop/view/
   **这条自 2026-10-13 起由 `bin/CheckTheme.py` 机器强制**（`Gate.yml` 里跑）：
   两份主题补丁表的选择器集合 / 属性集合必须一致，且每个色号必须属于该主题的
   `Palette.applyDark()` / `applyLight()` 色表——否则只会在**某一个主题**下出错。
+- **进一步收敛为「一处手写色源」（2026-10-14，issue #153）**：两份补丁表变成**生成物**——
+  `bin/GenThemeCss.py` 把 `aha-desktop/src/theme/*.template.css` 里的 `%角色%`
+  代入 `Palette.java` 的色表；`bin/CheckTheme.py` 重新生成一遍并**逐字节比对**，
+  再加一条「两份模板的角色序列必须完全一致」（同一控件在两个主题下必须用同一个**角色**上色，
+  值才允许不同）——这是「同族控件两主题逐项一致」的机器证明。
+  **为什么不用 CSS 变量「只用一处」**：issue #49 第四轮已证伪——原生镜像下自定义 color 查表
+  一旦失败，CSS 会**丢掉整条声明**（暗色下就是一片黑字），所以字面量必须保留；
+  生成器入库 + 产物入库，与 `bin/GenLogoPng.py` 同一模式。
+  四道静态门禁（`CheckDocs` / `CheckSkills` / `CheckScripts` / `CheckTheme`）同时挂到了
+  `Build.yml` 的 `static-guards` 作业：此前它们只在 `Gate.yml` 里跑，而 Gate **不覆盖对 `dev`
+  的 PR**，这类问题恰恰要在提 PR 时就暴露。
 - **颜色分两类角色（2026-10-13，issue #153）**：
   | 角色 | 载体 | 底色 |
   |---|---|---|
