@@ -102,8 +102,8 @@ gh api "/repos/ACANX/AHA/actions/jobs/<job-id>" --jq '.steps[] | "\(.conclusion)
 
 | 项 | 做法 | 结果 |
 |---|---|---|
-| 清单真的在包里 | Windows 腿新增步骤：读 `Dist/AHA-Desktop-Native-*.zip` 里的 exe，搜 Win10 GUID | ✅（见 CI 运行记录） |
-| OS 版本断言 | 冒烟（GUI 真启动）里：`Windows version 8.0 build 9200` 出现即**失败**，且必须命中 `Windows version 10.`；并保留「必须打印 `OS Information:`」以防空过 | ✅ |
+| 清单真的在包里 | Windows 腿新增步骤：读 `Dist/AHA-Desktop-Native-*.zip` 里的 exe，搜 Win10 GUID | ✅（该步骤自身因下一个坑挂了，但断言已跑到打印那一步） |
+| **OS 版本断言（关键证据）** | 冒烟（GUI 真启动）捕获的 stdout | `Windows version 10.0 build 26100`（不再是 `8.0 build 9200`）+ `✅ GUI 冒烟：通过：命中 [aha-version] 与 [ui-fxml-loaded]` |
 | JVM 同机对照 | 验收标准 3 | ⏳ 需 ACANX 真机 |
 | 真机原生 exe | 验收标准 1 | ⏳ 需 ACANX 真机 |
 
@@ -118,7 +118,13 @@ gh api "/repos/ACANX/AHA/actions/jobs/<job-id>" --jq '.steps[] | "\(.conclusion)
    「加了参数但没生效」与「构建成功」在作业层面**长得一模一样**——这正是两道自证门禁存在的理由；
 4. **清单声明的语义是「这个 exe 声明兼容哪些系统」，不是「能跑的最低版本」**：
    声明后 `GetVersionEx` 返回真实版本（我们要的）；同时**不再有 shim 兜底**——
-   低于 Win10 的系统本就不在目标平台内（见 `DesktopDesign.md` 的目标平台清单）。
+   低于 Win10 的系统本就不在目标平台内（见 `DesktopDesign.md` 的目标平台清单）；
+5. **在 Windows 上往管道打中文 / emoji 要显式设编码**（坑 C）：自证步骤的
+   `print("✅ 清单已嵌入：…")` 报 `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'`
+   ——因为 stdout 在 CI 里是**管道**（不是控制台），按 cp1252 编码。断言本身其实是**通过**的，
+   是那一行字把步骤弄挂了。写法照 `Script/Python/*.py`：
+   `stream.reconfigure(encoding="utf-8", errors="replace")`（再加 `PYTHONIOENCODING=utf-8` 双保险）。
+   **教训**：日志输出也是代码，会自己造出「看起来像断言失败」的红。
 
 ## 7. 涉及文件
 
@@ -169,6 +175,9 @@ gh api "/repos/ACANX/AHA/actions/jobs/<job-id>" --jq '.steps[] | "\(.conclusion)
 | 失败时的解析路径 | 同上 | `\\?\C:\Users\RUNNER~1\AppData\Local\Temp\SVM-13403134599471227632\app.manifest` |
 | 失败被隐藏 | `gh api .../jobs/<id> --jq '.steps[]'` | `success 构建原生镜像`（而「产物自证」note 写 `构建步骤结论：failure`） |
 | 清单非 ASCII 字节 | `python3` 读字节计数 | **0**（纯 ASCII） |
+| **修复后 CI 实测的 OS 版本** | CI 冒烟捕获的原生 exe stdout（Windows Server 2025） | `Windows version 10.0 build 26100` |
+| 冒烟判定 | 同上 | `✅ GUI 冒烟：通过：命中 [aha-version] 与 [ui-fxml-loaded]，且启动期未崩` |
+| 自证步骤的失败（坑 C） | 同一 run 的步骤级结论 + 日志 | `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'…`（退出码 1） |
 
 ## 排除项
 
