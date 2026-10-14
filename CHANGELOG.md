@@ -62,6 +62,22 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 修复
+- **原生桌面 exe 的 `OS Information:` 报 `Windows 8.0 build 9200`（2026-10-14，issue #151）**：
+  机理不是「读错字段」——`GetVersionEx` / `GetVersion` 家族在**没有 Windows 10 兼容清单**的
+  可执行文件里一律返回 **6.2.9200**（Windows 的既定兼容性行为，与真实版本无关）；`java.exe`
+  自带清单所以 JVM 模式正常，GraalVM 生成的 exe 默认没有。修法：新增
+  `aha-desktop-native/src/native/app.manifest`（只声明 Win10 / 11 的 `supportedOS`，**纯 ASCII**
+  ——mt.exe 是旧式 MS 工具，不给编码留赌注），Windows 腿用
+  `-H:NativeLinkerOption=/MANIFEST:EMBED` + `…/MANIFESTINPUT:<绝对路径>` 嵌进 exe；
+  「平台专属」由 Maven 表达（`native-windows-manifest` profile 只改一个属性，非 Windows 用
+  只有注释的空档参数文件），Linux / macOS 腿不受影响。两个坑记进 `TS-2610-037`：
+  ① **清单路径必须绝对**——native-image 以**它自己的构建临时目录**（`%TEMP%\SVM-…`）为
+  工作目录调链接器，相对路径会被解析到那里（第一次尝试因此让 Windows 原生构建整条失败）；
+  ② 那次失败被步骤级 `continue-on-error` 藏住（`conclusion=success` 而 `outcome=failure`），
+  CI 全绿而清单自证与 OS 断言**全被跳过**——有容错的步骤必须看 outcome。
+  CI 新增两道门禁：**清单自证**（从 zip 里的 exe 搜 Win10 GUID）+ 冒烟断言
+  （`Windows version 8.0 build 9200` 出现即失败、必须命中 `Windows version 10.`，
+  并要求先打印 `OS Information:` 以免空过）。真机复核待 ACANX。
 - **暗色下日志区 / 对话输入框的底色与其他页面、对话框不一致（2026-10-13，issue #153）**：
   根因**不是**色号漂移（实测两份主题补丁表选择器 **42/42 一致**、色号 **0 个野生**），
   而是 **一个常量承担了两种语义**：`CONTROL_INNER` 同时用于「内容面」（输入框 / 文本域 / 列表 /
