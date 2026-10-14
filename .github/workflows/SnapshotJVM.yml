@@ -222,7 +222,13 @@ jobs:
   publish:
     name: publish（挂 snapshot-pr<N>）
     needs: [plan, build]
-    if: always() && needs.plan.outputs.should_build == 'true' && needs.build.result == 'success'
+    # `always()` 是为了「上游失败也让 publish 跑一次以给出明确结论」；
+    # 但**被并发取消**的 run 必须排除：取消时发布只会留下半成品，且会把 PR 检查染红
+    # （实测：连续 push + 改标签让前一个 run 被取消，publish/comment 因 always() 启动后被取消，
+    #  在 PR 上显示为失败）。因此统一加 `!cancelled()`。
+    if: >-
+      always() && !cancelled()
+      && needs.plan.outputs.should_build == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: 下载构建制品
@@ -290,7 +296,8 @@ jobs:
     name: comment（幂等回写 PR 评论）
     needs: [plan, publish]
     # 即使构建失败也要回写（评论要能反映「本次没出包 / 失败了」）；没有 PR 号则无事可做。
-    if: always() && needs.plan.outputs.pr != ''
+    # `!cancelled()`：被并发取消的 run 不回写（否则会把 PR 检查染红，且评论内容是过期的）。
+    if: always() && !cancelled() && needs.plan.outputs.pr != ''
     runs-on: ubuntu-latest
     steps:
       - name: 找到既有评论并更新（没有则新建）
