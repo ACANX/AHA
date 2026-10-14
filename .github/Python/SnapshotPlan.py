@@ -240,6 +240,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
         reason_prefix = "显式请求：`/snapshot` 命令"
     elif not targets:
         return {
+            "owns_comment": True,
             "should_build": False, "pr": pr, "targets": [], "platforms": [], "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": False,
@@ -254,15 +255,19 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     needed, reason = classify(changed, groups)
     if not needed and not reason_prefix:
         return {
-            "should_build": False, "pr": pr, "targets": targets, "platforms": platforms, "releases": [],
+            "owns_comment": True, "should_build": False, "pr": pr, "targets": targets, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": False, "reason": reason,
         }
 
     native = [t for t in targets if t in NATIVE_TARGETS]
     if native and not [t for t in targets if t in JVM_TARGETS]:
-        # 本工作流只管 JVM 线；纯原生目标交给 DesktopNative.yml / CliNative.yml（S4）
+        # 本工作流只管 JVM 线；纯原生目标交给 DesktopNative.yml / CliNative.yml（S4）。
+        # `owns_comment=False`：**别去动 PR 评论**——否则原生线的标签事件会把 JVM 线的
+        # 快照评论覆盖成「未出包」（实测踩到：ACANX 给 PR 打了原生标签，JVM 评论被改写）。
+        # 原生线将来用自己的标记维护自己的评论（见 S4）。
         return {
+            "owns_comment": False,
             "should_build": False, "pr": pr, "targets": native, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": explicit_command,
@@ -274,13 +279,14 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     full_reason = reason if not reason_prefix else f"{reason_prefix} ⇒ 忽略变更分类（{reason}）"
     if not legs:
         return {
-            "should_build": False, "pr": pr, "targets": jvm, "platforms": platforms, "releases": [],
+            "owns_comment": True, "should_build": False, "pr": pr, "targets": jvm, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": explicit_command,
             "reason": f"选中的平台 {platforms} 在 JVM 线上没有对应的腿（JVM 线只有 ubuntu-x64 / windows-x64）",
         }
     version = build_version(baseline, pr, now)
     return {
+        "owns_comment": True,
         "should_build": True, "pr": pr, "targets": jvm,
         "platforms": sorted({leg["label"] for leg in legs}),
         "version": version, "legs": [f"{leg['label']}/jdk{leg['jdk']}" for leg in legs],
@@ -408,6 +414,14 @@ def self_test() -> int:
     ok = version == f"0.1.3.00171.{beijing}" and beijing != utc
     problems += 0 if ok else 1
     print(f"  {'✅' if ok else '❌'} 版本号 {version}（UTC 段 {utc}，北京时间段 {beijing}，二者不同）")
+    # 纯原生目标：本工作流既不构建，也**不得**认领评论（否则会覆盖 JVM 线的快照评论）
+    native_plan = decide(labels=["SNAPSHOT:NativeDesktop"], changed=["aha-common/pom.xml"],
+                         baseline="0.1.3", pr=171, now=now, groups=groups)
+    owns_ok = native_plan["owns_comment"] is False and native_plan["should_build"] is False
+    problems += 0 if owns_ok else 1
+    print(f"  {'✅' if owns_ok else '❌'} 纯原生目标：本工作流不构建且不认领评论（owns_comment="
+          f"{native_plan['owns_comment']}）")
+
     # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>-SNAPSHOT`
     # 注意：这里必须**重新判定一次**，不能复用上面循环里的 plan（那是最后一个用例，
     # 可能正落在「不出包」分支 ⇒ releases 为空 ⇒ 断言永远失败）。
