@@ -110,7 +110,7 @@ jobs:
   #    本工作流只负责**一个**原生目标：`NativeDesktop`（CLI 目标由 CliNative.yml 负责）。
   #    请求里不含本目标时，`owns_comment=false` ⇒ 不构建、也**不动 PR 评论**（两条线互不覆盖）。
   plan:
-    name: plan（判定）
+    name: Plan
     runs-on: ubuntu-latest
     # 评论触发的：只认 `/snapshot` 开头的评论（否则每条评论都起一次 run）。
     if: >-

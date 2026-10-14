@@ -89,7 +89,7 @@ jobs:
   #    本工作流只负责**一个**原生目标：`NativeCli`（桌面目标由 DesktopNative.yml 负责）。
   #    请求里不含本目标时，`owns_comment=false` ⇒ 不构建、也**不动 PR 评论**（两条线互不覆盖）。
   plan:
-    name: plan（判定）
+    name: Plan
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'issue_comment'
