@@ -1,20 +1,22 @@
 # Windows 专用参数（issue #151）：把 Windows 10 兼容清单嵌进 exe。
 #
-# 为什么单独一份文件，而不是写进 native-image-args.txt：
-#   下面两条是 **MSVC 链接器**参数，在 Linux / macOS 上会让链接直接失败，
-#   因此只能对 Windows 腿生效。生效方式见 pom 的 native-windows-manifest profile
-#   （在 Windows 上把 native.image.extra.argsfile 指向本文件；其他平台指向
-#   native-image-args-extra.txt，那份只有注释，等于什么都不加）。
+# 这里**只放 /MANIFEST:EMBED**——清单**路径不放这儿**，因为它必须是**绝对路径**：
+# native-image 是以**它自己的构建临时目录**（%TEMP%\SVM-…）为工作目录调起链接器的，
+# 写相对路径 `app.manifest` 会被解析到那里，于是 mt.exe 报
+#     c1010070: Failed to load and parse the manifest. The system cannot find the file specified.
+# （issue #151 第一次尝试就是这么整条失败的；更麻烦的是它被步骤级 continue-on-error 藏住，
+#   CI 仍显示绿色——排查方法记在 TS-2610-037。）
+# 因此路径由 pom 用 ${project.basedir} 展开成绝对路径，作为**主类之前**的命令行参数传入
+# （见属性 native.manifest.input 与本模块 POM 的 native-windows-manifest profile）。
+#
+# 为什么单独一份文件、不写进 native-image-args.txt：
+#   这两条是 **MSVC 链接器**参数，在 Linux / macOS 上会让链接直接失败，
+#   所以只能对 Windows 腿生效（非 Windows 时 native.image.extra.argsfile 指向
+#   只有注释的 native-image-args-extra.txt，等于什么都不加）。
 #
 # 选项名的出处：GraalVM 25 的 com.oracle.svm.hosted.image.CCLinkerInvocation$Options
-#   （NativeLinkerOption 是**可累加的多值选项**，所以这里重复两次）。
+#   （NativeLinkerOption 是**可累加的多值选项**）。
 #
-# 清单路径用相对名 `app.manifest`：pom 会把 src/native/app.manifest 拷进
-#   native-image 的工作目录（target/native/），而链接器就在该目录下被调起，因此
-#   相对名可解析。若哪天工作目录变了，链接会明确报「找不到 app.manifest」而失败——
-#   不会静默丢掉清单（这正是 issue #151 验收标准 4 要防的事）。
-#
-# /MANIFEST:EMBED 必须写：只给 /MANIFESTINPUT 时，合并后的清单会落到**单独的
-#   .manifest 文件**里，而不是嵌进 exe。
+# /MANIFEST:EMBED 必须写：只给 /MANIFESTINPUT 时，合并后的清单会落到**单独的**
+#   .manifest 文件里，而不是嵌进 exe。
 -H:NativeLinkerOption=/MANIFEST:EMBED
--H:NativeLinkerOption=/MANIFESTINPUT:app.manifest
