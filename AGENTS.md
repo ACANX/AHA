@@ -262,6 +262,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [ExtensionAuthoringGuide.md](Docs/Guide/ExtensionAuthoringGuide.md) - 扩展开发
 - [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) - 排错指南
 - [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) - 原生渲染诊断手册（真机取证步骤：跑原生包与 JVM 模式、收集诊断日志、对照判据）
+- [PlanWritingGuide.md](Docs/Guide/PlanWritingGuide.md) - **方案文档编写参考**（较大方案变更 / 新特性的文档体例；参考性，非强制）
 
 ## 待办与计划
 

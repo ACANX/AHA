@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.71.0
+**文档版本**：v3.72.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -344,6 +344,7 @@ aha/
     │   ├── ExtensionAuthoringGuide.md
     │   ├── NativeRenderDiagnosticsGuide.md
     │   ├── VersionBumpGuide.md
+│   ├── PlanWritingGuide.md
     │   └── TroubleshootingGuide.md
     ├── Diagrams/
         ├── ModuleArchitecture.svg
@@ -489,6 +490,7 @@ aha/
 | v3.69.0 | 2026-10-09 | 新增 `Docs/Guide/VersionBumpGuide.md`（版本切换指南：操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案 / 历史教训 / 维护约定）；`ReleaseProcess.md` §2 交叉引用；Guide 索引（目录树 + 附录 A）补齐 `ReferenceGuide` / `CommandCheatsheet` / `NativeRenderDiagnosticsGuide` / `VersionBumpGuide` | @ACANX / CNXNC |
 | v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
 | v3.71.0 | 2026-10-09 | 发行形态最终决策：打包方式表与相关小节去掉 `jpackage`，改为**两种形态**（JVM JAR 聚合包 + 原生镜像二进制）；风险表的「0.2 使用 jpackage」改为按新形态缓解。理由与口径见 `ReleaseProcess.md` §3.3 | @ACANX / CNXNC |
+| v3.72.0 | 2026-10-14 | §3 目录树补 `Docs/Guide/PlanWritingGuide.md`（方案文档编写参考：由 issue #165 的正文体例整理，参考性、非强制） | @cnxnc |
 
 ---
 ```
