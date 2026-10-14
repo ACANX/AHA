@@ -159,6 +159,17 @@ def check_bat(path: Path) -> list[str]:
         problems.append(
             f"{rel}: 存在 {lf_only} 处裸 LF 行尾，批处理必须使用 CRLF"
         )
+
+    # `^(` / `^)` 与 `(...)` 语句块混用时，CMD 会把转义后的括号当成**未闭合的块**，
+    # 实测报 `. was unexpected at this time.`（本仓库的 Dist/Update*.cmd 踩过一次）。
+    # 这里的取舍：宁可禁用这种转义写法，改用标签 + goto，或让 echo 的文本不含括号。
+    for number, line in enumerate(raw.split(b"\r\n"), 1):
+        if b"^(" in line or b"^)" in line:
+            problems.append(
+                f"{rel}:{number} 使用了 `^(` / `^)` 转义括号——与 `(...)` 语句块混用时 CMD "
+                f"会把它当成未闭合的块（实测报 `. was unexpected at this time.`）。"
+                f"请改用标签 + goto，或让 echo 的文本不含括号"
+            )
     return problems
 
 

@@ -60,30 +60,36 @@ $kinds = @{
     Desktop = @{ Title = '桌面端原生镜像'; TagSuffix = '-aha-desktop-native'; AssetPrefix = 'AHA-Desktop-Native-'; ExeBase = 'aha-desktop-native' }
     Cli     = @{ Title = 'CLI 原生镜像';   TagSuffix = '-aha-cli-native';     AssetPrefix = 'AHA-Cli-Native-';     ExeBase = 'aha-cli-native' }
 }
-$kind = $kinds[$Kind]
+$kindInfo = $kinds[$Kind]
 
 $DistDir = $PSScriptRoot
-$TargetExe = Join-Path $DistDir ($kind.ExeBase + '.exe')
-$StateFile = Join-Path $DistDir ('.' + $kind.ExeBase + '.json')
+$TargetExe = Join-Path $DistDir ($kindInfo.ExeBase + '.exe')
+$StateFile = Join-Path $DistDir ('.' + $kindInfo.ExeBase + '.json')
 
 if (-not $Platform) {
     if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-arm64' } else { $Platform = 'windows-amd64' }
 }
 
-Write-Host ("===== AHA {0} · 一键更新 =====" -f $kind.Title)
+Write-Host ("===== AHA {0} · 一键更新 =====" -f $kindInfo.Title)
 Write-Host "仓库：$Repo"
 Write-Host "平台：$Platform    JDK：$Jdk"
 Write-Host "安装位置：$TargetExe"
 Write-Host ''
 
+# API 请求才带 token（未认证的 60 次/小时很容易撞上）；
+# 下载请求不带——GitHub 的下载地址会 302 到 objects.githubusercontent.com，
+# 没必要把凭据交到另一个主机上（Python 侧也是这么做的）。
 $headers = @{ 'User-Agent' = 'AHA-UpdateNative'; 'Accept' = 'application/vnd.github+json' }
+$downloadHeaders = @{ 'User-Agent' = 'AHA-UpdateNative' }
+if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
+elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
 function Get-MatchingAsset {
     param($Release)
     # 同一族资产里有「报告包」（AHA-*-…-jdk25-Report.zip）：它与镜像包同版本号，只差结尾。
     # 这里靠「必须以 -$Platform-jdk$Jdk.zip 收尾」直接排除，并额外显式排除 -Report.zip。
     $Release.assets | Where-Object {
-        $_.name.StartsWith($kind.AssetPrefix) -and
+        $_.name.StartsWith($kindInfo.AssetPrefix) -and
         $_.name.EndsWith("-$Platform-jdk$Jdk.zip") -and
         -not $_.name.EndsWith('-Report.zip')
     } | Select-Object -First 1
@@ -103,12 +109,12 @@ $releases = Invoke-RestMethod -Uri $api -Headers $headers
 
 if ($List) {
     Write-Host ''
-    Write-Host ("{0} 最近的 {1}（{2} / jdk{3}）：" -f $Repo, $kind.Title, $Platform, $Jdk)
+    Write-Host ("{0} 最近的 {1}（{2} / jdk{3}）：" -f $Repo, $kindInfo.Title, $Platform, $Jdk)
     $shown = 0
     foreach ($r in $releases) {
         if ($shown -ge 5) { break }
         if ($r.draft) { continue }
-        if (-not $r.tag_name.EndsWith($kind.TagSuffix)) { continue }
+        if (-not $r.tag_name.EndsWith($kindInfo.TagSuffix)) { continue }
         $asset = Get-MatchingAsset $r
         $mark = if ($asset) { '可下载' } else { '缺本平台包' }
         $name = if ($asset) { $asset.name } else { '-' }
@@ -123,7 +129,7 @@ foreach ($r in $releases) {
     if ($r.draft) { continue }
     if ($Tag) {
         if ($r.tag_name -ne $Tag) { continue }
-    } elseif (-not $r.tag_name.EndsWith($kind.TagSuffix)) {
+    } elseif (-not $r.tag_name.EndsWith($kindInfo.TagSuffix)) {
         continue
     }
     $asset = Get-MatchingAsset $r
@@ -134,7 +140,7 @@ if (-not $pick) {
     if ($Tag) {
         throw ("tag $Tag 里没有 $Platform（jdk$Jdk）的包；去掉 -Tag 让脚本自己找，或用 -List 看看有哪些版本")
     }
-    throw ("没有找到带 $Platform（jdk$Jdk）资产的 {0} release；可用 -List 查看，或用 -Tag / -Jdk / -Platform 指定" -f $kind.Title)
+    throw ("没有找到带 $Platform（jdk$Jdk）资产的 {0} release；可用 -List 查看，或用 -Tag / -Jdk / -Platform 指定" -f $kindInfo.Title)
 }
 
 $picked = $pick.Release.tag_name
@@ -179,7 +185,7 @@ try {
         Write-Host ("复用已下载的包：{0}" -f $pick.Asset.name)
     } else {
         Write-Host ("下载中：{0}" -f $pick.Asset.browser_download_url)
-        Invoke-WebRequest -Uri $pick.Asset.browser_download_url -Headers $headers -OutFile $zip
+        Invoke-WebRequest -Uri $pick.Asset.browser_download_url -Headers $downloadHeaders -OutFile $zip
         Write-Host ("已下载：{0} MB" -f [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1))
     }
 
@@ -195,15 +201,21 @@ try {
     }
 
     # ── 第 3 步：解压出可执行文件并覆盖 ──────────────────────────────────────────
-    $work = Join-Path $env:TEMP ('aha-update-' + [guid]::NewGuid().ToString('N'))
+    # [IO.Path]::GetTempPath() 而不是 $env:TEMP：后者在非 Windows 上是空的，
+    # 而 Join-Path 拿到 null 会报 "parameter 'Path' because it is null"（实测到过）。
+    $work = Join-Path ([IO.Path]::GetTempPath()) ('aha-update-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work | Out-Null
     try {
-        Expand-Archive -LiteralPath $zip -DestinationPath $work -Force
+        # 用 .NET 的 ZipFile 而不是 Expand-Archive：后者依赖 Microsoft.PowerShell.Archive 模块，
+        # 实测在某些安装下会报 “module could not be loaded”（本机 pwsh 上就撞到）。
+        # ZipFile 自 Windows PowerShell 5.1 起可用（先 Add-Type 载入程序集），行为与 Expand-Archive 一致。
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $work)
         # 包内是平铺的（无顶层目录），但仍递归找：将来若加了顶层目录也不用改这里
-        $src = Get-ChildItem -LiteralPath $work -Recurse -File -Filter ($kind.ExeBase + '.exe') |
+        $src = Get-ChildItem -LiteralPath $work -Recurse -File -Filter ($kindInfo.ExeBase + '.exe') |
             Select-Object -First 1 -ExpandProperty FullName
         if (-not $src) {
-            throw "zip 内没有 $($kind.ExeBase).exe：$($pick.Asset.name)"
+            throw "zip 内没有 $($kindInfo.ExeBase).exe：$($pick.Asset.name)"
         }
         if (Test-Path -LiteralPath $TargetExe) {
             Copy-Item -LiteralPath $TargetExe -Destination ($TargetExe + '.bak') -Force

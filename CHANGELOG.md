@@ -28,8 +28,11 @@
   `Dist/UpdateNative.ps1` 用 `Invoke-RestMethod` / `Invoke-WebRequest` 走 .NET Schannel TLS，
   **完全不经过 Python**，也**不需要用户装 Python**（与姊妹项目 LegionFanControl 同一做法）；
   Python 路径（POSIX）保留并带 `--downloader` 兜底。两套实现的命名契约由 `bin/CheckScripts.py`
-  断言逐字一致；同时补上 `.ps1` 的 UTF-8 BOM 规则，并修正「`Dist/` 被整体跳过、
-  里面两个 `.cmd` 从未被检查」的守卫缺口。背景见 `TS-2610-036`。
+  断言逐字一致；同时补上 `.ps1` 的 UTF-8 BOM 规则、批处理「不得用括号转义」规则，
+  并修正「`Dist/` 被整体跳过、里面两个 `.cmd` 从未被检查」的守卫缺口。
+  Windows 侧已在 PowerShell 7.6.7 下**实跑**验证（安装 / 幂等 / `.bak` / 状态文件 / 两个错误分支），
+  `Build.yml` 新增 `native-update-script` 作业把这一跑搬进 CI（真机复测前先在 CI 拦住同类坑）。
+  背景见 `TS-2610-036`。
   整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
