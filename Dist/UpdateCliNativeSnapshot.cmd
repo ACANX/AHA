@@ -1,28 +1,28 @@
 @echo off
 rem ==========================================================================
-rem  AHA - one-click fetch of a snapshot build (Windows)
+rem  AHA - one-click fetch of a NATIVE CLI snapshot build (Windows)
 rem
 rem  A snapshot is a build made for a PR that is not merged yet (issue #165).
 rem  It lives on the release page as a pre-release, tagged like
-rem      V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
+rem      V0.1.3.00188.10142007-AHA-Cli-Native-SNAPSHOT
 rem
 rem  This launcher only calls
-rem      Dist\UpdateSnapshot.ps1
+rem      Dist\UpdateSnapshot.ps1 -Kind cli-native
 rem  which queries the GitHub release page through PowerShell / .NET (Schannel
 rem  TLS). No gh, no Python, no token required.
 rem
+rem  The kind is fixed here: do NOT pass -Kind / --kind yourself.
+rem
 rem  Usage:
-rem    UpdateSnapshot.cmd                       fetch the most recent snapshot
-rem    UpdateSnapshot.cmd -List                 list snapshots (version + days left)
-rem    UpdateSnapshot.cmd -Pr 165               fetch the snapshot built for PR 165
-rem    UpdateSnapshot.cmd -Kind jvm             only JVM portable packages
-rem    UpdateSnapshot.cmd -Kind desktop-native  only native desktop packages
-rem    UpdateSnapshot.cmd -DryRun               preview only, no download
-rem    UpdateSnapshot.cmd -Force                re-download even if already fetched
+rem    UpdateCliNativeSnapshot.cmd                  fetch the most recent snapshot
+rem    UpdateCliNativeSnapshot.cmd -List            list snapshots (version + days left)
+rem    UpdateCliNativeSnapshot.cmd -Pr 188          fetch the snapshot built for PR 188
+rem    UpdateCliNativeSnapshot.cmd -DryRun          preview only, no download
+rem    UpdateCliNativeSnapshot.cmd -Force           re-download even if already fetched
 rem
 rem  Chinese documentation: README.commands.md in this directory, section 7.
 rem
-rem  Conventions - both are enforced by bin/CheckScripts.py:
+rem  Conventions - enforced by bin/CheckScripts.py:
 rem    * this file stays ASCII-only with CRLF line endings;
 rem    * it deliberately uses NO parenthesised if-blocks: labels plus goto only.
 rem      Mixing if-blocks with caret-escaped parentheses is a known CMD trap and
@@ -30,12 +30,12 @@ rem      broke an earlier revision of the other launchers - see bin/CheckScripts
 rem ==========================================================================
 
 setlocal
-rem This file is committed in <repo>\Dist\ together with UpdateSnapshot.ps1.
 cd /d "%~dp0"
 
 rem Absolute path: never let a same-named program on PATH shadow PowerShell.
 set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "PS1=%~dp0UpdateSnapshot.ps1"
+set "KIND=cli-native"
 
 if not exist "%PS1%" goto missing
 if not exist "%PS_EXE%" goto nops
@@ -55,17 +55,26 @@ if /i "%ONE%"=="--force" set "ONE=-Force"
 if /i "%ONE%"=="--pr" set "ONE=-Pr"
 if /i "%ONE%"=="--branch" set "ONE=-Branch"
 if /i "%ONE%"=="--run" set "ONE=-Run"
-if /i "%ONE%"=="--kind" set "ONE=-Kind"
 if /i "%ONE%"=="--out" set "ONE=-Out"
 if /i "%ONE%"=="--repo" set "ONE=-Repo"
+rem The kind belongs to this launcher: swallow -Kind / --kind together with its value,
+rem otherwise PowerShell would reject the duplicated parameter.
+if /i "%ONE%"=="-kind" goto skipkind
+if /i "%ONE%"=="--kind" goto skipkind
 set "ARGS=%ARGS% %ONE%"
 shift
 goto collect
 
+:skipkind
+shift
+if "%~1"=="" goto run
+shift
+goto collect
+
 :run
-echo Checking the release page for snapshots, please wait...
+echo Checking the release page for cli-native snapshots, please wait...
 echo.
-"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %ARGS%
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Kind %KIND% %ARGS%
 rem Read the exit code right away - the next command would overwrite errorlevel.
 set "RC=%errorlevel%"
 echo.
@@ -87,7 +96,7 @@ exit /b %RC%
 :missing
 echo.
 echo [ERROR] Not found: %PS1%
-echo Keep UpdateSnapshot.cmd and UpdateSnapshot.ps1 together in Dist.
+echo Keep UpdateCliNativeSnapshot.cmd and UpdateSnapshot.ps1 together in Dist.
 echo Clone the repository again from https://github.com/ACANX/AHA
 echo.
 pause
