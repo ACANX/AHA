@@ -1,0 +1,299 @@
+name: SnapshotJVM
+
+# ── 这是什么 ────────────────────────────────────────────────────────────────────
+# 特性 / 修复分支的 **JVM 快照出包线**（issue #165）：给未合并的 PR 出一版可下载的
+# JVM 便携包，把「自测」提前到合并之前。
+#
+# ── 触发方式（#165 §三）───────────────────────────────────────────────────────
+#   ① 标签（**粘性**）：PR 上打了 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` 就出包，
+#      之后每次 push 重出；移除标签即停；没打标签时一类目标都不出。
+#      `OS:Win` / `OS:MacOS` / `OS:Ubuntu` 把范围收窄到单平台（不能单独使用）。
+#   ② PR 评论命令（一次性）：`/snapshot <target> [os ...]`，大小写不敏感；
+#      只有对仓库有写权限的账号发才生效；参数非法 ⇒ 回复用法、**不构建**。
+#   ③ workflow_dispatch：给分支手出一版（尚无可查 PR 时用）。
+#
+# ── 与 BuildJVMArtifacts 的关系 ───────────────────────────────────────────────
+# 构建与打包**复用** BuildJVMArtifacts.yml（`workflow_call`），不复制一套：
+# 复制出来的第二套必然漂移（本仓库已把这类漂移固化成检查）。
+# 载体不同：dev 线挂 `V<版本>-aha-jvm` 预发行；快照挂 `snapshot-pr<N>` 预发行
+# （小写、不匹配 `V*`，不影响正式发版与现有更新脚本的检索）。
+#
+# ── 判定逻辑在哪 ──────────────────────────────────────────────────────────────
+# 全部在 `.github/Python/SnapshotPlan.py`（可本地跑 `--self-test`）：
+# 标签矩阵、变更分类 A/B/C、版本号（含北京时间戳）、资产名、PR 评论正文。
+# 它读取的**单一来源**是 `.github/snapshot-paths.yml`（触发标签 + A/B/C 路径分组）——
+# 本工作流里不写死任何标签名或路径：那些字面量只允许出现在清单里。
+# 本文件只做胶水。**不要把判定逻辑写进 YAML 的块标量**——那既跑不快也测不了，
+# 本轮已因「块标量里嵌 Python」翻过两次车。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 号（必填；用于版本号与发布页 tag）
+        required: true
+      target:
+        description: 目标（Desktop / Cli）
+        required: false
+        default: Desktop
+      os:
+        description: 平台限定（Win / MacOS / Ubuntu；留空 = 该目标全部平台）
+        required: false
+        default: ''
+
+permissions:
+  contents: write        # 建发布页 pre-release `snapshot-pr<N>`
+  pull-requests: write   # 回写 PR 汇总评论
+  issues: write
+
+# 同一 PR 只留最新一次：连续 push 时旧快照没有价值（#165 §三「并发组取消旧 run」）。
+concurrency:
+  group: snapshot-jvm-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ── 1. 判定：该不该出、出哪几个目标与平台、版本号、评论正文 ───────────────────
+  plan:
+    name: plan（判定）
+    runs-on: ubuntu-latest
+    # 评论触发的：只认 `/snapshot` 开头的评论，其它评论一律不理会（否则每条评论都起一次 run）。
+    if: >-
+      github.event_name != 'issue_comment'
+      || (github.event.issue.pull_request != null
+          && startsWith(github.event.comment.body, '/snapshot'))
+    outputs:
+      should_build: ${{ steps.plan.outputs.should_build }}
+      pr: ${{ steps.plan.outputs.pr }}
+      version: ${{ steps.plan.outputs.version }}
+      targets: ${{ steps.plan.outputs.targets }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      comment: ${{ steps.plan.outputs.comment }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 算出 PR 号（三种触发方式各自取法）
+        id: pr
+        env:
+          EVENT: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          case "${EVENT}" in
+            pull_request) pr="${EVENT_PR}" ;;
+            issue_comment) pr="${EVENT_ISSUE}" ;;
+            *) pr="${INPUT_PR}" ;;
+          esac
+          if [ -z "${pr}" ]; then
+            echo "::error::没能确定 PR 号（workflow_dispatch 需要显式传 pr）"
+            exit 1
+          fi
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+          echo "PR #${pr}"
+
+      - name: 取本 PR 的改动清单
+        id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${REPO}/pulls/${{ steps.pr.outputs.pr }}/files" \
+            --jq '.[].filename' > changed-files.txt || true
+          echo "改动文件数：$(wc -l < changed-files.txt)"
+          head -5 changed-files.txt || true
+
+      - name: 判定（逻辑在 .github/Python/SnapshotPlan.py）
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          COMMENT: ${{ github.event.comment.body }}
+          ASSOCIATION: ${{ github.event.comment.author_association }}
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_OS: ${{ inputs.os }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          pr="${{ steps.pr.outputs.pr }}"
+          baseline=$(python3 .github/Python/ProjectVersion.py --resolve)
+          # 评论正文一律由脚本生成（含「未构建」说明）——YAML 里只出现单行调用，
+          # 避免多行字符串在块标量里被提前截断（本文件曾因此写坏三次）。
+          emit_notice() { echo "comment=$(python3 .github/Python/SnapshotPlan.py --notice "$1")" >> "$GITHUB_OUTPUT"; }
+
+          # 评论命令 / 手动触发：归一成一条规范命令串交给判定脚本
+          command="${COMMENT}"
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            command="/snapshot ${INPUT_TARGET:-Desktop} ${INPUT_OS:-}"
+          fi
+          extra=()
+          # 只有「新打标签」这一动作算显式请求（只改文档时也照出，见 #165 验收 16）
+          if [ "${EVENT}" = "pull_request" ] && [ "${{ github.event.action }}" = "labeled" ]; then
+            extra+=(--label-event)
+          fi
+
+          # 权限：/snapshot 只对仓库有写权限的账号生效（其他人发 ⇒ 回复说明、不构建）
+          if [ "${EVENT}" = "issue_comment" ]; then
+            case "${ASSOCIATION}" in
+              OWNER|MEMBER|COLLABORATOR) ;;
+              *)
+                echo "should_build=false" >> "$GITHUB_OUTPUT"
+                emit_notice "\\`/snapshot\\` 只对**本仓库有写权限**的账号生效（当前账号关联：${ASSOCIATION:-NONE}）"
+                exit 0
+                ;;
+            esac
+          fi
+
+          set +e
+          json=$(python3 .github/Python/SnapshotPlan.py \
+                   --labels "${LABELS}" --changed-files changed-files.txt \
+                   --baseline "${baseline}" --pr "${pr}" --command "${command}" \
+                   "${extra[@]}" --json 2>plan.err)
+          code=$?
+          set -e
+          if [ "${code}" -ne 0 ]; then
+            # 参数非法 ⇒ 回复用法、不构建（#165 验收 26）
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            emit_notice "$(head -1 plan.err)"
+            exit 0
+          fi
+
+          {
+            echo "should_build=$(echo "$json" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["should_build"]).lower())')"
+            echo "pr=${pr}"
+            echo "version=$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+            echo "targets=$(echo "$json" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["targets"]))')"
+            echo "matrix=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["matrix"], separators=(",",":")))')"
+            echo "comment=$(python3 .github/Python/SnapshotPlan.py \
+                     --labels "${LABELS}" --changed-files changed-files.txt \
+                     --baseline "${baseline}" --pr "${pr}" --command "${command}" \
+                     "${extra[@]}" --run-url "${RUN_URL}" --comment)"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "判定完成：${json}"
+          {
+            echo "### 快照判定"
+            echo ""
+            echo "- 是否出包：${should_build:-见上}"
+            echo "- 版本：$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+            echo "- 依据：$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])')"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. 构建与打包：复用 dev 线的实现（不复制一套）────────────────────────────
+  build:
+    name: build（复用 BuildJVMArtifacts）
+    needs: plan
+    if: needs.plan.outputs.should_build == 'true'
+    uses: ./.github/workflows/BuildJVMArtifacts.yml
+    with:
+      pr: ${{ needs.plan.outputs.pr }}
+      version: ${{ needs.plan.outputs.version }}
+      matrix: ${{ needs.plan.outputs.matrix }}
+      # 载体由本工作流决定（挂 snapshot-pr<N>），因此让 dev 线那边**不要**发布。
+      publish: false
+
+  # ── 3. 发布到 pre-release `snapshot-pr<N>`（#165 §七 路线 A）────────────────
+  publish:
+    name: publish（挂 snapshot-pr<N>）
+    needs: [plan, build]
+    if: always() && needs.plan.outputs.should_build == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载构建制品
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: 规范资产名（#165 §八：AHA-JVM-<版本>-<平台>-jdk25.zip）
+        id: rename
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TARGETS: ${{ needs.plan.outputs.targets }}
+        run: |
+          set -euo pipefail
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          ls -lh artifacts/ || true
+          count=0
+          for f in artifacts/aha-desktop-*.zip; do
+            [ -e "$f" ] || continue
+            label=$(basename "$f" | sed -E 's/^aha-desktop-[0-9.]+-([a-z0-9-]+)\.zip$/\1/')
+            mv "$f" "artifacts/AHA-JVM-${VERSION}-${label}-jdk25.zip"
+            count=$((count + 1))
+          done
+          # CLI 包平台无关（只在 Ubuntu 腿产出）⇒ 按 §八 仍带平台段，用产出它的腿作标签
+          for f in artifacts/aha-cli-*.zip; do
+            [ -e "$f" ] || continue
+            mv "$f" "artifacts/AHA-Cli-JVM-${VERSION}-linux-x64-jdk25.zip"
+            count=$((count + 1))
+          done
+          echo "整理出 ${count} 个资产："
+          ls -1 artifacts/*.zip | sed 's/^/  /'
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::没有可发布的快照资产（构建腿可能都失败了）"
+            exit 1
+          fi
+
+      - name: 挂到 pre-release snapshot-pr<PR>
+        uses: softprops/action-gh-release@v3
+        with:
+          # 小写 tag、不匹配 `V*` ⇒ 不进 releases/latest，也不影响正式发版与更新脚本检索
+          tag_name: snapshot-pr${{ needs.plan.outputs.pr }}
+          name: snapshot-pr${{ needs.plan.outputs.pr }}（PR #${{ needs.plan.outputs.pr }} 快照）
+          prerelease: true
+          files: artifacts/*.zip
+          body: |
+            ## 这是什么
+
+            PR #${{ needs.plan.outputs.pr }} 的**快照包**（issue #165）：由未合并的分支构建，
+            供该 PR 自测 / 交叉验证。**不是正式发行包。**
+
+            | 项 | 值 |
+            |---|---|
+            | 快照版本 | `${{ needs.plan.outputs.version }}` |
+            | 目标 | ${{ needs.plan.outputs.targets }} |
+            | 有效期 | 7 天（过期后仍可下载，只作提示；PR 关闭 / 合并后自动删除） |
+
+            取件（仓库 `Dist/` 下，无需 token、无需 `gh`）：
+
+            ```
+            Dist\UpdateSnapshot.cmd -Pr ${{ needs.plan.outputs.pr }}
+            ```
+
+  # ── 4. 回写 PR 评论（**幂等**：同一条评论反复编辑，见 #165 §六）──────────────
+  comment:
+    name: comment（幂等回写 PR 评论）
+    needs: [plan, publish]
+    # 即使构建失败也要回写（评论要能反映「本次没出包 / 失败了」）；没有 PR 号则无事可做。
+    if: always() && needs.plan.outputs.pr != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: 找到既有评论并更新（没有则新建）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.plan.outputs.pr }}
+          BODY: ${{ needs.plan.outputs.comment }}
+        run: |
+          set -euo pipefail
+          # 固定标记 `<!-- aha-snapshot -->` 定位（#165 §六）：每次只**更新**同一条评论
+          existing=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
+                       --jq '[.[] | select(.body | startswith("<!-- aha-snapshot -->"))] | .[0].id // empty' \
+                     | head -n1)
+          body_file="$(mktemp)"
+          printf '%s\n' "${BODY}" > "${body_file}"
+          if [ -n "${existing}" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -F body=@"${body_file}" > /dev/null
+            echo "已更新既有评论 ${existing}（幂等：不新增）"
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@"${body_file}" > /dev/null
+            echo "已新建评论"
+          fi
