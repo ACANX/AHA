@@ -88,6 +88,15 @@ JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
 #:   2. 保持 `prerelease: true`（不进 `releases/latest`）。
 #: 每个目标一条 tag（一次运行若同时选中 Desktop 与 Cli，会得到两条并列的 pre-release）。
 TAG_FORMAT = "V{version}-AHA-{target}-SNAPSHOT"
+
+#: 取件命令提示（写进 PR 评论）：目标 → `Dist/` 下的启动器。
+#: 启动器**每目标一个**（ACANX 2026-10-14 把通用 `UpdateSnapshot.cmd` 拆开），免得用户还要自己记 `-Kind`；
+#: JVM 两条目标暂用引擎直调（`-Kind jvm` 一次覆盖两个目标，启动器名字待定）。
+FETCH_LAUNCHERS = {
+    "Desktop-Native": r"Dist\UpdateDesktopNativeSnapshot.cmd -Pr {pr}",
+    "Cli-Native": r"Dist\UpdateCliNativeSnapshot.cmd -Pr {pr}",
+}
+FETCH_LAUNCHER_DEFAULT = r"Dist\UpdateSnapshot.ps1 -Kind jvm -Pr {pr}"
 # 发行名与 tag **完全相同**：再加「（PR #N 快照）」只是重复（PR 号已经在版本段 `.<PR 补零 5 位>.` 里，
 # 「快照」也已经在 `-SNAPSHOT` 后缀里）——ACANX 定案删掉。
 RELEASE_NAME_FORMAT = TAG_FORMAT
@@ -444,7 +453,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         f"- 构建：{run_url or '（见本 PR 的 Actions 运行）'}\n\n"
         "取件（在仓库的 `Dist/` 下运行，无需 token / 无需 gh）：\n"
         "```\n"
-        f"Dist\\UpdateSnapshot.cmd -Pr {plan['pr']}\n"
+        f"{(FETCH_LAUNCHERS.get((plan['targets'] or [''])[0]) or FETCH_LAUNCHER_DEFAULT).format(pr=plan['pr'])}\n"
         "```\n"
     )
 
@@ -580,6 +589,15 @@ def self_test() -> int:
     problems += 0 if name_ok else 1
     print(f"  {'✅' if name_ok else '❌'} 发行名与 tag 完全相同（无多余后缀）："
           + "、".join(g["name"] for g in plan["releases"]))
+    root = Path(__file__).resolve().parents[2]
+    hint_names = [h.split()[0].split("\\")[-1] for h in (*FETCH_LAUNCHERS.values(), FETCH_LAUNCHER_DEFAULT)]
+    hint_ok = all((root / "Dist" / n).exists() for n in hint_names)
+    problems += 0 if hint_ok else 1
+    print(f"  {'✅' if hint_ok else '❌'} 取件提示点名的启动器都存在："
+          + "、".join(hint_names))
+    launcher_gone = "UpdateSnapshot.cmd" not in comment_body(plan, "https://example/run")
+    problems += 0 if launcher_gone else 1
+    print(f"  {'✅' if launcher_gone else '❌'} 评论正文不再指向已拆掉的通用 `UpdateSnapshot.cmd`")
     old_tag_ok = "snapshot-pr" not in comment_body(plan, "https://example/run")
     problems += 0 if old_tag_ok else 1
     print(f"  {'✅' if old_tag_ok else '❌'} 评论正文不再出现旧 tag 形式（`snapshot-pr<N>`）")

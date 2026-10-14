@@ -27,6 +27,7 @@
 | v1.11.0 | 2026-10-09 | 明确 Agent 不在本地执行 Maven 编译 / 测试，以 PR 的 CI checks 为准；§3.2 自查说明区分「人类开发者」与「Agent」 | @ACANX |
 | v1.12.0 | 2026-10-14 | 新增 §3.3「快照包（PR 试包）」：触发方式（标签 / 平台限定 / `/snapshot` 命令）、产物命名（`V<快照版本>-AHA-<目标>-SNAPSHOT` + `AHA-Desktop-JVM-…` / `AHA-Cli-JVM-…`）、变更分类 A/B/C 与清单单一来源、清理与本地取件（issue #165 / #171） | @cnxnc |
 | v1.13.0 | 2026-10-14 | §3.3 的「本地取件」补上真实命令与行为（`Dist\UpdateSnapshot.cmd`：零配置、不覆盖文件、独立状态文件；见 #173 / S5），并指向 `Dist/README.commands.md` §7 | @cnxnc |
+| v1.13.2 | 2026-10-14 | §3.3 本地取件的启动器按目标拆分（`Dist\UpdateDesktopNativeSnapshot.cmd` / `Dist\UpdateCliNativeSnapshot.cmd`；原通用 `UpdateSnapshot.cmd` 删除），PR 评论里的取件提示同步（ACANX）| @cnxnc |
 | v1.13.1 | 2026-10-14 | §3.3 的指引改为指向**源文件** `Docs/Guide/CommandCheatsheet.md`（此前误指生成物 `Dist/README.commands.md`；该副本会被 assembly / 取件脚本覆盖） | @cnxnc |
 
 ---
@@ -240,7 +241,8 @@ B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因
 **清理**：同一 PR 的快照保留最近 3 条、有效期 7 天；PR 关闭或合并后自动删除
 （`snapshot-cleanup.yml`，见 #174）。
 
-**本地取件**：`Dist\UpdateSnapshot.cmd [-List] [-Pr <N>] [-Kind jvm|desktop-native|cli-native] [-DryRun]`
+**本地取件**：`Dist\UpdateDesktopNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun]` /
+`Dist\UpdateCliNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun]`（JVM 便携包快照暂用 `Dist\UpdateSnapshot.ps1 -Kind jvm`）
 （零配置：不需要 token / `gh` / Python；解压到 `Dist\<资产名>\` 的**独立目录**，不覆盖任何既有文件；
 状态记在 `Dist\.aha-snapshot.json`，与原生取件的状态文件互不干扰。速查见
 [`Docs/Guide/CommandCheatsheet.md`](CommandCheatsheet.md) §7（该文件是 `Dist/README.commands.md` 的

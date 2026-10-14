@@ -259,12 +259,13 @@ Dist/
 **取件（一键，Windows 双击 / 脚本）**：
 
 ```bat
-Dist\UpdateSnapshot.cmd                        :: 取最近一次快照（自动挑本机平台）
-Dist\UpdateSnapshot.cmd -List                  :: 列出快照（版本号 / 目标 / 剩余天数）
-Dist\UpdateSnapshot.cmd -Pr 184                :: 取某个 PR 的快照
-Dist\UpdateSnapshot.cmd -Kind jvm              :: 只取 JVM 便携包（jvm / desktop-native / cli-native）
-Dist\UpdateSnapshot.cmd -DryRun                :: 只预览：会下载哪个包、解压到哪里
-Dist\UpdateSnapshot.cmd -Force                 :: 已取过同一版也重新下载
+Dist\UpdateDesktopNativeSnapshot.cmd           :: 原生桌面包快照：取最近一次（自动挑本机平台）
+Dist\UpdateCliNativeSnapshot.cmd               :: 原生 CLI 包快照：取最近一次
+Dist\UpdateDesktopNativeSnapshot.cmd -List     :: 列出快照（版本号 / 目标 / 剩余天数）
+Dist\UpdateDesktopNativeSnapshot.cmd -Pr 188   :: 取某个 PR 的快照
+Dist\UpdateDesktopNativeSnapshot.cmd -DryRun   :: 只预览：会下载哪个包、解压到哪里
+Dist\UpdateDesktopNativeSnapshot.cmd -Force    :: 已取过同一版也重新下载
+Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，启动器名字待定）
 ```
 
 特点：
