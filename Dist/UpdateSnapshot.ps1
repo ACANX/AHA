@@ -1,5 +1,8 @@
 ﻿<#
-    AHA 快照包一键取件（Windows 原生实现，由 Dist\UpdateSnapshot.cmd 调用）
+    AHA 快照包一键取件（Windows 原生实现，由 Dist 下的**专用启动器**调用）
+        Dist\UpdateDesktopNativeSnapshot.cmd   -> -Kind desktop-native
+        Dist\UpdateCliNativeSnapshot.cmd       -> -Kind cli-native
+    JVM 便携包快照目前直调本脚本：UpdateSnapshot.ps1 -Kind jvm -Pr <N>
 
     快照包 = 某个**未合并 PR** 的试包（issue #165 方案）。它挂在发布页的 pre-release 上：
         tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT

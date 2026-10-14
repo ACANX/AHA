@@ -299,7 +299,7 @@ jobs:
           cat "$RUNNER_TEMP/groups.tsv"
           while IFS=$'\t' read -r tag name assets; do
             [ -z "${tag:-}" ] && continue
-            notes="PR #${PR} 的快照包（版本 ${VERSION}，7 天有效，非正式发行）。取件：Dist\\UpdateSnapshot.cmd -Pr ${PR}"
+            notes="PR #${PR} 的快照包（版本 ${VERSION}，7 天有效，非正式发行）。取件：Dist\\UpdateSnapshot.ps1 -Kind jvm -Pr ${PR}"
             if gh release view "${tag}" --repo "${REPO}" > /dev/null 2>&1; then
               gh release edit "${tag}" --repo "${REPO}" --title "${name}" --notes "${notes}" --prerelease > /dev/null
               echo "已更新发布页：${tag}"
