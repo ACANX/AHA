@@ -210,6 +210,31 @@ def check_conflict_markers() -> list[str]:
     return problems
 
 
+CHEATSHEET_SOURCE = ROOT / "Docs" / "Guide" / "CommandCheatsheet.md"
+CHEATSHEET_COPY = ROOT / "Dist" / "README.commands.md"
+
+
+def check_cheatsheet_copy() -> list[str]:
+    """`Dist/README.commands.md` 必须是 `Docs/Guide/CommandCheatsheet.md` 的**逐字节副本**。
+
+    来历（2026-10-14 的真实教训）：S5（#173）把「快照包取件」一节直接加到了 `Dist/README.commands.md`。
+    那个文件头部明写着「要改内容请改源文件，本文件会被覆盖」，但**只有人读到那行才会遵守**；
+    而它下一次被覆盖的时机很隐蔽——`mvn package` 的 CLI assembly，或任何人跑
+    `Script/Python/DesktopDistExtract.py`（`shutil.copyfile`）⇒ 这一节会**静默消失**。
+    所以在这里变成检查：副本必须与源文件逐字节相同，不一致就点名，并给出补救命令。
+    """
+    if not (CHEATSHEET_SOURCE.is_file() and CHEATSHEET_COPY.is_file()):
+        return []
+    if CHEATSHEET_SOURCE.read_bytes() == CHEATSHEET_COPY.read_bytes():
+        return []
+    return [
+        "命令速查的副本与源文件不一致：Dist/README.commands.md ≠ Docs/Guide/CommandCheatsheet.md。"
+        "该副本会被 CLI assembly 与 DesktopDistExtract.py 覆盖（shutil.copyfile）——"
+        "**改内容请改源文件 `Docs/Guide/CommandCheatsheet.md`**，再重建副本："
+        "`cp Docs/Guide/CommandCheatsheet.md Dist/README.commands.md`"
+    ]
+
+
 def check_naming() -> list[str]:
     """检查按命名规范建立的目录里的文件名（`DocumentationSpec.md` §1）。
 
@@ -331,8 +356,13 @@ def main() -> int:
     print("\n".join(f"  ❌ {p}" for p in skeleton_problems) if skeleton_problems
           else "  ✅ 四节（结论分层 / 观测数据 / 排除项 / 未决问题）齐全")
 
+    cheatsheet_problems = check_cheatsheet_copy()
+    print("\n[命令速查副本检查]")
+    print("\n".join(f"  ❌ {p}" for p in cheatsheet_problems) if cheatsheet_problems
+          else "  ✅ 副本与源文件逐字节一致")
+
     total = (len(fence_problems) + len(link_problems) + len(conflict_problems)
-             + len(naming_problems) + len(skeleton_problems))
+             + len(naming_problems) + len(skeleton_problems) + len(cheatsheet_problems))
     if total:
         print(f"\n共 {total} 个问题")
         return 1

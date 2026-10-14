@@ -249,3 +249,37 @@ Dist/
   重建；本速查会随之一并重新写回，不需要手动维护。
 - 依赖升级后旧 jar 可能残留，JPMS 下同名模块出现两个版本会直接 `FindException`：
   桌面端独占 jar 由 `DesktopDistExtract.py` 清理，CLI 侧用 `mvnw clean package` 重新生成。
+
+## 7. 快照包（PR 试包）
+
+**快照包 = 给尚未合并的 PR 出的试包**（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)，
+实现见 #171 / #172）。它们挂在发布页的 pre-release 上，tag 形如
+`V0.1.3.00184.10141900-AHA-Cli-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
+
+**取件（一键，Windows 双击 / 脚本）**：
+
+```bat
+Dist\UpdateSnapshot.cmd                        :: 取最近一次快照（自动挑本机平台）
+Dist\UpdateSnapshot.cmd -List                  :: 列出快照（版本号 / 目标 / 剩余天数）
+Dist\UpdateSnapshot.cmd -Pr 184                :: 取某个 PR 的快照
+Dist\UpdateSnapshot.cmd -Kind jvm              :: 只取 JVM 便携包（jvm / desktop-native / cli-native）
+Dist\UpdateSnapshot.cmd -DryRun                :: 只预览：会下载哪个包、解压到哪里
+Dist\UpdateSnapshot.cmd -Force                 :: 已取过同一版也重新下载
+```
+
+特点：
+
+- **零配置**：不需要 `GH_TOKEN`、不需要 `gh`、不需要 Python（全程 PowerShell / .NET）；
+- **不覆盖任何文件**：解压到 `Dist\<资产名>\` 的**独立目录**（与 `UpdateNative.ps1` 的「替换 exe」语义不同）；
+- **独立状态**：记在 `Dist\.aha-snapshot.json`，不读写 `.aha-desktop-native.json` / `.aha-cli-native.json`；
+- 平台自动识别：JVM 线取 `windows-x64`、原生线取 `windows-amd64`（ARM64 机器取 `*-arm64`）。
+
+**让 PR 出快照包**（两种方式）：
+
+| 方式 | 用法 | 特点 |
+|---|---|---|
+| 触发标签 | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | **粘性**：标签在则每次 push 重出；移除即停 |
+| PR 评论命令 | `/snapshot <target> [os ...]` | **一次性**；大小写不敏感 |
+
+平台收窄：再打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu`（**不能单独使用**）。
+只改 `Docs/**` 的 PR 不会出包（属 B 组），除非**新打**触发标签（显式请求）。
