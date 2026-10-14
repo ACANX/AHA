@@ -63,6 +63,17 @@ JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
     "windows-x64": [("windows-latest", "windows-x64", 25, False)],
 }
 
+#: 快照的发布页 tag / 发行名（ACANX 定案，2026-10-14）：
+#:   tag  = `V<快照版本>-AHA-<目标>-SNAPSHOT`
+#:   名称 = tag + 「（PR #<N> 快照）」
+#: 与 dev 线的 `V<版本>-aha-jvm` / 正式发版的 `V<版本>` **同为 `V*` 家族**，
+#: 因此必须满足两件事（都已落实）：
+#:   1. `Release.yml` 的 tag 过滤要**排除** `-SNAPSHOT`（否则每次出快照都会触发正式发版流程）；
+#:   2. 保持 `prerelease: true`（不进 `releases/latest`）。
+#: 每个目标一条 tag（一次运行若同时选中 Desktop 与 Cli，会得到两条并列的 pre-release）。
+TAG_FORMAT = "V{version}-AHA-{target}-SNAPSHOT"
+RELEASE_NAME_FORMAT = "V{version}-AHA-{target}-SNAPSHOT（PR #{pr} 快照）"
+
 #: 快照包资产名（#165 §八）。`{label}` 用平台标签；CLI 包平台无关，但按 §八 仍带平台段。
 ASSET_FORMATS = {
     "Desktop": "AHA-JVM-{version}-{label}-jdk25.zip",
@@ -201,6 +212,19 @@ def asset_names(targets: list[str], version: str, platforms: list[str]) -> list[
     return names
 
 
+def release_groups(targets: list[str], version: str, platforms: list[str], pr: int) -> list[dict]:
+    """按目标拆出发布条目（每个目标一条 tag / 一个 pre-release）。"""
+    groups: list[dict] = []
+    for target in targets:
+        groups.append({
+            "target": target,
+            "tag": TAG_FORMAT.format(version=version, target=target),
+            "name": RELEASE_NAME_FORMAT.format(version=version, target=target, pr=pr),
+            "assets": asset_names([target], version, platforms),
+        })
+    return groups
+
+
 def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
            now: datetime, groups: dict[str, list[str]], command: str = "",
            label_event: bool = False) -> dict:
@@ -216,7 +240,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
         reason_prefix = "显式请求：`/snapshot` 命令"
     elif not targets:
         return {
-            "should_build": False, "pr": pr, "targets": [], "platforms": [],
+            "should_build": False, "pr": pr, "targets": [], "platforms": [], "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": False,
             "reason": "未打任何 `SNAPSHOT:*` 触发标签（四类目标默认都不出包）",
@@ -230,7 +254,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     needed, reason = classify(changed, groups)
     if not needed and not reason_prefix:
         return {
-            "should_build": False, "pr": pr, "targets": targets, "platforms": platforms,
+            "should_build": False, "pr": pr, "targets": targets, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": False, "reason": reason,
         }
@@ -239,7 +263,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     if native and not [t for t in targets if t in JVM_TARGETS]:
         # 本工作流只管 JVM 线；纯原生目标交给 DesktopNative.yml / CliNative.yml（S4）
         return {
-            "should_build": False, "pr": pr, "targets": native, "platforms": platforms,
+            "should_build": False, "pr": pr, "targets": native, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": explicit_command,
             "reason": f"目标 {native} 属原生线，由 DesktopNative.yml / CliNative.yml 处理（本工作流不构建）",
@@ -250,7 +274,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     full_reason = reason if not reason_prefix else f"{reason_prefix} ⇒ 忽略变更分类（{reason}）"
     if not legs:
         return {
-            "should_build": False, "pr": pr, "targets": jvm, "platforms": platforms,
+            "should_build": False, "pr": pr, "targets": jvm, "platforms": platforms, "releases": [],
             "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
             "assets": [], "explicit": explicit_command,
             "reason": f"选中的平台 {platforms} 在 JVM 线上没有对应的腿（JVM 线只有 ubuntu-x64 / windows-x64）",
@@ -261,6 +285,7 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
         "platforms": sorted({leg["label"] for leg in legs}),
         "version": version, "legs": [f"{leg['label']}/jdk{leg['jdk']}" for leg in legs],
         "matrix": legs, "assets": asset_names(jvm, version, platforms),
+        "releases": release_groups(jvm, version, platforms, pr),
         "explicit": bool(reason_prefix) or explicit_command, "reason": full_reason,
     }
 
@@ -288,7 +313,13 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         return notice_body(plan["reason"]).replace("未构建", "本次未出包")
     expiry = (datetime.now(timezone.utc).date()
               + timedelta(days=SNAPSHOT_TTL_DAYS)).isoformat()
-    asset_lines = "\n".join(f"- `{name}`" for name in plan["assets"])
+    release_blocks = "\n".join(
+        f"#### `{group['tag']}`\n"
+        f"- 发行名：{group['name']}\n"
+        + "".join(f"- 资产：`{name}`\n" for name in group["assets"])
+        + f"- 发布页：https://github.com/ACANX/AHA/releases/tag/{group['tag']}\n"
+        for group in plan.get("releases", [])
+    )
     # 平台名直接用**发行版名**（`ubuntu-x64`）而不是 `linux-x64`：后者会被读成
     # 「所有 Linux 发行版都支持」，而我们只在 Ubuntu 上构建与验证过。
     # 这层事实仍然显式写一次，避免读者自行放大范围。
@@ -303,7 +334,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         f"### 快照包：`{plan['version']}`\n\n"
         f"- 目标：{', '.join(plan['targets'])}（平台：{', '.join(plan['platforms'])}）\n"
         f"- 判定：{plan['reason']}\n"
-        f"- 资产（挂在 pre-release `snapshot-pr{plan['pr']}`）：\n{asset_lines}\n"
+        f"\n{release_blocks}\n"
         f"- 有效期至：**{expiry}**（{SNAPSHOT_TTL_DAYS} 天；过期后仍可下载，只作提示）\n"
         f"{platform_note}"
         f"- 构建：{run_url or '（见本 PR 的 Actions 运行）'}\n\n"
@@ -377,6 +408,23 @@ def self_test() -> int:
     ok = version == f"0.1.3.00171.{beijing}" and beijing != utc
     problems += 0 if ok else 1
     print(f"  {'✅' if ok else '❌'} 版本号 {version}（UTC 段 {utc}，北京时间段 {beijing}，二者不同）")
+    # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>-SNAPSHOT`
+    # 注意：这里必须**重新判定一次**，不能复用上面循环里的 plan（那是最后一个用例，
+    # 可能正落在「不出包」分支 ⇒ releases 为空 ⇒ 断言永远失败）。
+    plan = decide(labels=["SNAPSHOT:Desktop", "SNAPSHOT:Cli"], changed=["aha-common/pom.xml"],
+                  baseline="0.1.3", pr=171, now=now, groups=groups)
+    tags_ok = all(
+        group["tag"].startswith("V" + plan["version"]) and group["tag"].endswith("-SNAPSHOT")
+        and f"-AHA-{group['target']}-SNAPSHOT" in group["tag"]
+        for group in plan["releases"]
+    ) and len(plan["releases"]) == len(plan["targets"]) and plan["releases"]
+    problems += 0 if tags_ok else 1
+    print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
+          + "、".join(g["tag"] for g in plan["releases"]))
+    old_tag_ok = "snapshot-pr" not in comment_body(plan, "https://example/run")
+    problems += 0 if old_tag_ok else 1
+    print(f"  {'✅' if old_tag_ok else '❌'} 评论正文不再出现旧 tag 形式（`snapshot-pr<N>`）")
+
     # 评论正文必须写清平台名的语义边界（本轮实测：该腿的验证环境只有 Ubuntu）
     plan = decide(labels=["SNAPSHOT:Desktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
                   pr=171, now=now, groups=groups)

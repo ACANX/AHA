@@ -7,6 +7,11 @@ on:
       # ref 过滤是大小写敏感的，两种都列上，手工用 `v0.1.0` 或 `V0.1.0` 都能触发。
       - 'V*'
       - 'v*'
+      # 快照包也落在 `V*` 家族（`V<版本>-AHA-<目标>-SNAPSHOT`，见 SnapshotJVM.yml 与 issue #165），
+      # 但**绝不能**触发正式发版流程：负向模式按顺序在后，把 `-SNAPSHOT` 排除掉。
+      # 实测风险：不加这两行时，每次出快照都会跑一遍完整的正式发版流程。
+      - '!V*-SNAPSHOT'
+      - '!v*-SNAPSHOT'
 
 permissions:
   contents: write

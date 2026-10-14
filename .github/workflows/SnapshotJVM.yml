@@ -15,8 +15,13 @@ name: SnapshotJVM
 # ── 与 BuildJVMArtifacts 的关系 ───────────────────────────────────────────────
 # 构建与打包**复用** BuildJVMArtifacts.yml（`workflow_call`），不复制一套：
 # 复制出来的第二套必然漂移（本仓库已把这类漂移固化成检查）。
-# 载体不同：dev 线挂 `V<版本>-aha-jvm` 预发行；快照挂 `snapshot-pr<N>` 预发行
-# （小写、不匹配 `V*`，不影响正式发版与现有更新脚本的检索）。
+# 载体：**每个目标一条 pre-release**，tag 形如 `V<快照版本>-AHA-<目标>-SNAPSHOT`
+# （如 `V0.1.3.00179.10141649-AHA-Desktop-SNAPSHOT`，发行名同名 +「（PR #N 快照）」）。
+# 它落在 `V*` 家族里，因此有两条硬约束：
+#   1. `Release.yml` 的 tag 过滤必须排除 `-SNAPSHOT`（已加负向模式），否则每次出快照
+#      都会触发一遍完整的正式发版流程；
+#   2. 保持 `prerelease: true`（不进 `releases/latest`）。
+# 现有原生取件脚本按 `-aha-desktop-native` / `-aha-cli-native` 后缀检索，不受本命名影响。
 #
 # ── 判定逻辑在哪 ──────────────────────────────────────────────────────────────
 # 全部在 `.github/Python/SnapshotPlan.py`（可本地跑 `--self-test`）：
@@ -83,6 +88,7 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       targets: ${{ steps.plan.outputs.targets }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      releases: ${{ steps.plan.outputs.releases }}
       comment: ${{ steps.plan.outputs.comment }}
     steps:
       - uses: actions/checkout@v7
@@ -187,6 +193,7 @@ jobs:
             echo "version=$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
             echo "targets=$(echo "$json" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["targets"]))')"
             echo "matrix=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["matrix"], separators=(",",":")))')"
+            echo "releases=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["releases"], separators=(",",":")))')"
           } >> "$GITHUB_OUTPUT"
           # 评论正文多行 ⇒ 必须 heredoc 形式（见上）
           printf 'comment<<AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
@@ -265,31 +272,39 @@ jobs:
             exit 1
           fi
 
-      - name: 挂到 pre-release snapshot-pr<PR>
-        uses: softprops/action-gh-release@v3
-        with:
-          # 小写 tag、不匹配 `V*` ⇒ 不进 releases/latest，也不影响正式发版与更新脚本检索
-          tag_name: snapshot-pr${{ needs.plan.outputs.pr }}
-          name: snapshot-pr${{ needs.plan.outputs.pr }}（PR #${{ needs.plan.outputs.pr }} 快照）
-          prerelease: true
-          files: artifacts/*.zip
-          body: |
-            ## 这是什么
-
-            PR #${{ needs.plan.outputs.pr }} 的**快照包**（issue #165）：由未合并的分支构建，
-            供该 PR 自测 / 交叉验证。**不是正式发行包。**
-
-            | 项 | 值 |
-            |---|---|
-            | 快照版本 | `${{ needs.plan.outputs.version }}` |
-            | 目标 | ${{ needs.plan.outputs.targets }} |
-            | 有效期 | 7 天（过期后仍可下载，只作提示；PR 关闭 / 合并后自动删除） |
-
-            取件（仓库 `Dist/` 下，无需 token、无需 `gh`）：
-
-            ```
-            Dist\UpdateSnapshot.cmd -Pr ${{ needs.plan.outputs.pr }}
-            ```
+      - name: 按目标创建 / 更新 pre-release（tag = V<版本>-AHA-<目标>-SNAPSHOT）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.plan.outputs.pr }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          RELEASES: ${{ needs.plan.outputs.releases }}
+        run: |
+          set -euo pipefail
+          # 判定脚本已给出「每个目标一条 tag」的清单（含该目标应有的资产名）。
+          # 一条目标一个 pre-release：一次运行同时选中 Desktop 与 Cli 时会得到两条并列的发布页。
+          python3 -c 'import json,os; [print("\t".join([g["tag"], g["name"], ",".join(g["assets"])])) for g in json.loads(os.environ["RELEASES"])]' > "$RUNNER_TEMP/groups.tsv"
+          cat "$RUNNER_TEMP/groups.tsv"
+          while IFS=$'\t' read -r tag name assets; do
+            [ -z "${tag:-}" ] && continue
+            notes="PR #${PR} 的快照包（版本 ${VERSION}，7 天有效，非正式发行）。取件：Dist\\UpdateSnapshot.cmd -Pr ${PR}"
+            if gh release view "${tag}" --repo "${REPO}" > /dev/null 2>&1; then
+              gh release edit "${tag}" --repo "${REPO}" --title "${name}" --notes "${notes}" --prerelease > /dev/null
+              echo "已更新发布页：${tag}"
+            else
+              gh release create "${tag}" --repo "${REPO}" --title "${name}" --notes "${notes}" --prerelease > /dev/null
+              echo "已创建发布页：${tag}"
+            fi
+            IFS=',' read -ra wanted <<< "${assets}"
+            for asset in "${wanted[@]}"; do
+              if [ -f "artifacts/${asset}" ]; then
+                gh release upload "${tag}" "artifacts/${asset}" --repo "${REPO}" --clobber > /dev/null
+                echo "  已上传 ${asset}"
+              else
+                echo "::warning::清单里的资产不存在，跳过：${asset}"
+              fi
+            done
+          done < "$RUNNER_TEMP/groups.tsv"
 
   # ── 4. 回写 PR 评论（**幂等**：同一条评论反复编辑，见 #165 §六）──────────────
   comment:
