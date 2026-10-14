@@ -101,34 +101,16 @@ jobs:
         id: matrix
         env:
           INPUT_MATRIX: ${{ inputs.matrix }}
+          RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
-          # 默认矩阵 = 三平台 × JDK 25/27（与改造前逐条一致，保证 dev 线行为不变）。
-          # 之所以做成「步骤里算、作业输出」，是因为 workflow_call 的输入默认值
-          # 无法直接写成 JSON 字面量再交给 fromJSON。
-          default_matrix='[
-            {"os":"ubuntu-latest","label":"linux-x64","jdk":25,"upload_cli":true},
-            {"os":"windows-latest","label":"windows-x64","jdk":25,"upload_cli":false},
-            {"os":"macos-latest","label":"macos-arm64","jdk":25,"upload_cli":false},
-            {"os":"ubuntu-latest","label":"linux-x64","jdk":27,"upload_cli":true},
-            {"os":"windows-latest","label":"windows-x64","jdk":27,"upload_cli":false},
-            {"os":"macos-latest","label":"macos-arm64","jdk":27,"upload_cli":false}
-          ]'
-          matrix="${INPUT_MATRIX:-$default_matrix}"
-          # 自证：合法 JSON、非空、每条腿字段齐全且 jdk 只认 25 / 27、label 只认三种。
-          # 矩阵写错的表现是「某个平台静默没出包」，因此在这里就拦下。
-          echo "$matrix" | python3 - <<'PYEOF'
-          import json, sys
-          data = json.load(sys.stdin)
-          assert isinstance(data, list) and data, "矩阵必须是非空 JSON 数组"
-          for leg in data:
-              assert set(leg) == {"os", "label", "jdk", "upload_cli"}, f"腿的字段不对：{leg}"
-              assert leg["jdk"] in (25, 27), f"jdk 只支持 25 / 27：{leg}"
-              assert leg["label"] in ("linux-x64", "windows-x64", "macos-arm64"), f"label 不认识：{leg}"
-          print(f"矩阵自证通过：{len(data)} 条腿 -> " + ", ".join(f'{l["label"]}/jdk{l["jdk"]}' for l in data))
-          PYEOF
-          # 压成单行写进 GITHUB_OUTPUT（多行会破坏 output 语法）
-          printf 'matrix=%s\n' "$(echo "$matrix" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), separators=(",",":")))')" >> "$GITHUB_OUTPUT"
+          # 矩阵逻辑在仓库脚本里（.github/Python/JvmMatrix.py）：可本地跑、可自检、
+          # 也能被快照线复用。**不要**把 Python 写进这里的块标量——代码行顶格会被 YAML
+          # 当成新的键，块标量 + 管道 + 重定向叠加还会吃掉行尾空格（两坑都踩过）。
+          python3 .github/Python/JvmMatrix.py --validate "${INPUT_MATRIX}" > "$RUNNER_TEMP/matrix.txt"
+          head -n1 "$RUNNER_TEMP/matrix.txt"
+          tail -n1 "$RUNNER_TEMP/matrix.txt" > "$RUNNER_TEMP/matrix.json"
+          printf 'matrix=%s\n' "$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
 
       - name: 计算版本（a.b.c.PPPPP，与原生线同规则）
         id: compute
