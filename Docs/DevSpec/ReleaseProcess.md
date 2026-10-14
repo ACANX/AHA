@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.19.0
+**文档版本**：v1.19.1
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-09
+**最后更新**：2026-10-14
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -34,6 +34,7 @@
 | v1.17.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更，父 #92）：§2 新增「验证时机」——版本切换 PR 上不跑 `Build` / `Gate` / `Compat`，验证由合并到 `dev` 后的 `Build` + 三条出包线承担；§4.2 去掉「改用 PAT」选项，明确手工重建 tag 为唯一处置（`Release.yml` 无 `workflow_dispatch`） | @ACANX / CNXNC |
 | v1.18.0 | 2026-10-09 | **发行形态最终决策**：只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，**`jpackage` 安装包跳过、不采用**；§3 制品表按新形态重写并新增 §3.3（决策与三条理由）；§3.1 / §3.2 去掉 `jpackage` 相关表述——「必须分平台构建」的依据改为 JavaFX 平台分类器 | @ACANX / CNXNC |
 | v1.19.0 | 2026-10-09 | §4.1 的「0.1.0 裸 tag 历史例外」标记为**已处置**：补了指向**同一提交**（`9138847`）的别名 tag `V0.1.0`，`CHANGELOG` 的 `releases/tag/V0.1.0` 链接不再 404（Issue #85 的 `G-06`） | @ACANX / CNXNC |
+| v1.19.1 | 2026-10-14 | §2 资产名表：Linux 包名由 `-linux-x64` 改为 `-ubuntu-x64`（平台标签统一用发行版名，因为验证环境只有 Ubuntu；ACANX 定案），行首补「验证环境为 Ubuntu」 | @cnxnc |
 
 ---
 
@@ -157,7 +158,7 @@ git push origin V0.1.2                                         # 这次由人推
 | 平台 | 下载文件 |
 |---|---|
 | Windows x86_64 | `aha-desktop-<版本>-windows-x64.zip` |
-| Linux x86_64 | `aha-desktop-<版本>-linux-x64.zip` |
+| Linux x86_64（验证环境为 Ubuntu） | `aha-desktop-<版本>-ubuntu-x64.zip` |
 | macOS Apple Silicon | `aha-desktop-<版本>-macos-arm64.zip` |
 
 包内布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
