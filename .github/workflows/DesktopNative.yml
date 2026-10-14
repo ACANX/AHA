@@ -875,12 +875,25 @@ jobs:
         # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。
         if: steps.verify.outputs.produced == 'true' && runner.os == 'Windows'
         shell: bash
+        env:
+          # 双保险：即使 reconfigure 在某个 Python 上不可用，也让输出走 UTF-8。
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
         run: |
           set -euo pipefail
           # 光看「加了参数」不算数：参数写错位置、被当应用参数、相对路径没解析到——
           # 这些都表现得跟「成功」一模一样。所以到打好的包里把清单**找出来**。
           python3 - <<'PY'
           import sys, zipfile, pathlib
+
+          # Windows 的管道默认按 cp1252 解输出，print 中文 / ✅ 会抛 UnicodeEncodeError——
+          # 本轮就因此让「清单已嵌入」这句话自己把步骤弄挂了（构建与断言其实都通过了）。
+          # 写法与 Script/Python/*.py 一致。
+          for _stream in (sys.stdout, sys.stderr):
+              try:
+                  _stream.reconfigure(encoding="utf-8", errors="replace")
+              except (AttributeError, ValueError):
+                  pass
 
           DIST = pathlib.Path("Dist")
           guid = b"8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a"
