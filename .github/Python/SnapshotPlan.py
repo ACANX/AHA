@@ -77,8 +77,13 @@ TAG_FORMAT = "V{version}-AHA-{target}-SNAPSHOT"
 RELEASE_NAME_FORMAT = TAG_FORMAT
 
 #: 快照包资产名（#165 §八）。`{label}` 用平台标签；CLI 包平台无关，但按 §八 仍带平台段。
+# 命名对称（ACANX 定案，2026-10-14）：桌面端与 CLI 都要带目标段，且与原生线对称——
+#   原生：AHA-Desktop-Native-… / AHA-Cli-Native-…
+#   JVM ：AHA-Desktop-JVM-…    / AHA-Cli-JVM-…
+# 早先桌面端写成 `AHA-JVM-…`（不带 `Desktop`）：标签写的是 `…-AHA-Desktop-SNAPSHOT`，
+# 资产却叫 `AHA-JVM-…`，两处对不上，也读不出「这是桌面包」。
 ASSET_FORMATS = {
-    "Desktop": "AHA-JVM-{version}-{label}-jdk25.zip",
+    "Desktop": "AHA-Desktop-JVM-{version}-{label}-jdk25.zip",
     "Cli": "AHA-Cli-JVM-{version}-{label}-jdk25.zip",
 }
 
@@ -335,7 +340,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         "- `ubuntu-x64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
         "CentOS / RHEL 等其他发行版**未验证**；\n"
         "- `windows-x64`：构建与冒烟环境为 GitHub Actions 的 Windows runner（`windows-latest`，本 run 的镜像是 `windows-2025-vs2026`）。\n"
-    ) if any(name.startswith(("AHA-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
+    ) if any(name.startswith(("AHA-Desktop-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
     return (
         "<!-- aha-snapshot -->\n"
         f"### 快照包：`{plan['version']}`\n\n"
@@ -436,6 +441,13 @@ def self_test() -> int:
     problems += 0 if tags_ok else 1
     print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
           + "、".join(g["tag"] for g in plan["releases"]))
+    prefix_ok = all(
+        all(name.startswith(f"AHA-{group['target']}-JVM-") for name in group["assets"])
+        for group in plan["releases"]
+    )
+    problems += 0 if prefix_ok else 1
+    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标对称（AHA-<目标>-JVM-…）："
+          + "；".join(f"{g['target']}→{g['assets'][0]}" for g in plan["releases"]))
     name_ok = all(g["name"] == g["tag"] for g in plan["releases"])
     problems += 0 if name_ok else 1
     print(f"  {'✅' if name_ok else '❌'} 发行名与 tag 完全相同（无多余后缀）："

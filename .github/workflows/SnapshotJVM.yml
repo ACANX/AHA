@@ -259,7 +259,7 @@ jobs:
           for f in artifacts/aha-desktop-*.zip; do
             [ -e "$f" ] || continue
             label=$(basename "$f" | sed -E 's/^aha-desktop-[0-9.]+-([a-z0-9-]+)\.zip$/\1/')
-            mv "$f" "artifacts/AHA-JVM-${VERSION}-${label}-jdk25.zip"
+            mv "$f" "artifacts/AHA-Desktop-JVM-${VERSION}-${label}-jdk25.zip"
             count=$((count + 1))
           done
           # CLI 包平台无关（只在 Ubuntu 腿产出）⇒ 按 §八 仍带平台段，用产出它的腿作标签
