@@ -128,7 +128,13 @@ jobs:
           baseline=$(python3 .github/Python/ProjectVersion.py --resolve)
           # 评论正文一律由脚本生成（含「未构建」说明）——YAML 里只出现单行调用，
           # 避免多行字符串在块标量里被提前截断（本文件曾因此写坏三次）。
-          emit_notice() { echo "comment=$(python3 .github/Python/SnapshotPlan.py --notice "$1")" >> "$GITHUB_OUTPUT"; }
+          # 注意：多行输出必须用 heredoc 形式（`name<<EOF` … `EOF`）；直接 `comment=多行`
+          # 会让 GitHub 报 `Invalid format`（实测踩过）。
+          emit_notice() {
+            printf 'comment<<AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
+            python3 .github/Python/SnapshotPlan.py --notice "$1" >> "$GITHUB_OUTPUT"
+            printf 'AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
+          }
 
           # 评论命令 / 手动触发：归一成一条规范命令串交给判定脚本
           command="${COMMENT}"
@@ -173,11 +179,14 @@ jobs:
             echo "version=$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
             echo "targets=$(echo "$json" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["targets"]))')"
             echo "matrix=$(echo "$json" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["matrix"], separators=(",",":")))')"
-            echo "comment=$(python3 .github/Python/SnapshotPlan.py \
-                     --labels "${LABELS}" --changed-files changed-files.txt \
-                     --baseline "${baseline}" --pr "${pr}" --command "${command}" \
-                     "${extra[@]}" --run-url "${RUN_URL}" --comment)"
           } >> "$GITHUB_OUTPUT"
+          # 评论正文多行 ⇒ 必须 heredoc 形式（见上）
+          printf 'comment<<AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
+          python3 .github/Python/SnapshotPlan.py \
+            --labels "${LABELS}" --changed-files changed-files.txt \
+            --baseline "${baseline}" --pr "${pr}" --command "${command}" \
+            "${extra[@]}" --run-url "${RUN_URL}" --comment >> "$GITHUB_OUTPUT"
+          printf 'AHA_SNAPSHOT_EOF\n' >> "$GITHUB_OUTPUT"
 
           echo "判定完成：${json}"
           {
