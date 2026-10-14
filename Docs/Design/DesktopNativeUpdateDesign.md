@@ -1,14 +1,13 @@
-# AHA 桌面端原生镜像版本更新脚本设计（试验性）
+# AHA 原生镜像取件工具设计（桌面端 + CLI；Windows PowerShell / POSIX Python，试验性）
 
-> **文档版本**：v1.1.0
+> **文档版本**：v1.2.0
 > **状态**：草案（试验性能力的配套工具，随实现迭代）
 > **生效日期**：2026-10-09
-> **最后更新**：2026-10-13
+> **最后更新**：2026-10-14
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
-> **定位**：原生镜像取件工具的设计、参数、边界与验证记录——**桌面端与 CLI 两种包共用一套引擎**
-> （`Script/Python/NativeVersionUpdate.py`）；用户入口是 `DesktopNativeVersionUpdate.py` /
-> `CliNativeVersionUpdate.py` 两个薄壳，Windows 一键入口为 `Dist/Update*.cmd`
+> **定位**：原生镜像取件工具的设计、参数、边界与验证记录——**桌面端与 CLI 两种包**、
+> **两套平台实现**（Windows PowerShell / POSIX Python，共用一份命名契约）
 
 ## 0. 本文定位
 
@@ -17,49 +16,71 @@
 
 取一个验证包原本是四步手工操作：
 
-1. 打开发布页，找到最新的 `V<版本>-aha-desktop-native` 预发行版；
+1. 打开发布页，找到最新的 `V<版本>-aha-<kind>-native` 预发行版；
 2. 在这条 release 的资产里，按「系统-架构-jdk」挑对自己平台的那个 zip；
 3. 下载并解压；
-4. 把可执行文件放到 `Dist/`，再执行 `.\Dist\aha-desktop-native.exe`。
+4. 把可执行文件放到 `Dist/`。
 
 这四步里有三步要求「看仔细」（tag 名、平台标签、JDK 轴），看错一步就要重来；版本号还带
-5 位构建号，肉眼比较新旧很容易出错。脚本把四步压成一条命令：
+5 位构建号，肉眼比较新旧很容易出错。工具把四步压成一步。
 
-```bat
-python3 Script\Python\DesktopNativeVersionUpdate.py
-```
+### 0.1 当前方案：两套实现，一份契约
 
-（POSIX 下把路径分隔符换成 `/`；个别环境里命令是 `python` 而非 `python3`。）
-用法由 `bin/CheckScripts.py` 的脚本规约守卫（`.py` 需 shebang + LF），不需要另立检查。
-
-**2026-10-13（issue #156 / TD-00015）：CLI 原生包并入同一套逻辑。** 引擎抽成
-`Script/Python/NativeVersionUpdate.py`，两种包只在引擎的 `KINDS` 表里差五项——tag 后缀、
-资产前缀、可执行文件名、状态文件名、帮助里展示的用法：
-
-| 种类 | 入口脚本（薄壳） | Windows 一键入口（双击） |
-|---|---|---|
-| 桌面端 | `Script/Python/DesktopNativeVersionUpdate.py` | `Dist\UpdateDesktopNative.cmd` |
-| CLI | `Script/Python/CliNativeVersionUpdate.py` | `Dist\UpdateCliNative.cmd` |
-
-历史命令名 `DesktopNativeVersionUpdate.py` **保持可用且行为不变**（现在只是薄壳）。
-曾考虑给单个入口加 `--kind` 参数，最终选「共享引擎 + 两个薄壳」：薄壳名就是文档名，
-双击入口不必再记参数，而共享逻辑仍然只有一份（这是 TD-00015 明确要求的）。
-
-**2026-10-13 晚：Windows 侧另做了一套 PowerShell 实现（`Dist/UpdateNative.ps1`）。**
-原因很具体——真机双击失败，报的是 `OPENSSL_Uplink ... no OPENSSL_Applink`：
-**本机 Python 的 OpenSSL 运行时不可用**，而且它是硬失败（进程被直接终结，进程内捕不到）。
-于是：
-
-| 平台 | 入口 | 实现 | 为什么要两套 |
+| 平台 | 入口（用户视角） | 实现 | 说明 |
 |---|---|---|---|
-| Windows | `Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cmd`（双击） | `Dist\UpdateNative.ps1`（`Invoke-RestMethod` / `Invoke-WebRequest`，走 .NET Schannel TLS） | Windows 上**不能假设有 Python**；且不碰 Python 的 OpenSSL |
-| POSIX（WSL / Linux / macOS） | `python3 Script/Python/{Desktop,Cli}NativeVersionUpdate.py` | 共享引擎 `NativeVersionUpdate.py` | POSIX 上**不能假设有 PowerShell**；且 Python 版功能更多（多源发现 / 断点续传 / sha256） |
+| Windows | **双击** `Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cmd` | `Dist/UpdateNative.ps1`（PowerShell + `Invoke-RestMethod` / `Invoke-WebRequest`，走 .NET / Schannel TLS） | **不需要 Python**；`.cmd` 只做参数转写与转发 |
+| WSL / Linux / macOS | `python3 Script/Python/{Desktop,Cli}NativeVersionUpdate.py` | 共享引擎 `Script/Python/NativeVersionUpdate.py` | 功能更多：三条发现路径（api → atom → page）、断点续传、`--downloader auto\|urllib\|curl` |
 
-**两套实现共用同一份命名契约**（tag 后缀 / 资产前缀 / 可执行文件名），
-由 `bin/CheckScripts.py` 断言逐字一致——这是两套实现能共存的前提：
-一旦漂移，表现是「某个平台上永远取不到包」，静默且难查。
-Python 侧另有一条 `--downloader auto|urllib|curl`（Windows 的 `auto` 会子进程探测后再决定，
-POSIX 不需探测），用于「本机 Python 的 HTTPS 坏掉」时自救；见 `TS-2610-036`。
+**为什么是两套而不是一套**：两边的「默认可用运行时」不同——Windows 上不能假设装了 Python
+（一键入口的受众是克隆仓库的人），POSIX 上不能假设有 Windows PowerShell。再加上 Windows 上
+Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、
+进程内捕不到）——Windows 侧干脆不经 Python。完整排查见 `TS-2610-036`。
+
+**两套实现共用同一份命名契约**（这也是两套能共存的前提）：
+
+| 种类 | tag 后缀 | 资产前缀 | 可执行文件 |
+|---|---|---|---|
+| 桌面端 | `-aha-desktop-native` | `AHA-Desktop-Native-` | `aha-desktop-native(.exe)` |
+| CLI | `-aha-cli-native` | `AHA-Cli-Native-` | `aha-cli-native(.exe)` |
+
+这张表在 Python 侧是 `KINDS`、在 PowerShell 侧是 `$kinds`，**由 `bin/CheckScripts.py`
+断言逐字一致**——一旦漂移，表现是「某个平台上永远取不到包」，静默且难查。
+同一处检查还会：`.ps1` 含中文必须带 UTF-8 BOM（PowerShell 5.1 对无 BOM 文件按 ANSI 解码）、
+`.cmd` 不得使用括号转义（与 `if` 块混用会让 CMD 报 `. was unexpected at this time.`）、
+以及把 `Dist/` 下**被跟踪的手写入口**也纳入检查（`Dist/` 整体是构建输出目录，原本被整体跳过）。
+
+**CI**：`Build.yml` 的 `native-update-script` 作业用 runner 自带的 pwsh 真跑
+`Dist/UpdateNative.ps1 -Kind Cli -List`——变量名大小写冲突、批处理括号转义这类坑
+**运行期才暴露**，静态检查看不见。
+
+### 0.2 Windows 侧（PowerShell）的验证记录（2026-10-14）
+
+本机（PowerShell 7.6.7，解到 `/tmp`，不动系统）逐项实跑：
+
+| 场景 | 结果 |
+|---|---|
+| `-List`（Desktop / Cli）、`-DryRun` | ✅ 列出最近 5 个版本 / 打印将下的包与安装路径 |
+| 完整安装 Desktop | ✅ 56.0 MB → `aha-desktop-native.exe`（144.9 MB），sha256 校验通过 |
+| 完整安装 Cli | ✅ 41.5 MB → `aha-cli-native.exe`（92.4 MB） |
+| 幂等 / `-Force` | ✅ 第二次「已经是 …，无需更新」；`-Force` 重装并生成 `.bak` |
+| 状态文件 | ✅ `.aha-<exe>.json`（UTF-8 无 BOM，Python 侧也能读） |
+| 错误分支 | ✅ 找不到本平台包 / 不存在的 tag ⇒ 友好报错 + 退出码 1 |
+| **Windows 真机双击** | ✅ ACANX 实测通过（2026-10-14） |
+
+> 本机跑的是 **pwsh 7 on Linux**，真机是 **Windows PowerShell 5.1**，语义有差异——
+> 所以「真机双击」这一步不能省（已由 ACANX 完成）。
+
+### 0.3 演变（要闻，供对照历史记录）
+
+| 日期 | 变化 |
+|---|---|
+| 2026-10-09 | 首版：桌面端一条命令（`DesktopNativeVersionUpdate.py`），见 §1~§12 |
+| 2026-10-13 | CLI 并入（issue #156 / TD-00015）：引擎抽成 `NativeVersionUpdate.py`，两个入口是薄壳 |
+| 2026-10-13 晚 | Windows 另做 PowerShell 实现（`Dist/UpdateNative.ps1`）；Python 侧补 `--downloader`（见 §5、§8） |
+| 2026-10-14 | 修 Windows 侧四处运行期错误（变量大小写冲突 / 批处理括号转义 / 临时目录 / 解压），并把真跑搬进 CI |
+
+历史命令名 `DesktopNativeVersionUpdate.py` **保持可用且行为不变**（现在只是薄壳，
+`--list` / `--dry-run` / `--tag` / `--platform` / `--jdk` 都还在）。
 
 三条边界先写清楚：
 

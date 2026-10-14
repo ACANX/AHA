@@ -36,6 +36,11 @@
   整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
+- **原生镜像取件工具：实现方案定稿与文档对齐（2026-10-14，issue #156）**：
+  `Docs/Design/DesktopNativeUpdateDesign.md` 改为权威口径（v1.2.0）——标题与定位不再限桌面端，
+  新增§0.1「两套实现，一份契约」、§0.2「Windows 侧验证记录」、§0.3「演变要闻」；
+  `DesktopNativeDesign.md` / `BuildGuide.md` / `NativeRenderDiagnosticsGuide.md` /
+  `AHA-Design-V1.md` 同步为「Windows 双击 `.cmd`（无需 Python）+ POSIX Python」。
 - **Troubleshooting 32 篇档案补齐四节必备项（2026-10-13，issue #128，选项 C）**：
   按姊妹项目 `TroubleShootingDocSpec.md`，排查档案有**四节不得缺**——
   「结论分层 / 观测数据 / 排除项 / 未决问题」。本仓 32 篇（`TS-2610-001`~`032`）此前
