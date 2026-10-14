@@ -138,8 +138,10 @@ Dist\bin\Aha.bat version          # CLI 仍可用
 `DesktopDistExtract.py` 刷新——因此 `mvn clean` 删掉 `Dist/*.md` 后会自动重建，不需手动维护。
 
 两个脚本都不做质量门禁：门禁（`clean verify`、覆盖率、CI）仍由 Maven 与 `Gate.yml` 负责，
-它们只负责「把包做出来并铺到该在的位置」。同族的原生镜像取件脚本见
-[DesktopNativeUpdateDesign.md](../Design/DesktopNativeUpdateDesign.md)。
+它们只负责「把包做出来并铺到该在的位置」。同族的原生镜像取件入口见
+[DesktopNativeUpdateDesign.md](../Design/DesktopNativeUpdateDesign.md)：Windows 双击
+`Dist\UpdateDesktopNative.cmd`（PowerShell，无需 Python），POSIX 用
+`Script/Python/{Desktop,Cli}NativeVersionUpdate.py`。
 
 ### 3.2 按变更范围选择检查
 

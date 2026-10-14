@@ -474,9 +474,14 @@ CLI 发行 zip）一律输出到 `Dist/`：
 时反应堆里只有它自己），所以要显式把 `aha-desktop` 也列出来，让 `-am` 把五个上游一起拉进来。
 症状很好认：**「在中央仓库找不到 aha-desktop」** —— 因为反应堆匹配不上，它就去外网找了个不存在的坐标。
 
-不想自己编也行：`Script/Python/DesktopNativeVersionUpdate.py` 会把发布页上最新一版的本平台
-包取下来、解压到 `Dist/`（Windows 用法：`python3 Script\Python\DesktopNativeVersionUpdate.py`），
-设计见 [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)。
+不想自己编也行，取件有两条入口（共用一份命名契约，见
+[DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)）：
+
+- **Windows**：双击 `Dist\UpdateDesktopNative.cmd`（PowerShell 实现，**不需要 Python**）；
+- **WSL / Linux / macOS**：`python3 Script/Python/DesktopNativeVersionUpdate.py`
+  （共享引擎，多源发现 + 断点续传）。
+
+两者都会把发布页上最新一版的本平台包取下来、解压到 `Dist/`。
 
 ## 6.4 技能边做边改（本项目约定的工作方式）
 

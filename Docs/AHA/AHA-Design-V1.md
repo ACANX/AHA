@@ -3762,7 +3762,7 @@ Closes #123
 | `TUIDesign.md` | 终端界面（TUI）当前实现说明：版面样式、降级矩阵、流式输入机制 |
 | `GUIDesign.md` | 桌面端界面方案：布局、视觉语言、菜单与交互流程（0.2 提案） |
 | `DesktopNativeDesign.md` | 桌面端**原生镜像**（试验性）：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流；隔离的四个面、`a.b.c.PPPPP` 版本规则、JDK 25/27 对比实验（Leyden / 原始类型 / GC）与 JDK 29 铺路 |
-| `DesktopNativeUpdateDesign.md` | 桌面端原生镜像的**版本更新脚本**（试验性）：`Script/Python/DesktopNativeVersionUpdate.py` 的三条发现路径（api → atom → page）、「最新 tag ≠ 可下载」回退、续传与 sha256 校验、原子替换与状态文件 |
+| `DesktopNativeUpdateDesign.md` | 原生镜像**取件工具**的设计（试验性，桌面端 + CLI）：两套平台实现（Windows PowerShell `Dist/UpdateNative.ps1` / POSIX Python 共享引擎）共用一份命名契约；Python 侧三条发现路径（api → atom → page）、「最新 tag ≠ 可下载」回退、续传与 sha256 校验、原子替换与状态文件；契约与真跑由 `bin/CheckScripts.py` + `Build.yml` 的 `native-update-script` 作业守住 |
 | `CliNativeDesign.md` | CLI **原生镜像**（试验性）：`aha-cli-native` 模块与 `CliNative.yml` 工作流；与桌面端共享隔离 / 版本 / 自证方法论，差异在 picocli 注解处理器生成元数据、JLine Signals 缺口与无 JavaFX |
 | `DesktopDesign.md` | 桌面端设计（0.2） |
 | `ExtensionSystemDesign.md` | 扩展系统设计 |
