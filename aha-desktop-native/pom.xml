@@ -77,6 +77,21 @@
         <native.image.extra.argsfile>src/native/native-image-args-extra.txt</native.image.extra.argsfile>
 
         <!--
+            Windows 兼容清单的链接器输入（issue #151）。
+
+            **必须是绝对路径**：native-image 用自己的构建临时目录（%TEMP%\SVM-…）当
+            工作目录去调链接器，写相对路径会被解析到那里，mt.exe 于是报
+            「c1010070: Failed to load and parse the manifest. The system cannot find
+            the file specified.」——第一次尝试就是这么整条失败的（TS-2610-037）。
+            所以路径交给 Maven 用 ${project.basedir} 展开，并作为**主类之前**的
+            命令行参数传入（主类之后的参数会被 native-image 当成应用参数）。
+
+            非 Windows：MSVC 链接器参数不能出现，因此默认值是一个**无害且幂等**的
+            native-image 开关（解锁实验选项；参数清单里本来就有，重复一次不影响）。
+        -->
+        <native.manifest.input>-H:+UnlockExperimentalVMOptions</native.manifest.input>
+
+        <!--
             native-image 可执行文件。默认按 PATH 查找；两个平台的差异由工作流传入：
               Windows: -Dnative.image.executable=native-image.cmd
               Linux/macOS: 保持默认（native-image）
@@ -336,8 +351,6 @@
                                     <filtering>true</filtering>
                                     <includes>
                                         <include>README.txt</include>
-                                        <!-- 清单也要落到工作目录：native-image-args-windows.txt 用相对名引用它 -->
-                                        <include>app.manifest</include>
                                     </includes>
                                 </resource>
                             </resources>
@@ -399,6 +412,11 @@
                                     写在主类后面会被静默当成程序参数（issue #151 的清单就是这么容易丢的）。
                                 -->
                                 <argument>@${project.basedir}/${native.image.extra.argsfile}</argument>
+                                <!--
+                                    Windows 清单的链接器输入（其他平台是空档，见 native.manifest.input）。
+                                    位置在主类之前——这是硬要求。
+                                -->
+                                <argument>${native.manifest.input}</argument>
                                 <!--
                                     走 classpath 而不是 module-path：原生镜像下 JPMS 不参与，
                                     `requires` / `exports` / ServiceLoader 都不再是约束
@@ -498,6 +516,8 @@
             </activation>
             <properties>
                 <native.image.extra.argsfile>src/native/native-image-args-windows.txt</native.image.extra.argsfile>
+                <!-- 绝对路径：见 native.manifest.input 处的说明（相对路径会被解析到 SVM 临时目录） -->
+                <native.manifest.input>-H:NativeLinkerOption=/MANIFESTINPUT:${project.basedir}/src/native/app.manifest</native.manifest.input>
             </properties>
         </profile>
     </profiles>
