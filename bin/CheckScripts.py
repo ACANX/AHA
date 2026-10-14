@@ -346,6 +346,72 @@ def check_ps1(path: Path) -> list[str]:
     ]
 
 
+SNAPSHOT_PLAN_PY = ROOT / ".github" / "Python" / "SnapshotPlan.py"
+SNAPSHOT_FETCH_PS1 = ROOT / "Dist" / "UpdateSnapshot.ps1"
+
+
+def check_snapshot_fetch_parity() -> list[str]:
+    """快照取件（PowerShell）与快照判定（Python）的命名契约必须一致。
+
+    为什么需要它：tag 与资产名由 `.github/Python/SnapshotPlan.py` **生成**（发布页上长什么样），
+    由 `Dist/UpdateSnapshot.ps1` **识别**（本地去发布页找什么）。两边漂移的后果是**静默**的：
+    发布页上明明有包，本地却报「没有找到符合条件的快照包」——没有任何报错指向真正的原因。
+    与原生取件的 PS1/Python 契约同一思路（见 `check_native_update_parity`）。
+    """
+    if not (SNAPSHOT_PLAN_PY.exists() and SNAPSHOT_FETCH_PS1.exists()):
+        return []
+    py = SNAPSHOT_PLAN_PY.read_text(encoding="utf-8")
+    ps = SNAPSHOT_FETCH_PS1.read_text(encoding="utf-8-sig")
+    problems: list[str] = []
+
+    # ① tag 形如 `V<版本>-AHA-<目标>-SNAPSHOT`
+    tag_fmt = re.search(r'TAG_FORMAT = "([^"]+)"', py)
+    if not tag_fmt:
+        return ["快照命名契约：没能从 SnapshotPlan.py 解析出 TAG_FORMAT（写法变了？）"]
+    # 取 TAG_FORMAT 里的**字面量片段**（去掉 `{version}` / `{target}` 这类占位符）：
+    # PowerShell 侧用命名捕获组写正则（`V(?<version>…)-AHA-(?<target>…)`），
+    # 因此不能拿整个 head 去比对（`V-AHA-` 在那里本来就不连续）——只查长度 ≥ 2 的片段。
+    literals = [run for run in re.split(r"\{[^}]+\}", tag_fmt.group(1)) if len(run) >= 2]
+    pattern = re.search(r"\$TagPattern\s*=\s*'([^']+)'", ps)
+    if not pattern:
+        problems.append("快照命名契约：没能从 Dist/UpdateSnapshot.ps1 解析出 $TagPattern")
+    else:
+        for literal in literals:
+            # 右侧要带边界：`'-SNAPSHOT' in '-SNAPSHOTS'` 是**真**（子串），
+            # 只用 `in` 会漏掉「把后缀写长一截」这类漂移（本轮反向验证抓到的假通过）。
+            if not re.search(re.escape(literal) + r"(?![A-Za-z0-9-])", pattern.group(1)):
+                problems.append(
+                    f"快照命名契约：tag 的字面量 {literal!r}（来自 SnapshotPlan.py 的 TAG_FORMAT）"
+                    f"没有出现在 UpdateSnapshot.ps1 的 $TagPattern 里（或其右侧被改动过）"
+                )
+        for target in ("Desktop", "Cli", "NativeDesktop", "NativeCli"):
+            if target not in pattern.group(1):
+                problems.append(f"快照命名契约：$TagPattern 里没有目标 {target!r}——该目标的快照本地取不到")
+
+    # ② 资产前缀：Python 的两张表必须与 PS1 的 $kinds 表逐一对应
+    py_prefixes = set(re.findall(r'"(AHA-[A-Za-z-]+-)\{version\}', py))
+    ps_prefixes = set(re.findall(r"'(AHA-[A-Za-z-]+-)'", ps))
+    missing = sorted(py_prefixes - ps_prefixes)
+    extra = sorted(ps_prefixes - py_prefixes)
+    if missing:
+        problems.append(
+            "快照命名契约：这些资产前缀在 SnapshotPlan.py 里有、UpdateSnapshot.ps1 里没有——"
+            f"{missing}；本地会永远找不到这类包"
+        )
+    if extra:
+        problems.append(f"快照命名契约：UpdateSnapshot.ps1 里的这些资产前缀在 SnapshotPlan.py 里没有——{extra}")
+
+    # ③ 有效期天数
+    ttl_py = re.search(r"SNAPSHOT_TTL_DAYS = (\d+)", py)
+    ttl_ps = re.search(r"\$TtlDays\s*=\s*(\d+)", ps)
+    if ttl_py and ttl_ps and ttl_py.group(1) != ttl_ps.group(1):
+        problems.append(
+            f"快照命名契约：有效期天数不一致——Python {ttl_py.group(1)} 天，"
+            f"PowerShell {ttl_ps.group(1)} 天；本地提示会与清理规则对不上"
+        )
+    return problems
+
+
 def check_native_update_parity() -> list[str]:
     """两套原生取件实现的命名契约必须逐字一致（见模块 docstring）。"""
     if not (NATIVE_PS1.exists() and NATIVE_PY.exists()):
@@ -586,6 +652,8 @@ def main() -> int:
     problems.extend(ignored)
     parity = check_native_update_parity()
     problems.extend(parity)
+    snap_parity = check_snapshot_fetch_parity()
+    problems.extend(snap_parity)
     snapshot = check_snapshot_manifest()
     problems.extend(snapshot)
 
@@ -593,6 +661,7 @@ def main() -> int:
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
+    print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
     if problems:
         print("\n[问题]")
