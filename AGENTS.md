@@ -33,6 +33,12 @@
   （包括加 `-pl <模块> -am`、加 `-Djacoco.skip=true` 的「快检查」变体）；
 - 提交 / 推送前本地**只允许**跑静态检查脚本：
   `python3 bin/Check{Changed,Docs,Skills,Scripts,Theme}.py`；
+- **主题色只有一个手写来源**：改界面颜色请改
+  `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/Palette.java`，
+  再跑 `python3 bin/GenThemeCss.py` 重新生成两份补丁表
+  （模板在 `aha-desktop/src/theme/aha-theme-*.template.css`，带 `%角色%` 占位符）。
+  直接手改 `.../view/css/aha-theme-*.css` 会被 `bin/CheckTheme.py` 打回（issue #153）：
+  那两份是**生成物**，不手改——理由（为何不用 CSS 变量）见两份 CSS 头部与 `TS-2610-035`；
 - 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Build` / `Gate` 日志取**，不要在本机重跑；
 - **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 想先确认能不能编译」
   就本地补跑——直接推送，看 CI 结果；

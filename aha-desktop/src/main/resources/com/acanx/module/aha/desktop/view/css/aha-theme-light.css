@@ -1,4 +1,14 @@
 /*
+ * ⚠ 本文件由 `bin/GenThemeCss.py` 从 `Palette.java` **生成**，不要手改。
+ *
+ *   手写色源只有一处：aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/Palette.java
+ *   模板（含 %ROLE% 占位符）：aha-desktop/src/theme/aha-theme-light.template.css
+ *   校验：python3 bin/CheckTheme.py（重新生成并逐字节比对）
+ *
+ * 为什么保留字面量、不用 CSS 变量查表：见本文件下方头部注释（issue #49 第四轮）。
+ */
+
+/*
  * AHA 桌面端主题补丁（亮色）：**全部是字面量，不使用任何 looked-up color**
  *
  * 为什么不能再用变量查表（issue #49 第四轮，真机反馈）：

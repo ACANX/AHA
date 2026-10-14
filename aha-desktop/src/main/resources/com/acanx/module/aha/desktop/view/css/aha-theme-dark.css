@@ -1,4 +1,14 @@
 /*
+ * ⚠ 本文件由 `bin/GenThemeCss.py` 从 `Palette.java` **生成**，不要手改。
+ *
+ *   手写色源只有一处：aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/Palette.java
+ *   模板（含 %ROLE% 占位符）：aha-desktop/src/theme/aha-theme-dark.template.css
+ *   校验：python3 bin/CheckTheme.py（重新生成并逐字节比对）
+ *
+ * 为什么保留字面量、不用 CSS 变量查表：见本文件下方头部注释（issue #49 第四轮）。
+ */
+
+/*
  * AHA 桌面端主题补丁（暗色）：**全部是字面量，不使用任何 looked-up color**
  *
  * 为什么不能再用变量查表（issue #49 第四轮，真机反馈）：
@@ -21,8 +31,9 @@
 /* ============================ 输入类控件 ============================ */
 
 /* 内容面（输入框 / 文本域 / 列表 / 滚动容器）**与页底同色**（issue #153）：
-   暗色下曾用 #252526（比页底亮一档），深色底上这一档被放大感知，看着像「另一套主题」。
-   可点 / 浮层的「抬起控件」（按钮、菜单、下拉弹层）仍用 #252526 保留层次。 */
+   暗色下曾用比页底亮一档的灰（今为 Palette.RAISED_BACKGROUND 的值），
+   深色底上这一档被放大感知，看着像「另一套主题」。
+   可点 / 浮层的「抬起控件」（按钮、菜单、下拉弹层）仍比页底亮一档，保留层次。 */
 .text-input,
 .text-field,
 .text-area,

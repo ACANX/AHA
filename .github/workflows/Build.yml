@@ -182,6 +182,23 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
 
+  static-guards:
+    name: static-guards（文档 / 技能 / 脚本 / 主题：四道静态门禁）
+    # 这四道门禁原本只在 Gate 里跑，而 Gate 不覆盖「对 dev 的 PR」⇒ 面向 dev 的改动
+    # 要等到周一（或合到 main / release 时）才会被检查。它们本身很便宜（纯 Python，秒级），
+    # 放到每个 PR 上跑，问题在提 PR 时就暴露，而不是在发版前。
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: 跑 bin/Check*.py
+        run: |
+          set -euo pipefail
+          for check in CheckDocs CheckSkills CheckScripts CheckTheme; do
+            echo "—— ${check} ——"
+            python3 "bin/${check}.py"
+          done
+
   tag:
     name: tag（V<版本号>）
     needs: build

@@ -12,6 +12,13 @@
      （`Palette.applyDark()` / `applyLight()`）——禁止「野生色号」。
      颜色只能有一个来源：`Palette` 常量；CSS 里的字面量是它的投影。
      一旦有人在 CSS 里手写一个色号，两份表就会开始各自漂移。
+  4. 两份 CSS **能由模板 + `Palette` 逐字节重现**（issue #153 的「色源唯一」）：
+     生成器 `bin/GenThemeCss.py` 拿 `aha-desktop/src/theme/*.template.css` 里的
+     `%角色%` 代入色表；本项就是重新生成一遍再逐字节比对。
+     手改 CSS（而不是改 `Palette.java` + 重跑生成器）会被这一项打回。
+  5. 两份模板的**角色序列完全一致**：同一个控件在暗色 / 亮色下必须用同一个**角色**上色
+     （值当然不同）。这是「同族控件在两主题下逐项一致」的机器证明——
+     能挡住「暗色下用前景色、亮色下却用边框色」这类错位。
 
 用法：
 
@@ -27,6 +34,8 @@ import argparse
 import re
 import sys
 from pathlib import Path
+
+import GenThemeCss
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -108,6 +117,22 @@ def check_colors(rules: dict[str, dict[str, dict[str, str]]],
     return problems
 
 
+def check_generated() -> list[str]:
+    """两份 CSS 必须能由模板 + Palette 逐字节重现（色源唯一的落点）。"""
+    try:
+        products = GenThemeCss.build()
+    except SystemExit as error:
+        return [str(error)]
+    problems: list[str] = list(GenThemeCss.check_parity())
+    for path, expected in products.items():
+        actual = path.read_text(encoding="utf-8") if path.exists() else ""
+        if actual != expected:
+            problems.append(
+                f"{path.relative_to(ROOT)} 不能由模板 + Palette 重现——"
+                f"改颜色请改 Palette.java，再执行 python3 bin/GenThemeCss.py")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 主题色一致性检查")
     parser.add_argument("--verbose", action="store_true", help="打印逐项统计")
@@ -128,7 +153,8 @@ def main() -> int:
             return 1
         palettes[theme] = palette
 
-    problems = check_selectors(rules) + check_properties(rules) + check_colors(rules, palettes)
+    problems = (check_selectors(rules) + check_properties(rules) + check_colors(rules, palettes)
+                + check_generated())
 
     if args.verbose:
         for theme, table in rules.items():
@@ -144,7 +170,8 @@ def main() -> int:
         return 1
 
     print("✅ 主题色一致性检查通过"
-          f"（两份表的选择器 / 属性集合一致，色号全部来自各自主题的 Palette 色表）")
+          f"（两份表的选择器 / 属性集合一致，色号全部来自各自主题的 Palette 色表，"
+          f"且两份 CSS 都能由模板 + Palette 逐字节重现、角色序列完全一致）")
     return 0
 
 
