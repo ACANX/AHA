@@ -2,7 +2,7 @@
     AHA 快照包一键取件（Windows 原生实现，由 Dist\UpdateSnapshot.cmd 调用）
 
     快照包 = 某个**未合并 PR** 的试包（issue #165 方案）。它挂在发布页的 pre-release 上：
-        tag 形如  V0.1.3.00183.10141829-AHA-NativeDesktop-SNAPSHOT
+        tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
     本脚本做四件事：
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
       2. 挑出**本机平台**该取哪个资产（JVM 线 `windows-x64`、原生线 `windows-amd64`）；
@@ -63,14 +63,14 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # ── 命名契约（唯一来源：.github/Python/SnapshotPlan.py）──────────────────────────
 # 这三行字面量一旦与判定脚本漂移，就会变成「发布页上有包、本地却永远取不到」。
 # bin/CheckScripts.py 会断言两边一致（与原生取件的 PS1/Python 契约同一思路）。
-$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop|Cli|NativeDesktop|NativeCli)-SNAPSHOT$'
+$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
 $TtlDays      = 7
 
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线是 `windows-x64`，原生线是 `windows-amd64`）
 $kinds = @{
     'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop', 'Cli');   Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
-    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('NativeDesktop');   Prefixes = @('AHA-Desktop-Native-') }
-    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('NativeCli');       Prefixes = @('AHA-Cli-Native-') }
+    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
+    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
 }
 
 $OutDir = if ($Out) { $Out } else { $PSScriptRoot }
@@ -139,7 +139,7 @@ function Get-Candidates {
         $prefix = $null
         if ($target -eq 'Desktop') { $prefix = 'AHA-Desktop-JVM-' }
         elseif ($target -eq 'Cli') { $prefix = 'AHA-Cli-JVM-' }
-        elseif ($target -eq 'NativeDesktop') { $prefix = 'AHA-Desktop-Native-' }
+        elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'AHA-Desktop-Native-' }
         else { $prefix = 'AHA-Cli-Native-' }
         $platform = if ($target -in @('Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
         $asset = Get-AssetFor -Release $r -Prefix $prefix -Platform $platform

@@ -4,7 +4,7 @@ rem  AHA - one-click fetch of a snapshot build (Windows)
 rem
 rem  A snapshot is a build made for a PR that is not merged yet (issue #165).
 rem  It lives on the release page as a pre-release, tagged like
-rem      V0.1.3.00183.10141829-AHA-NativeDesktop-SNAPSHOT
+rem      V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
 rem
 rem  This launcher only calls
 rem      Dist\UpdateSnapshot.ps1

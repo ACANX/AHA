@@ -33,12 +33,14 @@ from pathlib import Path
 SNAPSHOT_TTL_DAYS = 7
 
 #: 触发标签 → 出包目标（#165 §三 标签矩阵）。
-#: 值是「目标名」：JVM 线出 JVM 便携包（Desktop / Cli），原生线出原生包（NativeDesktop / NativeCli）。
+#: 值是「目标名」：JVM 线出 JVM 便携包（Desktop / Cli），原生线出原生包（Desktop-Native / Cli-Native ——
+#: 与资产前缀 `AHA-Desktop-Native-…` **同序**；触发标签名沿用既有的 `SNAPSHOT:NativeDesktop`，
+#: 改标签名要动仓库上的标签本体，与 tag 命名是两件事）。
 SNAPSHOT_LABELS: dict[str, str] = {
     "SNAPSHOT:Desktop": "Desktop",
     "SNAPSHOT:Cli": "Cli",
-    "SNAPSHOT:NativeDesktop": "NativeDesktop",
-    "SNAPSHOT:NativeCli": "NativeCli",
+    "SNAPSHOT:NativeDesktop": "Desktop-Native",
+    "SNAPSHOT:NativeCli": "Cli-Native",
 }
 
 #: `/snapshot` 命令里的平台词 → 平台限定标签（两条线共用一套词，各自映射成自己的腿标签）。
@@ -56,7 +58,11 @@ COMMAND_RE = re.compile(r"^\s*/snapshot\s+(\S+)((?:\s+\S+)*)\s*$", re.IGNORECASE
 
 #: 本条工作流覆盖的目标（原生线由 DesktopNative.yml / CliNative.yml 负责，见 S4）。
 JVM_TARGETS = ("Desktop", "Cli")
-NATIVE_TARGETS = ("NativeDesktop", "NativeCli")
+NATIVE_TARGETS = ("Desktop-Native", "Cli-Native")
+
+#: 旧拼写的**命令**兼容别名（`/snapshot NativeDesktop …` 仍然可用）：命令是贴在 PR 上的文本，
+#: 直接删旧拼法会让历史评论里的命令失效。只影响命令解析，tag / 标题 / 资产名一律用新拼写。
+NATIVE_TARGET_ALIASES = {"nativedesktop": "Desktop-Native", "nativecli": "Cli-Native"}
 
 #: JVM 快照线的腿：**没有 macOS**、**只有 JDK 25**（#165 验收 1 明写「不得出现 macOS / JDK27」）。
 #: 注意这与 dev 线（BuildJVMArtifacts 默认六腿）不同 —— dev 线出 macOS/JDK27，快照线不出。
@@ -113,8 +119,8 @@ NATIVE_LEGS: dict[str, list[tuple[str, str, int]]] = {
 
 #: 原生线资产名（#165 §八）：镜像包 + 同名族的独立报告包（报告包是 dev 线既有产物，快照一并带上）。
 NATIVE_ASSET_FORMATS = {
-    "NativeDesktop": "AHA-Desktop-Native-{version}-{label}-jdk{jdk}.zip",
-    "NativeCli": "AHA-Cli-Native-{version}-{label}-jdk{jdk}.zip",
+    "Desktop-Native": "AHA-Desktop-Native-{version}-{label}-jdk{jdk}.zip",
+    "Cli-Native": "AHA-Cli-Native-{version}-{label}-jdk{jdk}.zip",
 }
 
 #: 原生腿标签 → 平台中文名（写进 run 摘要，验收 12 要求摘要写明「限定平台：Windows」）。
@@ -208,7 +214,8 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
     if not match:
         raise PlanError("命令格式应为 `/snapshot <target> [os ...]`")
     raw_target = match.group(1)
-    targets = [name for name in (*JVM_TARGETS, *NATIVE_TARGETS) if name.lower() == raw_target.lower()]
+    canonical = NATIVE_TARGET_ALIASES.get(raw_target.lower(), raw_target)
+    targets = [name for name in (*JVM_TARGETS, *NATIVE_TARGETS) if name.lower() == canonical.lower()]
     if not targets:
         raise PlanError(
             f"不认识的目标 {raw_target!r}；合法取值："
@@ -216,7 +223,7 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
         )
     # 返回**平台词**（win / macos / ubuntu）而不是腿标签：JVM 线叫 `windows-x64`、
     # 原生线叫 `windows-amd64`，同一个词要在**各自的线**里映射（这一步交给 decide）。
-    # 早先在解析处直接映射成 JVM 标签，于是原生线的 `/snapshot NativeDesktop Win`
+    # 早先在解析处直接映射成 JVM 标签，于是原生线的 `/snapshot Desktop-Native Win`
     # 会去找 `windows-amd64` 却拿到 `windows-x64` ⇒ 判定「没有对应的腿」（自检抓到的真 bug）。
     words: list[str] = []
     for item in match.group(2).split():
@@ -464,7 +471,7 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
      {"labels": ["SNAPSHOT:Desktop", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, False, "没有对应的腿"),
 ]
 
-#: 原生线（S4 / #172）的判定用例：line="native" + 本工作流负责的目标 NativeDesktop。
+#: 原生线（S4 / #172）的判定用例：line="native" + 本工作流负责的目标 Desktop-Native。
 SELF_TEST_CASES_NATIVE: list[tuple[str, dict, bool, str]] = [
     # (说明, 输入, 是否出包, 期望要点)
     ("原生线：SNAPSHOT:NativeDesktop ⇒ 全部腿（3 平台 5 腿，含 jdk27）",
@@ -476,11 +483,15 @@ SELF_TEST_CASES_NATIVE: list[tuple[str, dict, bool, str]] = [
     ("原生线：只打 OS:Win（无触发标签）⇒ 不出包（反向验证）",
      {"labels": ["OS:Win"], "changed": ["aha-desktop-native/pom.xml"]}, False, "未打任何"),
     ("原生线：命令指向 CLI 目标 ⇒ 桌面工作流不认领、不构建（S4）",
-     {"labels": [], "changed": ["aha-desktop-native/pom.xml"], "command": "/snapshot NativeCli MacOS"},
+     {"labels": [], "changed": ["aha-desktop-native/pom.xml"], "command": "/snapshot Cli-Native MacOS"},
      False, "只负责"),
     ("原生线：命令全小写 + 两平台 ⇒ 四条腿（验收 26 的等价行为）",
-     {"labels": [], "changed": ["aha-desktop-native/pom.xml"], "command": "/snapshot nativedesktop win ubuntu"},
+     {"labels": [], "changed": ["aha-desktop-native/pom.xml"], "command": "/snapshot desktop-native win ubuntu"},
      True, "ubuntu-amd64/jdk27"),
+    # 旧拼写的命令别名必须仍然可用（否则贴在 PR 上的历史命令会「不认识的目标」）
+    ("原生线：旧拼写 `/snapshot NativeDesktop` 等价可用（命令别名，不影响 tag 命名）",
+     {"labels": [], "changed": ["aha-desktop-native/pom.xml"], "command": "/snapshot NativeDesktop Win"},
+     True, "windows-amd64/jdk27"),
     ("原生线：只改文档 ⇒ 不出包（B 组，验收 15 的等价行为）",
      {"labels": ["SNAPSHOT:NativeDesktop"], "changed": ["Docs/Guide/BuildGuide.md"]}, False, "B 组"),
     ("原生线：JVM 目标 ⇒ 原生工作流不认领",
@@ -575,7 +586,7 @@ def self_test() -> int:
         plan = decide(labels=kwargs.get("labels", []), changed=kwargs.get("changed", []),
                       baseline="0.1.3", pr=172, now=now, groups=groups,
                       command=kwargs.get("command", ""), line="native",
-                      native_target="NativeDesktop")
+                      native_target="Desktop-Native")
         text = json.dumps(plan, ensure_ascii=False)
         ok = plan["should_build"] is should_build and expect in text
         problems += 0 if ok else 1
@@ -585,9 +596,9 @@ def self_test() -> int:
     # 原生线：全腿 = 5 条（3 平台 × jdk25 + ubuntu/windows × jdk27）；OS:Win ⇒ 2 条
     full = decide(labels=["SNAPSHOT:NativeDesktop"], changed=["aha-desktop-native/pom.xml"],
                   baseline="0.1.3", pr=172, now=now, groups=groups, line="native",
-                  native_target="NativeDesktop")
+                  native_target="Desktop-Native")
     ok_full = len(full["legs"]) == 5 and len(full["releases"]) == 1 \
-        and full["releases"][0]["tag"] == f"V{full['version']}-AHA-NativeDesktop-SNAPSHOT" \
+        and full["releases"][0]["tag"] == f"V{full['version']}-AHA-Desktop-Native-SNAPSHOT" \
         and full["version"].endswith("10141814") \
         and all(a.startswith("AHA-Desktop-Native-") for a in full["assets"])
     problems += 0 if ok_full else 1
@@ -596,7 +607,7 @@ def self_test() -> int:
 
     win = decide(labels=["SNAPSHOT:NativeDesktop", "OS:Win"], changed=["aha-desktop-native/pom.xml"],
                  baseline="0.1.3", pr=172, now=now, groups=groups, line="native",
-                 native_target="NativeDesktop")
+                 native_target="Desktop-Native")
     ok_win = win["legs"] == ["windows-amd64/jdk25", "windows-amd64/jdk27"] and win["platforms"] == ["windows-amd64"]
     problems += 0 if ok_win else 1
     print(f"  {'✅' if ok_win else '❌'} 原生线：`OS:Win` ⇒ 恰好 windows-amd64 的 jdk25 + jdk27 两条腿")
@@ -733,7 +744,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--notice", metavar="REASON", help="输出「未构建」评论正文（用法错误 / 无权限等）")
     parser.add_argument("--line", choices=("jvm", "native"), default="jvm",
                         help="工作流所属的线：jvm（SnapshotJVM.yml）或 native（原生线）")
-    parser.add_argument("--native-target", default="", choices=("", "NativeDesktop", "NativeCli"),
+    parser.add_argument("--native-target", default="", choices=("", "Desktop-Native", "Cli-Native"),
                         help="原生线：本工作流负责的目标（一个工作流只负责一个）")
     parser.add_argument("--emit-outputs", action="store_true",
                         help="写成 $GITHUB_OUTPUT 片段（工作流里的单行调用模式）")
