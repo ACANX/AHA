@@ -254,7 +254,7 @@ Dist/
 
 **快照包 = 给尚未合并的 PR 出的试包**（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)，
 实现见 #171 / #172）。它们挂在发布页的 pre-release 上，tag 形如
-`V0.1.3.00184.10141900-AHA-Cli-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
+`V0.1.3.00184.10141900-AHA-Cli-JVM-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
 
 **取件（一键，Windows 双击 / 脚本）**：
 
