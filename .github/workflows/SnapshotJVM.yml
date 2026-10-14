@@ -16,7 +16,7 @@ name: SnapshotJVM
 # 构建与打包**复用** BuildJVMArtifacts.yml（`workflow_call`），不复制一套：
 # 复制出来的第二套必然漂移（本仓库已把这类漂移固化成检查）。
 # 载体：**每个目标一条 pre-release**，tag 形如 `V<快照版本>-AHA-<目标>-SNAPSHOT`
-# （如 `V0.1.3.00179.10141649-AHA-Desktop-SNAPSHOT`，发行名同名 +「（PR #N 快照）」）。
+# （如 `V0.1.3.00179.10141649-AHA-Desktop-JVM-SNAPSHOT`，发行名与 tag 完全相同）。
 # 它落在 `V*` 家族里，因此有两条硬约束：
 #   1. `Release.yml` 的 tag 过滤必须排除 `-SNAPSHOT`（已加负向模式），否则每次出快照
 #      都会触发一遍完整的正式发版流程；
@@ -50,9 +50,9 @@ on:
         description: PR 号（必填；用于版本号与发布页 tag）
         required: true
       target:
-        description: 目标（Desktop / Cli）
+        description: 目标（Desktop-JVM / Cli-JVM）
         required: false
-        default: Desktop
+        default: Desktop-JVM
       os:
         description: 平台限定（Win / MacOS / Ubuntu；留空 = 该目标全部平台）
         required: false
@@ -161,7 +161,7 @@ jobs:
           # 评论命令 / 手动触发：归一成一条规范命令串交给判定脚本
           command="${COMMENT}"
           if [ "${EVENT}" = "workflow_dispatch" ]; then
-            command="/snapshot ${INPUT_TARGET:-Desktop} ${INPUT_OS:-}"
+            command="/snapshot ${INPUT_TARGET:-Desktop-JVM} ${INPUT_OS:-}"
           fi
           extra=()
           # 只有「新打标签」这一动作算显式请求（只改文档时也照出，见 #165 验收 16）
@@ -294,7 +294,7 @@ jobs:
         run: |
           set -euo pipefail
           # 判定脚本已给出「每个目标一条 tag」的清单（含该目标应有的资产名）。
-          # 一条目标一个 pre-release：一次运行同时选中 Desktop 与 Cli 时会得到两条并列的发布页。
+          # 一条目标一个 pre-release：一次运行同时选中 Desktop-JVM 与 Cli-JVM 时会得到两条并列的发布页。
           python3 -c 'import json,os; [print("\t".join([g["tag"], g["name"], ",".join(g["assets"])])) for g in json.loads(os.environ["RELEASES"])]' > "$RUNNER_TEMP/groups.tsv"
           cat "$RUNNER_TEMP/groups.tsv"
           while IFS=$'\t' read -r tag name assets; do

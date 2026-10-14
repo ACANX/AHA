@@ -13,7 +13,7 @@
 
 清理是**不可逆**的删除动作，所以只处理**严格匹配**下面这个形状的 tag：
 
-    ^V<基线 3 段>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$      （目标 ∈ Desktop/Cli/Desktop-Native/Cli-Native；兼容旧拼写 NativeDesktop/NativeCli）
+    ^V<基线 3 段>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$      （目标 ∈ Desktop-JVM/Cli-JVM/Desktop-Native/Cli-Native；兼容旧拼写 Desktop/Cli/NativeDesktop/NativeCli）
 
 即：**必须**是 `V` 开头 + 5 段版本（末段 8 位北京时间戳）+ `-AHA-<目标>-SNAPSHOT` 后缀。
 因此下面这些**永远不会**被碰到（`--self-test` 里有正反例）：
@@ -57,7 +57,7 @@ from pathlib import Path
 SAFETY_RE = re.compile(
     r"^V(?P<version>\d+\.\d+\.\d+\.(?P<pr>\d{5})\.(?P<stamp>\d{8}))"
     # 长拼写写在前面，避免 `Desktop` 抢在 `Desktop-Native` 之前（正则回溯能兜住，但顺序更清楚）。
-    r"-AHA-(?P<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$"
+    r"-AHA-(?P<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop-JVM|Cli-JVM|Desktop|Cli)-SNAPSHOT$"
 )
 
 #: 同一 PR + 同一目标最多保留几条（#165 §十）。
@@ -258,8 +258,10 @@ SELF_TEST_TAGS_KEEP = [
     "V0.1.3.00165.10141530-AHA-Desktop-SNAPSHOTX",                                 # 后缀带尾巴
 ]
 SELF_TEST_TAGS_HIT = [
-    "V0.1.3.00165.10141530-AHA-Desktop-SNAPSHOT",
-    "V0.1.3.00165.10141530-AHA-Cli-SNAPSHOT",
+    "V0.1.3.00165.10141530-AHA-Desktop-JVM-SNAPSHOT",
+    "V0.1.3.00165.10141530-AHA-Cli-JVM-SNAPSHOT",
+    # 旧拼写（没有 `-JVM` 的那一代）也要能被回收
+    "V0.1.3.00188.10142007-AHA-Desktop-SNAPSHOT",
     "V0.1.3.00184.10141859-AHA-Desktop-Native-SNAPSHOT",
     "V0.1.3.00184.10141859-AHA-Cli-Native-SNAPSHOT",
     # 旧拼写的 tag 也要能被回收（否则改名期间产生的会变成永远清不掉的孤儿）
