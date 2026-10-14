@@ -26,6 +26,14 @@ name: SnapshotJVM
 # 本文件只做胶水。**不要把判定逻辑写进 YAML 的块标量**——那既跑不快也测不了，
 # 本轮已因「块标量里嵌 Python」翻过两次车。
 
+# ── ⚠️ 一条必须知道的 GitHub 行为（实测踩到）──────────────────────────────────
+# `issue_comment` 与 `pull_request: closed` 这类事件，用的是**默认分支上**的工作流定义；
+# 而 `pull_request`（opened / synchronize / labeled …）用的是**PR 分支上**的定义。
+# 后果：
+#   * 标签触发：合并前就能用（✅ 实测：本 PR 打 `SNAPSHOT:Desktop` 即出包）；
+#   * `/snapshot` 评论命令：**必须等本文件进入默认分支后才生效**（合并前发评论毫无反应——
+#     实测：COLLABORATOR 账号发出 `/snapshot Cli Ubuntu`，没有产生任何 run）。
+# 因此合并后第一件事就是补一次评论命令的端到端验证（#165 验收 26 的端到端部分）。
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
