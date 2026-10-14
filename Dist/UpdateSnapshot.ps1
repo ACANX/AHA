@@ -71,12 +71,12 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # ── 命名契约（唯一来源：.github/Python/SnapshotPlan.py）──────────────────────────
 # 这三行字面量一旦与判定脚本漂移，就会变成「发布页上有包、本地却永远取不到」。
 # bin/CheckScripts.py 会断言两边一致（与原生取件的 PS1/Python 契约同一思路）。
-$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
+$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
 $TtlDays      = 7
 
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线是 `windows-x64`，原生线是 `windows-amd64`）
 $kinds = @{
-    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop', 'Cli');   Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
+    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
     'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
     'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
 }
@@ -175,11 +175,11 @@ function Get-Candidates {
         if ($PrFilter -gt 0 -and $prNum -ne $PrFilter) { continue }
         # 本平台该取哪个资产：先按目标找前缀（JVM 线的平台标签与原生线不同）
         $prefix = $null
-        if ($target -eq 'Desktop') { $prefix = 'AHA-Desktop-JVM-' }
-        elseif ($target -eq 'Cli') { $prefix = 'AHA-Cli-JVM-' }
+        if ($target -in @('Desktop-JVM', 'Desktop')) { $prefix = 'AHA-Desktop-JVM-' }
+        elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'AHA-Cli-JVM-' }
         elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'AHA-Desktop-Native-' }
         else { $prefix = 'AHA-Cli-Native-' }
-        $platform = if ($target -in @('Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
+        $platform = if ($target -in @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
         $asset = Get-AssetFor -Release $r -Prefix $prefix -Platform $platform
         $published = if ($r.published_at) { [datetime]$r.published_at } else { [datetime]$r.created_at }
         $items += [pscustomobject]@{
