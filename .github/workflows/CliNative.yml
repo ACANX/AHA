@@ -812,7 +812,10 @@ jobs:
       && needs.plan.outputs.owns_comment != 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: 找到既有评论并更新（没有则新建）
+      # 要跑仓库里的脚本，先检出（评论作业此前不需要工作区，现在需要）。
+      - uses: actions/checkout@v7
+
+      - name: 回写 PR 评论（幂等；逻辑与瞬时重试都在 .github/Python/SnapshotComment.py）
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -821,19 +824,8 @@ jobs:
           BODY: ${{ needs.plan.outputs.comment }}
         run: |
           set -euo pipefail
-          # 注意：`gh api --jq` 只接受**一个**参数，不支持 `--arg`（那是独立 jq 命令的语法）。
-          # 写成 `--jq --arg m …` 会被直接拒（实测 `accepts 1 arg(s), received 4`），
-          # 于是整个评论作业失败、评论既不发也不更新（真机在 #183 上踩到）。
-          # 标记由判定脚本给出、不含双引号，直接插值即可。
-          existing=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
-                       --jq '[.[] | select(.body | startswith("'"${MARKER}"'"))] | .[0].id // empty' \
-                     | head -n1)
-          body_file="$(mktemp)"
-          printf '%s\n' "${BODY}" > "${body_file}"
-          if [ -n "${existing}" ]; then
-            gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -F body=@"${body_file}" > /dev/null
-            echo "已更新既有评论 ${existing}（幂等：不新增）"
-          else
-            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@"${body_file}" > /dev/null
-            echo "已新建评论"
-          fi
+          # 定位「自己那条」评论（按标记）→ 有就 PATCH、没有就 POST；503/429/超时**有界重试**。
+          # 这些逻辑放在脚本里：此前三条工作流各抄一份 shell，同一个缺陷要修三遍
+          # （本轮修了两次：`gh api --jq --arg`、缺 `issues: write`），且一次 API 503 就让 PR 变红。
+          printf '%s\n' "${BODY}" | python3 .github/Python/SnapshotComment.py \
+            --repo "${REPO}" --pr "${PR}" --marker "${MARKER}"

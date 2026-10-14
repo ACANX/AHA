@@ -50,6 +50,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -144,13 +145,33 @@ def classify(releases: list[dict], pr_states: dict[int, str], now: datetime,
 
 
 # ── gh 调用（只有 sweep 走网络；自检与 --dry-run 也只用读接口）────────────────────
+#: 瞬时错误的重试（与 `.github/Python/SnapshotComment.py` 同一判定；那里有 --self-test 钉住）
+TRANSIENT_MARKERS = ("http 5", "503", "502", "504", "500", "429",
+                     "no server is currently available", "timeout", "timed out",
+                     "temporarily unavailable", "connection reset", "server error")
+ATTEMPTS = 3
+BACKOFF = (3, 6)
+
+
 def gh(*args: str) -> tuple[int, str]:
-    """跑一次 `gh`，返回 (退出码, 标准输出)。不抛异常——调用方决定怎么记 warning。"""
-    try:
-        done = subprocess.run(["gh", *args], capture_output=True, text=True, check=False)
-    except FileNotFoundError:
-        return 127, ""
-    return done.returncode, done.stdout
+    """跑一次 `gh`（瞬时 5xx / 429 有界重试），返回 (退出码, 标准输出)。不抛异常。"""
+    code, out = 1, ""
+    for attempt in range(ATTEMPTS):
+        try:
+            done = subprocess.run(["gh", *args], capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return 127, ""
+        code, out = done.returncode, done.stdout
+        if code == 0:
+            return code, out
+        low = ((done.stdout or "") + (done.stderr or "")).lower()
+        transient = code in (429, 500, 502, 503, 504) or any(m in low for m in TRANSIENT_MARKERS)
+        if not transient or attempt >= len(BACKOFF):
+            return code, out
+        wait = BACKOFF[attempt]
+        print(f"::warning::{args[0]} 瞬时失败（第 {attempt + 1} 次，退出码 {code}），{wait} 秒后重试")
+        time.sleep(wait)
+    return code, out
 
 
 def list_releases(repo: str) -> tuple[list[dict], list[str]]:
