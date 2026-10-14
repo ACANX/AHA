@@ -27,6 +27,15 @@
     python3 .github/Python/ProjectVersion.py --resolve [<版本>]  # 解析版本（显式输入优先）
     python3 .github/Python/ProjectVersion.py --verify            # 一致性校验（CI 用）
     python3 .github/Python/ProjectVersion.py                     # 裸调用：输出当前版本号
+    python3 .github/Python/ProjectVersion.py --self-test         # 自检：版本号格式的正 / 反例
+
+`--self-test` 把「版本号格式放宽到哪、放宽到什么程度为止」变成**可重复执行的断言**
+（验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `static-guards` 作业每次
+PR 都跑一遍——否则这条验收只是一次性人工动作，改坏了没人知道。
+
+边界：`--verify` 的五处一致性校验仍以 **3 段基线**为准（`version` 文件与产物文件名的比对
+用的是 `VERSION_RE`）。快照构建只经 `--resolve` 取版本号，不调用 `--verify`；若将来要让
+快照也走 `--verify`，需连同那两处比对一起放宽，并在本 docstring 里写明。
 
 前置条件：`--verify` 的第 3、4 项依赖构建产物，故必须排在 `clean verify`
 之后（见 `Gate.yml`：先完整构建，再校验）。`--resolve` 只读文本，无此限制。
@@ -50,8 +59,13 @@ ROOT = Path(__file__).resolve().parents[2]
 # 不含 SNAPSHOT，见 Docs/DevSpec/ReleaseProcess.md 第 2 节）
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 
-# 显式传入的完整版本号：a.b.c 或带构建号的 a.b.c.PPPPP
-EXPLICIT_VERSION_RE = re.compile(r"\d+\.\d+\.\d+(?:\.\d+)?")
+# 显式传入的完整版本号，三种形态（见 Docs/DevSpec/ReleaseProcess.md 第 2 节）：
+#   a.b.c                     基线（版本源 / version 文件里的值）
+#   a.b.c.PPPPP               预发行构建号（PPP PP 为 PR 号补零 5 位）
+#   a.b.c.PPPPP.MMddHHmm      快照包版本（issue #165：`<基线>.<PR 号补零 5 位>.<北京时间 MMddHHmm>`）
+# 上限是 5 段：**6 段必须被拒**（验收标准第 19 条），否则打错的版本号会被静默接受，
+# 一路带进产物名与 tag（0.1.1 那次版本漂移就是这么发生的，见 TS-2610-006）。
+EXPLICIT_VERSION_RE = re.compile(r"\d+\.\d+\.\d+(?:\.\d+){0,2}")
 
 # 遍历时的剪枝目录：既不产出构建产物，也避免扫到海量无关文件
 SKIP_DIRS = {".git", "node_modules", ".idea", ".venv", "__pycache__"}
@@ -103,7 +117,8 @@ def resolve_version(root: Path, override: str | None = None) -> tuple[str, str]:
         value = override.strip()
         if not EXPLICIT_VERSION_RE.fullmatch(value):
             raise VerifyError(
-                f"显式版本号 {override!r} 不符合 a.b.c 或 a.b.c.PPPPP 格式"
+                f"显式版本号 {override!r} 格式不合法：应为 a.b.c、a.b.c.PPPPP "
+                f"或快照形态 a.b.c.PPPPP.MMddHHmm（最多 5 段）"
             )
         return value, "显式输入（命令行 / workflow input）"
     version_file = root / "version"
@@ -181,6 +196,46 @@ def extract_version(name: str, artifact_id: str) -> str | None:
     tail = name[len(artifact_id) + 1 :]
     match = VERSION_RE.search(tail)
     return match.group(0) if match else None
+
+
+#: `--self-test` 的用例：(显式版本号, 是否应被接受, 说明)
+#: 前三个是合法形态，其余是必须被拒的反例——反例比正例更重要，因为没有反例时
+#: 「放宽」会不知不觉变成「什么都接受」。
+SELF_TEST_CASES: list[tuple[str, bool, str]] = [
+    ("0.1.3", True, "基线：三段"),
+    ("0.1.3.00165", True, "预发行：带构建号四段"),
+    ("0.1.3.00165.10141530", True, "快照：五段（基线.构建号.北京时间）"),
+    ("0.1.3.00165.10141530.1", False, "六段：超上限，必须被拒"),
+    ("0.1.3.", False, "结尾多一个点：段为空"),
+    ("abc", False, "非数字乱码"),
+    ("v0.1.3", False, "带前缀 `v`（tag 才有 `V` 前缀，版本号本体不带）"),
+    ("0.1.3.00165.10141530-rc1", False, "后缀限定符（本项目用段数表达，不用 -SNAPSHOT/-rc）"),
+]
+
+
+def self_test() -> int:
+    """自检版本号格式的放宽边界（正 / 反例都要过）。"""
+    print("版本号格式自检（`--resolve --version <值>` 的接受 / 拒绝边界）：")
+    failed = 0
+    for value, should_pass, note in SELF_TEST_CASES:
+        try:
+            resolved, _ = resolve_version(ROOT, value)
+            accepted = True
+            detail = f"解析为 {resolved}"
+        except VerifyError as exc:
+            accepted = False
+            detail = str(exc).split("：", 1)[-1]
+        ok = accepted == should_pass
+        failed += 0 if ok else 1
+        print(
+            f"  {'✅' if ok else '❌'} {value!r} → {'接受' if accepted else '拒绝'}"
+            f"（应为{'接受' if should_pass else '拒绝'}）—— {note}；{detail}"
+        )
+    if failed:
+        print(f"\n[问题] {failed} / {len(SELF_TEST_CASES)} 条自检不符合预期")
+        return 1
+    print(f"\n✅ {len(SELF_TEST_CASES)} 条自检全部符合预期")
+    return 0
 
 
 def check_tag_rule(root: Path, baseline: str) -> tuple[bool, str]:
@@ -312,10 +367,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="校验 version / POM / version.properties / 产物名 / tag 名 五处一致",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="自检版本号格式的接受 / 拒绝边界（正 / 反例；见 SELF_TEST_CASES）",
+    )
     args = parser.parse_args(argv)
 
-    if args.verify and args.resolve is not None:
-        parser.error("--verify 与 --resolve 不能同时使用")
+    if sum([args.verify, args.self_test, args.resolve is not None]) > 1:
+        parser.error("--verify / --self-test / --resolve 三者不能同时使用")
+
+    if args.self_test:
+        return self_test()
 
     try:
         version, source = resolve_version(ROOT, args.resolve)
