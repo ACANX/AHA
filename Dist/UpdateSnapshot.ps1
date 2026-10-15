@@ -2,7 +2,9 @@
     AHA 快照包一键取件（Windows 原生实现，由 Dist 下的**专用启动器**调用）
         Dist\UpdateDesktopNativeSnapshot.cmd   -> -Kind desktop-native
         Dist\UpdateCliNativeSnapshot.cmd       -> -Kind cli-native
-    JVM 便携包快照目前直调本脚本：UpdateSnapshot.ps1 -Kind jvm -Pr <N>
+        Dist\UpdateDesktopJvmSnapshot.cmd      -> -Kind desktop-jvm
+        Dist\UpdateCliJvmSnapshot.cmd          -> -Kind cli-jvm
+    不带薄壳时也可直调：UpdateSnapshot.ps1 -Kind jvm -Pr <N>
 
     快照包 = 某个**未合并 PR** 的试包（issue #165 方案）。它挂在发布页的 pre-release 上：
         tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
@@ -51,7 +53,7 @@ param(
     [int]$Pr = 0,
     [string]$Branch = '',
     [string]$Run = '',
-    [ValidateSet('', 'jvm', 'desktop-native', 'cli-native')][string]$Kind = '',
+    [ValidateSet('', 'jvm', 'desktop-jvm', 'cli-jvm', 'desktop-native', 'cli-native')][string]$Kind = '',
     [string]$Out = '',
     [switch]$Force,
     [switch]$NoInstall,
@@ -77,6 +79,8 @@ $TtlDays      = 7
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线是 `windows-x64`，原生线是 `windows-amd64`）
 $kinds = @{
     'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
+    'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('AHA-Desktop-JVM-') }
+    'cli-jvm'        = @{ Title = 'JVM CLI 便携包';   Targets = @('Cli-JVM', 'Cli');         Prefixes = @('AHA-Cli-JVM-') }
     'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
     'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
 }
