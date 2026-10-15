@@ -51,6 +51,13 @@ CSS_DIR = (ROOT / "aha-desktop" / "src" / "main" / "resources" / "com" / "acanx"
 VIEW_DIR = (ROOT / "aha-desktop" / "src" / "main" / "java" / "com" / "acanx"
             / "module" / "aha" / "desktop" / "view")
 
+#: 主题兜底的实现类：里面有「皮肤内部基面」清单（见检查项 7）
+THEME_PAINT = VIEW_DIR / "ThemePaint.java"
+#: 兜底清单的声明形状：`SKIN_SURFACE_SELECTORS = List.of(".content", ".viewport", ".corner")`
+SKIN_SELECTOR_CONST = re.compile(r"SKIN_SURFACE_SELECTORS\s*=\s*List\.of\(([^)]*)\)", re.S)
+#: 选择器里的类名（`.content` ⇒ `content`）
+SELECTOR_CLASS = re.compile(r"\.([a-z][a-z0-9-]*)")
+
 # 静态样式常量（颜色被冻在类加载时——见检查项 6）
 STYLE_CONST = re.compile(r"static final String\s+(\w+)\s*=")
 
@@ -183,6 +190,51 @@ def check_frozen_style_constants() -> list[str]:
     return problems
 
 
+def check_skin_surface_fallback(rules: dict[str, dict[str, dict[str, str]]]) -> list[str]:
+    """ThemePaint 的「皮肤内部基面」清单必须与两份表对得上（见检查项 7）。
+
+    <p>为什么需要：输入类控件的**可见底色是皮肤内部节点画的**（{@code .text-area > .content}、
+    {@code ScrollPane} 的 {@code .viewport} / {@code .corner}），而 {@code ThemePaint.themed} 只作用于
+    **控件本体**。内部节点由 {@code SKIN_SURFACE_SELECTORS} 用属性 API 兜底 —— 两边一旦漂移
+    （改了 CSS 选择器名 / 删了规则 / 清单写错类名），症状是**静默**的：切主题后日志区与输入框
+    的底色停在旧色，而重启正常（issue #153，2026-10-15 实查）。</p>
+
+    <p>方向刻意是**单向**的（代码清单 ⇒ 两份表）：两份表里还有大量其它内部节点
+    （滚动条 {@code .thumb}、菜单 {@code .label}、{@code .tab-container} …），它们不是「基面」，
+    不该被这份清单要求兜底。</p>
+
+    :param rules: 两份表解析结果（主题 ⇒ 选择器 ⇒ 属性）
+    :return: 问题清单
+    """
+    problems: list[str] = []
+    text = THEME_PAINT.read_text(encoding="utf-8")
+    match = SKIN_SELECTOR_CONST.search(text)
+    if match is None:
+        problems.append(
+            f"{THEME_PAINT.name}：找不到 SKIN_SURFACE_SELECTORS —— 皮肤内部基面就没有兜底了"
+            "（issue #153：切主题后这些区域会停在旧色）")
+        return problems
+
+    classes = sorted(set(SELECTOR_CLASS.findall(match.group(1))))
+    if not classes:
+        problems.append(f"{THEME_PAINT.name}：SKIN_SURFACE_SELECTORS 为空，内部基面无人兜底")
+        return problems
+
+    for theme, table in rules.items():
+        for name in classes:
+            hits = [selector for selector in table if ">" in selector and f".{name}" in selector]
+            if not hits:
+                problems.append(
+                    f"aha-theme-{theme}.css：内部基面 .{name} 在表里没有对应选择器 —— "
+                    f"ThemePaint.SKIN_SURFACE_SELECTORS 与样式表已经漂移（issue #153）")
+                continue
+            if not any("-fx-background-color" in table[selector] for selector in hits):
+                problems.append(
+                    f"aha-theme-{theme}.css：内部基面 .{name} 的选择器没有设 -fx-background-color —— "
+                    f"兜底会把代码里的值盖上去，与样式表的本意不一致")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 主题色一致性检查")
     parser.add_argument("--verbose", action="store_true", help="打印逐项统计")
@@ -204,7 +256,8 @@ def main() -> int:
         palettes[theme] = palette
 
     problems = (check_selectors(rules) + check_properties(rules) + check_colors(rules, palettes)
-                + check_generated() + check_frozen_style_constants())
+                + check_generated() + check_frozen_style_constants()
+                + check_skin_surface_fallback(rules))
 
     if args.verbose:
         for theme, table in rules.items():
@@ -221,7 +274,8 @@ def main() -> int:
 
     print("✅ 主题色一致性检查通过"
           f"（两份表的选择器 / 属性集合一致，色号全部来自各自主题的 Palette 色表，"
-          f"且两份 CSS 都能由模板 + Palette 逐字节重现、角色序列一致、无静态常量冻色）")
+          f"且两份 CSS 都能由模板 + Palette 逐字节重现、角色序列一致、无静态常量冻色，"
+          f"皮肤内部基面兜底清单与两份表对得上）")
     return 0
 
 

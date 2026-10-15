@@ -21,7 +21,10 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -280,7 +283,18 @@ class AhaDesktopSmokeTest {
         // 拿它断言永远不成立——这是套件从未真跑过时留下的又一处错设。
         assertThat(uiGet(() -> byId(inputStage.get().getScene(), DesktopShell.COMPOSER_ID).getStyle()))
                 .as("已建好的控件也必须被重刷，而不是只换新控件").contains(Palette.FOREGROUND);
+        // ── 皮肤内部基面（issue #153，2026-10-15）────────────────────────────────
+        // 上面那条只看**控件本体**的样式串，而输入框**可见的底色是 `.content` 画的**
+        // （modena：`.text-area > .content { -fx-background-color: -fx-control-inner-background }`）
+        // ⇒ 本体被重刷不代表内部基面也换了。真机现象是「日志区与输入框的底色切换前后不变、
+        // 重启却正常」，套件却一直是绿的 —— 这一条才是能抓住它的断言。
+        assertThat(uiGet(() -> skinSurface(inputStage.get().getScene(), DesktopShell.COMPOSER_ID, ".content")))
+                .as("输入框的皮肤内部基面必须跟着换主题（只换本体不够）")
+                .isEqualTo(normalize(Palette.CONTROL_INNER));
         onUi(() -> inputShell.applyTheme(Theme.DARK));
+        assertThat(uiGet(() -> skinSurface(inputStage.get().getScene(), DesktopShell.COMPOSER_ID, ".content")))
+                .as("切回暗色同样要换回来（否则就是「切一次对、再切就错」）")
+                .isEqualTo(normalize(Palette.CONTROL_INNER));
         onUi(() -> inputStage.get().close());
 
         // 日志面板：级别过滤 + 渲染
@@ -356,6 +370,48 @@ class AhaDesktopSmokeTest {
      */
     private static Node byId(Scene scene, String id) {
         return scene == null ? null : byId(scene.getRoot(), id);
+    }
+
+    /**
+     * 读「皮肤内部基面」实际画出来的底色（十六进制，便于与 {@link Palette} 的字符串直接比对）。
+     *
+     * <p>为什么要专门读内部节点：输入类控件的底色由 {@code .content} / {@code .viewport} 绘制，
+     * 控件本体的属性与样式串都不能代表屏幕上的颜色（issue #153 的教训）。</p>
+     *
+     * @param scene    场景
+     * @param id       控件 id
+     * @param selector 内部节点选择器（如 {@code .content}）
+     * @return {@code #RRGGBB}；取不到时返回 {@code null}
+     */
+    private static String skinSurface(Scene scene, String id, String selector) {
+        Node node = byId(scene, id);
+        if (node == null) {
+            return null;
+        }
+        // lookup 的结果只在 CSS 处理之后有效（JavaFX 的约定）
+        node.applyCss();
+        if (!(node.lookup(selector) instanceof Region region)) {
+            return null;
+        }
+        Background background = region.getBackground();
+        if (background == null || background.getFills().isEmpty()
+                || !(background.getFills().get(0).getFill() instanceof Color color)) {
+            return null;
+        }
+        return String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
+    }
+
+    /**
+     * 把 {@link Palette} 里的色值串规范成 {@code #RRGGBB}（大写，便于与本测试的读数比对）。
+     *
+     * @param hex 色值串（如 {@code #1E1E1E}）
+     * @return 规范化后的串
+     */
+    private static String normalize(String hex) {
+        return hex == null ? null : hex.trim().toUpperCase();
     }
 
     /**
