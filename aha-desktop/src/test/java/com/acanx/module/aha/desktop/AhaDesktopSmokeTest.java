@@ -504,7 +504,8 @@ class AhaDesktopSmokeTest {
                 root.applyCss();
                 root.layout();
             });
-            String measured = ringSummary(composer);
+            WritableImage image = uiGet(() -> composer.snapshot(new SnapshotParameters(), null));
+            String measured = ringSummary(image);
             System.out.println("[PROBE #229b] 抽掉样式表供给侧（只剩属性 API）：" + measured);
             // 别再猜哪一层在画那圈底色了：把整个子树的「实际背景 / 边框 / insets」转储出来
             System.out.println("[PROBE #229b] 图层转储 begin");
@@ -520,7 +521,7 @@ class AhaDesktopSmokeTest {
                             + "/" + normalize(Palette.BORDER) + "/" + normalize(Palette.BORDER));
 
             // 再钉一条：轮廓线必须在**靠近边缘的位置**，不能只出现在画面中间（否则就不是「范围」了）
-            String band = uiGet(() -> edgeBandColors(composer, 3));
+            String band = edgeBandColors(image, 3);
             System.out.println("[PROBE #229b] 外圈 3px 颜色集合：" + band);
             assertThat(band)
                     .as("轮廓色必须出现在靠边的外圈里（原生 exe 里那一圈就靠这个背景层）")
@@ -533,12 +534,11 @@ class AhaDesktopSmokeTest {
     /**
      * 对一个节点做快照，读出四个角与中心的实际颜色（{@code #RRGGBB}）。
      *
-     * @param node 目标节点
-     * @return 形如 {@code 边缘=#3A3A3A/#3A3A3A/#3A3A3A/#3A3A3A 中心=#1E1E1E}
+     * @param image 已取好的快照
+     * @return 形如 {@code 边中点=#3A3A3A/... 中心=#1E1E1E}
      * @throws Exception 取不到 UI 线程结果时抛出
      */
-    private static String ringSummary(Node node) throws Exception {
-        WritableImage image = uiGet(() -> node.snapshot(new SnapshotParameters(), null));
+    private static String ringSummary(WritableImage image) throws Exception {
         if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
             return "快照不可用(" + (image == null ? "null" : image.getWidth() + "x" + image.getHeight()) + ")";
         }
@@ -618,13 +618,11 @@ class AhaDesktopSmokeTest {
      * <p>为什么要看一圈而不是四个角：轮廓线由背景层画出时，圆角处会被抗锯齿抹掉一小块，
      * 只看角点可能恰好取到混合出来的过渡色。用一整圈才能稳定地判断「靠近边缘处有没有那圈线」。</p>
      *
-     * @param node 目标节点
-     * @param band 外圈宽度（像素）
+     * @param image 已取好的快照（**不能**在方法内部再调 uiGet：会与调用方的 uiGet 互相等待而死锁）
+     * @param band  外圈宽度（像素）
      * @return 形如 {@code [#1E1E1E, #3A3A3A]} 的颜色集合
-     * @throws Exception 取不到 UI 线程结果时抛出
      */
-    private static String edgeBandColors(Node node, int band) throws Exception {
-        WritableImage image = uiGet(() -> node.snapshot(new SnapshotParameters(), null));
+    private static String edgeBandColors(WritableImage image, int band) {
         if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
             return "[]";
         }
@@ -704,8 +702,12 @@ class AhaDesktopSmokeTest {
             return null;
         }
         Background background = region.getBackground();
-        if (background == null || background.getFills().isEmpty()
-                || !(background.getFills().get(0).getFill() instanceof Color color)) {
+        if (background == null || background.getFills().isEmpty()) {
+            return null;
+        }
+        // 取**最上层**那一层：基面现在可能有「轮廓 + 底色」两层，轮廓在下（整块铺满）、
+        // 底色在上（按边框宽度缩进）——可见的底色是**上层**那个（issue #229 二次排查）。
+        if (!(background.getFills().get(background.getFills().size() - 1).getFill() instanceof Color color)) {
             return null;
         }
         return String.format("#%02X%02X%02X",
