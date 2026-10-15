@@ -108,6 +108,8 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-039-Artifact-Anonymous-Download-401.md](TS-2610-039-Artifact-Anonymous-Download-401.md) | 载体检证：Actions 制品匿名下载 `401` / 网页链接 `307→404`，改用发布页 pre-release 资产（#165 方案 §七 的取舍依据） |
 | [TS-2610-040-Trigger-Level-Paths-Filter-Blocks-Explicit-Requests.md](TS-2610-040-Trigger-Level-Paths-Filter-Blocks-Explicit-Requests.md) | 打快照标签却毫无反应：`on.pull_request.paths` 在**触发层**把「只改文档 + 新打标签」的显式请求滤掉（原生线零运行）⇒ 改为作业层门控 + 新增守卫 |
 | [TS-2610-041-Snapshot-Explicit-Request-Cancelled-By-Auto-Run.md](TS-2610-041-Snapshot-Explicit-Request-Cancelled-By-Auto-Run.md) | 复验 #204 仍不出包：`labeled` 与 `synchronize` 同并发组时后者用 `cancel-in-progress` 取消前者（显式请求被吞）；另发现 base 更新后 merge ref 未重建会照旧 `paths:` 过滤、`plan` 在 `push` 上恒报错 | 2026-10-15 11:00 | 见 issue #165 |
+| [TS-2610-042-Snapshot-Comment-Lines-Indistinguishable.md](TS-2610-042-Snapshot-Comment-Lines-Indistinguishable.md) | 快照评论出现两条「除 marker 外逐字相同」的条目（marker 是不可见注释）⇒ 标题须带「线 · 目标范围」，且「未打任何标签」时只由 JVM 线落一条 | 2026-10-15 12:00 | 见 issue #205 |
+| [TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md](TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md) | 快照评论跨线陈旧：JVM 线收到纯原生目标时不更新自己那条，停在「未打任何 `SNAPSHOT:*` 触发标签」⇒ 改为写「属 X 线，交由 X 处理」的交接说明 | 2026-10-15 13:00 | 见 issue #205 |
 
 ## 3. 维护规则
 
