@@ -1,9 +1,9 @@
 # 构建规范
 
-**文档版本**：v1.29.0
+**文档版本**：v1.30.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-13
+**最后更新**：2026-10-15
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -45,6 +45,7 @@
 | v1.28.0 | 2026-10-09 | §10.3 修正：CLI 运行冒烟由「硬断言」改为**步骤级容错**（失败写 `::warning::` + 摘要，并把失败输出打进日志）——与第 7 节「试验性管线的失败必须在步骤级容错」保持一致；首次执行即抓到 `aha-cli-native --help` 在三平台一致退出码非 0（另开 Issue 跟踪） | @ACANX / CNXNC |
 
 ---
+| v1.30.0 | 2026-10-15 | 新增 §11「快照产物（PR 试包）」：载体 / 命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系（含 `Release.yml` 负向过滤这条不可忘的约束） | @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -523,3 +524,58 @@ native 侧的质量保证分**三层**：
 - native 侧现有保证是「**防静默跳过**」+ **诊断式**产物自证（判不出来也不阻塞）；
 - **独立冒烟测试尚未定义**。在定义之前，原生镜像的作业**不得**写进分支保护的必需检查，
   且必须遵守第 7 节的「可选工作流的作业不得进必需检查」与「步骤级容错」要求。
+
+
+## 11. 快照产物（PR 试包）
+
+**定位**：给**尚未合并**的 PR 出的预发行试包，用来把「自测」提前到合并之前
+（方案与验收标准见 [issue #165](https://github.com/ACANX/AHA/issues/165)）。
+它**不是交付物**，因此**不得**成为任何必需检查，也不得拖慢合并流程。
+
+### 11.1 载体与命名（硬约定）
+
+| 项 | 约定 |
+|---|---|
+| 载体 | **发布页 pre-release**（`prerelease: true`，不进 `releases/latest`）；**每个目标一条** |
+| tag / 发行名 | `V<快照版本>-AHA-<目标>-SNAPSHOT`（发行名与 tag **完全相同**） |
+| 目标词 | `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**） |
+| 快照版本 | `<基线>.<PR 号补零 5 位>.<MMddHHmm（北京时间）>`；基线来自根 `version` 文件 |
+| 资产名 | `AHA-<目标>-<快照版本>-<平台标签>-jdk<JDK>.zip`（原生线另出同族报告包） |
+| 平台标签 | JVM 线 `ubuntu-x64` / `windows-x64`（只有 JDK 25）；原生线 `ubuntu-amd64` / `windows-amd64` / `macos-arm64` |
+
+> **不可忘的一条**：该 tag 落在 `V*` 家族里，所以 `Release.yml` 的 tag 过滤**必须**保留负向模式
+> `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——否则每次出快照都会触发一遍完整的正式发版流程。
+> 判定依据是「改动前后 `gh run list --workflow Release.yml` 的 run 数不变」。详见第 2.1 节口径
+> （[ReleaseProcess.md](ReleaseProcess.md)）与 [TS-2610-039](../Troubleshooting/TS-2610-039-Artifact-Anonymous-Download-401.md)。
+
+### 11.2 单一来源（禁止多处写死）
+
+`.github/snapshot-paths.yml` 是**唯一**允许写死「触发标签名」与「A / B / C 变更分类路径」的文件。
+工作流与文档里的字面量必须与它逐字一致，由 `bin/CheckScripts.py` 的 `check_snapshot_manifest()` 断言。
+
+判定逻辑**不得**写进 YAML 的块标量（既跑不快也测不了），一律放仓库脚本：
+
+| 脚本 | 职责 | 本地自证 |
+|---|---|---|
+| `.github/Python/SnapshotPlan.py` | 标签矩阵、变更分类、快照版本（含北京时间戳）、资产名、评论正文 | `--self-test` |
+| `.github/Python/SnapshotCleanup.py` | 清理判定（超 7 天 / 同组最多 3 条 / PR 已关或合并）、安全阀 | `--self-test` / `--dry-run` |
+| `.github/Python/SnapshotComment.py` | PR 评论幂等回写（按固定标记 find-or-upsert） | `--self-test` |
+
+变更分类的三条规则（与 #165 §四 一致）：先比 **B 组**（命中即不出包）→ 再比 **A 组**（命中即出包）→
+都不命中（**C 组**）按 A 组处理（保守兜底：宁可多出一个包，也不要「改了东西却没人拿到包」）。
+
+### 11.3 生命周期与清理
+
+- 同一 PR 的同一目标**保留最近 3 条**、有效期 **7 天**（按发布页 `created_at` 计算，**不是** tag 时间戳）；
+- PR 关闭 / 合并后由 `snapshot-cleanup.yml` **异步**回收（`pull_request: closed` + 每日兜底 + 手动触发）；
+- **安全阀**：清理只处理严格匹配 `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag
+  （兼容历史拼写），正式发版 tag、dev 线 tag 与非快照 release 一律不碰；
+- 单条删除失败只记 `::warning::`，脚本**恒以 0 退出**（失败留给下一次补删，不让清理把流水线染红）。
+
+### 11.4 与门禁 / 其他产物的关系
+
+- 必需检查只有 `build (…)` 三项；快照与清理工作流的作业名**不得**写进分支保护；
+- 两条线各用各的评论标记（JVM 线 `aha-snapshot`、原生线 `aha-snapshot-native`）——共用会把另一条线的评论覆盖成「未出包」；
+- 原生包取件脚本（`Dist/UpdateNative.ps1` 等）按 `-aha-desktop-native` / `-aha-cli-native` 后缀检索，快照命名不影响它；
+- 取件脚本的命名契约由 `check_snapshot_fetch_parity()` 守住；`Dist/README.commands.md` 是
+  `Docs/Guide/CommandCheatsheet.md` 的**逐字节副本**（`check_cheatsheet_copy()` 守卫，**禁止手改副本**）。

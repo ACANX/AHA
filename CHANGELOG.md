@@ -11,6 +11,12 @@
 ## [Unreleased]
 
 ### 新增
+- **PR 快照包（pre-release 试包）全线上线（2026-10-15）**：给**未合并**的 PR 出可下载的试包，把自测提前到合并之前。
+  - **出包**：4 个触发标签 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli`（**粘性**：标签在则每次 push 重出，移除即停）+ `/snapshot <目标> [平台…]` 评论命令（一次性、大小写不敏感、仅写权限账号生效）+ `workflow_dispatch`；`OS:Win` / `OS:MacOS` / `OS:Ubuntu` 收窄到单平台（不能单独使用）；只改 `Docs/**` 的 PR 不出包，除非**新打**触发标签（显式请求）。
+  - **载体与命名**：**每个目标一条** pre-release，tag = `V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT`；目标词 `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**）；`Release.yml` 增加负向过滤 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`，避免快照触发正式发版。
+  - **本地取件**：`Dist/UpdateDesktopNativeSnapshot.cmd` / `Dist/UpdateCliNativeSnapshot.cmd`（原生）与 `Dist/UpdateSnapshot.ps1 -Kind jvm`（JVM）——零配置（不需要 token / `gh` / Python）、无参数 = 最近一次、状态独立记在 `Dist/.aha-snapshot.json`；原生桌面端取件会把 exe **替换**到启动器同目录（旧版留 `.bak`、下载前探占用），`-NoInstall` 可只取件。
+  - **自动清理**：`snapshot-cleanup.yml` 在 PR 关闭 / 合并后**异步**回收（另有每日兜底与手动触发）；同一 PR 同一目标保留最近 3 条、有效期 7 天（按发布页 `created_at`）；安全阀只删严格匹配的快照 tag，正式发版与 dev 线 tag 不碰。
+  - **守卫**：`.github/snapshot-paths.yml` 是触发标签与 A/B/C 路径清单的**单一来源**；`SnapshotPlan.py` / `SnapshotCleanup.py` / `SnapshotComment.py` 均可本地 `--self-test`；`SnapshotComment.py` 只对瞬时 API 错误做有界重试。
 - **一键更新原生包（2026-10-13，issue #156 / TD-00015）**：
   ① `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`——Windows 双击即把最新原生包
   取到 `Dist/`（依次探测 `py -3` / `python` / `python3`，找不到时给出下载指引）；
@@ -36,6 +42,7 @@
   整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
+- **快照包文档补齐（2026-10-15）**：`BuildSpec.md` 新增 §11「快照产物（PR 试包）」（载体与命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系）；`BuildGuide.md` §3.3 补全原生线并更正取件口径；`ReleaseProcess.md` 新增 §2.1（快照与正式发布的隔离）；`CommandCheatsheet.md` §7 同步更正；新增 TS 记录 `[TS-2610-039](Docs/Troubleshooting/TS-2610-039-Artifact-Anonymous-Download-401.md)`。
 - **原生镜像取件工具：实现方案定稿与文档对齐（2026-10-14，issue #156）**：
   `Docs/Design/DesktopNativeUpdateDesign.md` 改为权威口径（v1.2.0）——标题与定位不再限桌面端，
   新增§0.1「两套实现，一份契约」、§0.2「Windows 侧验证记录」、§0.3「演变要闻」；
