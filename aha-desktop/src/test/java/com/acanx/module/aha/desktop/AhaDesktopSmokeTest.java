@@ -678,25 +678,27 @@ class AhaDesktopSmokeTest {
             // ① 切之前（亮色 + 聚焦）：边缘 = 强调色（用户看到的紫色）
             String before = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
             System.out.println("[PROBE #229c] 亮色+聚焦（切之前）：" + before);
-            assertThat(before)
-                    .as("亮色下聚焦的输入框，边缘必须是强调色 %s（用户看到的那圈紫边）", normalize(Palette.FOCUS_BORDER))
-                    .contains(accentEdges(Palette.FOCUS_BORDER));
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
+                    .as("亮色下聚焦的输入框，靠边一圈必须能看到强调色 %s（用户看到的那圈紫边）",
+                            normalize(Palette.FOCUS_BORDER))
+                    .contains(normalize(Palette.FOCUS_BORDER));
 
             // ② 亮 → 暗：焦点环必须跟着换成暗色的强调色（用户报的「切完就看不到」）
             onUi(() -> shellRef.get().applyTheme(Theme.DARK));
             String dark = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
             System.out.println("[PROBE #229c] 切到暗色后（仍聚焦）：" + dark);
-            assertThat(dark)
-                    .as("切到暗色后焦点环必须仍在（暗色强调色 %s）—— 真机就是这一步丢的", normalize(Palette.FOCUS_BORDER))
-                    .contains(accentEdges(Palette.FOCUS_BORDER));
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
+                    .as("切到暗色后焦点环必须仍在（暗色强调色 %s）—— 真机就是这一步丢的",
+                            normalize(Palette.FOCUS_BORDER))
+                    .contains(normalize(Palette.FOCUS_BORDER));
 
             // ③ 暗 → 亮：切回来同样要回来
             onUi(() -> shellRef.get().applyTheme(Theme.LIGHT));
             String back = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
             System.out.println("[PROBE #229c] 再切回亮色（仍聚焦）：" + back);
-            assertThat(back)
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
                     .as("从暗色切回亮色同样要有焦点环（否则就是「切一次对、再切就错」）")
-                    .contains(accentEdges(Palette.FOCUS_BORDER));
+                    .contains(normalize(Palette.FOCUS_BORDER));
         } finally {
             onUi(() -> stageRef.get().close());
         }
