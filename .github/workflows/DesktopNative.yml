@@ -133,7 +133,7 @@ jobs:
     #   * `issue_comment`：只认 `/snapshot` 开头、且确实挂在 PR 上的评论（否则每条评论都起一次 run）；
     #   * 其余（pull_request / workflow_dispatch）：照常判定。
     # 排除 `/snapshot-assert*`（快照自测留痕，issue #166）：它是 `/snapshot` 前缀，但由
-    # SnapshotVerify.yml 负责；不排除的话，这条命令会让本工作流回一条
+    # SnapshotAssert.yml 负责；不排除的话，这条命令会让本工作流回一条
     # 「命令格式应为 `/snapshot <target> [os ...]`」（误导性回复 + 一次空跑）。
     if: >-
       github.event_name != 'push'

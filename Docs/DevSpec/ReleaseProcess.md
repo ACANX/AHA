@@ -13,7 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
-| v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-verified`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
+| v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-asserted`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
 | v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增 1.0 发布的自举验收附加检查 | @ACANX |
@@ -127,15 +127,15 @@
 2. 清理由 `snapshot-cleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
    `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
 
-### 2.2 快照自测留痕（`snapshot-verified`）：默认启用、默认不卡点
+### 2.2 快照自测留痕（`snapshot-asserted`）：默认启用、默认不卡点
 
 「这个包我跑过了」需要留痕，但**不能**变成流程税。机制见
-[`.github/workflows/SnapshotVerify.yml`](../../.github/workflows/SnapshotVerify.yml)（issue #166）：
+[`.github/workflows/SnapshotAssert.yml`](../../.github/workflows/SnapshotAssert.yml)（issue #166）：
 
 | 项 | 口径 |
 |---|---|
 | 启用 | **默认启用** —— 工作流随仓库就位，PR 上发评论即打标，无需任何开关 |
-| 卡点 | **默认不做卡点** —— `snapshot-verified` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
+| 卡点 | **默认不做卡点** —— `snapshot-asserted` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
 | 命令 | `/snapshot-assert <版本> <平台> [jdk27] [+model]`（打 `success`）；`/snapshot-assert-fail <版本> <平台> [jdk27] <原因>`（打 `failure`，失败也要可见）。两条命令同前缀 ⇒ 另外三条命令式工作流的守卫里**一条排除**即可覆盖 |
 | 平台 / JDK | 平台词 `Win` / `MacOS` / `Ubuntu`（与快照出包同一套）；JDK 段省略即 `jdk25` |
 | 绑定 | status 绑在 PR 当时的 `head_sha` ⇒ **PR 再 push 后旧验证自动失效**（新 sha 上没有这条 status）|

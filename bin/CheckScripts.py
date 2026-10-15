@@ -102,7 +102,7 @@ NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
-SNAPSHOT_VERIFIED_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotVerify.yml"
+SNAPSHOT_ASSERT_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotAssert.yml"
 #: 会命中 `/snapshot` 前缀的另外三条命令式工作流：它们必须把 `/snapshot-assert*` 排除掉，
 #: 否则会对本命令各回一条「命令格式应为 …」（实测过：`PlanError` ⇒ 调用方回复用法）。
 SNAPSHOT_VERIFY_PEERS = (
@@ -647,14 +647,14 @@ def concurrency_group(text: str) -> str | None:
     return None
 
 
-def check_snapshot_verified_contract() -> list[str]:
+def check_snapshot_asserted_contract() -> list[str]:
     """快照自测留痕的契约（issue #166）：context / 命令 / 权限 / 清单编号 / 必测项 0 token。
 
     五条都对应「改坏了也照样跑、只在真用时才发现」的情形，所以在这里钉成断言。
     """
     problems: list[str] = []
 
-    wf = SNAPSHOT_VERIFIED_WORKFLOW
+    wf = SNAPSHOT_ASSERT_WORKFLOW
     rel = wf.relative_to(ROOT)
     if not wf.exists():
         problems.append(f"缺快照自测留痕工作流 {rel}（issue #166）")
@@ -662,9 +662,9 @@ def check_snapshot_verified_contract() -> list[str]:
     wf_text = wf.read_text(encoding="utf-8")
 
     # ① status 的 context：分支保护里认的就是这个字符串（必须出现在**打标那一行**）
-    if not re.search(r"-f context=snapshot-verified(\s|$)", wf_text, re.M):
+    if not re.search(r"-f context=snapshot-asserted(\s|$)", wf_text, re.M):
         problems.append(
-            f"{rel}：找不到 `-f context=snapshot-verified` —— 打出来的标不会指向分支保护里那个名字"
+            f"{rel}：找不到 `-f context=snapshot-asserted` —— 打出来的标不会指向分支保护里那个名字"
         )
 
     # ② 两个命令前缀必须出现在**触发守卫**里（只看 `if:` 那一块）
@@ -1011,8 +1011,8 @@ def main() -> int:
             if args.verbose:
                 print(f"  {'❌' if found else '✅'} {path.relative_to(ROOT)}")
 
-    snap_verified = check_snapshot_verified_contract()
-    problems.extend(snap_verified)
+    snap_assert = check_snapshot_asserted_contract()
+    problems.extend(snap_assert)
     layout = check_package_layout()
     problems.extend(layout)
     shade = check_shade_attached()
@@ -1033,7 +1033,7 @@ def main() -> int:
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
-    print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_verified else '✅'}")
+    print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_assert else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")

@@ -1,10 +1,10 @@
-name: Snapshot Verify
+name: Snapshot Assert
 
-# 把「某 PR 的快照自测通过」记成一条 commit status（`context = snapshot-verified`）。issue #166。
+# 把「某 PR 的快照自测通过」记成一条 commit status（`context = snapshot-asserted`）。issue #166。
 #
 # 口径（2026-10-15）：
 #   * **默认启用**：本工作流随仓库就位，评论命令即可打标 —— 不需要任何开关、不需要新标签；
-#   * **默认不卡点**：本文件**不碰**分支保护。`snapshot-verified` 不在 required 清单里，缺它不影响合并；
+#   * **默认不卡点**：本文件**不碰**分支保护。`snapshot-asserted` 不在 required 清单里，缺它不影响合并；
 #     要卡点是 ACANX 的后续显式动作（把该 context 加进分支保护）；
 #   * **必测项 0 token**：下面的自测清单里**没有任何模型往返** —— 工具直调（`tool invoke`）与
 #     配置 / 本地命令就能覆盖「机器验不了」的那部分；需要打 provider 请求的动作（「发一句话看有没有回复」）
@@ -38,7 +38,7 @@ permissions:
   statuses: write      # 本工作流的唯一目的：POST commit status
 
 jobs:
-  snapshot-verified:
+  snapshot-asserted:
     name: 快照自测留痕
     # 只认「挂在 PR 上」的评论，且必须是本工作流的两个命令之一 —— 别的评论一条都不起运行。
     if: >-
@@ -54,7 +54,7 @@ jobs:
       ASSOC: ${{ github.event.comment.author_association }}
       COMMENT_ID: ${{ github.event.comment.id }}
       BODY_RAW: ${{ github.event.comment.body }}
-      MARKER: <!-- snapshot-verified -->
+      MARKER: <!-- snapshot-asserted -->
 
     steps:
       # 回写评论要用仓库里的 SnapshotComment.py（幂等 + 503 有界重试都在那里面）
@@ -111,7 +111,7 @@ jobs:
           # 拒绝 / 提示用**独立 marker**：不能与留痕那条互相覆盖
           reply() {
             printf '%s\n' "$1" | python3 .github/Python/SnapshotComment.py \
-              --repo "${REPO}" --pr "${PR}" --marker '<!-- snapshot-verified-usage -->' || true
+              --repo "${REPO}" --pr "${PR}" --marker '<!-- snapshot-asserted-usage -->' || true
           }
 
           # 刻意**不**先写一个 `ok=false` 的默认值：同一个键在 `$GITHUB_OUTPUT` 里写两次的
@@ -125,7 +125,7 @@ jobs:
             OWNER|MEMBER|COLLABORATOR) : ;;
             *)
               echo "无写权限（author_association=${ASSOC}）⇒ 不打 status"
-              reply "⚠️ 忽略：\`${AUTHOR}\` 对本仓库没有写权限，\`snapshot-verified\` 不会被打标。"
+              reply "⚠️ 忽略：\`${AUTHOR}\` 对本仓库没有写权限，\`snapshot-asserted\` 不会被打标。"
               exit 0
               ;;
           esac
@@ -229,7 +229,7 @@ jobs:
 
           echo "解析通过：${verb} ${version} ${platform} jdk${jdk} → ${sha}"
 
-      - name: 打 commit status（context=snapshot-verified）
+      - name: 打 commit status（context=snapshot-asserted）
         if: steps.parse.outputs.ok == 'true'
         env:
           STATE: ${{ steps.parse.outputs.state }}
@@ -248,7 +248,7 @@ jobs:
           fi
           gh api -X POST "repos/${REPO}/statuses/${SHA}" \
             -f state="${STATE}" \
-            -f context=snapshot-verified \
+            -f context=snapshot-asserted \
             -f description="${desc}" \
             -f target_url="https://github.com/${REPO}/pull/${PR}#issuecomment-${COMMENT_ID}" >/dev/null
           echo "已打 status：${STATE} / ${desc} / ${SHA}"
@@ -286,7 +286,7 @@ jobs:
             echo "| 对应提交 | \`${SHA}\`（PR 再 push 后新 sha 上没有这条 status，本条自动失效）|"
             echo "| 断言清单 | A1–A5 / B1–B4 / C1–C3（按取到的包种类适用；原文见 \`ReleaseProcess.md\` §2.1）|"
             echo "| 可选 M 组建议 | ${HINT} |"
-          } > "${RUNNER_TEMP}/snapshot-verified.md"
+          } > "${RUNNER_TEMP}/snapshot-asserted.md"
           python3 .github/Python/SnapshotComment.py \
             --repo "${REPO}" --pr "${PR}" --marker "${MARKER}" \
-            < "${RUNNER_TEMP}/snapshot-verified.md"
+            < "${RUNNER_TEMP}/snapshot-asserted.md"
