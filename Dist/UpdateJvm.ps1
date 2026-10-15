@@ -10,19 +10,22 @@
         资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-arm64）
               CLI     aha-cli-<版本>[-jdk27].zip                （**平台无关**，只有一份）
 
-    本脚本做四件事：
+    本脚本做五件事：
 
       1. 查发布页，找出 `-aha-jvm` 的 release（`-Tag` 可直接指定某个版本）；
       2. 挑出本机平台的资产（只有桌面端需要平台；CLI 没有平台维度）；
          **只看最新一版**：它缺本平台 / 本 JDK 段的资产时直接报错（并列出该版实际有什么），
          **不会**悄悄退到更旧的版本（见下方「为什么不静默降级」）；
       3. 下载 zip 到 `-Out`（已有同尺寸的包则复用；带 sha256 则校验）；
-      4. 解压到 `<Out>\desktop-jvm\` 或 `<Out>\cli-jvm\`。
+      4. 解压到 `<Out>\desktop-jvm\<版本>\` 或 `<Out>\cli-jvm\<版本>\`（**每版一个目录**，留档、可回滚）；
+      5. 把**去版本号**的入口**复制**到 `<Out>` 根（`Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`…），
+         让启动脚本与用户命令**与版本无关**；`-NoInstall` 可只做第 4 步。
 
     ⚠️ 为什么和 `UpdateNative.ps1` **分开**、且不复用它（issue #210）：
 
       * **落地语义不同**：`UpdateNative.ps1` 取的是原生包 —— 一个 exe，**摘出来覆盖**目标；
-        JVM 包是**目录**（`bin\` + `lib\`，issue #200 之后是单体 jar），只能解压，
+        JVM 包是「**单体 jar + 启动脚本**」（issue #218 起桌面端为**包根平铺**），
+        做法是「解压到版本目录留档 + 把去版本号的入口**复制**到落地根」，
         不存在「替换某个可执行文件」这回事；
       * **资产名规则不同**：原生包是 `<前缀><版本>-<平台>-jdk<JDK>.zip`（平台段与 jdk 段**都必有**）；
         JVM 包是 `aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`
@@ -51,6 +54,7 @@
       UpdateJvm.ps1 -Kind Desktop -DryRun         只预览，不下载
       UpdateJvm.ps1 -Kind Desktop -Force          已是最新也重下
       UpdateJvm.ps1 -Kind Desktop -AllowOlder     最新一版缺本平台资产时，退到最近一个可用的
+      UpdateJvm.ps1 -Kind Desktop -NoInstall      只解压到版本目录，不平铺到落地根
       UpdateJvm.ps1 -Kind Desktop -Jdk 27         取 JDK 27 变体（默认 25）
       UpdateJvm.ps1 -Kind Desktop -Tag V0.1.3.00178-aha-jvm
       UpdateJvm.ps1 -Kind Desktop -Platform windows-amd64
@@ -62,6 +66,8 @@ param(
     [switch]$Force,
     #: 最新一版缺目标资产时，显式允许退到最近一个可用的旧版（默认**不**退，见上方说明）。
     [switch]$AllowOlder,
+    #: 只解压到版本目录，不做「平铺到落地根」这一步（见上方第 5 件事）。
+    [switch]$NoInstall,
     [string]$Jdk = '25',
     [string]$Tag = '',
     [string]$Platform = '',
@@ -79,10 +85,32 @@ Write-Host ''
 #: dev 线 JVM 包的 tag 后缀（见 BuildJVMArtifacts.yml 的 PreRelease-AHA-JVM 作业）。
 $TagSuffix = '-aha-jvm'
 
-#: 种类表：标题 / 是否按平台挑（CLI 平台无关）/ 落地子目录 / 状态文件 / 资产前缀。
+#: 种类表：标题 / 是否按平台挑（CLI 平台无关）/ 落地子目录 / 状态文件 / 资产前缀 / 平铺入口。
+#:
+#: `Flat` = 解压后要**复制到 `<Out>` 根**的入口（issue #218）：名字**去版本号**，
+#: 于是启动脚本与用户命令与版本无关（`Dist\AhaDesktop.bat`、`Dist\aha-desktop.jar` 直接可用）。
+#: 同一 `Name` 有多个条目时**先命中的生效**（CLI 的新/旧两种 jar 名就靠这个兼容）。
+#: 包根本来就没有的条目会被跳过（旧形态的包平铺不了），实测里会点名说明。
 $kinds = @{
-    'Desktop' = @{ Title = '桌面端 JVM 便携包'; ByPlatform = $true;  SubDir = 'desktop-jvm'; State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-' ; Workflow = 'BuildJVMArtifacts.yml' }
-    'Cli'     = @{ Title = 'CLI JVM 便携包';   ByPlatform = $false; SubDir = 'cli-jvm';     State = '.aha-cli-jvm.json';     Prefix = 'aha-cli-' ;     Workflow = 'BuildJVMArtifacts.yml' }
+    'Desktop' = @{
+        Title = '桌面端 JVM 便携包'; ByPlatform = $true; SubDir = 'desktop-jvm'
+        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-'; Workflow = 'BuildJVMArtifacts.yml'
+        Flat = @(
+            @{ Glob = 'aha-desktop.jar'; Name = 'aha-desktop.jar' }
+            @{ Glob = 'AhaDesktop.bat';  Name = 'AhaDesktop.bat' }
+            @{ Glob = 'AhaDesktop.sh';   Name = 'AhaDesktop.sh' }
+        )
+    }
+    'Cli'     = @{
+        Title = 'CLI JVM 便携包'; ByPlatform = $false; SubDir = 'cli-jvm'
+        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-'; Workflow = 'BuildJVMArtifacts.yml'
+        Flat = @(
+            @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
+            @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
+            @{ Glob = 'Aha.bat';       Name = 'Aha.bat' }       # 只有平铺形态的包才会出现在包根
+            @{ Glob = 'Aha.sh';        Name = 'Aha.sh' }
+        )
+    }
 }
 
 $kindInfo = $kinds[$Kind]
@@ -252,6 +280,9 @@ if (-not $pick) {
 
 $version = Get-TagVersion $pick.Release.tag_name
 $targetDir = Join-Path $InstallDir $version   # 每版一个目录，互不覆盖
+$flat = @()            # 本次平铺到 <Out> 根的入口名
+$missingFlat = @()     # 包根没有、无法平铺的入口名（旧形态的包会命中）
+$doneFlat = @{}        # 已平铺的名字 → 避免多个条目落到同一个名字时重复复制
 $state = @{}
 if (Test-Path -LiteralPath $StateFile) {
     try { $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json } catch { $state = @{} }
@@ -262,7 +293,15 @@ Write-Host ("目标版本：{0}（{1}）" -f $pick.Release.tag_name, $version)
 Write-Host ("资产：{0}（{1} MB）" -f $pick.Asset.name, [math]::Round($pick.Asset.size / 1MB, 1))
 Write-Host ("落地：{0}" -f $targetDir)
 
-if ((-not $Force) -and ($state.tag -eq $pick.Release.tag_name) -and (Test-Path -LiteralPath $targetDir)) {
+$stateFlat = @($state.flat | Where-Object { $_ })
+$canSkip = (-not $Force) -and ($state.tag -eq $pick.Release.tag_name) -and (Test-Path -LiteralPath $targetDir)
+if ($canSkip -and (-not $NoInstall) -and ($stateFlat.Count -gt 0)) {
+    # 上次平铺出去的入口被删了（或改了指 -Out）⇒ 不算「已是最新」，重解压补齐。
+    if (@($stateFlat | Where-Object { -not (Test-Path -LiteralPath (Join-Path $OutDir $_)) }).Count -gt 0) {
+        $canSkip = $false
+    }
+}
+if ($canSkip) {
     Write-Host ("`n✅ 本地已经是 {0}，无需更新（加 -Force 可强制重下）" -f $version) -ForegroundColor Green
     exit 0
 }
@@ -317,6 +356,28 @@ try {
     New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $targetDir)
 
+    # ── 平铺到 `<Out>` 根（issue #218）─────────────────────────────────────────
+    #
+    # 版本目录 `...\<种类>\<版本>\` 留档（多版并存、可回滚）；同时把**去版本号**的入口
+    # **复制**一份到 `<Out>` 根 —— 启动脚本与用户命令因此与版本无关：
+    #   `Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar`、`Dist\Aha.bat` 都能直接用。
+    # 只复制，不动版本目录里的那一份。
+    if (-not $NoInstall) {
+        foreach ($item in $kindInfo.Flat) {
+            if ($doneFlat.ContainsKey($item.Name)) { continue }
+            # 只看**包根**（不加 -Recurse）：旧形态的包把脚本放在 bin\ 下，那不是平铺入口。
+            $src = @(Get-ChildItem -LiteralPath $targetDir -Filter $item.Glob -File -ErrorAction SilentlyContinue)
+            if ($src.Count -eq 0) { $missingFlat += $item.Name; continue }
+            try {
+                Copy-Item -LiteralPath $src[0].FullName -Destination (Join-Path $OutDir $item.Name) -Force
+            } catch {
+                throw ("平铺 {0} 到 {1} 失败：{2}`n  最常见的原因是它正被运行中的实例占用 —— 请先关闭，再重试。" -f $item.Name, $OutDir, $_.Exception.Message)
+            }
+            $flat += $item.Name
+            $doneFlat[$item.Name] = $true
+        }
+    }
+
     # 列出关键入口做一次自证，并据此给出「怎么运行」的提示。
     #
     # 包内形态有两代（issue #218 起为**平铺**）：
@@ -331,13 +392,24 @@ try {
     if (-not (Test-Path -LiteralPath $launcher)) { $launcher = $null }
     Write-Host ''
     Write-Host ("解压完成：{0} 个文件（jar {1} 个，启动脚本 {2}）" -f $entries.Count, $jars.Count, $(if ($launcher) { '有' } else { '无' }))
+    if ($NoInstall) {
+        Write-Host '（-NoInstall：只解压，未平铺到落地根）'
+    } elseif ($flat.Count -gt 0) {
+        Write-Host ("已平铺到 {0}：{1}" -f $OutDir, ($flat -join '、'))
+        if ($missingFlat.Count -gt 0) {
+            Write-Host ("       （包根没有 {0}，未平铺 —— 该形态的包还没带启动脚本）" -f ($missingFlat -join '、'))
+        }
+    } else {
+        Write-Host ("[注意] 未平铺：包根没有 {0}。" -f ($missingFlat -join '、')) -ForegroundColor Yellow
+        Write-Host '       旧形态的包（包根没有单体 jar）平铺不了；请取 0.1.3.00219 及以后的版本。'
+    }
 } catch {
     Write-Host ''
     Write-Host ("[错误] {0}" -f $_.Exception.Message) -ForegroundColor Red
     exit 1
 }
 
-$stateOut = @{ tag = $pick.Release.tag_name; version = $version; asset = $pick.Asset.name; dir = $targetDir; installedAt = (Get-Date).ToString('s') } | ConvertTo-Json
+$stateOut = @{ tag = $pick.Release.tag_name; version = $version; asset = $pick.Asset.name; dir = $targetDir; flat = @($flat); installedAt = (Get-Date).ToString('s') } | ConvertTo-Json
 [IO.File]::WriteAllText($StateFile, $stateOut)
 
 Write-Host ''
@@ -345,6 +417,12 @@ Write-Host ("✅ 已取件到 {0}" -f $version) -ForegroundColor Green
 Write-Host ("目录：{0}" -f $targetDir)
 Write-Host ("下载包保留在：{0}（便于离线重装；不需要可删）" -f $zip)
 if ($launcher) {
-    Write-Host ("运行：{0}" -f $launcher)
+    $leaf = Split-Path -Path $launcher -Leaf
+    $flatLauncher = Join-Path $OutDir $leaf
+    if (Test-Path -LiteralPath $flatLauncher) {
+        Write-Host ("运行：{0}（已平铺到落地根；换版本不必改命令）" -f $flatLauncher)
+    } else {
+        Write-Host ("运行：{0}" -f $launcher)
+    }
 }
 exit 0
