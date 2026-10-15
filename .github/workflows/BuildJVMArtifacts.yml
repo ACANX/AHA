@@ -97,8 +97,32 @@ jobs:
       #: 要出的腿（`<label>/jdk<JDK>` 逗号分隔）。腿作业的**步骤级** if 用它过滤——
       #: job 级 if 读不到 matrix，动态矩阵又会让作业被静默丢弃，都不可用。
       selected: ${{ steps.matrix.outputs.selected }}
+      #: 本次要不要挂发布页（由脚本归一成 `true` / `false` 字符串；见下一步的说明）。
+      publish: ${{ steps.publish.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: 归一「要不要挂发布页」（publish）
+        # 【为什么把判断放脚本里，而不是写进 build-publish 的 job 级 if】
+        # 那个门原先写的是 `inputs.publish != false && inputs.publish != 'false'`，
+        # 但 `push` 事件**没有 inputs** ⇒ `inputs.publish` 为 `null`；GitHub 表达式做宽松比较时
+        # 把两侧折算成数字（`null → 0`、`false → 0`）⇒ `null != false` 求值为 `0 != 0` = **false**
+        # ⇒ 作业被**静默跳过**：dev 的 JVM 预发行包自 2026-10-14 06:52 起再没发布过
+        # （#179 引入，见 issue #213）。落到 shell 就是普通字符串比较，没有折算坑。
+        id: publish
+        env:
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          # push 事件没有 inputs ⇒ 变量为空 ⇒ 默认 true（照旧发布）
+          publish="${INPUT_PUBLISH:-true}"
+          case "$publish" in
+            false|False|FALSE) publish=false ;;
+            *) publish=true ;;
+          esac
+          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
+          echo "本次是否挂发布页：${publish}"
+
       - name: 自证构建矩阵并算出要出的腿（非法就响亮失败）
         id: matrix
         env:
@@ -336,9 +360,11 @@ jobs:
     needs: [build-version, build-mvn-artifact]
     # 即使某条腿失败也要发布已成功的那几个平台（部分可用也有价值）；
     # 但显式给了 publish=false 时（快照线 / 自证）不发布——载体由调用方自己决定。
+    # 判断读 build-version 归一后的字符串（**不要**在这里直接比 `inputs.publish`：
+    # `push` 无 inputs ⇒ 它为 null，而 `null != false` 是 **false**，作业会被静默跳过，见 issue #213）。
     if: >-
       always() && needs.build-version.result == 'success'
-      && inputs.publish != false && inputs.publish != 'false'
+      && needs.build-version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: 下载全部制品
