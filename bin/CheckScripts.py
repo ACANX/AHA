@@ -526,6 +526,42 @@ def paths_block_literals(text: str) -> list[tuple[int, str]]:
     return literals
 
 
+def pull_request_paths_filters(text: str) -> list[tuple[int, str]]:
+    """取 `on.pull_request` 下的 `paths:` / `paths-ignore:` 键（行号 + 键名）。
+
+    为什么单独查这个：`paths:` 工作在**触发层**——事件根本进不来，判定脚本就没机会走
+    「显式请求」那条路。2026-10-15 实测（PR #203）：只改 `Docs/` 的 PR 新打了
+    `SNAPSHOT:NativeDesktop`，JVM 线正常判定后退出，**原生线被 `paths:` 挡在门外、毫无反应**，
+    与 #165 验收 16「只改文档时新打标签 ⇒ 照出包并写明『显式请求』」冲突。
+    """
+    hits: list[tuple[int, str]] = []
+    in_on = in_pr = False
+    on_indent = pr_indent = 0
+    for number, line in enumerate(text.splitlines(), 1):
+        body = line.split("#", 1)[0].rstrip()
+        if not body.strip():
+            continue
+        indent = len(body) - len(body.lstrip())
+        stripped = body.strip()
+        if stripped == "on:":
+            in_on, on_indent = True, indent
+            continue
+        if in_on and indent <= on_indent:
+            in_on = False          # 离开 on 段（同级 / 更浅的顶层键）
+        if not in_on:
+            continue
+        if stripped == "pull_request:":
+            in_pr, pr_indent = True, indent
+            continue
+        if in_pr:
+            if indent <= pr_indent:
+                in_pr = False      # 离开 pull_request 段
+                continue
+            if stripped.startswith(("paths:", "paths-ignore:")):
+                hits.append((number, stripped.split(":", 1)[0]))
+    return hits
+
+
 def check_snapshot_manifest() -> list[str]:
     """快照清单与它的消费方必须一致（见模块 docstring）。"""
     if not SNAPSHOT_MANIFEST.exists():
@@ -589,6 +625,15 @@ def check_snapshot_manifest() -> list[str]:
                     f"{wrel}:{number} 的 paths 字面量 {literal!r} 不在 {rel} 里——"
                     "清单是单一来源：要么把它写进清单（并说明归 A 还是 B），要么改这里"
                 )
+        # ⑤ 快照工作流**不得**在 `pull_request` 上用 paths/paths-ignore：
+        #    那是在触发层丢事件，「只改文档 + 新打触发标签」的显式请求会进不来（实测 #203）。
+        for number, key in pull_request_paths_filters(text):
+            problems.append(
+                f"{wrel}:{number} 的 `pull_request.{key}` 在**触发层**过滤事件——"
+                "只改文档的 PR 就算新打了触发标签（显式请求）也进不来，"
+                "现象是「打了标签毫无反应」（2026-10-15 实测 PR #203）。"
+                "快照工作流一律去掉该过滤：让 plan 作业先跑，昂贵的步骤按 should_build 门控"
+            )
 
     return problems
 

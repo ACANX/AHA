@@ -35,15 +35,14 @@ on:
   # PR 上也跑：快照出包要在**合并前**可用（#165 §三）。默认不出包 —— 只有打了
   # 触发标签 `SNAPSHOT:NativeCli` / 发了 `/snapshot NativeCli …` 命令才出（判定逻辑在脚本里）。
   # 【注意】`types` 一旦写出来就覆盖默认值，所以默认的三个必须一并列出。
+  # 【为什么**不再**用 `paths:` 过滤（2026-10-15 实测 #203）】同 DesktopNative.yml：
+  # `paths:` 在**触发层**过滤，会让「只改文档 + 新打触发标签」的显式请求进不来
+  # （现象：打了标签毫无反应），与 #165 验收 16 冲突。改为让 `plan` 先跑、
+  # 昂贵的腿按 `needs.plan.outputs.should_build` 门控。
+  # 路径清单的唯一来源仍是 `.github/snapshot-paths.yml`（由判定脚本消费），本文件不写死任何路径；
+  # `bin/CheckScripts.py` 的 `pull_request_paths_filters()` 会拦住再往回加 `paths:` 的改动。
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - 'aha-cli/**'
-      - 'aha-cli-native/**'
-      - '**/pom.xml'
-      - '.github/Python/**'
-      - '.github/snapshot-paths.yml'
-      - '.github/workflows/CliNative.yml'
   issue_comment:
     types: [created]
   workflow_dispatch:
