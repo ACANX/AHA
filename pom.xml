@@ -112,6 +112,8 @@
         <jacoco.plugin.version>0.8.15</jacoco.plugin.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
+        <!-- 单体 fat jar（issue #200）：本阶段与 assembly 并存，两者产物互不影响 -->
+        <shade.plugin.version>3.6.2</shade.plugin.version>
         <!-- 版本占位符解析插件（CI-friendly versions），交 Dependabot 跟踪 -->
         <flatten.plugin.version>1.8.0</flatten.plugin.version>
         <!-- 原生镜像（试验性）：两套平行管线——桌面端 aha-desktop-native（见
@@ -312,6 +314,11 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-assembly-plugin</artifactId>
                     <version>${assembly.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>${shade.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
