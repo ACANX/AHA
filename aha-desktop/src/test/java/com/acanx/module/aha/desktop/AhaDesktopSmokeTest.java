@@ -505,6 +505,12 @@ class AhaDesktopSmokeTest {
             });
             String measured = ringSummary(composer);
             System.out.println("[PROBE #229b] 抽掉样式表供给侧（只剩属性 API）：" + measured);
+            // 别再猜哪一层在画那圈底色了：把整个子树的「实际背景 / 边框 / insets」转储出来
+            System.out.println("[PROBE #229b] 图层转储 begin");
+            for (String line : uiGet(() -> layerDump(composer))) {
+                System.out.println("[PROBE #229b]   " + line);
+            }
+            System.out.println("[PROBE #229b] 图层转储 end");
             assertThat(measured)
                     .as("属性 API 那条边框必须真的画出来（中心 = %s，边缘带里必须有 %s）——否则属性对了也没用",
                             normalize(Palette.CONTROL_INNER), normalize(Palette.BORDER))
@@ -547,6 +553,58 @@ class AhaDesktopSmokeTest {
     private static String hexAt(PixelReader pixels, int x, int y) {
         Color color = pixels.getColor(x, y);
         return color == null ? "null" : hexOf(color);
+    }
+
+    /**
+     * 转储节点子树里每一层的**实际背景 / 边框 / insets**（issue #229 二次排查用）。
+     *
+     * <p>目的：像素读数里那个 {@code #F9F9F9} 到底是哪一层画的？属性都设对了、像素却不对，
+     * 就只能把每一层实际生效的值列出来对帐，不靠猜。</p>
+     *
+     * @param root 根节点
+     * @return 每层一行
+     */
+    private static List<String> layerDump(Node root) {
+        List<String> lines = new java.util.ArrayList<>();
+        collectLayers(root, 0, lines);
+        return lines;
+    }
+
+    private static void collectLayers(Node node, int depth, List<String> lines) {
+        if (node == null || depth > 4) {
+            return;
+        }
+        StringBuilder line = new StringBuilder("  ".repeat(depth))
+                .append(node.getClass().getSimpleName())
+                .append(node.getStyleClass())
+                .append(" vis=").append(node.isVisible())
+                .append(" bounds=").append(Math.round(node.getLayoutBounds().getWidth()))
+                .append("x").append(Math.round(node.getLayoutBounds().getHeight()));
+        if (node instanceof Region region) {
+            Background background = region.getBackground();
+            if (background != null) {
+                for (BackgroundFill fill : background.getFills()) {
+                    line.append(" bg[").append(fill.getFill() instanceof Color c ? hexOf(c) : String.valueOf(fill.getFill()))
+                            .append(" insets=").append(fill.getInsets().getTop())
+                            .append(" radii=").append(Math.round(fill.getRadii().getTopLeftHorizontalRadius()))
+                            .append("]");
+                }
+            } else {
+                line.append(" bg=null");
+            }
+            if (region.getBorder() == null || region.getBorder().getStrokes().isEmpty()) {
+                line.append(" border=null");
+            } else {
+                Paint stroke = region.getBorder().getStrokes().get(0).getTopStroke();
+                line.append(" border=").append(stroke instanceof Color c ? hexOf(c) : String.valueOf(stroke));
+            }
+        }
+        lines.add(line.toString());
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectLayers(child, depth + 1, lines);
+            }
+        }
     }
 
     /**
