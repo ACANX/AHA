@@ -69,6 +69,21 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **桌面端 JVM 便携包改为「包根平铺」形态（2026-10-15，issue #218）**：包内不再有 `lib/` 与 `bin/` ——
+  包根只有 `aha-desktop.jar`（单体 jar：本项目模块 + 全部运行时依赖 + **本平台** OpenJFX 的类与
+  原生库，原生库在运行期由 JavaFX 自己从 jar 取出并缓存）、`AhaDesktop.sh` / `AhaDesktop.bat` 与
+  三个文档。jar 名**去版本号**，启动脚本与用户命令因此与版本无关（换版本不改任何一处）。
+  单体 jar 的入口是新增的 `AhaDesktopLauncher`——它**不继承** `javafx.application.Application`，
+  只把 `main` 转发给 `AhaDesktopApp.main`；主类一旦继承 `Application`，JVM 启动器在 `java -jar`
+  下会直接报「JavaFX runtime components are missing」。
+  - 配套：`Script/Python/DesktopDistBuild.py` / `DesktopDistExtract.py` 的自证与落地判据同步改为
+    平铺形态（并清掉上一版 `lib/` + `bin/` 的遗留文件，CLI 的 `bin/Aha.*` 与 `aha-cli-*.jar` 不动）；
+    `bin/AhaDesktop.*` 改为定位 `aha-desktop.jar`（脚本同目录或上一级），源码检出处仍自动解压
+    `Dist/aha-desktop-*.zip`；工作流的桌面端自证改为「包根平铺 + 单体 jar 内必含 JavaFX 类与
+    本平台原生库 + 不得含 `module-info.class`」。
+  - 顺带把 upstream 的修法固化进规范：用 shade 一律 `shadedArtifactAttached=true` +
+    `shadedClassifierName`，**不得**让 fat jar 顶替项目主产物（issue #217 的实测教训；
+    原生镜像线依赖 `aha-desktop` 的模块化 jar）。
 - **主题色收敛为「一处手写色源」（2026-10-14，issue #153）**：两份主题补丁表从「手抄字面色号」
   变成**生成物**——`bin/GenThemeCss.py` 把 `aha-desktop/src/theme/*.template.css` 里的
   `%角色%` 代入 `Palette.java` 的色表；`bin/CheckTheme.py` 重新生成一遍并**逐字节比对**，

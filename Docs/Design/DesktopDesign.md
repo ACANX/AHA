@@ -1,6 +1,6 @@
 # 桌面端设计
 
-**文档版本**：v1.13.0
+**文档版本**：v1.14.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -26,6 +26,7 @@
 | v1.10.0 | 2026-10-08 | 新增 §10「对话与供应商配置」：对话内核可测而界面薄（ChatController/ChatView/ToolSummary/DesktopToolApprover）、供应商为可编辑表单（含校验与保留未涉及字段）、以及 Windows 真机验证记录 | @ACANX |
 | v1.11.0 | 2026-10-08 | §10.2 供应商配置补充：绿灯标识（启用项与其模型）、打开即选中启用项（纯函数 + 测试）、按预设新建与可编辑模型下拉 | @ACANX |
 | v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（dev 预发行线在独立工作流 `BuildJVMArtifacts.yml`，issue #63） | @ACANX |
+| v1.14.0 | 2026-10-15 | §5.6 便携包改为**包根平铺**：单体 jar `aha-desktop.jar`（去版本号，含本平台 OpenJFX 的类与原生库）+ 启动脚本平铺，无 `lib/` 与 `bin/`；补写入口类 `AhaDesktopLauncher` 为何必须不继承 `Application`（issue #218）| @ACANX / CNXNC |
 | v1.13.0 | 2026-10-09 | 发行形态最终决策：§2「打包」由 `jpackage` 改为「JVM 便携包 + 原生镜像单文件」；§3 / §5 / §5.4 去掉 `jpackage`，「必须分平台构建」的依据改为 JavaFX 平台分类器；§5.6 注明 `jpackage` 已决策跳过（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
 
 ---
@@ -139,8 +140,14 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 `aha-desktop` 的 assembly 描述符 `src/assembly/dist-desktop.xml` 产出便携包：
 
-- 布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
-  本平台三个 OpenJFX jar）+ `README.md` / `CHANGELOG.md` / `LICENSE`；
+- 布局（**包根平铺**，2026-10-15 起，issue #218）：`aha-desktop.jar`（单体 jar：本项目模块 +
+  全部运行时依赖 + 本平台 OpenJFX 的类与原生库）+ `AhaDesktop.sh` / `AhaDesktop.bat` +
+  `README.md` / `CHANGELOG.md` / `LICENSE`；**没有** `lib/` 与 `bin/`；jar 名**去版本号**，
+  启动脚本与用户命令因此与版本无关；
+- 单体 jar 的入口是 `AhaDesktopLauncher`（**不继承** `javafx.application.Application`）：
+  继承的话 JVM 启动器在 `java -jar` 下直接报「JavaFX runtime components are missing」。
+  它把 `main` 转发给 `AhaDesktopApp.main` —— 启动横幅与渲染诊断开关因此不走第二份实现
+  （`AhaDesktopLauncherTest` 在构建期守这两条结构约束）；
 - 文件名由构建期**真实解析结果**决定：`finalName = aha-desktop-${project.version}-${javafx.platform}`
   ——版本来自父 POM、平台来自 profile，没有手写常量；
 - 用户在 release 页面按「系统 + 架构」下载对应包，解包后只需 JDK 25 即可运行

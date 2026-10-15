@@ -1,6 +1,6 @@
 # 构建指南
 
-**文档版本**：v1.14.0
+**文档版本**：v1.15.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -31,6 +31,7 @@
 | v1.13.1 | 2026-10-14 | §3.3 的指引改为指向**源文件** `Docs/Guide/CommandCheatsheet.md`（此前误指生成物 `Dist/README.commands.md`；该副本会被 assembly / 取件脚本覆盖） | @cnxnc |
 
 ---
+| v1.15.0 | 2026-10-15 | §3 桌面端启动命令改为包根平铺形态（`Dist/AhaDesktop.bat` / `./Dist/AhaDesktop.sh`），CLI 仍走 `Dist/bin/`（issue #218）| @ACANX / CNXNC |
 | v1.14.0 | 2026-10-15 | §3.3 补全原生线（触发标签补齐 4 个、一个目标一条工作流）；更正「不覆盖任何文件」的过期口径——原生桌面端取件会**替换 exe**（旧版留 `.bak`，`-NoInstall` 可只取件）| @cnxnc |
 
 ## 1. 适用范围
@@ -130,12 +131,12 @@ python3 Script/Python/DesktopDistExtract.py
 更新后直接运行：
 
 ```bat
-Dist\bin\AhaDesktop.bat          # Windows
-Dist\bin\Aha.bat version          # CLI 仍可用
+Dist\AhaDesktop.bat              # Windows（桌面端：包根单体 jar）
+Dist\bin\Aha.bat version          # CLI 仍可用（JPMS 目录形态）
 ```
 
 ```bash
-./Dist/bin/AhaDesktop.sh          # Linux / macOS
+./Dist/AhaDesktop.sh              # Linux / macOS（桌面端：包根单体 jar）
 ```
 
 命令速查：`Dist/README.commands.md`（源文件 `Docs/Guide/CommandCheatsheet.md`）把编译 / 更新 /

@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.36.0
+**文档版本**：v1.37.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -50,6 +50,7 @@
 | v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
 | v1.33.0 | 2026-10-15 | §11.4 新增「评论必须可辨识」硬约定：快照评论标题须带「线 · 本线目标范围」（marker 是不可见注释）；且「未打任何标签」时**只由 JVM 线落一条**，不得出现两条同义评论（实测 PR #206）| @ACANX / CNXNC |
 | v1.34.0 | 2026-10-15 | §11.4 新增「跨线写交接说明」硬约定：目标属另一条线时，当前线把自己那条评论更新为「属 X 线，交由 X 处理」，**不得**停在「未打任何 `SNAPSHOT:*` 触发标签」（issue #205 的原始现象）| @ACANX / CNXNC |
+| v1.37.0 | 2026-10-15 | §7 发行包形态按目标分两类：**桌面端便携包改为「单体 jar + 启动脚本」包根平铺**（无 `lib/`、无 `bin/`，jar 名去版本号，入口须为不继承 `Application` 的转发类），CLI 仍为 JPMS 目录形态；新增「用 shade 必须 `shadedArtifactAttached=true` + classifier」硬约定（issue #217 教训）| @ACANX / CNXNC |
 | v1.36.0 | 2026-10-15 | §11.1 平台标签口径统一：JVM 线 `ubuntu-x64` / `windows-x64` ⇒ **`ubuntu-amd64` / `windows-amd64`**（与原生线一致，issue #215）；`SnapshotPlan.py` 里 JVM 与原生两张平台表合并为一张 | @ACANX / CNXNC |
 | v1.35.0 | 2026-10-15 | §8.1 新增「工作流的门不得与布尔字面量做宽松比较（强制）」：`push` 无 `inputs` ⇒ `inputs.x` 为 `null`，而 `null != false` 在 GitHub 表达式里是 **false** ⇒ `build-publish` 门失效、dev 的 JVM 预发行包**静默停发 4 天**（issue #213）；配套守卫 `check_yaml_input_bool_compare()` | @ACANX / CNXNC |
 
@@ -225,12 +226,27 @@ POM 语法必须兼容 Maven 3.9.x：
   （唯一的例外：`annotationProcessorPaths` 不读 `dependencyManagement`，需就地写 `${属性}`）
 - `aha-common` 保持**零外部依赖**（仅 JDK），禁止引入 Jackson 等第三方库
 - 内核模块（`aha-core`）禁止依赖任何传输 / 协议库
-- 发行包固定为 **JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
-  组装（`aha-cli/src/assembly/dist.xml`）：
-  - **禁止**使用 `maven-shade-plugin` 打 fat JAR——合并后的单一 JAR 无法按模块追踪依赖与许可，
-  也无法与 `Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致
+- 发行包形态按目标分两类（2026-10-15 起，issue #200 / #218）：
+  - **桌面端便携包 = 单体 jar（包根平铺）**：`aha-desktop/src/assembly/dist-desktop.xml` 产出
+    `aha-desktop.jar` + `AhaDesktop.sh` / `AhaDesktop.bat` + `README.md` / `CHANGELOG.md` /
+    `LICENSE`，全部在包根，**没有 `lib/`、没有 `bin/`**。jar 由 `maven-shade-plugin` 合并，
+    含**本平台** OpenJFX 的类与原生库——原生库在分类器 jar 根部，运行期由 JavaFX 自己从
+    jar 取出并缓存（`NativeLibLoader.loadLibraryFromResource`）。
+    包根 jar 名**去版本号**，启动脚本与用户命令因此与版本无关。
+  - **入口类必须是「不继承 `javafx.application.Application`」的转发类**（`AhaDesktopLauncher`）：
+    主类一旦继承 `Application`，JVM 启动器在 `java -jar` 下直接报
+    「JavaFX runtime components are missing, and are required to run this application」。
+  - **用 shade 必须带 `shadedArtifactAttached=true` + `shadedClassifierName`**：默认（`false`）
+    会用 fat jar **顶替项目主产物**，于是任何按「项目工件」取件的地方都会拿到 fat jar、
+    模块化 jar 被挪成 `original-*.jar`（issue #217 的实测教训）；原生镜像线
+    （`aha-desktop-native` 依赖 `aha-desktop`）与装配描述符都会因此拿错包。
+  - **CLI 发行包 = JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
+    组装（`aha-cli/src/assembly/dist.xml`）：`bin/Aha.sh` / `bin/Aha.bat` 必须与 `Dist/`
+    布局保持一致（`$DIR/../lib`）。迁移为平铺单体 jar 见 issue #218 步骤一。
+  - 早期本条的「**禁止**使用 `maven-shade-plugin` 打 fat JAR」（理由：合并后的单一 JAR 无法
+    按模块追踪依赖与许可）**已按目标放宽**为上面两类：JVM 便携包面向「下载即可双击运行」的用户，
+    接受单体 jar 的代价；需要按模块追踪依赖与许可的场合仍用模块路径形态（CLI 与本地 `Dist/`）。
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
-  - `bin/Aha.sh` / `bin/Aha.bat` 必须与 `Dist/` 布局保持一致（`$DIR/../lib`）
   - `Dist/` 不入库，须在 `.gitignore` 中保持忽略
 - **构建产物一律输出到 `Dist/`（仓库根只放源码与文档）**：
   - 桌面端便携包、原生镜像包、CLI 发行 zip 全部落 `Dist/`，**不得**在仓库根
