@@ -56,6 +56,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+Write-Host '正在查询 GitHub 发布页，请稍候……'
+Write-Host ''
+
 #: dev 线 JVM 包的 tag 后缀（见 BuildJVMArtifacts.yml 的 PreRelease-AHA-JVM 作业）。
 $TagSuffix = '-aha-jvm'
 
@@ -128,33 +131,24 @@ function Get-AssetFor {
     return $null
 }
 
-# ── 列出 release（API → 原子 feed → 网页兜底，与另两个脚本同一思路）─────────────
+# ── 列出 release（走 GitHub API）───────────────────────────────────────────────
 function Get-Releases {
-    $perPage = 100
+    $url = "https://api.github.com/repos/$Repo/releases?per_page=100"
     try {
-        $url = "https://api.github.com/repos/$Repo/releases?per_page=$perPage"
         $all = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 30
-        return @($all | Where-Object { (Get-TagVersion $_.tag_name) } |
-            Sort-Object -Property @{Expression = { [datetime]($_.published_at ?? $_.created_at) }; Descending = $true})
     } catch {
-        Write-Host ("  GitHub API 不可用（{0}），改用原子 feed" -f $_.Exception.Message) -ForegroundColor Yellow
+        throw ("查询 GitHub 发布页失败：{0}`n" +
+               "  提示：可能是网络问题，或未认证时的限流（60 次/小时）——" +
+               "设置环境变量 GITHUB_TOKEN 可提高额度。") -f $_.Exception.Message
     }
-    try {
-        $feed = Invoke-RestMethod -Uri "https://github.com/$Repo/releases.atom" -Headers $downloadHeaders -TimeoutSec 30
-        $list = @()
-        foreach ($entry in $feed) {
-            $name = [string]$entry.title
-            if (Get-TagVersion $name) {
-                $list += [pscustomobject]@{ tag_name = $name; assets = @(); published_at = $entry.updated; created_at = $entry.updated }
-            }
-        }
-        return $list
-    } catch {
-        throw ("既拿不到 API 也拿不到原子 feed：{0}" -f $_.Exception.Message)
-    }
+    # 按发布时间降序；注意不能用 `??`（空合并是 PowerShell 7+ 语法，5.1 会报语法错）。
+    return @($all | Where-Object { (Get-TagVersion $_.tag_name) } |
+        Sort-Object -Property @{ Expression = {
+            if ($_.published_at) { [datetime]$_.published_at } else { [datetime]$_.created_at }
+        }; Descending = $true })
 }
 
-# 资产清单未知（原子 feed 兜底）时，补齐某个 tag 的资产。
+# `-Tag` 直接指定时资产清单未知，补齐它（`-List` / 取件都需要资产名）。
 function Complete-Assets {
     param($Release)
     if ($Release.assets -and $Release.assets.Count -gt 0) { return $Release }
