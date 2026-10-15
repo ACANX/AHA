@@ -27,6 +27,8 @@ import java.util.Properties;
  * @since 0.1.0
  */
 public final class AppVersion {
+    // S8（#176）验收探针：本行仅为注释，不含任何功能改动；本 PR 只用于验证「标签 → 出包 → 取件 → 关闭清理」链路，随后关闭不合并。
+
 
     /** 资源文件名，与本类同包。 */
     private static final String RESOURCE = "version.properties";
