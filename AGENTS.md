@@ -263,6 +263,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [ExtensionAuthoringGuide.md](Docs/Guide/ExtensionAuthoringGuide.md) - 扩展开发
 - [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) - 排错指南
 - [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) - 原生渲染诊断手册（真机取证步骤：跑原生包与 JVM 模式、收集诊断日志、对照判据）
+- [GraalVMInActionsGuide.md](Docs/Guide/GraalVMInActionsGuide.md) - **GitHub Actions 里的 GraalVM 参考**（Action 输入速查、发行版与版本选择、native-image 参数定法与「四类清单」闭环、权威查询入口含 `native-image --help-extra` 等本地自证命令、症状→参数对照表）
 - [PlanWritingGuide.md](Docs/Guide/PlanWritingGuide.md) - **方案文档编写参考**（较大方案变更 / 新特性的文档体例；参考性，非强制）
 
 ## 待办与计划

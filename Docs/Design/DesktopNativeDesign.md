@@ -522,3 +522,4 @@ CLI 发行 zip）一律输出到 `Dist/`：
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（原生镜像属于「慢检查」之外的新工作流）
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）
+- [GraalVMInActionsGuide.md](../Guide/GraalVMInActionsGuide.md)：**GitHub Actions 中的 GraalVM 参考**（Action 输入速查、参数四类清单闭环、权威查询入口与本地自证命令、症状→参数对照表）
