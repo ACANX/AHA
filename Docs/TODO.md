@@ -277,6 +277,15 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 > 现状：`aha-desktop` 仍为占位模块（`module-info` + 空 JAR），但**平台依赖机制已就位**——
 > 父 POM 的 5 个 `javafx-*` profile + `dependencyManagement` 已能解析本平台的 JavaFX 分类器工件，
 > `aha-desktop` 已声明 `javafx-base` / `javafx-graphics` / `javafx-controls`（2026-10-08 实装并实测）。
+>
+> 【已失效（2026-10-15，复审 issue #121）】`aha-desktop` **早已不是占位模块**：FXML 化四个批次、
+> 静态资源分目录、GUI 冒烟（`AhaDesktopSmokeTest`，CI `ui-smoke` 起 Xvfb 真开窗口）、主题与字体修复、
+> 快照包与取件链路都已落地（见 `CHANGELOG.md` 的 0.1 段与 `Docs/DevSpec/BuildGuide.md`）。
+> 本节其余「现状」表述请以当前口径为准，本节保留为历史记录。
+>
+> 【已失效（2026-10-15，复审 issue #121）】表内 **D-03「FXML 反射需限定 `opens`」** 已落地：
+> `aha-desktop/src/main/java/module-info.java` L30 现为
+> `opens com.acanx.module.aha.desktop.view to javafx.fxml;` ⇒ 该行状态不再反映现状。
 
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
