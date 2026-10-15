@@ -154,6 +154,10 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **原生 exe 里输入框的轮廓线丢失（issue #229，2026-10-15）**：只在 **原生镜像编出的 exe** 里，切换主题后对话输入框的轮廓线不见了 —— 而内容面底色按 #153 的口径与页底**同色**，轮廓线一没就分不出输入框的范围（JVM 模式正常）。根因：轮廓线此前**完全依赖 CSS**，而原生镜像下 modena 那些带 `derive()` / `linear-gradient()` 的规则会**整条声明被丢弃**（`TS-2610-029`）；`ThemePaint` 的属性 API 兜底只覆盖背景与文字，**边框漏在覆盖范围之外**。
+  - 修复：`ThemePaint` 新增 `paintBorder()`，把 `-fx-border-color`（+ 宽度 / 圆角，缺省 1 / 3）落到 `Region.setBorder(...)`；三处同类控件（对话输入框、会话搜索框、日志面板文本域）的内联样式补上轮廓线（值取自补丁样式表，JVM 下外观不变）。约定：样式串没写边框就不动现有边框，写 `transparent` / `none` 才清空。
+  - 断言：冒烟测试读输入框**实际生效的** `Region.getBorder()`，断言颜色为 `Palette.BORDER` 且**跟着主题换**。
+  - 记录见 [`TS-2610-046`](Docs/Troubleshooting/TS-2610-046-Input-Outline-Lost-In-Native.md)（含结论分层 / 观测数据 / 排除项 / 未决问题）。
 - **桌面端切主题后日志区与输入框底色不跟着变（issue #153 复现，2026-10-15）**：根因是**可见底色由
   皮肤内部节点绘制**（`TextArea` 的 `.content`、`ScrollPane` 的 `.viewport` / `.corner`），而
   上色逻辑只作用于**控件本体**（`setStyle` + 属性 API），内部基面此前只依赖补丁样式表 ——

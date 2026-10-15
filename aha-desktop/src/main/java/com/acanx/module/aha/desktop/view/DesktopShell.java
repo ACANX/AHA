@@ -1337,6 +1337,8 @@ public final class DesktopShell implements ChatView {
         themed(sessionSearch, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
                 // 显式背景属性：只设 looked-up color 时，原生镜像下偶发不向子节点（.content / .text）传播（issue #49）
                 + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                // 轮廓线：同输入框（issue #229，会话搜索框属同类控件）
+                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";"
                 + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         sessionSearch.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
@@ -1578,6 +1580,11 @@ public final class DesktopShell implements ChatView {
                 // 同上：TextArea 的底色在 modena 里来自 .text-area > .content 的查表，
                 // 显式给 background-color 才能在原生镜像下稳定生效（真机截图里它是纯白底）
                 + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                // 轮廓线（issue #229）：原生镜像 exe 里「输入框的轮廓线丢失，纯色界面下分不出范围」——
+                // modena 画那圈线的规则带 derive() / linear-gradient()，原生镜像下整条声明被丢弃
+                //（TS-2610-029）。这里显式给（值与补丁样式表一致，JVM 下外观不变），
+                // 由 ThemePaint.apply 走属性 API 落到 Region 上，不依赖 CSS 传导。
+                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";"
                 + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
         composer.setWrapText(true);

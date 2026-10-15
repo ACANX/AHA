@@ -111,6 +111,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-042-Snapshot-Comment-Lines-Indistinguishable.md](TS-2610-042-Snapshot-Comment-Lines-Indistinguishable.md) | 快照评论出现两条「除 marker 外逐字相同」的条目（marker 是不可见注释）⇒ 标题须带「线 · 目标范围」，且「未打任何标签」时只由 JVM 线落一条 | 2026-10-15 12:00 | 见 issue #205 |
 | [TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md](TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md) | 快照评论跨线陈旧：JVM 线收到纯原生目标时不更新自己那条，停在「未打任何 `SNAPSHOT:*` 触发标签」⇒ 改为写「属 X 线，交由 X 处理」的交接说明 | 2026-10-15 13:00 | 见 issue #205 |
 | [TS-2610-044-Publish-Skipped-By-Null-Bool-Compare.md](TS-2610-044-Publish-Skipped-By-Null-Bool-Compare.md) | `null != false` 是 **false**：`build-publish` 的门用了 `inputs.publish != false`，`push` 无 inputs ⇒ 每次发布被静默跳过，dev 的 JVM 预发行包停发 4 天（run 仍报 success） | 2026-10-15 14:00 | 见 issue #213 |
+| [TS-2610-046-Input-Outline-Lost-In-Native.md](TS-2610-046-Input-Outline-Lost-In-Native.md) | 原生镜像 exe 里输入框轮廓线丢失（JVM 正常）：modena 的 derive/linear-gradient 让整条声明被丢弃，而 ThemePaint 的属性 API 兜底只覆盖背景与文字、**漏了边框** ⇒ 与页底同色又没有边，分不出输入框范围 | 2026-10-15 16:00 | 见 issue #229 |
 
 ## 3. 维护规则
 

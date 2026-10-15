@@ -17,6 +17,10 @@ import javafx.scene.control.DialogPane;
 import javafx.scene.control.Labeled;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.Border;
+import javafx.scene.layout.BorderStroke;
+import javafx.scene.layout.BorderStrokeStyle;
+import javafx.scene.layout.BorderWidths;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
@@ -272,6 +276,59 @@ public final class ThemePaint {
             if (background != null) {
                 paint(region, background, "背景色");
             }
+            paintBorder(region, style);
+        }
+    }
+
+    /**
+     * 按样式串里的 {@code -fx-border-*} 同步边框（issue #229）。
+     *
+     * <p>为什么要走属性 API：输入框那圈「轮廓线」在 JVM 下是 modena 的多层背景 / 边框规则画的，
+     * 而那些规则里有 {@code derive()} / {@code linear-gradient()} —— 原生镜像下这些 CSS 函数
+     * 会让**整条声明被丢弃**（见 {@code TS-2610-029}）。于是 exe 里输入框与页底同色
+     * （{@code Palette.CONTROL_INNER}），却**一圈线都没有**：纯色界面下肉眼分不出输入框的范围
+     * （2026-10-15 真机，issue #229）。补丁样式表里给的 {@code -fx-border-color} 虽是纯字面量，
+     * 但对 {@code TextArea} 这类复合控件同样不可靠 —— 与底色同一个理由，落到属性 API 最稳。</p>
+     *
+     * <p>约定：样式串里**没写** {@code -fx-border-color} 就不动现有边框（不能把 CSS 给的边框抹掉）；
+     * 写了 {@code transparent} / {@code none} 才清空。宽度 / 圆角缺省取 1 / 3 —— 与补丁样式表里
+     * 输入类控件的取值一致，这样 JVM 下两种途径画出来的是同一个外观。</p>
+     *
+     * @param region 目标区域
+     * @param style  与本体同一份样式串
+     */
+    private static void paintBorder(Region region, String style) {
+        String colorText = value(style, "-fx-border-color");
+        if (colorText == null) {
+            return;
+        }
+        if (colorText.startsWith("transparent") || "none".equals(colorText.trim())) {
+            region.setBorder(null);
+            return;
+        }
+        double width = number(style, "-fx-border-width", 1);
+        double radius = number(style, "-fx-border-radius", 3);
+        color(colorText, c -> region.setBorder(new Border(new BorderStroke(
+                c, BorderStrokeStyle.SOLID, new CornerRadii(radius), new BorderWidths(width)))), "边框色");
+    }
+
+    /**
+     * 取样式串里的数值（带 {@code px} 单位也吃得下）。
+     *
+     * @param style    样式串
+     * @param key      属性名
+     * @param fallback 取不到 / 解析不出时的缺省值
+     * @return 数值
+     */
+    private static double number(String style, String key, double fallback) {
+        String raw = value(style, key);
+        if (raw == null) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(raw.trim().replace("px", ""));
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 
