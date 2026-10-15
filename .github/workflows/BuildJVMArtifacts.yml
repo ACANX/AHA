@@ -212,11 +212,11 @@ jobs:
         include:
           # ── JDK 25（基线，release=25）──
           - os: ubuntu-latest
-            label: ubuntu-x64
+            label: ubuntu-amd64
             jdk: 25
             upload_cli: true
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             jdk: 25
             upload_cli: false
           - os: macos-latest
@@ -225,11 +225,11 @@ jobs:
             upload_cli: false
           # ── JDK 27（release=27）──
           - os: ubuntu-latest
-            label: ubuntu-x64
+            label: ubuntu-amd64
             jdk: 27
             upload_cli: true
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             jdk: 27
             upload_cli: false
           - os: macos-latest

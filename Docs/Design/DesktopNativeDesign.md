@@ -165,7 +165,7 @@ Dist/aha-desktop-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  n
 | 作业 | 作用 | 关键点 |
 |---|---|---|
 | `native-version` | 算版本号（`a.b.c.PPPPP`） | 基线读根 POM（唯一来源）；PR 号优先取输入，其次按提交 SHA 反查 API；取不到记 `00000` 并告警（不猜） |
-| `native-build` | 矩阵四条腿（linux-x64 / windows-x64 / macos-arm64 用 JDK 25；windows-x64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
+| `native-build` | 矩阵五条腿（ubuntu-amd64 / windows-amd64 / macos-arm64，JDK 25；其中 ubuntu-amd64 与 windows-amd64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
 | `native-publish` | 汇总制品 → 发布 `native-v<版本>` 预发行版 | 单写者（三条腿并发写同一个 release 会互相打架）；`if: always()` 让部分平台成功也照发 |
 
 ### 4.3 版本号规则（`a.b.c.PPPPP`）

@@ -10,7 +10,7 @@
         tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
     本脚本做四件事：
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
-      2. 挑出**本机平台**该取哪个资产（JVM 线 `windows-x64`、原生线 `windows-amd64`）；
+      2. 挑出**本机平台**该取哪个资产（JVM 线与原生线自 2026-10-15 起**共用同一套**：`windows-amd64` / `ubuntu-amd64`）；
       3. 下载 zip 到 `Dist\`（已有同尺寸的包则复用；带 sha256 则校验）；
       4. 解压到**按资产命名的目录**里；若是**本机平台的原生包**，再把 exe
          **安装（替换）到 `-Out`（默认 = 启动器所在目录）**，旧版留 `.bak`（`-NoInstall` 可只取件）。
@@ -76,7 +76,7 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
 $TtlDays      = 7
 
-#: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线是 `windows-x64`，原生线是 `windows-amd64`）
+#: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线与原生线共用同一套，issue #215）
 $kinds = @{
     'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
     'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('AHA-Desktop-JVM-') }
@@ -126,8 +126,9 @@ $StateFile = Join-Path $OutDir '.aha-snapshot.json'
 
 # 本机架构 → 平台标签（两种命名都要给：JVM 线用 x64，原生线用 amd64）
 $isArm = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
-$jvmPlatform = if ($isArm) { 'windows-arm64' } else { 'windows-x64' }
-$nativePlatform = if ($isArm) { 'windows-arm64' } else { 'windows-amd64' }
+# 两条线现在共用同一套平台词（issue #215）：JVM 线与原生线取同一个标签。
+$jvmPlatform = if ($isArm) { 'windows-arm64' } else { 'windows-amd64' }
+$nativePlatform = $jvmPlatform
 
 # API 请求才带 token（未认证的 60 次/小时容易撞上）；**下载请求不带**——
 # GitHub 的下载地址会 302 到 objects.githubusercontent.com，没必要把凭据交给另一个主机。

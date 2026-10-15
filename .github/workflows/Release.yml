@@ -86,10 +86,10 @@ jobs:
         # 静静挂到 release 页面。
         include:
           - os: ubuntu-latest
-            label: ubuntu-x64
+            label: ubuntu-amd64
             expected: linux
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             expected: win
           - os: macos-latest
             label: macos-arm64

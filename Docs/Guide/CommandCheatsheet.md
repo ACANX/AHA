@@ -308,7 +308,7 @@ Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种�
 - **只碰自己的包**：JVM 与「原生 CLI」目标解压到 `Dist\<资产名>\` 的**独立目录**；**原生桌面端**目标会把包里的 exe
   替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，下载前先探测占用），`-NoInstall` 可只取件——与 `UpdateNative.ps1` 语义一致；
 - **独立状态**：记在 `Dist\.aha-snapshot.json`，不读写 `.aha-desktop-native.json` / `.aha-cli-native.json`；
-- 平台自动识别：JVM 线取 `windows-x64`、原生线取 `windows-amd64`（ARM64 机器取 `*-arm64`）。
+- 平台自动识别：两条线**共用一套平台词**，取 `windows-amd64`（ARM64 机器取 `windows-arm64`）。
 
 **让 PR 出快照包**（两种方式）：
 

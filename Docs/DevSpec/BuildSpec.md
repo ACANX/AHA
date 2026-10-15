@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.35.0
+**文档版本**：v1.36.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -50,6 +50,7 @@
 | v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
 | v1.33.0 | 2026-10-15 | §11.4 新增「评论必须可辨识」硬约定：快照评论标题须带「线 · 本线目标范围」（marker 是不可见注释）；且「未打任何标签」时**只由 JVM 线落一条**，不得出现两条同义评论（实测 PR #206）| @ACANX / CNXNC |
 | v1.34.0 | 2026-10-15 | §11.4 新增「跨线写交接说明」硬约定：目标属另一条线时，当前线把自己那条评论更新为「属 X 线，交由 X 处理」，**不得**停在「未打任何 `SNAPSHOT:*` 触发标签」（issue #205 的原始现象）| @ACANX / CNXNC |
+| v1.36.0 | 2026-10-15 | §11.1 平台标签口径统一：JVM 线 `ubuntu-x64` / `windows-x64` ⇒ **`ubuntu-amd64` / `windows-amd64`**（与原生线一致，issue #215）；`SnapshotPlan.py` 里 JVM 与原生两张平台表合并为一张 | @ACANX / CNXNC |
 | v1.35.0 | 2026-10-15 | §8.1 新增「工作流的门不得与布尔字面量做宽松比较（强制）」：`push` 无 `inputs` ⇒ `inputs.x` 为 `null`，而 `null != false` 在 GitHub 表达式里是 **false** ⇒ `build-publish` 门失效、dev 的 JVM 预发行包**静默停发 4 天**（issue #213）；配套守卫 `check_yaml_input_bool_compare()` | @ACANX / CNXNC |
 
 ## 1. 适用范围
@@ -564,7 +565,7 @@ native 侧的质量保证分**三层**：
 | 目标词 | `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**） |
 | 快照版本 | `<基线>.<PR 号补零 5 位>.<MMddHHmm（北京时间）>`；基线来自根 `version` 文件 |
 | 资产名 | `AHA-<目标>-<快照版本>-<平台标签>-jdk<JDK>.zip`（原生线另出同族报告包） |
-| 平台标签 | JVM 线 `ubuntu-x64` / `windows-x64`（只有 JDK 25）；原生线 `ubuntu-amd64` / `windows-amd64` / `macos-arm64` |
+| 平台标签 | **两条线统一为同一套**（2026-10-15，issue #215）：`ubuntu-amd64` / `windows-amd64` / `macos-arm64`（JVM 线快照只有前两个，且只有 JDK 25）|
 
 > **不可忘的一条**：该 tag 落在 `V*` 家族里，所以 `Release.yml` 的 tag 过滤**必须**保留负向模式
 > `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——否则每次出快照都会触发一遍完整的正式发版流程。
