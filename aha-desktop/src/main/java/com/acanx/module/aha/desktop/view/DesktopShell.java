@@ -1334,7 +1334,7 @@ public final class DesktopShell implements ChatView {
         sessionSearch.setId(SESSION_SEARCH_ID);
         sessionSearch.setPromptText("⌕ 搜索会话");
         // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
-        themed(sessionSearch, sessionSearchStyle());
+        themed(sessionSearch, this::sessionSearchStyle);
         // 轮廓色跟随焦点状态，所以焦点一变就要重刷（与输入框同一处理）
         sessionSearch.focusedProperty().addListener(
                 (observable, was, now) -> ThemePaint.themed(sessionSearch, sessionSearchStyle()));
@@ -1614,7 +1614,7 @@ public final class DesktopShell implements ChatView {
         //（补丁样式表 .text-input:focused → FOCUS_BORDER），普通边框色（BORDER）在两种主题下都很淡。
         // 所以轮廓色必须**跟着焦点状态走**，而且要把状态写进样式串里：这样 JVM 下与补丁样式表一致、
         // 原生镜像下由属性 API 兜底也有正确的颜色。焦点变化时重刷一次。
-        themed(composer, composerStyle());
+        themed(composer, this::composerStyle);
         composer.focusedProperty().addListener(
                 (observable, was, now) -> ThemePaint.themed(composer, composerStyle()));
         composer.setWrapText(true);
