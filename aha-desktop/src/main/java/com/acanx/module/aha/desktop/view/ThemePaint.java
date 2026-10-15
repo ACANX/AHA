@@ -1,5 +1,7 @@
 package com.acanx.module.aha.desktop.view;
 
+import com.acanx.module.aha.desktop.fx.FxDispatcher;
+import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import java.net.URL;
 import java.util.Collections;
 import java.util.List;
@@ -8,7 +10,6 @@ import java.util.WeakHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -85,6 +86,16 @@ public final class ThemePaint {
      * <p>这份清单必须与两份补丁样式表里的对应选择器一致，由 {@code bin/CheckTheme.py} 断言。</p>
      */
     private static final List<String> SKIN_SURFACE_SELECTORS = List.of(".content", ".viewport", ".corner");
+
+    /**
+     * UI 线程投递器。
+     *
+     * <p>本仓库有线程契约：**只有 {@code PlatformFxDispatcher} 可以直接调用 JavaFX 线程 API**
+     * （{@code FxThreadContractTest} 静态扫描兜底），其它位置一律经 {@link FxDispatcher} 投递。
+     * 本类是静态工具、拿不到上层实例，故自持一个（{@code PlatformFxDispatcher} 是无状态的薄包装，
+     * 多一个实例没有代价；它已在 UI 线程时直接执行，不会白绕队列）。</p>
+     */
+    private static final FxDispatcher DISPATCHER = new PlatformFxDispatcher();
 
     /** 已套过主题的对话框面板（弱引用：窗口关掉后自动消失，不会攒住旧场景）。 */
     private static final Set<DialogPane> DIALOG_PANES =
@@ -267,9 +278,11 @@ public final class ThemePaint {
     /**
      * 把同一份底色/文字色写到**皮肤内部基面**上（{@link #SKIN_SURFACE_SELECTORS}）。
      *
-     * <p>为什么要延后一帧：皮肤是**首次 CSS 处理时**才建出来的，控件刚 {@code new} 出来时
+     * <p>为什么要挑时机：皮肤是**首次 CSS 处理时**才建出来的，控件刚 {@code new} 出来时
      * {@code lookup(".content")} 什么都找不到；而 {@code lookup} 的结果也只在 CSS 处理之后有效
-     * （JavaFX 的约定）。因此这里 {@code Platform.runLater} 到下一帧，查找前显式 {@code applyCss()}。</p>
+     * （JavaFX 的约定）。这里经 {@code FxDispatcher} 投递（已是 UI 线程时直接执行），
+     * 查找前显式 {@code applyCss()}；皮肤尚未建立时 {@code lookup} 返回 {@code null}，
+     * 直接跳过 —— 那个阶段由补丁样式表负责（也正是启动时看起来正常的原因）。</p>
      *
      * <p>只处理**基面**（背景），不动内部的文字节点：{@code TextArea} / {@code TextField} 的
      * {@code .text} 由皮肤把它绑定到控件的 {@code textFill} 属性上，再用属性 API 直写会打断那条绑定，
@@ -288,7 +301,7 @@ public final class ThemePaint {
             return;
         }
         String fill = background;
-        Platform.runLater(() -> {
+        DISPATCHER.dispatch(() -> {
             if (node.getScene() == null) {
                 return;
             }
