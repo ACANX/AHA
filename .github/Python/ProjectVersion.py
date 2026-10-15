@@ -169,8 +169,12 @@ def collect_artifact_ids(root: Path) -> list[str]:
 def collect_artifacts(root: Path) -> list[Path]:
     """收集 `target/` 与 `Dist/` 下的 jar / zip 产物。
 
-    产物目录**只扫一层**（外加 `Dist/lib` 这样的一层子目录）：构建目录下还有
-    `classes/`、`maven-status/` 等海量文件，深挖既慢又没有意义。
+    产物目录**只扫一层**（再往下只多扫 `Dist/<子目录>/*.jar|zip` 这一层，例如 JVM
+    便携包的版本目录、或旧形态的 `Dist/lib`）：构建目录下还有 `classes/`、
+    `maven-status/` 等海量文件，深挖既慢又没有意义。
+
+    平铺后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**，名字对不上
+    `artifactId-` 前缀，因此天然不参与比对（见下方 `match_artifact_id`）。
     """
     artifacts: list[Path] = []
     for dirpath, dirnames, _ in os.walk(root):
@@ -323,7 +327,7 @@ def collect_findings(root: Path, baseline: str) -> list[tuple[str, bool, str]]:
         for artifact in artifacts:
             artifact_id = match_artifact_id(artifact.name, artifact_ids)
             if artifact_id is None:
-                continue  # 第三方依赖（如 Dist/lib 下的 jackson-*.jar），不属本项目版本
+                continue  # 第三方依赖（如 Dist/lib 旧形态下的 jackson-*.jar）或平铺后无版本号的 aha-cli.jar
             matched.append(artifact)
             segment = extract_version(artifact.name, artifact_id)
             if segment != baseline:

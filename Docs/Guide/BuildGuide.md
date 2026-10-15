@@ -1,6 +1,6 @@
 # 构建指南
 
-**文档版本**：v1.15.0
+**文档版本**：v1.16.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增构建发行包（`Dist/`）说明 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增「运行中的 AHA 锁定 `Dist/lib` 导致 assembly 失败」排错项 | @ACANX |
@@ -86,16 +87,16 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 ```
 Dist/
-├── bin/     Aha.sh、Aha.bat
-├── lib/     JPMS 模块路径（本项目模块 + 全部运行时依赖）
+├── aha-cli.jar              单体 jar（全部依赖都在里面，名字不带版本号）
+├── AhaCli.sh、AhaCli.bat    启动脚本（`java -jar aha-cli.jar`）
 ├── README.md、LICENSE、CHANGELOG.md
 ```
 
 验证：
 
 ```bash
-./Dist/bin/Aha.sh version     # Linux / macOS
-Dist\bin\Aha.bat version      # Windows
+./Dist/AhaCli.sh version  # Linux / macOS
+Dist\AhaCli.bat version   # Windows
 ```
 
 由 `maven-assembly-plugin` 与 `aha-cli/src/assembly/dist.xml` 驱动。
@@ -120,19 +121,21 @@ python3 Script/Python/DesktopDistExtract.py
 ```
 
 - `DesktopDistBuild.py`：以 `./mvnw -pl aha-desktop -am package -DskipTests -Djacoco.skip=true`
-  出包，并**自证产物**——包内必须有 aha-desktop 模块、**恰好 3 个**本平台 OpenJFX jar
-  与两个启动脚本；“构建成功但包是空的 / 少了平台原生库”会当场失败。
+  出包，并**自证产物**——包根必须有去版本号的单体 jar `aha-desktop.jar` 与两个启动脚本
+  （`AhaDesktop.sh` / `AhaDesktop.bat`），且单体 jar 内含 JavaFX 类与**本平台** OpenJFX
+  原生库、不含 `module-info.class`；“构建成功但包是空的 / 少了平台原生库”会当场失败。
   加 `--with-tests` 可先跑测试，加 `--clean` 可先清理。
 - `DesktopDistExtract.py`：默认取**本平台最新**的包（也可用 `--zip` 指定），先解压到暂存目录、
-  全部成功后再落地，并清掉 `lib/` 里上一版桌面端独占的 jar（`aha-desktop-*.jar` / `javafx-*.jar`）
-  ——不清会让 JPMS 模块路径上出现同一模块的两个版本（`java.lang.module.FindException`）。
-  共享依赖与仅属于 CLI 的 `aha-cli-*.jar` 不受影响，因此 `Dist/` 可同时保留 CLI 与桌面端用法。
+  全部成功后再落地，并清掉上一版（`lib/` + `bin/` 形态）的遗留文件（`lib/aha-desktop-*.jar`、
+  `lib/javafx-*.jar`、`bin/AhaDesktop.*`）——不清就会与平铺形态的新入口并存，
+  让人分不清哪个才是当前形态（issue #218）。
+  属于 CLI 的 `aha-cli.jar` 与 `Aha.*` 不受影响，因此 `Dist/` 可同时保留 CLI 与桌面端用法。
 
 更新后直接运行：
 
 ```bat
 Dist\AhaDesktop.bat              # Windows（桌面端：包根单体 jar）
-Dist\bin\Aha.bat version          # CLI 仍可用（JPMS 目录形态）
+Dist\AhaCli.bat version           # CLI 同样平铺在 Dist\ 根
 ```
 
 ```bash
@@ -319,11 +322,11 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 | `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.plugin.version` |
 | `Coverage checks have not been met` | 覆盖率低于门禁阈值 | 补测试；确有必要排除时需登记理由（见 `BuildSpec.md` 第 6 节） |
 | Maven 4 报语法错误 | 使用了 Maven 4 专有语法 | 改回 Maven 3.9.x 兼容写法（见 `BuildSpec.md` 第 5 节） |
-| `Failed to create assembly: Problem copying files : .../Dist/lib/xxx.jar` | **有进程占着 `Dist/lib` 下的 jar**（或 `Dist/bin` 目录）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `Dist/`」的占用者清单与处置 |
+| `Failed to create assembly: Problem copying files : .../Dist/aha-cli.jar` | **有进程占着 `Dist/aha-cli.jar`**（旧工作区里还可能是 `Dist/lib` 下的 jar）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `Dist/`」的占用者清单与处置 |
 
 > **关于 `Dist/`**：发行包输出到**项目根**的 `Dist/`（而非 `target/`），因此 `./mvnw clean`
 > **不会**删除它。已存在的 `Dist/` 本身**不影响构建**（assembly 会覆盖同名文件）；
-> 只有其中的文件（或 `Dist/bin` 目录）被别的进程占用时才会失败。
+> 只有其中的文件（平铺后的 `Dist/aha-cli.jar`；旧工作区里还可能是 `Dist/bin` 目录）被别的进程占用时才会失败。
 >
 > 实测过的三种占用者，**第一种最常见，也最容易被误判成「AHA 还开着」**：
 >
@@ -331,7 +334,7 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 > |---|---|---|
 > | **IDEA 的 Maven server** | Windows 侧命令行含 `org.jetbrains.idea.maven.server.RemoteMavenServer36`；长期驻留，不会自己退出 | `taskkill /PID <pid> /F`。IDEA 需要时会自动重启该辅助进程；必要时在 IDEA 里执行一次「Reload Maven Project」 |
 > | 运行中的 AHA 会话 | `java.exe` 命令行含 `com.acanx.module.aha.cli` | 关闭 `chat` 会话（会话已持久化，可用 `aha chat --session <id>` 续接） |
-> | 把 `Dist/bin` 当工作目录的终端窗口 | 文件都能改，但删**目录**报 `The process cannot access the file` | 关闭该终端窗口 |
+> | 把 `Dist/` 当工作目录的终端窗口（旧工作区里的 `Dist/bin` 同理） | 文件都能改，但删**目录**报 `The process cannot access the file` | 关闭该终端窗口 |
 >
 > 定位（Windows 侧，从 WSL 同样可执行）：
 >
@@ -346,7 +349,7 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 > WSL 的 `rm -rf` / `mv` 对 9p 上的目录常报 `Permission denied`，属已知限制。
 >
 > **注意 IDEA 会自动重生这个进程**：项目里有文件变化（尤其 `pom.xml`）时，IDEA 会重新导入
-> Maven 项目，于是辅助进程又起来、又把 `Dist/lib` 锁上。实测连续两轮都出现这种情况。
+> Maven 项目，于是辅助进程又起来、又把 `Dist/aha-cli.jar` 锁上。实测连续两轮都出现这种情况。
 > 因此**打包 / 发版前先结束它、并避免在 IDE 里触发重新导入**；结束后的窗口期内完成构建最省事。
 >
 > **不要**用 `-Dassembly.skipAssembly=true` 绕过：那会跳过发行包组装，`Dist/` 停在旧版本，

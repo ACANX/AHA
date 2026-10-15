@@ -32,7 +32,7 @@
 | 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
 | 启动桌面端（Dist 版） | `Dist\AhaDesktop.bat` | `./Dist/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
-| 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
+| 启动 CLI（Dist 版） | `Dist\AhaCli.bat` | `./Dist/AhaCli.sh` |
 | 启动**桌面端原生镜像** | `Dist\aha-desktop-native.exe` | `./Dist/aha-desktop-native` |
 | 启动 **CLI 原生镜像** | `Dist\aha-cli-native.exe` | `./Dist/aha-cli-native` |
 | 按变更跑检查 | `python3 bin\CheckChanged.py` | `python3 bin/CheckChanged.py` |
@@ -73,7 +73,7 @@ python3 Script\Python\DesktopDistExtract.py --no-prune
 效果：把 zip 里**平铺**的 `aha-desktop.jar` 与两个启动脚本铺进 `Dist/`，并清掉上一版
 （`lib/` + `bin/` 形态）的遗留文件（`lib/aha-desktop-*.jar`、`lib/javafx-*.jar`、
 `bin/AhaDesktop.*`），完成后 `Dist\AhaDesktop.bat` 即可用。
-属于 CLI 的 `aha-cli-*.jar` 与 `bin/Aha.*` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
+属于 CLI 的 `aha-cli.jar` 与 `Aha.*` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
 
 ### 2.3 启动桌面端
 
@@ -126,16 +126,16 @@ mvnw.cmd -pl aha-cli -am package -DskipTests     :: 只出 CLI
 mvnw.cmd clean package                           :: 全量（CLI + 桌面端 zip）
 ```
 
-产物：`Dist\bin\` + `Dist\lib\`（JPMS 模块路径）。
+产物：`Dist\aha-cli.jar` + `Dist\AhaCli.bat` / `Dist\AhaCli.sh`（**包根平铺**，无 `bin/`、无 `lib/`）。
 
 ### 3.2 启动 / 运行
 
 ```bat
-Dist\bin\Aha.bat                    :: 进入对话（等价 aha chat）
-Dist\bin\Aha.bat run 用一句话介绍 AHA
-Dist\bin\Aha.bat provider list
-Dist\bin\Aha.bat tool list
-Dist\bin\Aha.bat version
+Dist\AhaCli.bat                     :: 进入对话（等价 aha chat）
+Dist\AhaCli.bat run 用一句话介绍 AHA
+Dist\AhaCli.bat provider list
+Dist\AhaCli.bat tool list
+Dist\AhaCli.bat version
 ```
 
 从源码直接跑（不用先出包）：
@@ -235,7 +235,7 @@ unzip -j -o '<zip>' aha-cli-native -d Dist/
 chmod +x Dist/aha-cli-native
 ```
 
-**启动**（子命令与 `Dist\bin\Aha.bat` 一致，无需 JDK）：
+**启动**（子命令与 `Dist\AhaCli.bat` 一致，无需 JDK）：
 
 ```bat
 Dist\aha-cli-native.exe                                         :: 进入对话（等价 aha chat）
@@ -276,8 +276,8 @@ python3 bin\CheckChanged.py --dry-run  :: 只打印计划
 
 ```
 Dist/
-├── bin/                    Aha.bat / Aha.sh（CLI；JPMS 目录形态）
-├── lib/                    CLI 的 JPMS 模块路径（桌面端自 issue #218 起改用单体 jar，不再用它）
+├── aha-cli.jar             CLI 单体 jar（自 issue #218 起：包根平铺，名字不带版本号）
+├── AhaCli.bat / .sh        CLI 启动脚本（平铺在 Dist 根，不再有 bin\ 子目录）
 ├── aha-desktop.jar         桌面端单体 jar（解压 / 取件后落在这里；脚本只认这个名字，与版本无关）
 ├── AhaDesktop.bat / .sh    桌面端启动脚本（同上，平铺在 Dist 根，不再有 bin\ 子目录）
 ├── desktop-jvm/            桌面端 JVM 便携包的版本目录（每版一个子目录，见 §2.4）
@@ -301,7 +301,7 @@ Dist/
 └── README.commands.md      本速查（由 DesktopDistExtract.py 刷新）
 ```
 
-- `Dist/` 是**本地构建输出目录**，已在 `.gitignore` 中忽略；其中 `.md`、`bin/*`、`lib/*.jar` 会被
+- `Dist/` 是**本地构建输出目录**，已在 `.gitignore` 中忽略；其中 `.md`、`aha-cli.jar`、以及**旧形态遗留**的 `bin/*`、`lib/*.jar` 会被
   `mvnw clean` 删掉（见 `aha-cli/pom.xml` 的 `maven-clean-plugin` 配置），由 `mvnw clean package`
   重建；本速查会随之一并重新写回，不需要手动维护。
 - 依赖升级后旧 jar 可能残留，JPMS 下同名模块出现两个版本会直接 `FindException`：

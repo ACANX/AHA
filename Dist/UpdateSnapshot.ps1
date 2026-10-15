@@ -380,6 +380,18 @@ try {
         Write-Host '  （-NoInstall：只取件，不替换任何既有文件）'
     } elseif (-not $targetExe) {
         Write-Host ("  （{0} 没有单一可执行文件，只取件不安装）" -f $pick.Target)
+        # JVM 便携包自 issue #218 起是**包根平铺**：解压目录本身就是一个能直接启动的包，
+        # 所以这里指出「跑哪个文件」，比只说一句「不安装」有用得多。
+        $flatLauncher = $null
+        foreach ($name in @('AhaDesktop.bat', 'AhaCli.bat', 'AhaDesktop.sh', 'AhaCli.sh')) {
+            $cand = Join-Path $extractDir $name
+            if (Test-Path -LiteralPath $cand) { $flatLauncher = $cand; break }
+        }
+        if ($flatLauncher) {
+            Write-Host ("        运行：{0}" -f $flatLauncher) -ForegroundColor Green
+        } elseif (Test-Path -LiteralPath (Join-Path $extractDir 'bin')) {
+            Write-Host '        （这是旧形态（bin/ + lib/）的包，从 bin\ 下启动）'
+        }
     } else {
         $res = Install-NativeBinary -ExtractDir $extractDir -TargetExe $targetExe
         if (-not $res.ok) {

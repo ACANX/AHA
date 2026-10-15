@@ -107,8 +107,8 @@ $kinds = @{
         Flat = @(
             @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
             @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
-            @{ Glob = 'Aha.bat';       Name = 'Aha.bat' }       # 只有平铺形态的包才会出现在包根
-            @{ Glob = 'Aha.sh';        Name = 'Aha.sh' }
+            @{ Glob = 'AhaCli.bat';    Name = 'AhaCli.bat' }    # 只有平铺形态的包才会出现在包根
+            @{ Glob = 'AhaCli.sh';     Name = 'AhaCli.sh' }
         )
     }
 }
@@ -365,7 +365,7 @@ try {
     #
     # 版本目录 `...\<种类>\<版本>\` 留档（多版并存、可回滚）；同时把**去版本号**的入口
     # **复制**一份到 `<Out>` 根 —— 启动脚本与用户命令因此与版本无关：
-    #   `Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar`、`Dist\Aha.bat` 都能直接用。
+    #   `Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar`、`Dist\AhaCli.bat` 都能直接用。
     # 只复制，不动版本目录里的那一份。
     if (-not $NoInstall) {
         foreach ($item in $kindInfo.Flat) {
@@ -392,7 +392,7 @@ try {
     $entries = @(Get-ChildItem -LiteralPath $targetDir -Recurse -File | Select-Object -First 2000)
     $jars = @($entries | Where-Object { $_.Name.EndsWith('.jar') })
     $hasBin = Test-Path -LiteralPath (Join-Path $targetDir 'bin')
-    $launcherName = if ($Kind -eq 'Cli') { 'Aha.bat' } else { 'AhaDesktop.bat' }
+    $launcherName = if ($Kind -eq 'Cli') { 'AhaCli.bat' } else { 'AhaDesktop.bat' }
     $launcher = if ($hasBin) { Join-Path $targetDir ("bin\{0}" -f $launcherName) } else { Join-Path $targetDir $launcherName }
     if (-not (Test-Path -LiteralPath $launcher)) { $launcher = $null }
     Write-Host ''

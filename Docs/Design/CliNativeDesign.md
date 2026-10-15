@@ -19,7 +19,7 @@
 
 三条边界（与桌面端完全一致）：
 
-1. **正式交付仍是 JVM 模式**（`Dist/bin` + `Dist/lib` 的 CLI 发行目录、`bin/Aha.*`）。
+1. **正式交付仍是 JVM 模式**（包根平铺的 CLI 发行目录：`aha-cli.jar` + `Aha.*`，issue #218）。
    原生镜像是**旁路**，不替代它。
 2. **失败必须被隔离**：CLI 原生镜像编不出来，不允许挡住任何既有流程（见第 2 节）。
 3. **参数会反复改**：这是一份「起点」，不是终稿。
@@ -87,7 +87,7 @@ Dist/aha-cli-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  V<版
 与桌面端的三处不同：
 
 1. **没有 JavaFX**：classpath 里没有 `javafx-*`（产物自证会检查这一点——CLI 不该依赖 GUI 栈）；
-2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与 `bin/Aha.sh` 走的是同一个入口）；
+2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与发行包启动脚本 `AhaCli.sh` / `AhaCli.bat` 同一个入口）；
 3. **GC 默认用 serial**（桌面端用 G1）：CLI 是「启动 → 干活 → 退出」的短命进程，
    serial 启动更快、体积更小；GUI 才关心长驻停顿。取舍不同，所以参数不同。
 
