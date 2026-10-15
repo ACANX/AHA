@@ -69,6 +69,16 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **JVM 便携包取件：新增「平铺到落地根」，并修掉「静默退回旧版本」（2026-10-15，issue #218）**：
+  `Dist\UpdateDesktopJvm.cmd` / `Dist\UpdateCliJvm.cmd` 取件后，除了把该版解压到
+  `Dist\desktop-jvm\<版本>\`（**留档**），还会把**去版本号**的入口**复制**到 `Dist\` 根
+  （桌面端 `aha-desktop.jar` / `AhaDesktop.bat` / `AhaDesktop.sh`，CLI 侧为 `aha-cli.jar`）——
+  于是命令**与版本无关**：`Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar` 直接可用，
+  换版本不必改任何一处；`-NoInstall` 可只解压不做平铺。
+  - **同时修掉一个会误导人的行为**：目标资产缺失时脚本原先**静默退回更旧的 release**
+    （实测：最新版缺 Windows/jdk25 那条腿的资产，于是退到 `00216` 那个 `bin/` + `lib/` 的旧包，
+    看起来就像「新版本不支持 fat jar」）。现在**只看最新一版**，缺资产即报错并列出该版实际有哪些资产；
+    真要退旧版必须显式说出口（`-AllowOlder`，或 `-Tag` 指定版本）。
 - **桌面端 JVM 便携包改为「包根平铺」形态（2026-10-15，issue #218）**：包内不再有 `lib/` 与 `bin/` ——
   包根只有 `aha-desktop.jar`（单体 jar：本项目模块 + 全部运行时依赖 + **本平台** OpenJFX 的类与
   原生库，原生库在运行期由 JavaFX 自己从 jar 取出并缓存）、`AhaDesktop.sh` / `AhaDesktop.bat` 与
