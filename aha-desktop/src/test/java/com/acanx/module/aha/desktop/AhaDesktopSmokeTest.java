@@ -444,7 +444,14 @@ class AhaDesktopSmokeTest {
             return null;
         }
         Paint stroke = region.getBorder().getStrokes().get(0).getTopStroke();
-        return stroke instanceof Color color ? hexOf(color) : null;
+        if (!(stroke instanceof Color color)) {
+            return null;
+        }
+        // 就地格式化（不依赖别处的小工具，避免分支间交叉引用）
+        return String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
     }
 
     /**
