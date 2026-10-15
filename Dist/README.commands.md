@@ -28,6 +28,8 @@
 | 解压并更新 `Dist/` | `python3 Script\Python\DesktopDistExtract.py` | `python3 Script/Python/DesktopDistExtract.py` |
 | 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击，无需 Python）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
 | 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击，无需 Python）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
+| 下载最新**桌面端 JVM 便携包** | `Dist\UpdateDesktopJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-desktop-<版本>-<平台>.zip` |
+| 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
 | 启动桌面端（Dist 版） | `Dist\bin\AhaDesktop.bat` | `./Dist/bin/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
 | 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
@@ -82,6 +84,20 @@ bin\AhaDesktop.bat               :: 源码根：没有 lib 时自动解压便携
 ./bin/AhaDesktop.sh
 ```
 
+### 2.4 从发布页一键取件（dev 线，Windows）
+
+```bat
+Dist\UpdateDesktopJvm.cmd                :: 取下最新的桌面端 JVM 便携包（dev 线的 V<版本>-aha-jvm）
+Dist\UpdateDesktopJvm.cmd -List          :: 列出最近几版
+Dist\UpdateDesktopJvm.cmd -Jdk 27        :: 取 JDK 27 变体
+Dist\UpdateDesktopJvm.cmd -DryRun        :: 只预览：会下载哪个包、解压到哪里
+```
+
+落地：`Dist\desktop-jvm\<版本>\`（**每版一个目录**，互不覆盖）。
+
+> 与 `UpdateDesktopNative.cmd` 的区别：那个取的是**原生包**（一个 exe，**覆盖安装**）；
+> JVM 包解出来是**目录**（`bin/` + `lib/`，`#200` 之后是单体 jar），只能解压，不存在「替换某个文件」。
+
 ## 3. CLI（JVM 发行目录）
 
 ### 3.1 编译发行目录
@@ -110,6 +126,16 @@ mvnw.cmd -pl aha-cli exec:java
 mvnw.cmd -pl aha-cli exec:java -Dexec.args="version"
 mvnw.cmd -pl aha-cli exec:java -Dexec.args="provider list"
 ```
+
+### 3.3 从发布页一键取件（dev 线，Windows）
+
+```bat
+Dist\UpdateCliJvm.cmd                :: 取下最新的 CLI JVM 便携包（**平台无关**，只有一份）
+Dist\UpdateCliJvm.cmd -Jdk 27        :: 取 JDK 27 变体
+Dist\UpdateCliJvm.cmd -List          :: 列出最近几版
+```
+
+落地：`Dist\cli-jvm\<版本>\`。
 
 ## 4. 原生镜像（试验性，免 JDK）
 
@@ -240,6 +266,11 @@ Dist/
 ├── UpdateDesktopNative.cmd            一键更新桌面端原生镜像（双击；调同目录的 UpdateNative.ps1，无需 Python）
 ├── UpdateCliNative.cmd                一键更新 CLI 原生镜像（同上）
 ├── UpdateNative.ps1                  上述两个入口的 PowerShell 实现（UTF-8 with BOM）
+├── UpdateDesktopJvm.cmd               一键取件桌面端 JVM 便携包（dev 线；调同目录的 UpdateJvm.ps1）
+├── UpdateCliJvm.cmd                   一键取件 CLI JVM 便携包（dev 线；同上）
+├── UpdateJvm.ps1                     上述两个入口的 PowerShell 实现（UTF-8 with BOM）
+├── UpdateDesktopJvmSnapshot.cmd       一键取件桌面端 JVM **快照**（= UpdateSnapshot.ps1 -Kind desktop-jvm）
+├── UpdateCliJvmSnapshot.cmd           一键取件 CLI JVM **快照**（= -Kind cli-jvm）
 ├── README.md               项目 README（由 CLI assembly 复制）
 └── README.commands.md      本速查（由 DesktopDistExtract.py 刷新）
 ```
@@ -266,6 +297,8 @@ Dist\UpdateDesktopNativeSnapshot.cmd -Pr 188   :: 取某个 PR 的快照
 Dist\UpdateDesktopNativeSnapshot.cmd -DryRun   :: 只预览：会下载哪个包、解压到哪里
 Dist\UpdateDesktopNativeSnapshot.cmd -Force    :: 已取过同一版也重新下载
 Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装（原生桌面端默认会替换 exe）
+Dist\UpdateDesktopJvmSnapshot.cmd           :: JVM 桌面包快照：取最近一次（= -Kind desktop-jvm）
+Dist\UpdateCliJvmSnapshot.cmd               :: JVM CLI 包快照：取最近一次（= -Kind cli-jvm）
 Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，引擎直调）
 ```
 
