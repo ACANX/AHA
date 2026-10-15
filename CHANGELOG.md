@@ -158,6 +158,8 @@
   - 修复：两份主题模板的状态规则**加上与基面完全相同的选择器前缀**（同特异性时后者胜），弹出层再加一层 `.combo-box-popup > …` 留余量；通用规则保留。
   - 新守卫：`bin/CheckTheme.py` 第 8 项 `check_state_rules_not_shadowed()` —— 对每一条设背景色的基面规则，要求存在**类路径完全相同**的状态规则（更深的规则不能代表普通列表，反向验证 2/1 处如期被拦下）。
   - 新断言：`AhaDesktopSmokeTest#listSelectionSurfaceIsReadableInBothThemes` —— 真开列表，读选中格**实际画出来的**背景色与 `.text` 填充色，断言分别为 `FOCUS_BORDER` / `ON_ACCENT` 且**不相同**（亮 / 暗各一次）。
+  - **原生包自测确认（2026-10-15，ACANX）**：下拉列表当前项正常显示（强调色底 + 白字）——
+    这次的 CSS 特异性问题在原生镜像下同样按 CSS 规则生效，无需额外补属性 API 兜底。
   - 为什么现在才暴露：会话列表单元格是**在 Java 里显式上色**的（`DesktopShell.SessionCell` → `ThemePaint.themed`），不过 CSS；下拉列表是第一个「颜色完全交给样式表」的 `ListView`。记录见 [`TS-2610-045`](Docs/Troubleshooting/TS-2610-045-Selected-Row-Invisible-By-Css-Specificity.md)。
 - **桌面端切主题后日志区与输入框底色不跟着变（issue #153 复现，2026-10-15）**：根因是**可见底色由
   皮肤内部节点绘制**（`TextArea` 的 `.content`、`ScrollPane` 的 `.viewport` / `.corner`），而
