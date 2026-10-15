@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.32.0
+**文档版本**：v1.33.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -48,6 +48,7 @@
 | v1.30.0 | 2026-10-15 | 新增 §11「快照产物（PR 试包）」：载体 / 命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系（含 `Release.yml` 负向过滤这条不可忘的约束） | @ACANX / CNXNC |
 | v1.31.0 | 2026-10-15 | §11.2 新增硬约定：**快照工作流不得在 `pull_request` 上用 `paths:` 过滤**（触发层过滤会让「只改文档 + 新打触发标签」的显式请求进不来，实测 PR #203 原生线毫无反应）；§8.1 同步 `DesktopNative.yml` 不再按路径过滤 | @ACANX / CNXNC |
 | v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
+| v1.33.0 | 2026-10-15 | §11.4 新增「评论必须可辨识」硬约定：快照评论标题须带「线 · 本线目标范围」（marker 是不可见注释）；且「未打任何标签」时**只由 JVM 线落一条**，不得出现两条同义评论（实测 PR #206）| @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -605,6 +606,13 @@ run 在 `03:07:47` 建立、被 `03:08:04` 的 `synchronize` 取消）。
 
 - 必需检查只有 `build (…)` 三项；快照与清理工作流的作业名**不得**写进分支保护；
 - 两条线各用各的评论标记（JVM 线 `aha-snapshot`、原生线 `aha-snapshot-native`）——共用会把另一条线的评论覆盖成「未出包」；
+- **评论必须一眼看出是哪条线在说**：marker 只是**不可见的 HTML 注释**，所以标题必须带
+  「线 · 本线目标范围」（如 `快照包（JVM 线 · Desktop-JVM / Cli-JVM）`、`快照包（原生线 · Desktop-Native）`）。
+  **不允许出现两条内容逐字相同、读者分不清是谁发的评论**（2026-10-15 实测 PR #206：两条
+  「本次未出包」除 marker 外完全一样）；
+- **「未打任何 `SNAPSHOT:*` 标签」时只由 JVM 线落一条评论**（原生线 `owns_comment=false`）——
+  否则 JVM 线 + 两条原生线会各写一条同义评论，正是上一条要避免的情形。
+  由 `SnapshotPlan.py --self-test` 的两条断言守住（「只由 JVM 线落评论」「标题各自标明线」）；
 - 原生包取件脚本（`Dist/UpdateNative.ps1` 等）按 `-aha-desktop-native` / `-aha-cli-native` 后缀检索，快照命名不影响它；
 - 取件脚本的命名契约由 `check_snapshot_fetch_parity()` 守住；`Dist/README.commands.md` 是
   `Docs/Guide/CommandCheatsheet.md` 的**逐字节副本**（`check_cheatsheet_copy()` 守卫，**禁止手改副本**）。
