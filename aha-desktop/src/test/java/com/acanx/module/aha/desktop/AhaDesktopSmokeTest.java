@@ -11,20 +11,25 @@ import com.acanx.module.aha.desktop.view.ApprovalDialog;
 import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.Theme;
+import com.acanx.module.aha.desktop.view.ThemePaint;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Button;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.text.Text;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -332,6 +337,58 @@ class AhaDesktopSmokeTest {
     }
 
     /**
+     * 列表 / 下拉列表里**选中行**的实际配色（issue #227，2026-10-15）。
+     *
+     * <p>下拉列表里「当前那一项」曾经是<strong>白底白字</strong> —— 看不见，也没完全隐藏
+     * （ACANX 真机截图：ComboBox 展开后「亮色」那一行是空白）。根因是 CSS 特异性：
+     * 基面规则用 <strong>5 个类</strong>的选择器（{@code .list-view > .virtual-flow > .clipped-container
+     * > .sheet > .list-cell}）设背景色，把 {@code .list-cell:filled:selected}（1 类 + 2 伪类）盖住了；
+     * 而选中态**文字**色来自 {@code .list-cell:filled:selected .text}（1 类 + 2 伪类 + 1 类）却能生效
+     * ⇒ 亮色主题下两者同色。</p>
+     *
+     * <p>为什么必须读运行期颜色：颜色全由补丁样式表给，选中格的 {@code getStyle()} 本来就是空的
+     * —— 只看样式串的断言对这个 bug 是瞎的。这里读的是**选中格画出来的背景**与它里面
+     * {@code .text} 节点的填充色，两者必须不同。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void listSelectionSurfaceIsReadableInBothThemes() throws Exception {
+        startToolkit();
+        for (Theme theme : List.of(Theme.LIGHT, Theme.DARK)) {
+            AtomicReference<Stage> stageRef = new AtomicReference<>();
+            onUi(() -> {
+                Palette.setTheme(theme);
+                ListView<Theme> list = new ListView<>();
+                list.setId(LIST_ID);
+                list.getItems().setAll(Theme.values());
+                list.getSelectionModel().select(Theme.DARK);
+                Stage stage = new Stage();
+                Scene scene = new Scene(new StackPane(list), 220, 140);
+                ThemePaint.install(scene);
+                stage.setScene(scene);
+                stage.show();
+                stageRef.set(stage);
+            });
+            try {
+                Region cell = awaitSelectedCell(stageRef.get());
+                assertThat(cell).as("选中格应当能被找到（%s）", theme).isNotNull();
+                assertThat(hexOf(backgroundOf(cell)))
+                        .as("选中行底色必须是强调色（%s）：修前它停在基面底色上，与白字同色", theme)
+                        .isEqualTo(normalize(Palette.FOCUS_BORDER));
+                assertThat(hexOf(textFillOf(cell)))
+                        .as("选中行文字色必须是 ON_ACCENT（%s）", theme)
+                        .isEqualTo(normalize(Palette.ON_ACCENT));
+                assertThat(hexOf(textFillOf(cell)))
+                        .as("文字色与背景色不能相同（%s）——「看不见但也没完全隐藏」就是这个", theme)
+                        .isNotEqualTo(hexOf(backgroundOf(cell)));
+            } finally {
+                onUi(() -> stageRef.get().close());
+            }
+        }
+    }
+
+    /**
      * 反复读状态标签，直到后台虚拟线程的值经桥接落到 UI 线程。
      *
      * <p><strong>只在发消息之前调用</strong>：状态标签会被 {@code setBusy(true)} 覆写成
@@ -412,6 +469,63 @@ class AhaDesktopSmokeTest {
      */
     private static String normalize(String hex) {
         return hex == null ? null : hex.trim().toUpperCase();
+    }
+
+    /** 本测试自建的列表 id（不与生产里的 id 冲突）。 */
+    private static final String LIST_ID = "aha.smoke.list";
+
+    /**
+     * 等列表把选中格建出来（虚拟流是懒建的，第一帧之后才有单元格）。
+     *
+     * <p>每一轮都经 {@code onUi} 往返一次，顺便把绘制脉冲让给 JavaFX。</p>
+     *
+     * @param stage 已显示的窗口
+     * @return 选中的单元格；始终建不出来时返回 {@code null}
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    private static Region awaitSelectedCell(Stage stage) throws Exception {
+        for (int round = 0; round < POLL_ROUNDS; round++) {
+            Region cell = uiGet(() -> selectedCell(stage));
+            if (cell != null) {
+                return cell;
+            }
+        }
+        return null;
+    }
+
+    private static Region selectedCell(Stage stage) {
+        if (stage == null || stage.getScene() == null) {
+            return null;
+        }
+        Parent root = stage.getScene().getRoot();
+        root.applyCss();
+        root.layout();
+        for (Node node : root.lookupAll(".list-cell")) {
+            if (node instanceof ListCell<?> cell && cell.isSelected() && cell.getBackground() != null) {
+                return cell;
+            }
+        }
+        return null;
+    }
+
+    private static Color backgroundOf(Region region) {
+        Background background = region.getBackground();
+        if (background == null || background.getFills().isEmpty()) {
+            return null;
+        }
+        return background.getFills().get(0).getFill() instanceof Color color ? color : null;
+    }
+
+    private static Color textFillOf(Region cell) {
+        Node text = cell.lookup(".text");
+        return text instanceof Text node && node.getFill() instanceof Color color ? color : null;
+    }
+
+    private static String hexOf(Color color) {
+        return color == null ? null : String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
     }
 
     /**

@@ -186,6 +186,35 @@
     -fx-text-fill: %ON_ACCENT%;
 }
 
+/* 悬停 / 选中：必须带上**与基面同深度**的选择器前缀（issue #227，2026-10-15）
+   基面那条是 5 个类的选择器（.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell），
+   特异性高于 `.list-cell:filled:selected`（1 类 + 2 伪类）⇒ **背景色根本盖不上去**；
+   而选中态的文字色来自另一条 `.list-cell:filled:selected .text`（1 类 + 2 伪类 + 1 类）却能生效。
+   两者叠加的结果：亮色主题下就是**白底白字** —— 下拉列表里当前那一项「看不见，也没完全隐藏」
+   （ACANX 真机截图：ComboBox 展开后“亮色”那一行是空白）。
+   这里用同深度前缀，靠「同深度时后者胜」拿到背景色的覆盖权；上面那两条通用规则保留，
+   供不在 virtual-flow 里的单元格（如 ComboBox 的按钮格）继续使用。 */
+.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:hover,
+.tree-view > .virtual-flow > .clipped-container > .sheet > .tree-cell:filled:hover {
+    -fx-background-color: %HOVER_BACKGROUND%;
+}
+
+.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:selected,
+.tree-view > .virtual-flow > .clipped-container > .sheet > .tree-cell:filled:selected {
+    -fx-background-color: %FOCUS_BORDER%;
+    -fx-text-fill: %ON_ACCENT%;
+}
+
+/* 下拉弹出层是**独立窗口**，再加一层 .combo-box-popup 前缀（6 个类）把余量留足，
+   确保这里不会被任何同深度规则压掉。 */
+.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:hover {
+    -fx-background-color: %HOVER_BACKGROUND%;
+}
+
+.combo-box-popup > .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell:filled:selected {
+    -fx-background-color: %FOCUS_BORDER%;
+    -fx-text-fill: %ON_ACCENT%;
+}
 .list-view > .virtual-flow > .corner {
     -fx-background-color: %CONTROL_INNER%;
 }
