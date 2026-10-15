@@ -344,12 +344,30 @@ jobs:
           if ! grep -q '^javafx/application/Application.class$' "$fat"; then
             echo "::error::单体 jar 内含不到 JavaFX（javafx/application/Application.class）"; exit 1
           fi
-          natives=$(grep -Ec '\.(dll|so|dylib)$' "$fat" || true)
-          if [ "$natives" -eq 0 ]; then
-            echo "::error::单体 jar 内没有本平台 OpenJFX 原生库（.dll/.so/.dylib）——运行时会报缺 JavaFX 运行时"
+          # ④ 本平台原生库：按平台**点名**，且不允许混进别的平台（与 Release.yml 同一口径）。
+          #    JavaFX 的原生库在 jar **根级**；sqlite-jdbc / jline 那类第三方包把全平台库放在
+          #    org/** 下（jar 的固有行为，不是打包缺陷），按根级过滤即可把它们排除在外。
+          case "${LABEL}" in
+            windows-amd64) ext="dll";   want="glass.dll" ;;
+            ubuntu-amd64)  ext="so";    want="libglass.so" ;;
+            macos-arm64)   ext="dylib"; want="libglass.dylib" ;;
+            *) echo "::error::未知平台标签 ${LABEL}（matrix 与这里的映射要一起改）"; exit 1 ;;
+          esac
+          if ! grep -qx "$want" "$fat"; then
+            echo "::error::单体 jar 内没有本平台（${LABEL}）的 ${want} —— 运行时会报缺 JavaFX 运行时"
             exit 1
           fi
-          echo "桌面端包：${target}（${size}；平铺形态，单体 jar 含 JavaFX 类与本平台原生库 ${natives} 个）"
+          same_ext=$(grep -Ec "^[^/]+\.${ext}$" "$fat" || true)
+          if [ "$same_ext" -eq 0 ]; then
+            echo "::error::本平台（${LABEL}）原生库数量为 0（期望 .${ext}）"; exit 1
+          fi
+          other=$(grep -E '^[^/]+\.(dll|so|dylib)$' "$fat" | grep -v "\.${ext}$" || true)
+          if [ -n "$other" ]; then
+            echo "::error::单体 jar 内混进了别的平台的原生库："
+            echo "$other" | head -5
+            exit 1
+          fi
+          echo "桌面端包：${target}（${size}；平铺形态，单体 jar 含 JavaFX 类与本平台原生库 ${same_ext} 个）"
 
       - name: 打 CLI 便携包（平台无关，只在一个腿产出）
         # 既有条件（CLI 包平台无关，只在 Ubuntu 腿产出）与「本次要不要这条腿」叠加
@@ -399,6 +417,13 @@ jobs:
           if grep -qx 'module-info.class' "$fat"; then
             echo "::error::单体 jar 不得含 module-info.class"; exit 1
           fi
+          # 依赖自带的原生库确实在包里：CLI 没有 JavaFX（根级没有原生库），
+          # sqlite-jdbc / jline 的把全平台原生库放在 org/** 下，故按**任意深度**计数。
+          natives=$(grep -Ec '\.(dll|so|dylib)$' "$fat" || true)
+          if [ "$natives" -eq 0 ]; then
+            echo "::error::单体 jar 内没有任何原生库（sqlite-jdbc / jline 都要用）—— 运行时会报 UnsatisfiedLinkError"
+            exit 1
+          fi
           # 每个关键依赖挑一个类：证明 shade 真的把 runtime 依赖合进去了
           # （而不是只打出了本项目自己的那几个模块）
           for c in picocli/CommandLine.class org/sqlite/JDBC.class org/apache/logging/log4j/core/Logger.class; do
@@ -411,7 +436,7 @@ jobs:
           if ! grep -q "${VERSION}" <<<"$out"; then
             echo "::error::单体 jar 跑不出预期版本（期望含 ${VERSION}）：$out"; exit 1
           fi
-          echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2）"
+          echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2 与原生库 ${natives} 项）"
           echo "单体 jar 冒烟输出：$(head -1 <<<"$out")"
 
       - name: 上传制品（Actions 制品仓库）
