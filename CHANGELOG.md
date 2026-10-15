@@ -71,8 +71,8 @@
 ### 变更
 - **快照自测留痕：`snapshot-verified`（默认启用、默认不卡点；issue #166）**：PR 里发一条评论即可把
   「这一版快照我按清单跑过了」记成 commit status，留痕（版本 / 平台 / JDK / 验证人 / 时间 / 对应 sha）落在 PR 评论里。
-  - 命令：`/snapshot-verify <版本> <平台> [jdk27] [+model]`（打 `success`）、
-    `/snapshot-verify-fail <版本> <平台> [jdk27] <原因>`（打 `failure`——失败也要可见）；平台词与快照出包同一套。
+  - 命令：`/snapshot-assert <版本> <平台> [jdk27] [+model]`（打 `success`）、
+    `/snapshot-assert-fail <版本> <平台> [jdk27] <原因>`（打 `failure`——失败也要可见）；平台词与快照出包同一套。
     该前缀以 `/snapshot` 开头 ⇒ 另外三条命令式工作流的守卫里加了一条排除，避免它们对这条命令回「命令格式应为 …」。
   - **默认不卡点**：`snapshot-verified` **不**进 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里显式加入。
   - **必测项一律 0 token**：清单（A1–A5 / B1–B4 / C1–C3）不含任何模型往返 —— 工具直调（`tool invoke`，绕过模型）

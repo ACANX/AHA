@@ -103,7 +103,7 @@ NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
 SNAPSHOT_VERIFIED_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotVerify.yml"
-#: 会命中 `/snapshot` 前缀的另外三条命令式工作流：它们必须把 `/snapshot-verify*` 排除掉，
+#: 会命中 `/snapshot` 前缀的另外三条命令式工作流：它们必须把 `/snapshot-assert*` 排除掉，
 #: 否则会对本命令各回一条「命令格式应为 …」（实测过：`PlanError` ⇒ 调用方回复用法）。
 SNAPSHOT_VERIFY_PEERS = (
     ROOT / ".github" / "workflows" / "CliNative.yml",
@@ -671,7 +671,7 @@ def check_snapshot_verified_contract() -> list[str]:
     #    早先写成「文件里某处出现过就算过」，反向测试立刻抓到洞：把守卫里的命令换掉，工作流永远不触发，而守卫不报。
     guard = re.search(r"^    if: >-\n(?:      .*\n)+", wf_text, re.M)
     guard_text = guard.group(0) if guard else ""
-    for cmd in ("/snapshot-verify", "/snapshot-verify-fail"):
+    for cmd in ("/snapshot-assert", "/snapshot-assert-fail"):
         if f"startsWith(github.event.comment.body, '{cmd}')" not in guard_text:
             problems.append(
                 f"{rel}：触发守卫里没有 `startsWith(github.event.comment.body, '{cmd}')`"
@@ -684,10 +684,10 @@ def check_snapshot_verified_contract() -> list[str]:
         if not peer.exists():
             problems.append(f"缺工作流 {prel}（本工作流要在它的守卫里被排除）")
             continue
-        if "!startsWith(github.event.comment.body, '/snapshot-verify')" not in peer.read_text(encoding="utf-8"):
+        if "!startsWith(github.event.comment.body, '/snapshot-assert')" not in peer.read_text(encoding="utf-8"):
             problems.append(
-                f"{prel}：守卫里缺 `&& !startsWith(github.event.comment.body, '/snapshot-verify')` —— "
-                "发 `/snapshot-verify` 命令时它会回一条「命令格式应为 `/snapshot <target> [os ...]`」（误导）"
+                f"{prel}：守卫里缺 `&& !startsWith(github.event.comment.body, '/snapshot-assert')` —— "
+                "发 `/snapshot-assert` 命令时它会回一条「命令格式应为 `/snapshot <target> [os ...]`」（误导）"
             )
 
     # ③ 顶层 permissions：漏 statuses: write 就是 403

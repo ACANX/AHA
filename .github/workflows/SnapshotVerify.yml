@@ -12,16 +12,16 @@ name: Snapshot Verify
 #     为什么这么定：适配器只有 openai-compatible / anthropic / gemini（没有本地 mock），任何真实对话都要花
 #     token，而 token 由 ACANX 的 provider key 承担；快照又是按 PR 出的，频率高。
 #
-# 命令用 `/snapshot-verify` 前缀（与 `/snapshot …` 同族，一眼看出是快照相关）：
-#   /snapshot-verify <版本> <平台> [jdk27] [+model]        ⇒ 打 success
-#   /snapshot-verify-fail <版本> <平台> [jdk27] <原因…>    ⇒ 打 failure（失败也要在 PR 上可见）
+# 命令用 `/snapshot-assert` 前缀（与 `/snapshot …` 同族，一眼看出是快照相关）：
+#   /snapshot-assert <版本> <平台> [jdk27] [+model]        ⇒ 打 success
+#   /snapshot-assert-fail <版本> <平台> [jdk27] <原因…>    ⇒ 打 failure（失败也要在 PR 上可见）
 # 平台词沿用 SnapshotPlan.py 的 OS_WORDS：Win / MacOS / Ubuntu。
 #
 # ⚠️ 这个前缀**以 `/snapshot` 开头**，会被 CliNative / DesktopNative / SnapshotJVM 的守卫
 # （`startsWith(body, '/snapshot')`）命中 —— 而 `SnapshotPlan.parse_command()` 对**不认识的目标**抛
 # `PlanError`、调用方会**回复用法**，于是它们会各回一条「命令格式应为 `/snapshot <target> [os ...]`」
 # （3 条误导性回复 + 3 次空跑）。因此那三条工作流的守卫里都加了
-# `&& !startsWith(github.event.comment.body, '/snapshot-verify')`（一条排除同时覆盖通过 / 失败两条命令），
+# `&& !startsWith(github.event.comment.body, '/snapshot-assert')`（一条排除同时覆盖通过 / 失败两条命令），
 # 并由 `bin/CheckScripts.py` 的守卫断言这条排除仍在（改回去就会红）。
 #
 
@@ -43,8 +43,8 @@ jobs:
     # 只认「挂在 PR 上」的评论，且必须是本工作流的两个命令之一 —— 别的评论一条都不起运行。
     if: >-
       github.event.issue.pull_request != null
-      && (startsWith(github.event.comment.body, '/snapshot-verify')
-          || startsWith(github.event.comment.body, '/snapshot-verify-fail'))
+      && (startsWith(github.event.comment.body, '/snapshot-assert')
+          || startsWith(github.event.comment.body, '/snapshot-assert-fail'))
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -91,8 +91,8 @@ jobs:
           用法：
 
           \`\`\`
-          /snapshot-verify <版本> <平台> [jdk27] [+model]        # 必测清单通过（打 success）
-          /snapshot-verify-fail <版本> <平台> [jdk27] <原因>   # 自测失败（打 failure）
+          /snapshot-assert <版本> <平台> [jdk27] [+model]        # 必测清单通过（打 success）
+          /snapshot-assert-fail <版本> <平台> [jdk27] <原因>   # 自测失败（打 failure）
           \`\`\`
 
           - \`<平台>\`：\`Win\` / \`MacOS\` / \`Ubuntu\`（与快照出包同一套词）；省略 JDK 段默认 \`jdk25\`。
@@ -169,8 +169,8 @@ jobs:
           done
           reason="${rest[*]:-}"
 
-          if [ "${verb}" = "/snapshot-verify-fail" ] && [ -z "${reason}" ]; then
-            reply "⚠️ \`/snapshot-verify-fail\` 需要写一句原因（否则看不出哪里没过）。
+          if [ "${verb}" = "/snapshot-assert-fail" ] && [ -z "${reason}" ]; then
+            reply "⚠️ \`/snapshot-assert-fail\` 需要写一句原因（否则看不出哪里没过）。
 
           $(usage)"
             exit 0
@@ -216,7 +216,7 @@ jobs:
 
           {
             echo "ok=true"
-            echo "state=$([ "${verb}" = "/snapshot-verify" ] && echo success || echo failure)"
+            echo "state=$([ "${verb}" = "/snapshot-assert" ] && echo success || echo failure)"
             echo "version=${version}"
             echo "platform=${platform}"
             echo "jdk=${jdk}"
