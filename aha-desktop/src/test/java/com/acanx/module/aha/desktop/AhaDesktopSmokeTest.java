@@ -402,6 +402,63 @@ class AhaDesktopSmokeTest {
     }
 
     /**
+     * 复现原生镜像下「轮廓线丢失」的**机制**（issue #229 二次排查，2026-10-15）。
+     *
+     * <p><strong>要验证的假设</strong>：原生镜像下 {@code -fx-border-color} 的多部件转换
+     * （{@code Border} / {@code BorderStrokeStyle} / {@code CornerRadii} / {@code BorderWidths}）
+     * 产不出值，而**规则仍然匹配** ⇒ 一次 CSS 重算会把 {@code Region} 的 {@code border} 设成空，
+     * 把 {@link ThemePaint#paintBorder} 刚用属性 API 设上的值冲掉。JVM 下 CSS 算得出值，
+     * 所以现有断言（切主题后读 {@code getBorder()}）永远是绿的 —— 它抓不住这个缺陷。</p>
+     *
+     * <p>这里在 JVM 里制造同一条件：**清空样式表 + 内联样式只留一条产不出值的声明**
+     * （匹配、但产不出值），再强制跑一次 CSS 重算，然后看轮廓线还在不在。</p>
+     *
+     * <p>阶段① 先打印现状（基线证据），阶段② 断言兜底必须成立 —— 修好后阶段① 与阶段② 都应成立。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void borderFallbackSurvivesCssPassThatProducesNoValue() throws Exception {
+        startToolkit();
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
+        onUi(() -> {
+            Palette.setTheme(Theme.DARK);
+            DesktopShell shell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+            Stage stage = new Stage();
+            stage.setScene(new Scene(shell.buildRoot(), 900, 600));
+            stage.show();
+            stageRef.set(stage);
+        });
+        try {
+            Scene scene = uiGet(() -> stageRef.get().getScene());
+            Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
+            String before = uiGet(() -> borderColor(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229] 正常态：轮廓线 = " + before
+                    + "，内联样式 = " + composer.getStyle());
+
+            // 制造「规则匹配、但产不出值」的一次 CSS 重算（等价于原生下那条声明被丢弃）
+            onUi(() -> {
+                scene.getStylesheets().clear();
+                byId(scene, DesktopShell.COMPOSER_ID).setStyle("-fx-border-color: not-a-real-color;");
+            });
+            onUi(() -> {
+                Parent root = scene.getRoot();
+                root.applyCss();
+                root.layout();
+            });
+
+            String after = uiGet(() -> borderColor(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229] 产不出值的 CSS 重算之后：轮廓线 = " + after
+                    + "（期望 " + normalize(Palette.BORDER) + "；为 null 即复现了原生 exe 的丢失机制）");
+            assertThat(after)
+                    .as("CSS 产不出边框值时，属性 API 的兜底必须仍然成立 —— 原生 exe 的轮廓线全靠它")
+                    .isEqualTo(normalize(Palette.BORDER));
+        } finally {
+            onUi(() -> stageRef.get().close());
+        }
+    }
+
+    /**
      * 反复读状态标签，直到后台虚拟线程的值经桥接落到 UI 线程。
      *
      * <p><strong>只在发消息之前调用</strong>：状态标签会被 {@code setBusy(true)} 覆写成
