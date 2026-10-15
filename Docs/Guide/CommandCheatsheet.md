@@ -324,7 +324,7 @@ Dist/
 
 必测清单（A1–A5 / B1–B4 / C1–C3）**一律 0 token**：工具直调 + 配置/本地命令 + 开窗观感即可，
 不含任何模型往返；需要真实 provider 请求的动作是**可选**（命令末尾加 `+model` 声明）。
-清单原文与口径见 `Docs/DevSpec/ReleaseProcess.md` §2.2。
+清单原文与口径见 `Docs/DevSpec/ReleaseProcess.md` §2.2；**完整用法与端到端示例**见 `Docs/Guide/SnapshotSelfTestGuide.md`。
 
 **取件（一键，Windows 双击 / 脚本）**：
 

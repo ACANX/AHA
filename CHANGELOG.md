@@ -79,7 +79,8 @@
     + 配置 / 本地命令 + 开窗观感即可覆盖「机器验不了」的那部分；需要真实 provider 请求的动作降级为**可选**（`+model`），
     因为适配器没有本地 mock、任何真实对话都要花 token，而 token 由 owner 的 key 承担。
   - 安全与失效：只认有写权限的账号；status 绑 PR 当时的 `head_sha`，PR 再 push 后旧验证自动失效；快照 tag 必须属于本 PR。
-  - 配套守卫：`bin/CheckScripts.py::check_snapshot_asserted_contract()`（context / 触发守卫里的命令 / 三条工作流的排除 / `statuses: write` /
+  - **使用指南**：`Docs/Guide/SnapshotSelfTestGuide.md`（含端到端示例与常见拒绝处置）。
+  - 配套守卫：`bin/CheckScripts.py::check_snapshot_assert_contract()`（context / 触发守卫里的命令 / 三条工作流的排除 / `statuses: write` /
     清单编号两处一致 / 必测行 token 必须为 0），清单原文见 `ReleaseProcess.md` §2.2。
 - **打包形态的静态守卫 + dev 线包体自证收紧（2026-10-15，issue #218 / #217）**：
   `bin/CheckScripts.py` 新增 `check_package_layout()`（装配描述符不得再有 `dependencySet`、

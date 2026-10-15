@@ -178,7 +178,8 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
 会回一条「命令格式应为 `/snapshot <target> [os ...]`」⇒ 那三处都加了
 `&& !startsWith(github.event.comment.body, '/snapshot-assert')`，并由 `bin/CheckScripts.py` 断言这条排除仍在。
 
-**操作侧**用法见 [CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
+**操作侧**：完整用法与**端到端示例**见 [SnapshotSelfTestGuide.md](../Guide/SnapshotSelfTestGuide.md)；
+一句话速查见 [CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
 
 规范侧（载体、命名、单一来源、守卫）见 [BuildSpec.md](BuildSpec.md) 第 11 节；
 操作侧见 [BuildGuide.md](../Guide/BuildGuide.md) §3.3 与
