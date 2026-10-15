@@ -562,6 +562,46 @@ def pull_request_paths_filters(text: str) -> list[tuple[int, str]]:
     return hits
 
 
+def concurrency_group(text: str) -> str | None:
+    """取工作流 `concurrency.group` 的值（支持 `>-` / `>` 折叠多行）。
+
+    为什么需要它：并发组是「哪些运行会互相取消」的唯一依据。只按 `github.ref` / PR 号
+    分组时，`pull_request` 的 `labeled` 与 `synchronize` 落在同一组 ⇒ `cancel-in-progress`
+    让后到的自动事件取消先到的显式请求（2026-10-15 实测 PR #203）。
+
+    只认 `concurrency:` 段下的 `group:`：值可能是单行，也可能是 `>-` 折叠加若干缩进行。
+    """
+    lines = text.splitlines()
+    for index, raw in enumerate(lines):
+        body = raw.split("#", 1)[0].rstrip()
+        if body.strip() != "concurrency:":
+            continue
+        base_indent = len(body) - len(body.lstrip())
+        parts: list[str] = []
+        group_indent = -1
+        for sub in lines[index + 1:]:
+            sb = sub.split("#", 1)[0].rstrip()
+            if not sb.strip():
+                continue
+            indent = len(sb) - len(sb.lstrip())
+            if indent <= base_indent:
+                break                      # 离开 concurrency 段
+            stripped = sb.strip()
+            if group_indent < 0:
+                if not stripped.startswith("group:"):
+                    continue
+                group_indent = indent
+                rest = stripped[len("group:"):].strip()
+                if rest and rest not in (">-", ">", "|", "|-"):
+                    parts.append(rest)
+                continue
+            if indent <= group_indent:
+                break                      # 同级键（如 cancel-in-progress）
+            parts.append(stripped)
+        return " ".join(parts) if parts else None
+    return None
+
+
 def check_snapshot_manifest() -> list[str]:
     """快照清单与它的消费方必须一致（见模块 docstring）。"""
     if not SNAPSHOT_MANIFEST.exists():
@@ -633,6 +673,18 @@ def check_snapshot_manifest() -> list[str]:
                 "只改文档的 PR 就算新打了触发标签（显式请求）也进不来，"
                 "现象是「打了标签毫无反应」（2026-10-15 实测 PR #203）。"
                 "快照工作流一律去掉该过滤：让 plan 作业先跑，昂贵的步骤按 should_build 门控"
+            )
+
+        # ⑥ 快照工作流的并发组必须按「事件类别」分开：只按 ref / PR 号分组时，
+        #    `cancel-in-progress` 会让后到的 synchronize 取消先到的 labeled
+        #    （显式请求被吞，2026-10-15 实测 PR #203）。
+        expr = concurrency_group(text)
+        divides_events = "github.event_name" in (expr or "") or "github.event.action" in (expr or "")
+        if expr is not None and not divides_events:
+            problems.append(
+                f"{wrel} 的 `concurrency.group` 没有区分事件类别（{expr!r}）——"
+                "labeled 与 synchronize 会落在同一个并发组，后到的自动事件会取消先到的显式请求；"
+                "请按事件类别分出 `'explicit'` / `'auto'` 两组（见 BuildSpec §11.2）"
             )
 
     return problems

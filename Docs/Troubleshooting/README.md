@@ -107,6 +107,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-038-Theme-Switch-Stale-Inline-Colors.md](TS-2610-038-Theme-Switch-Stale-Inline-Colors.md) | 切主题后输入框 / 对话框组件的颜色不跟着变（静态常量冻色 + 未登记重刷 + 场景未换表） | 2026-10-14 12:00 | 见 issue #153 |
 | [TS-2610-039-Artifact-Anonymous-Download-401.md](TS-2610-039-Artifact-Anonymous-Download-401.md) | 载体检证：Actions 制品匿名下载 `401` / 网页链接 `307→404`，改用发布页 pre-release 资产（#165 方案 §七 的取舍依据） |
 | [TS-2610-040-Trigger-Level-Paths-Filter-Blocks-Explicit-Requests.md](TS-2610-040-Trigger-Level-Paths-Filter-Blocks-Explicit-Requests.md) | 打快照标签却毫无反应：`on.pull_request.paths` 在**触发层**把「只改文档 + 新打标签」的显式请求滤掉（原生线零运行）⇒ 改为作业层门控 + 新增守卫 |
+| [TS-2610-041-Snapshot-Explicit-Request-Cancelled-By-Auto-Run.md](TS-2610-041-Snapshot-Explicit-Request-Cancelled-By-Auto-Run.md) | 复验 #204 仍不出包：`labeled` 与 `synchronize` 同并发组时后者用 `cancel-in-progress` 取消前者（显式请求被吞）；另发现 base 更新后 merge ref 未重建会照旧 `paths:` 过滤、`plan` 在 `push` 上恒报错 | 2026-10-15 11:00 | 见 issue #165 |
 
 ## 3. 维护规则
 

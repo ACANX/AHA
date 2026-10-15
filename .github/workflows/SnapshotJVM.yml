@@ -64,8 +64,22 @@ permissions:
   issues: write
 
 # 同一 PR 只留最新一次：连续 push 时旧快照没有价值（#165 §三「并发组取消旧 run」）。
+#
+# 【为什么把「显式请求」单独分一组（2026-10-15 实测 PR #203）】
+# 只按 PR 号分组时，`pull_request` 的 `labeled` 与 `synchronize` 落在**同一组**，
+# `cancel-in-progress` 会让后到的 `synchronize` 取消先到的 `labeled` ——
+# 「打完触发标签紧接着 push / 同步 base」正是这么踩的（PR #203：03:07:45 打的标签，
+# run 在 03:07:47 建立，随后被 03:08:04 的 synchronize run 取消）。
+# 现在按**事件类别**分两组：
+#   * `explicit`：labeled / unlabeled / issue_comment / workflow_dispatch（用户显式动作）；
+#   * `auto`：opened / synchronize / reopened（自动事件）。
+# 两组互不取消；各自组内仍只保留最新一次（连续 push 依旧只跑最后一条）。
+# 【写法注意】GitHub Actions 表达式**没有三元运算符** `? :` —— 用 `cond && 'explicit' || 'auto'`
+# 模拟（写成 `? :` 会让工作流在**校验阶段**直接失效：报「workflow file issue」，且不产生任何日志）。
 concurrency:
-  group: snapshot-jvm-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+  group: >-
+    snapshot-jvm-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.ref }}-${{
+    ((github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled')) || github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch') && 'explicit' || 'auto' }}
   cancel-in-progress: true
 
 defaults:
