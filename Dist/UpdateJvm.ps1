@@ -14,6 +14,8 @@
 
       1. 查发布页，找出 `-aha-jvm` 的 release（`-Tag` 可直接指定某个版本）；
       2. 挑出本机平台的资产（只有桌面端需要平台；CLI 没有平台维度）；
+         **只看最新一版**：它缺本平台 / 本 JDK 段的资产时直接报错（并列出该版实际有什么），
+         **不会**悄悄退到更旧的版本（见下方「为什么不静默降级」）；
       3. 下载 zip 到 `-Out`（已有同尺寸的包则复用；带 sha256 则校验）；
       4. 解压到 `<Out>\desktop-jvm\` 或 `<Out>\cli-jvm\`。
 
@@ -30,6 +32,17 @@
 
       把这两套规则塞进同一份脚本，会让它同时背两套分支 —— 得不偿失。
 
+    ⚠️ 为什么不静默降级（ACANX 2026-10-15 实测踩到）：
+
+      JVM 包的资产名带「平台 + JDK 段」，一次构建**可能缺某条腿**（实测
+      `V0.1.3.00219-aha-jvm` 的 windows-amd64 / jdk25 那条腿因 Maven Central 403 失败）。
+      早先的实现是「从新到旧遍历 release，取第一个有目标资产的」，于是默认取件一路退到
+      `V0.1.3.00216` —— 那个包还是 `bin\` + `lib\` 的**旧布局、根本没有单体 jar**，
+      用户却以为拿到的是最新版，看起来就像「新版本不支持 fat jar」。
+
+      现在：最新一版缺目标资产就**响亮报错**并列出该版实际有哪些资产；确实想改用更旧的版本，
+      必须显式说出口（`-AllowOlder` 退到最近一个可用的，或 `-Tag` 指定具体版本）。
+
     用法：
 
       UpdateJvm.ps1 -Kind Desktop                 取下最新的桌面端 JVM 便携包
@@ -37,6 +50,7 @@
       UpdateJvm.ps1 -Kind Desktop -List           列出最近几版（版本 / 平台 / 资产）
       UpdateJvm.ps1 -Kind Desktop -DryRun         只预览，不下载
       UpdateJvm.ps1 -Kind Desktop -Force          已是最新也重下
+      UpdateJvm.ps1 -Kind Desktop -AllowOlder     最新一版缺本平台资产时，退到最近一个可用的
       UpdateJvm.ps1 -Kind Desktop -Jdk 27         取 JDK 27 变体（默认 25）
       UpdateJvm.ps1 -Kind Desktop -Tag V0.1.3.00178-aha-jvm
       UpdateJvm.ps1 -Kind Desktop -Platform windows-amd64
@@ -46,6 +60,8 @@ param(
     [switch]$List,
     [switch]$DryRun,
     [switch]$Force,
+    #: 最新一版缺目标资产时，显式允许退到最近一个可用的旧版（默认**不**退，见上方说明）。
+    [switch]$AllowOlder,
     [string]$Jdk = '25',
     [string]$Tag = '',
     [string]$Platform = '',
@@ -192,16 +208,45 @@ if ($List) {
     exit 0
 }
 
-# ── 选版：按版本降序，找第一个真有目标资产的 release ─────────────────────────────
+# ── 选版：**只看最新一版**；缺目标资产就响亮失败，不静默降级 ──────────────────────
+#
+# 静默降级的代价（ACANX 2026-10-15 实测）：最新一版缺本平台/本 JDK 段的资产时，
+# 旧实现会一路退到更旧的 release —— 而更旧的包可能是**完全不同的形态**
+# （V0.1.3.00216 还是 `bin\` + `lib\`，没有单体 jar），用户却以为拿的是最新版。
+# 所以：降级必须是用户显式说出口的（`-AllowOlder` / `-Tag`）。
+$newest = Complete-Assets $releases[0]
 $pick = $null
-foreach ($r in $releases) {
-    $r = Complete-Assets $r
-    $asset = Get-AssetFor $r
-    if ($asset) { $pick = @{ Release = $r; Asset = $asset }; break }
+$asset = Get-AssetFor $newest
+if ($asset) { $pick = @{ Release = $newest; Asset = $asset } }
+
+if (-not $pick -and $AllowOlder) {
+    foreach ($r in $releases) {
+        $r = Complete-Assets $r
+        $asset = Get-AssetFor $r
+        if ($asset) {
+            Write-Host ("[注意] {0} 缺目标资产，按 -AllowOlder 退到 {1}。" -f $newest.tag_name, $r.tag_name) -ForegroundColor Yellow
+            $pick = @{ Release = $r; Asset = $asset }
+            break
+        }
+    }
 }
+
 if (-not $pick) {
-    Write-Host ("[错误] 没有找到带 {0}（jdk{1}）资产的 release。" -f $kindInfo.Title, $Jdk) -ForegroundColor Red
-    Write-Host '        可用 -List 查看，或用 -Tag / -Jdk / -Platform 指定。'
+    $platformNote = if ($kindInfo.ByPlatform) { $Platform } else { '平台无关' }
+    $wanted = Get-AssetName (Get-TagVersion $newest.tag_name)
+    Write-Host ("[错误] 最新一版 {0} 里没有{1}（jdk{2} / {3}）的资产。" -f $newest.tag_name, $kindInfo.Title, $Jdk, $platformNote) -ForegroundColor Red
+    Write-Host ("        要的是：{0}" -f $wanted)
+    $siblings = @($newest.assets | Where-Object { $_.name -like ($kindInfo.Prefix + '*') } | ForEach-Object { $_.name })
+    if ($siblings.Count -gt 0) {
+        Write-Host '        这一版实际有：'
+        foreach ($name in $siblings) { Write-Host ("          - {0}" -f $name) }
+    } else {
+        Write-Host '        这一版没有任何本种类的资产（该次构建的相关腿可能整体失败了）。'
+    }
+    Write-Host '        怎么办：'
+    Write-Host '          ① 只是 JDK 段不同？用 -Jdk 27'
+    Write-Host '          ② 先看看最近几版都有什么？用 -List'
+    Write-Host ("          ③ 确认改用更旧的版本：-Tag V<版本>{0}，或 -AllowOlder 退到最近一个可用的" -f $TagSuffix)
     exit 1
 }
 
