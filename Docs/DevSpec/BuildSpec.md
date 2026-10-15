@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.30.0
+**文档版本**：v1.31.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -46,6 +46,7 @@
 
 ---
 | v1.30.0 | 2026-10-15 | 新增 §11「快照产物（PR 试包）」：载体 / 命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系（含 `Release.yml` 负向过滤这条不可忘的约束） | @ACANX / CNXNC |
+| v1.31.0 | 2026-10-15 | §11.2 新增硬约定：**快照工作流不得在 `pull_request` 上用 `paths:` 过滤**（触发层过滤会让「只改文档 + 新打触发标签」的显式请求进不来，实测 PR #203 原生线毫无反应）；§8.1 同步 `DesktopNative.yml` 不再按路径过滤 | @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -235,7 +236,7 @@ POM 语法必须兼容 Maven 3.9.x：
     CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`（直接在 `Dist/` 内写会把归档自身收进去）
 - **可选管线的作业不得进必需检查（强制）**：
   适用于**独立的可选工作流**（`DesktopNative.yml` 的 `native-image` / `native-publish`、`CliNative.yml`）与**必需工作流里的可选作业**（`Build.yml` 的 `ui-smoke`）。
-  `DesktopNative.yml` 另有一条：**PR 事件下不发布**——它现在也监听 `pull_request`（带路径过滤，只为让「原生包能不能起」在合并前可见），若 PR 也走发布，就会在尚未合并时
+  `DesktopNative.yml` 另有一条：**PR 事件下不发布**——它现在也监听 `pull_request`（其 `pull_request` 触发器**不再**按路径过滤，见 §11.2）
   往发布页推预发行包、留下无人认领的 tag；制品仍走 Actions artifact，PR 页面可取。
   注意 `ui-smoke` 与独立可选工作流的**容错层级不同**：它在作业级 `continue-on-error`（作业绿、摘要留真相），因为它是「同一份必需检查里的一个可选作业」，红叉会被误读成
   「必需检查挂了」；而独立可选工作流按下面的步骤级容错处理。
@@ -552,6 +553,12 @@ native 侧的质量保证分**三层**：
 
 `.github/snapshot-paths.yml` 是**唯一**允许写死「触发标签名」与「A / B / C 变更分类路径」的文件。
 工作流与文档里的字面量必须与它逐字一致，由 `bin/CheckScripts.py` 的 `check_snapshot_manifest()` 断言。
+
+**且快照工作流一律不得在 `pull_request` 上用 `paths:` / `paths-ignore:` 过滤** —— 那是在**触发层**丢弃事件：
+只改 `Docs/**` 的 PR 即使新打了触发标签（显式请求）也进不来，现象是「**打了标签毫无反应**」（2026-10-15 实测
+[PR #203](https://github.com/ACANX/AHA/pull/203)：JVM 线正常判定后退出，原生线被 `paths` 挡在门外，什么都不会发生）。
+正确做法：让 `plan` 作业先跑（约 10 秒、不编译不发包），昂贵的腿按 `needs.plan.outputs.should_build` 门控。
+守卫：`bin/CheckScripts.py` 的 `pull_request_paths_filters()` 会点名违规工作流（新增于 2026-10-15）。
 
 判定逻辑**不得**写进 YAML 的块标量（既跑不快也测不了），一律放仓库脚本：
 
