@@ -358,6 +358,13 @@ public final class ThemePaint {
             return;
         }
         String fill = background;
+        // 轮廓线也要跟着落到基面上：实测定案（issue #229 二次排查，2026-10-15，CI ui-smoke 像素探针）
+        // ——在 TextArea **本体**上设的边框与底色都画不出来（快照四角像素是 modena 默认 #F9F9F9），
+        // 而同一个控件里 .content 那层的 setBackground 是生效的（中心像素 = 我们设的底色）。
+        // 所以轮廓线必须在**真正被绘制的那一层**用背景层画出来（modena 自己也是这么画的）。
+        String borderColor = value(css, "-fx-border-color");
+        double borderWidth = number(css, "-fx-border-width", 1);
+        double borderRadius = number(css, "-fx-border-radius", 3);
         DISPATCHER.dispatch(() -> {
             if (node.getScene() == null) {
                 return;
@@ -367,7 +374,8 @@ public final class ThemePaint {
                 node.applyCss();
                 for (String selector : SKIN_SURFACE_SELECTORS) {
                     if (node.lookup(selector) instanceof Region region) {
-                        paint(region, fill, "皮肤内部基面 " + selector);
+                        paintSurface(region, fill, borderColor, borderWidth, borderRadius,
+                                "皮肤内部基面 " + selector);
                     }
                 }
             } catch (RuntimeException e) {
@@ -375,6 +383,65 @@ public final class ThemePaint {
                 LOG.warn("同步皮肤内部基面失败（已跳过 {}）：{}", node.getClass().getSimpleName(), e.toString());
             }
         });
+    }
+
+    /**
+     * 给**真正被绘制的那一层**上色：底色，外加（可选）一圈**用背景层画的**轮廓线。
+     *
+     * <p><strong>为什么不用 {@code Border}</strong>：issue #229 二次排查（2026-10-15）在 CI 的
+     * ui-smoke 里加了个像素级探针 —— 抽掉样式表供给后对输入框做快照：
+     * 四个角像素是 {@code #F9F9F9}（modena 默认底色），中心是 {@code #1E1E1E}（我们设的底色）。
+     * 也就是说：在 {@code TextArea} <strong>本体</strong>上无论是 {@code setBorder} 还是
+     * {@code setBackground} 都<strong>画不出来</strong>，而同一个控件里 {@code .content} 那层的
+     * {@code setBackground} 是生效的 —— 属性设对了、像素不对，真机判据（肉眼能否看到）就不过。</p>
+     *
+     * <p>modena 自己画输入框那圈线用的就是「多层背景 + {@code -fx-background-insets}」，
+     * 这里沿用同一手法，只经过属性 API：外层填轮廓色、内层按边框宽度缩进填底色。</p>
+     *
+     * @param region        目标图层
+     * @param fill          底色值
+     * @param borderColor   轮廓色值；{@code null} / {@code transparent} / {@code none} 表示不画
+     * @param borderWidth   轮廓宽度
+     * @param borderRadius  圆角半径
+     * @param what          日志用的名称
+     */
+    private static void paintSurface(Region region, String fill, String borderColor,
+                                     double borderWidth, double borderRadius, String what) {
+        boolean drawBorder = borderColor != null
+                && !borderColor.startsWith("transparent")
+                && !"none".equals(borderColor.trim())
+                && borderWidth > 0;
+        if (!drawBorder || fill.startsWith("transparent")) {
+            paint(region, fill, what);
+            return;
+        }
+        Color ring = colorOrNull(borderColor, what + " 轮廓色");
+        Color surface = colorOrNull(fill, what + " 底色");
+        if (ring == null || surface == null) {
+            paint(region, fill, what);
+            return;
+        }
+        // 外层整块填轮廓色，内层按边框宽度缩进填底色 —— 视觉上就是一圈轮廓线
+        region.setBackground(new Background(
+                new BackgroundFill(ring, new CornerRadii(borderRadius), Insets.EMPTY),
+                new BackgroundFill(surface, new CornerRadii(Math.max(0, borderRadius - borderWidth)),
+                        new Insets(borderWidth))));
+    }
+
+    /**
+     * 解析颜色，失败时返回 {@code null}（不能抛：一次上色失败不该影响整屏）。
+     *
+     * @param hex  颜色值
+     * @param what 日志用的名称
+     * @return 颜色；解析不出时返回 {@code null}
+     */
+    private static Color colorOrNull(String hex, String what) {
+        try {
+            return Color.web(hex.trim());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            LOG.warn("无法解析{}（{}）：{}", what, hex, e.toString());
+            return null;
+        }
     }
 
     /**

@@ -506,10 +506,17 @@ class AhaDesktopSmokeTest {
             String measured = ringSummary(composer);
             System.out.println("[PROBE #229b] 抽掉样式表供给侧（只剩属性 API）：" + measured);
             assertThat(measured)
-                    .as("属性 API 那条边框必须真的画出来（边缘 = %s，中心 = %s）——否则属性对了也没用",
-                            normalize(Palette.BORDER), normalize(Palette.CONTROL_INNER))
-                    .contains("边缘=" + normalize(Palette.BORDER))
-                    .contains("中心=" + normalize(Palette.CONTROL_INNER));
+                    .as("属性 API 那条边框必须真的画出来（中心 = %s，边缘带里必须有 %s）——否则属性对了也没用",
+                            normalize(Palette.CONTROL_INNER), normalize(Palette.BORDER))
+                    .contains("中心=" + normalize(Palette.CONTROL_INNER))
+                    .contains(normalize(Palette.BORDER));
+
+            // 再钉一条：轮廓线必须在**靠近边缘的位置**，不能只出现在画面中间（否则就不是「范围」了）
+            String band = uiGet(() -> edgeBandColors(composer, 3));
+            System.out.println("[PROBE #229b] 外圈 3px 颜色集合：" + band);
+            assertThat(band)
+                    .as("轮廓色必须出现在靠边的外圈里（原生 exe 里那一圈就靠这个背景层）")
+                    .contains(normalize(Palette.BORDER));
         } finally {
             onUi(() -> stageRef.get().close());
         }
@@ -540,6 +547,35 @@ class AhaDesktopSmokeTest {
     private static String hexAt(PixelReader pixels, int x, int y) {
         Color color = pixels.getColor(x, y);
         return color == null ? "null" : hexOf(color);
+    }
+
+    /**
+     * 取节点快照**外圈若干像素**里出现过的颜色集合（去重、排序）。
+     *
+     * <p>为什么要看一圈而不是四个角：轮廓线由背景层画出时，圆角处会被抗锯齿抹掉一小块，
+     * 只看角点可能恰好取到混合出来的过渡色。用一整圈才能稳定地判断「靠近边缘处有没有那圈线」。</p>
+     *
+     * @param node 目标节点
+     * @param band 外圈宽度（像素）
+     * @return 形如 {@code [#1E1E1E, #3A3A3A]} 的颜色集合
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    private static String edgeBandColors(Node node, int band) throws Exception {
+        WritableImage image = uiGet(() -> node.snapshot(new SnapshotParameters(), null));
+        if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
+            return "[]";
+        }
+        PixelReader pixels = image.getPixelReader();
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        Set<String> colors = new java.util.TreeSet<>();
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < Math.min(band, height); y++) {
+                colors.add(hexAt(pixels, x, y));
+                colors.add(hexAt(pixels, x, height - 1 - y));
+            }
+        }
+        return colors.toString();
     }
 
     /**
