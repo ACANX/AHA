@@ -17,15 +17,18 @@
          **只看最新一版**：它缺本平台 / 本 JDK 段的资产时直接报错（并列出该版实际有什么），
          **不会**悄悄退到更旧的版本（见下方「为什么不静默降级」）；
       3. 下载 zip 到 `-Out`（已有同尺寸的包则复用；带 sha256 则校验）；
-      4. 解压到 `<Out>\desktop-jvm\<版本>\` 或 `<Out>\cli-jvm\<版本>\`（**每版一个目录**，留档、可回滚）；
+      4. 解压到 `<Out>\desktop-jvm\<版本>\` 或 `<Out>\cli-jvm\<版本>\`（**暂存**，只用来取里面的入口）；
       5. 把**去版本号**的入口**复制**到 `<Out>` 根（`Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`…），
-         让启动脚本与用户命令**与版本无关**；`-NoInstall` 可只做第 4 步。
+         让启动脚本与用户命令**与版本无关**；随后**删掉整个 `<Out>\<种类>\` 暂存目录** ——
+         同一份包在 `Dist/` 里存两遍没有意义（桌面端 25 MB、CLI 55 MB），
+         历次取件留下的旧版本子目录同样没用。
+         `-NoInstall` 只做第 4 步；`-KeepExtract` 做完 5 步但保留暂存目录（想翻包内容时用）。
 
     ⚠️ 为什么和 `UpdateNative.ps1` **分开**、且不复用它（issue #210）：
 
       * **落地语义不同**：`UpdateNative.ps1` 取的是原生包 —— 一个 exe，**摘出来覆盖**目标；
         JVM 包是「**单体 jar + 启动脚本**」（issue #218 起桌面端为**包根平铺**），
-        做法是「解压到版本目录留档 + 把去版本号的入口**复制**到落地根」，
+        做法是「解压到暂存目录 → 把去版本号的入口**复制**到落地根 → 删掉暂存目录」，
         不存在「替换某个可执行文件」这回事；
       * **资产名规则不同**：原生包是 `<前缀><版本>-<平台>-jdk<JDK>.zip`（平台段与 jdk 段**都必有**）；
         JVM 包是 `aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`
@@ -55,6 +58,7 @@
       UpdateJvm.ps1 -Kind Desktop -Force          已是最新也重下
       UpdateJvm.ps1 -Kind Desktop -AllowOlder     最新一版缺本平台资产时，退到最近一个可用的
       UpdateJvm.ps1 -Kind Desktop -NoInstall      只解压到版本目录，不平铺到落地根
+      UpdateJvm.ps1 -Kind Desktop -KeepExtract    平铺后保留暂存目录（默认自动清掉）
       UpdateJvm.ps1 -Kind Desktop -Jdk 27         取 JDK 27 变体（默认 25）
       UpdateJvm.ps1 -Kind Desktop -Tag V0.1.3.00178-aha-jvm
       UpdateJvm.ps1 -Kind Desktop -Platform windows-amd64
@@ -68,6 +72,8 @@ param(
     [switch]$AllowOlder,
     #: 只解压到版本目录，不做「平铺到落地根」这一步（见上方第 5 件事）。
     [switch]$NoInstall,
+    #: 平铺成功后**保留**暂存目录（默认会删掉，见上方第 5 件事）。
+    [switch]$KeepExtract,
     [string]$Jdk = '25',
     [string]$Tag = '',
     [string]$Platform = '',
@@ -144,6 +150,22 @@ if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" 
 elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
 # ── tag → 版本号（`V<a.b.c.PPPPP>-aha-jvm`）────────────────────────────────────
+#: 删掉**整个** `<种类>\` 暂存目录（`Dist\desktop-jvm` / `Dist\cli-jvm`，含历次取件留下的
+#: 各版本子目录）；父目录空了也一并删（issue #218 后续）。入口已经平铺到落地根，这里全是副本。
+#: 返回是否真的删了一个目录；删不掉时**抛出去**，由调用方决定是报错还是只提醒 ——
+#: 清不掉不是致命问题（入口已经在落地根），所以两处调用都只打一句「[注意]」。
+function Remove-StagingDir {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    Remove-Item -LiteralPath $Path -Recurse -Force
+    $parentDir = Split-Path -Path $Path -Parent
+    if ((Test-Path -LiteralPath $parentDir) -and
+        (@(Get-ChildItem -LiteralPath $parentDir -Force -ErrorAction SilentlyContinue).Count -eq 0)) {
+        Remove-Item -LiteralPath $parentDir -Force
+    }
+    return $true
+}
+
 function Get-TagVersion {
     param([string]$Name)
     if (-not $Name.EndsWith($TagSuffix)) { return $null }
@@ -294,8 +316,13 @@ Write-Host ("资产：{0}（{1} MB）" -f $pick.Asset.name, [math]::Round($pick.
 Write-Host ("落地：{0}" -f $targetDir)
 
 $stateFlat = @($state.flat | Where-Object { $_ })
-$canSkip = (-not $Force) -and ($state.tag -eq $pick.Release.tag_name) -and (Test-Path -LiteralPath $targetDir)
-if ($canSkip -and (-not $NoInstall)) {
+$canSkip = (-not $Force) -and ($state.tag -eq $pick.Release.tag_name)
+if ($canSkip -and $NoInstall) {
+    # 只解压模式：要留的东西就是那个版本目录
+    $canSkip = Test-Path -LiteralPath $targetDir
+} elseif ($canSkip) {
+    # 平铺模式：判据落在**落地根的那几个入口**上 —— 暂存目录默认已经删掉了，
+    # 拿它当「已是最新」的依据会让每次运行都重下一遍。
     $hasFlatInfo = @($state.PSObject.Properties.Name) -contains 'flat'
     if (-not $hasFlatInfo) {
         # 旧状态文件（「平铺」这个功能之前写的）：不知道铺没铺过 ⇒ 重解压补齐一次。
@@ -307,6 +334,18 @@ if ($canSkip -and (-not $NoInstall)) {
     }
 }
 if ($canSkip) {
+    # 顺手收尾：上次可能是在「落地后不清理」的脚本版本下取的（或加了 -KeepExtract），
+    # 暂存目录还在就清掉 —— 否则「已是最新」会让它一直留在 `Dist\` 里。
+    # 清的是**整棵** `<种类>\`：历次取件留下的旧版本子目录同样没有用处。
+    if ((-not $NoInstall) -and (-not $KeepExtract) -and (Test-Path -LiteralPath $InstallDir)) {
+        try {
+            if (Remove-StagingDir -Path $InstallDir) {
+                Write-Host ("已清掉上次留下的暂存目录：{0}" -f $InstallDir)
+            }
+        } catch {
+            Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        }
+    }
     Write-Host ("`n✅ 本地已经是 {0}，无需更新（加 -Force 可强制重下）" -f $version) -ForegroundColor Green
     exit 0
 }
@@ -363,10 +402,9 @@ try {
 
     # ── 平铺到 `<Out>` 根（issue #218）─────────────────────────────────────────
     #
-    # 版本目录 `...\<种类>\<版本>\` 留档（多版并存、可回滚）；同时把**去版本号**的入口
-    # **复制**一份到 `<Out>` 根 —— 启动脚本与用户命令因此与版本无关：
+    # 把**去版本号**的入口从暂存目录**复制**到 `<Out>` 根 —— 启动脚本与用户命令因此与版本无关：
     #   `Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar`、`Dist\AhaCli.bat` 都能直接用。
-    # 只复制，不动版本目录里的那一份。
+    # 复制完会把暂存目录删掉（见下面一段），所以这里必须先复制、后清理。
     if (-not $NoInstall) {
         foreach ($item in $kindInfo.Flat) {
             if ($doneFlat.ContainsKey($item.Name)) { continue }
@@ -408,25 +446,54 @@ try {
         Write-Host ("[注意] 未平铺：包根没有 {0}。" -f ($missingFlat -join '、')) -ForegroundColor Yellow
         Write-Host '       旧形态的包（包根没有单体 jar）平铺不了；请取 0.1.3.00219 及以后的版本。'
     }
+
+    # ── 清掉暂存目录（issue #218 后续）────────────────────────────────────────
+    #
+    # 平铺成功之后，暂存目录 `Dist\<种类>\<版本>\` 就只剩「同一份包的又一份副本」
+    # （桌面端 25 MB、CLI 55 MB），而用户真正要跑的是落地根的入口。
+    # 默认把**整棵** `<种类>\` 删掉（含历次取件留下的旧版本子目录），`-KeepExtract` 可保留。
+    #
+    # 只在**至少铺出一个入口**之后才删：一个入口都没铺出来（旧形态的包）时，
+    # 这份解压结果就是唯一能用的东西，删了等于什么都没给。
+    if ((-not $NoInstall) -and (-not $KeepExtract) -and ($flat.Count -gt 0)) {
+        # 按**整棵**算省下多少（历次残留的旧版本目录也算进去，不然报出来的数字偏小）
+        $freedMB = [math]::Round((Get-ChildItem -LiteralPath $InstallDir -Recurse -File -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+        try {
+            # 见 Remove-StagingDir：删的是整个 `<种类>\`，不是只有当前版本那层
+            [void](Remove-StagingDir -Path $InstallDir)
+            Write-Host ("已清掉暂存目录（省约 {0} MB）：{1}" -f $freedMB, $InstallDir)
+        } catch {
+            Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
+            Write-Host '       （不影响使用：入口已经平铺到落地根；想明说保留加 -KeepExtract）'
+        }
+    }
 } catch {
     Write-Host ''
     Write-Host ("[错误] {0}" -f $_.Exception.Message) -ForegroundColor Red
     exit 1
 }
 
-$stateOut = @{ tag = $pick.Release.tag_name; version = $version; asset = $pick.Asset.name; dir = $targetDir; flat = @($flat); installedAt = (Get-Date).ToString('s') } | ConvertTo-Json
+# `dir` 记的是**能用上东西的地方**：暂存目录被清掉后就是落地根（issue #218 后续）。
+$stateDir = if (Test-Path -LiteralPath $targetDir) { $targetDir } else { $OutDir }
+$stateOut = @{ tag = $pick.Release.tag_name; version = $version; asset = $pick.Asset.name; dir = $stateDir; kept = (Test-Path -LiteralPath $targetDir); flat = @($flat); installedAt = (Get-Date).ToString('s') } | ConvertTo-Json
 [IO.File]::WriteAllText($StateFile, $stateOut)
 
 Write-Host ''
 Write-Host ("✅ 已取件到 {0}" -f $version) -ForegroundColor Green
-Write-Host ("目录：{0}" -f $targetDir)
+if (Test-Path -LiteralPath $targetDir) {
+    Write-Host ("目录：{0}" -f $targetDir)
+}
+
 Write-Host ("下载包保留在：{0}（便于离线重装；不需要可删）" -f $zip)
 if ($launcher) {
     $leaf = Split-Path -Path $launcher -Leaf
     $flatLauncher = Join-Path $OutDir $leaf
     if (Test-Path -LiteralPath $flatLauncher) {
         Write-Host ("运行：{0}（已平铺到落地根；换版本不必改命令）" -f $flatLauncher)
-    } else {
+    } elseif (Test-Path -LiteralPath $launcher) {
+        # 平铺没覆盖到启动脚本（包内没有它）时才会走到这里；暂存目录怕是已经清掉了，
+        # 因此只在它确实还在时才提示这个路径。
         Write-Host ("运行：{0}" -f $launcher)
     }
 }

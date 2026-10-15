@@ -98,21 +98,22 @@ Dist\UpdateDesktopJvm.cmd -DryRun        :: 只预览：会下载哪个包、解
 
 ```bat
 Dist\UpdateDesktopJvm.cmd -NoInstall     :: 只解压到版本目录，不平铺到 Dist\
+Dist\UpdateDesktopJvm.cmd -KeepExtract   :: 平铺后保留暂存目录（默认自动清掉）
 ```
 
-落地**两处**（版本目录留档 + 落地根平铺当前版）：
+落地（**平铺到落地根**；暂存目录用完即清）：
 
 | 位置 | 内容 |
 |---|---|
-| `Dist\desktop-jvm\<版本>\` | 该版完整解压结果（**每版一个目录**，互不覆盖，可回滚）|
 | `Dist\`（落地根） | 该版的**去版本号**入口一份：`aha-desktop.jar`、`AhaDesktop.bat`、`AhaDesktop.sh`（**复制**，不是移动）|
+| `Dist\desktop-jvm\` | 解压出来的**暂存**目录（含历次取件留下的旧版本子目录）。平铺成功后**整个删掉** —— 同一个包在 `Dist/` 里存两遍没意义（桌面端 25 MB、CLI 55 MB），旧版本子目录更是纯占地；要保留加 `-KeepExtract` |
 
 于是「当前装的是哪一版」记在 `Dist\.aha-desktop-jvm.json`，而命令**与版本无关**：
 `Dist\AhaDesktop.bat`（或 `java -jar Dist\aha-desktop.jar`）永远指向最近一次取件的那一版。
 
 > 与 `UpdateDesktopNative.cmd` 的区别：那个取的是**原生包**（一个 exe，**覆盖安装**）；
-> JVM 包是「**单体 jar + 启动脚本**」，做法是「解压留档 + 把入口**复制**到落地根」，
-> 不存在「替换某个文件」。
+> JVM 包是「**单体 jar + 启动脚本**」，做法是「解压到暂存目录 → 把入口**复制**到落地根
+> → 删掉暂存目录」，不存在「替换某个文件」。
 > 另外：**最新一版缺本平台资产时脚本会报错，不会悄悄给一个更旧的包** ——
 > 需要退旧版请显式用 `-AllowOlder` 或 `-Tag`。
 > 而**旧形态的包**（包根没有单体 jar、只有 `bin/` + `lib/`）**平铺不了**，脚本会明确提示。
@@ -154,7 +155,8 @@ Dist\UpdateCliJvm.cmd -Jdk 27        :: 取 JDK 27 变体
 Dist\UpdateCliJvm.cmd -List          :: 列出最近几版
 ```
 
-落地：`Dist\cli-jvm\<版本>\`。
+落地：`Dist\aha-cli.jar` + `Dist\AhaCli.sh` / `Dist\AhaCli.bat`（与桌面端同一机制：
+先解压到暂存目录用于取入口，平铺成功后把 `Dist\cli-jvm\` 清掉；`-KeepExtract` 可保留）。
 
 ## 4. 原生镜像（试验性，免 JDK）
 
@@ -280,8 +282,8 @@ Dist/
 ├── AhaCli.bat / .sh        CLI 启动脚本（平铺在 Dist 根，不再有 bin\ 子目录）
 ├── aha-desktop.jar         桌面端单体 jar（解压 / 取件后落在这里；脚本只认这个名字，与版本无关）
 ├── AhaDesktop.bat / .sh    桌面端启动脚本（同上，平铺在 Dist 根，不再有 bin\ 子目录）
-├── desktop-jvm/            桌面端 JVM 便携包的版本目录（每版一个子目录，见 §2.4）
-├── cli-jvm/                CLI JVM 便携包的版本目录（同上）
+├── desktop-jvm/            取件时的**暂存**目录（平铺成功后自动删掉，见 §2.4）
+├── cli-jvm/                CLI 取件时的暂存目录（同上；`-KeepExtract` 才留）
 ├── .aha-desktop-jvm.json   桌面端 JVM 取件状态（当前是哪一版、平铺了哪些入口）
 ├── .aha-cli-jvm.json       CLI JVM 取件状态（同上）
 ├── .aha-snapshot.json      JVM **快照** 的取件状态（见 §7）

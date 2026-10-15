@@ -13,7 +13,9 @@
       2. 挑出**本机平台**该取哪个资产（JVM 线与原生线自 2026-10-15 起**共用同一套**：`windows-amd64` / `ubuntu-amd64`）；
       3. 下载 zip 到 `Dist\`（已有同尺寸的包则复用；带 sha256 则校验）；
       4. 解压到**按资产命名的目录**里；若是**本机平台的原生包**，再把 exe
-         **安装（替换）到 `-Out`（默认 = 启动器所在目录）**，旧版留 `.bak`（`-NoInstall` 可只取件）。
+         **安装（替换）到 `-Out`（默认 = 启动器所在目录）**，旧版留 `.bak`（`-NoInstall` 可只取件）；
+         装好之后**把那份解压目录清掉**（exe 已在落地根、zip 留着、旧版有 `.bak`，留着只是又一份副本）。
+         JVM 快照没有可安装的 exe，解压目录本身就是「要跑的东西」，**保留**。
 
     为什么和 `UpdateNative.ps1` 分开、且不复用它：
 
@@ -316,6 +318,8 @@ if (-not $NoInstall -and $installExeBase.ContainsKey($pick.Target)) {
     }
 }
 
+# 复用判据是「zip + 解压目录」都在。原生快照装好后解压目录会被清掉，因此那种情况下不会命中
+# 这一支，会走下面的「已有同尺寸的包」分支：**不重新下载**，只重新解压一遍（本地操作）。
 $reuse = $false
 if ((-not $Force) -and (Test-Path -LiteralPath $zip) -and (Test-Path -LiteralPath $extractDir)) {
     Write-Host ''
@@ -408,6 +412,16 @@ try {
                 Write-Host ("   旧版备份：{0}.bak" -f $targetExe)
             }
             Write-Host ("   双击运行：{0}" -f $targetExe)
+            # 装好之后解压目录就只是又一份副本（与 UpdateJvm.ps1 同一口径）：
+            # 删掉，别让 Dist\ 里为同一个包占两份地方。zip 仍留着，要再解一份随时可解。
+            $cleanNote = ''
+            try {
+                Remove-Item -LiteralPath $extractDir -Recurse -Force
+                $cleanNote = '已清理解压目录（zip 仍留着，需要可再解）'
+            } catch {
+                $cleanNote = "解压目录没删掉：$($_.Exception.Message)"
+            }
+            Write-Host ("   {0}" -f $cleanNote)
         }
     }
 } catch {
@@ -427,7 +441,7 @@ $state = @{
     target      = $pick.Target
     pr          = $pick.Pr
     asset       = $pick.Asset.name
-    extractedTo = $extractDir
+    extractedTo = $(if (Test-Path -LiteralPath $extractDir) { $extractDir } else { '(装好后已清理)' })
     installedTo = $targetExe
     fetchedAt   = (Get-Date).ToString('s')
 } | ConvertTo-Json
