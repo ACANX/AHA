@@ -490,7 +490,8 @@ class AhaDesktopSmokeTest {
         try {
             Scene scene = uiGet(() -> stageRef.get().getScene());
             Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
-            System.out.println("[PROBE #229b] 样式表在场：" + ringSummary(composer));
+            System.out.println("[PROBE #229b] 样式表在场："
+                    + ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null))));
 
             // 抽掉样式表的供给，只留属性 API 那条来源（原生 exe 下 CSS 给不出值，等价于此）
             onUi(() -> {
