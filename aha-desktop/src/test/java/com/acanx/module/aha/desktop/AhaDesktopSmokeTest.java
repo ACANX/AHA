@@ -572,6 +572,14 @@ class AhaDesktopSmokeTest {
             ready.countDown();
         }
         assertThat(ready.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+        // 关掉「最后一个窗口关闭即退出工具箱」这个隐式行为：
+        // 本套件里有用例只开自己的窗口（例如 issue #227 的选中行配色用例），窗口一关、
+        // 它就成了「最后一个窗口」，默认行为会把整个工具箱结束掉；紧随其后的用例
+        // 会卡在 `Platform.runLater` 上直到超时（2026-10-15 实测：
+        // `windowStartsAndBridgeReachesUiThread` 在 `onUi` 等了 30s 后失败，
+        //  而先跑的 `listSelectionSurfaceIsReadableInBothThemes` 正常）。
+        // 放在共享入口里，不管 JUnit 先跑哪个用例都不会再被这个坑绊到。
+        onUi(() -> Platform.setImplicitExit(false));
     }
 
     private static void onUi(Runnable task) throws InterruptedException {
