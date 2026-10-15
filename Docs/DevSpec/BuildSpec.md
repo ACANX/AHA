@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.33.0
+**文档版本**：v1.34.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -49,6 +49,7 @@
 | v1.31.0 | 2026-10-15 | §11.2 新增硬约定：**快照工作流不得在 `pull_request` 上用 `paths:` 过滤**（触发层过滤会让「只改文档 + 新打触发标签」的显式请求进不来，实测 PR #203 原生线毫无反应）；§8.1 同步 `DesktopNative.yml` 不再按路径过滤 | @ACANX / CNXNC |
 | v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
 | v1.33.0 | 2026-10-15 | §11.4 新增「评论必须可辨识」硬约定：快照评论标题须带「线 · 本线目标范围」（marker 是不可见注释）；且「未打任何标签」时**只由 JVM 线落一条**，不得出现两条同义评论（实测 PR #206）| @ACANX / CNXNC |
+| v1.34.0 | 2026-10-15 | §11.4 新增「跨线写交接说明」硬约定：目标属另一条线时，当前线把自己那条评论更新为「属 X 线，交由 X 处理」，**不得**停在「未打任何 `SNAPSHOT:*` 触发标签」（issue #205 的原始现象）| @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -613,6 +614,11 @@ run 在 `03:07:47` 建立、被 `03:08:04` 的 `synchronize` 取消）。
 - **「未打任何 `SNAPSHOT:*` 标签」时只由 JVM 线落一条评论**（原生线 `owns_comment=false`）——
   否则 JVM 线 + 两条原生线会各写一条同义评论，正是上一条要避免的情形。
   由 `SnapshotPlan.py --self-test` 的两条断言守住（「只由 JVM 线落评论」「标题各自标明线」）；
+- **跨线（目标属另一条线）时，当前线要写「交接说明」，而不是不动评论**（issue #205）：
+  JVM 线收到纯原生目标 ⇒ 把自己那条更新为「本次请求的目标 X 属**原生线**（交由
+  `DesktopNative.yml` / `CliNative.yml` 处理）——本工作流是 JVM 线，不出包」；原生线收到 JVM /
+  另一原生目标同理。**绝不允许**让评论停在「未打任何 `SNAPSHOT:*` 触发标签」而 PR 上其实有标签
+  （早先靠 `owns_comment=false`「不碰评论」规避覆盖，代价正是这条过时且错误的文案）。
 - 原生包取件脚本（`Dist/UpdateNative.ps1` 等）按 `-aha-desktop-native` / `-aha-cli-native` 后缀检索，快照命名不影响它；
 - 取件脚本的命名契约由 `check_snapshot_fetch_parity()` 守住；`Dist/README.commands.md` 是
   `Docs/Guide/CommandCheatsheet.md` 的**逐字节副本**（`check_cheatsheet_copy()` 守卫，**禁止手改副本**）。

@@ -59,6 +59,8 @@ COMMAND_RE = re.compile(r"^\s*/snapshot\s+(\S+)((?:\s+\S+)*)\s*$", re.IGNORECASE
 #: 本条工作流覆盖的目标（原生线由 DesktopNative.yml / CliNative.yml 负责，见 S4）。
 JVM_TARGETS = ("Desktop-JVM", "Cli-JVM")
 NATIVE_TARGETS = ("Desktop-Native", "Cli-Native")
+#: 原生目标 → 负责它的工作流（跨线「交接说明」用，issue #205）
+NATIVE_WORKFLOW = {"Desktop-Native": "DesktopNative.yml", "Cli-Native": "CliNative.yml"}
 
 #: **命令**的兼容别名（`/snapshot Desktop …`、`/snapshot NativeDesktop …` 都仍然可用）：命令写在
 #: PR 评论里，直接删旧拼法会让历史命令失效。只影响命令解析，
@@ -366,19 +368,34 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
         reason_prefix = ""
 
     if line == "native" and native_target not in targets:
-        # 本工作流只负责一个原生目标。命令 / 标签指向别的目标时：不构建，且**不动评论**
-        # （动了就会把该目标的评论覆盖成「未出包」）。
+        # 本工作流只负责一个原生目标。命令 / 标签指向别的目标时：不构建，但**写「交接说明」**
+        # （issue #205：只说「不认领」会让旧评论停在过时文案上；这里说清交给谁）。
+        jvm_here = [t for t in targets if t in JVM_TARGETS]
+        native_here = [t for t in targets if t in NATIVE_TARGETS]
+        if jvm_here:
+            who = "**JVM 线**（SnapshotJVM.yml）"
+        else:
+            who = " / ".join(sorted({NATIVE_WORKFLOW.get(t, "对应的原生工作流")
+                                     for t in native_here}))
         return out(targets=targets, platforms=platforms, explicit=bool(reason_prefix),
                    reason=f"本次请求的目标 {targets} 不含 {native_target or '(未指定)'} —— "
-                          f"本工作流只负责 {native_target or '(未指定)'}，交由对应的原生工作流处理")
+                          f"本工作流只负责 {native_target or '(未指定)'}，交由 {who} 处理")
 
     if line == "jvm" and not [t for t in targets if t in JVM_TARGETS]:
         # 本工作流只管 JVM 线；纯原生目标交给 DesktopNative.yml / CliNative.yml（S4）。
-        # `owns_comment=False`：**别去动 PR 评论**——否则原生线的标签事件会把 JVM 线的
-        # 快照评论覆盖成「未出包」（实测踩到：ACANX 给 PR 打了原生标签，JVM 评论被改写）。
-        return out(owns_comment=False, targets=targets, platforms=platforms,
+        #
+        # 评论策略（issue #205）：**认领并把自己那条更新成「交接说明」**。早先这里是
+        # `owns_comment=False`（干脆不碰评论），后果是「未打标签」时写下的那条评论永远停在
+        # 「未打任何 `SNAPSHOT:*` 触发标签」——而 PR 上明明有原生标签，文案与事实不符。
+        # 现在写清归属：目标属原生线、交由哪个工作流处理。只动**自己的**标记，
+        # 不碰原生线的评论（两条线 marker 分离，S3 的约束不变）。
+        native_here = [t for t in targets if t in NATIVE_TARGETS]
+        who = " / ".join(sorted({NATIVE_WORKFLOW.get(t, "对应的原生工作流")
+                                 for t in native_here}))
+        return out(owns_comment=True, targets=targets, platforms=platforms,
                    explicit=explicit_command,
-                   reason=f"目标 {targets} 属原生线，由 DesktopNative.yml / CliNative.yml 处理（本工作流不构建）")
+                   reason=f"本次请求的目标 {targets} 属**原生线**（交由 {who} 处理）——"
+                          f"本工作流是 JVM 线，不出包")
 
     line_targets = [t for t in targets if t in (JVM_TARGETS if line == "jvm" else NATIVE_TARGETS)]
 
@@ -577,13 +594,15 @@ def self_test() -> int:
     ok = version == f"0.1.3.00171.{beijing}" and beijing != utc
     problems += 0 if ok else 1
     print(f"  {'✅' if ok else '❌'} 版本号 {version}（UTC 段 {utc}，北京时间段 {beijing}，二者不同）")
-    # 纯原生目标：本工作流既不构建，也**不得**认领评论（否则会覆盖 JVM 线的快照评论）
-    native_plan = decide(labels=["SNAPSHOT:NativeDesktop"], changed=["aha-common/pom.xml"],
-                         baseline="0.1.3", pr=171, now=now, groups=groups)
-    owns_ok = native_plan["owns_comment"] is False and native_plan["should_build"] is False
-    problems += 0 if owns_ok else 1
-    print(f"  {'✅' if owns_ok else '❌'} 纯原生目标：本工作流不构建且不认领评论（owns_comment="
-          f"{native_plan['owns_comment']}）")
+    # JVM 线收到纯原生目标（issue #205）：不构建，但**要认领并写「交接说明」**——
+    # 早先 owns_comment=False，导致「未打标签」时的旧评论永远停在错误文案上。
+    jvm_cross = decide(labels=["SNAPSHOT:NativeDesktop"], changed=["aha-common/pom.xml"],
+                       baseline="0.1.3", pr=171, now=now, groups=groups)
+    cross_ok = (jvm_cross["owns_comment"] is True and jvm_cross["should_build"] is False
+                and "原生线" in jvm_cross["reason"] and "DesktopNative.yml" in jvm_cross["reason"])
+    problems += 0 if cross_ok else 1
+    print(f"  {'✅' if cross_ok else '❌'} JVM 线跨线：不构建，但写「交接说明」（owns_comment="
+          f"{jvm_cross['owns_comment']}，交由原生线处理）")
 
     # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>-SNAPSHOT`
     # 注意：这里必须**重新判定一次**，不能复用上面循环里的 plan（那是最后一个用例，
