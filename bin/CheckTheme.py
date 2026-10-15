@@ -235,6 +235,77 @@ def check_skin_surface_fallback(rules: dict[str, dict[str, dict[str, str]]]) -> 
     return problems
 
 
+def _single_selectors(table: dict[str, dict[str, str]]) -> list[tuple[str, dict[str, str]]]:
+    """把「逗号并列」的选择器拆成单条，便于逐条比较权重。"""
+    pairs: list[tuple[str, dict[str, str]]] = []
+    for selector, decls in table.items():
+        for part in selector.split(","):
+            part = part.strip()
+            if part:
+                pairs.append((part, decls))
+    return pairs
+
+
+def _selector_classes(selector: str) -> tuple[str, ...]:
+    """取选择器里的类名序列（忽略伪类 / 伪元素 / 组合符）。"""
+    return tuple(re.findall(r"\.([A-Za-z][A-Za-z0-9_-]*)", selector))
+
+
+def check_state_rules_not_shadowed(rules: dict[str, dict[str, dict[str, str]]]) -> list[str]:
+    """列表「悬停 / 选中」态的背景规则必须压得过基面规则（见检查项 8）。
+
+    <p>为什么需要（issue #227，2026-10-15 真机截图）：基面那条是 **5 个类**的选择器
+    （{@code .list-view > .virtual-flow > .clipped-container > .sheet > .list-cell}），
+    而 {@code .list-cell:filled:selected} 只有 1 类 + 2 伪类 ⇒ **背景色盖不上去**；
+    偏偏选中态的**文字**色来自另一条更具体的选择器
+    （{@code .list-cell:filled:selected .text}，1 类 + 2 伪类 + 1 类）却能生效。
+    两者叠加 ⇒ 亮色主题下就是**白底白字**：ComboBox 展开后当前那一项「看不见，也没完全隐藏」。</p>
+
+    <p>为什么没早发现：会话列表单元格是**在 Java 里显式画背景与文字色**的
+    （{@code DesktopShell.SessionCell} 用 {@code ThemePaint.themed}），根本不过 CSS；
+    下拉列表是第一个「颜色完全交给样式表」的 ListView，于是把这条潜伏已久的特异性问题暴露了出来。</p>
+
+    <p>判据刻意严格（不只是「有一条深选择器」）：对**每一条**基面规则，都要求存在一条
+    <b>类路径完全相同</b>、又设了 {@code -fx-background-color} 的状态规则。
+    加前缀更深的规则（如 {@code .combo-box-popup > …}）只对弹出层生效，**不能**代表普通列表
+    也被覆盖到 —— 这正是第一版判据放过去的那一类假阴性。</p>
+
+    :param rules: 两份表解析结果（主题 ⇒ 选择器 ⇒ 属性）
+    :return: 问题清单
+    """
+    problems: list[str] = []
+    for theme, table in rules.items():
+        singles = _single_selectors(table)
+        bases: dict[tuple[str, ...], tuple[int, str]] = {}
+        for selector, decls in singles:
+            if ".list-cell" not in selector or ":" in selector:
+                continue
+            if "-fx-background-color" not in decls:
+                continue
+            classes = _selector_classes(selector)
+            weight = len(classes)
+            if classes not in bases or weight > bases[classes][0]:
+                bases[classes] = (weight, selector)
+        if not bases:
+            continue  # 这份表没有列表基面规则，不需要检查状态覆盖
+        for classes, (weight, base_selector) in sorted(bases.items()):
+            for state in (":filled:hover", ":filled:selected"):
+                hit = False
+                for selector, decls in singles:
+                    if state not in selector or "-fx-background-color" not in decls:
+                        continue
+                    if _selector_classes(selector) == classes:
+                        hit = True
+                        break
+                if not hit:
+                    problems.append(
+                        f"aha-theme-{theme}.css：基面规则 {base_selector!r}（{weight} 个类）"
+                        f"没有对应的 `{state}` 同路径规则——背景色盖不上去（特异性不足），"
+                        f"文字色却另行钉死 ⇒ 「文字与背景同色」（issue #227）；"
+                        f"修法：给状态规则加上与基面**完全相同**的选择器前缀")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 主题色一致性检查")
     parser.add_argument("--verbose", action="store_true", help="打印逐项统计")
@@ -257,7 +328,7 @@ def main() -> int:
 
     problems = (check_selectors(rules) + check_properties(rules) + check_colors(rules, palettes)
                 + check_generated() + check_frozen_style_constants()
-                + check_skin_surface_fallback(rules))
+                + check_skin_surface_fallback(rules) + check_state_rules_not_shadowed(rules))
 
     if args.verbose:
         for theme, table in rules.items():
