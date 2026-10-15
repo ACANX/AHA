@@ -253,7 +253,7 @@ Dist/
 ## 7. 快照包（PR 试包）
 
 **快照包 = 给尚未合并的 PR 出的试包**（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)，
-实现见 #171 / #172）。它们挂在发布页的 pre-release 上，tag 形如
+实现见 #171 / #172 / #173 / #174）。它们挂在发布页的 pre-release 上，tag 形如
 `V0.1.3.00184.10141900-AHA-Cli-JVM-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
 
 **取件（一键，Windows 双击 / 脚本）**：
@@ -265,13 +265,15 @@ Dist\UpdateDesktopNativeSnapshot.cmd -List     :: 列出快照（版本号 / 目
 Dist\UpdateDesktopNativeSnapshot.cmd -Pr 188   :: 取某个 PR 的快照
 Dist\UpdateDesktopNativeSnapshot.cmd -DryRun   :: 只预览：会下载哪个包、解压到哪里
 Dist\UpdateDesktopNativeSnapshot.cmd -Force    :: 已取过同一版也重新下载
-Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，启动器名字待定）
+Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装（原生桌面端默认会替换 exe）
+Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，引擎直调）
 ```
 
 特点：
 
 - **零配置**：不需要 `GH_TOKEN`、不需要 `gh`、不需要 Python（全程 PowerShell / .NET）；
-- **不覆盖任何文件**：解压到 `Dist\<资产名>\` 的**独立目录**（与 `UpdateNative.ps1` 的「替换 exe」语义不同）；
+- **只碰自己的包**：JVM 与「原生 CLI」目标解压到 `Dist\<资产名>\` 的**独立目录**；**原生桌面端**目标会把包里的 exe
+  替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，下载前先探测占用），`-NoInstall` 可只取件——与 `UpdateNative.ps1` 语义一致；
 - **独立状态**：记在 `Dist\.aha-snapshot.json`，不读写 `.aha-desktop-native.json` / `.aha-cli-native.json`；
 - 平台自动识别：JVM 线取 `windows-x64`、原生线取 `windows-amd64`（ARM64 机器取 `*-arm64`）。
 

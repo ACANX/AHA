@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.19.1
+**文档版本**：v1.20.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-14
+**最后更新**：2026-10-15
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -37,6 +37,7 @@
 | v1.19.1 | 2026-10-14 | §2 资产名表：Linux 包名由 `-linux-x64` 改为 `-ubuntu-x64`（平台标签统一用发行版名，因为验证环境只有 Ubuntu；ACANX 定案），行首补「验证环境为 Ubuntu」 | @cnxnc |
 
 ---
+| v1.20.0 | 2026-10-15 | 新增 §2.1「快照包（pre-release）：与正式发布彻底隔离」：tag / 载体 / 触发 / 生命周期对照表 + 两条硬约束（`Release.yml` 必须保留 `!V*-SNAPSHOT`；清理不进必需检查）| @ACANX / CNXNC |
 
 ## 1. 发布前检查
 
@@ -101,6 +102,31 @@
    手工补打的方法见 4.1
 5. 触发 `Release.yml`（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）——注意 4.2 的限制
 6. 合回 `dev`，删除 `release/*` 分支
+
+### 2.1 快照包（pre-release）：与正式发布彻底隔离
+
+给**未合并**的 PR 出的试包（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)）**不是交付物**，
+与正式发布互不干扰：
+
+| 项 | 正式发布 | 快照包 |
+|---|---|---|
+| tag | `V<版本>`（`main` 构建成功后由 CI 自动打） | `V<快照版本>-AHA-<目标>-SNAPSHOT` |
+| 载体 | `Release.yml` 产出的正式 release | **pre-release**（`prerelease: true`，不进 `releases/latest`） |
+| 触发 | `Release.yml`（`workflow_dispatch`） | `SNAPSHOT:*` 标签 / `/snapshot` 评论 / `workflow_dispatch` |
+| 生命周期 | 长期保留 | **同 PR 同目标最近 3 条 / 有效期 7 天**；PR 关闭或合并后自动删除 |
+
+**两条硬约束**：
+
+1. `Release.yml` 的 tag 过滤**必须**保留负向模式 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——快照 tag 属 `V*` 家族，
+   少了这一条，每次出快照都会触发一遍完整正式发版流程。判定依据：改动前后
+   `gh run list --workflow Release.yml` 的 run 数不变（至今 **0 次**运行）。
+2. 清理由 `snapshot-cleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
+   `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
+
+规范侧（载体、命名、单一来源、守卫）见 [BuildSpec.md](BuildSpec.md) 第 11 节；
+操作侧见 [BuildGuide.md](../Guide/BuildGuide.md) §3.3 与
+[CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
+
 
 ### 4.1 tag 命名与手工补打
 

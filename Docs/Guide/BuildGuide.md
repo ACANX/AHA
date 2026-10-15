@@ -1,9 +1,9 @@
 # 构建指南
 
-**文档版本**：v1.13.1
+**文档版本**：v1.14.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-14
+**最后更新**：2026-10-15
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -31,6 +31,7 @@
 | v1.13.1 | 2026-10-14 | §3.3 的指引改为指向**源文件** `Docs/Guide/CommandCheatsheet.md`（此前误指生成物 `Dist/README.commands.md`；该副本会被 assembly / 取件脚本覆盖） | @cnxnc |
 
 ---
+| v1.14.0 | 2026-10-15 | §3.3 补全原生线（触发标签补齐 4 个、一个目标一条工作流）；更正「不覆盖任何文件」的过期口径——原生桌面端取件会**替换 exe**（旧版留 `.bak`，`-NoInstall` 可只取件）| @cnxnc |
 
 ## 1. 适用范围
 
@@ -208,14 +209,14 @@ CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没�
 ### 3.3 快照包（PR 试包：先出包再合并）
 
 给**尚未合并**的 PR 出一版可下载的 JVM 便携包，把自测提前到合并之前
-（方案与验收见 [issue #165](https://github.com/ACANX/AHA/issues/165)，实施见 #171）。
-本条只覆盖 JVM 线；原生线见 #172。
+（方案与验收见 [issue #165](https://github.com/ACANX/AHA/issues/165)，实施见 #171 / #172 / #173 / #174）。
+**两条线都已上线**：JVM 线由 `SnapshotJVM.yml` 负责；原生线**一个目标一条工作流**（`DesktopNative.yml` / `CliNative.yml`），一次出该目标的全部腿，可用 `OS:*` 收窄到单平台。
 
 **触发方式**
 
 | 方式 | 用法 | 生效范围 |
 |---|---|---|
-| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` | 打上后每次 push 都重出；移除标签即停 |
+| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | 打上后每次 push 都重出；移除标签即停 |
 | 平台限定标签 | 同时打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu` | 收窄到单平台；**不能单独使用** |
 | PR 评论命令（一次性） | `/snapshot <target> [os ...]` | 大小写不敏感；仅对仓库有写权限的账号生效 |
 
@@ -241,12 +242,17 @@ B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因
 **清理**：同一 PR 的快照保留最近 3 条、有效期 7 天；PR 关闭或合并后自动删除
 （`snapshot-cleanup.yml`，见 #174）。
 
-**本地取件**：`Dist\UpdateDesktopNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun]` /
-`Dist\UpdateCliNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun]`（JVM 便携包快照暂用 `Dist\UpdateSnapshot.ps1 -Kind jvm`）
-（零配置：不需要 token / `gh` / Python；解压到 `Dist\<资产名>\` 的**独立目录**，不覆盖任何既有文件；
-状态记在 `Dist\.aha-snapshot.json`，与原生取件的状态文件互不干扰。速查见
-[`Docs/Guide/CommandCheatsheet.md`](CommandCheatsheet.md) §7（该文件是 `Dist/README.commands.md` 的
-**源文件**，副本由构建 / 取件脚本覆盖重建）。
+**本地取件**（零配置：不需要 token / `gh` / Python）：
+
+```bat
+Dist\UpdateDesktopNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生桌面端
+Dist\UpdateCliNativeSnapshot.cmd     [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生 CLI
+Dist\UpdateSnapshot.ps1 -Kind jvm    [-List] [-Pr <N>] [-Out <目录>] [-Force] [-DryRun]  :: JVM 便携包（两种目标共用）
+```
+
+行为差异（**别弄混**）：**原生桌面端**目标会把包里的 exe 替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，
+下载前先探测占用），加 `-NoInstall` 可只取件、不安装；JVM 与原生 CLI 目标解压到 `Dist\<资产名>\` 的**独立目录**。
+状态一律记在 `Dist\.aha-snapshot.json`，与原生取件的 `.aha-desktop-native.json` / `.aha-cli-native.json` 互不干扰。
 
 ## 4. 单模块构建
 
