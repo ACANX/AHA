@@ -15,6 +15,12 @@
     <name>AHA-CLI</name>
     <description>命令行入口（picocli + JLine）</description>
 
+    <properties>
+        <!-- fat jar 的 Main-Class（issue #200）。CLI 入口本身没有继承 Application，
+             可以直接当入口；桌面端才有转发类 Launcher（避开 JavaFX 的模块化检查）。 -->
+        <mainClass>com.acanx.module.aha.cli.AhaCli</mainClass>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.acanx.module.aha</groupId>
@@ -97,6 +103,80 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <!--
+                单体 fat jar（issue #200）：把本项目各模块与全部 runtime 依赖（含
+                OpenJFX 本平台分类器、sqlite-jdbc、jline）打进一个可执行 jar。
+                产物名 = ${project.build.finalName}.jar（本阶段仍带版本号；改为不带版本
+                见 #200 的后续阶段）。
+
+                三条必须的 filter（上游 LegionFanControl 已验证）：
+                  1. 排除 module-info.class（含 META-INF/versions/ 下的）——
+                     JPMS 描述符留在 classpath 模式下会与 fat jar 冲突；
+                  2. 排除 META-INF/*.SF|DSA|RSA —— 原 jar 的签名对合并后的 jar 无意义，
+                     留着会让 java -jar 报「签名校验失败」；
+                  3. 合并 META-INF/services（picocli / JLine / SLF4J / Jackson 都靠它）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${mainClass}</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+                把 shade 产出的 fat jar 复制到仓库根 Dist/（供 CI 打快照包 / 本地取件）。
+                本 execution **必须声明在 shade 之后**：同一 package 阶段内按声明顺序执行，
+                否则复制到的是 shade 覆盖前的原始 jar。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-fatjar-to-dist</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${maven.multiModuleProjectDirectory}/Dist</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>${project.build.finalName}.jar</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <!--
                 让 `mvn clean` 清掉 Dist/ 里由构建产生的文件。

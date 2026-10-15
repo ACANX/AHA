@@ -303,7 +303,16 @@ jobs:
           # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
           target="Dist/aha-cli-${VERSION}${suffix}.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib README.md LICENSE CHANGELOG.md)
+          # 单体 fat jar（issue #200 的阶段产物，与 lib/ 并存）一并打进包里，
+          # 供真机验证 `java -jar aha-cli-<版本>.jar`；正式形态（去掉 lib/）见 #200。
+          (
+            cd Dist
+            fatjars=()
+            for f in aha-cli-*.jar; do
+              [ -e "$f" ] && fatjars+=("$f")
+            done
+            zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib "${fatjars[@]}" README.md LICENSE CHANGELOG.md
+          )
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
           ls -lh "$target"
 
