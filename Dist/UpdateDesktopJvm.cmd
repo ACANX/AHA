@@ -57,14 +57,11 @@ shift
 goto collect
 
 :run
-echo Checking the latest DESKTOP JVM portable package on GitHub, please wait...
-echo.
 "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Kind Desktop %ARGS%
 rem Read the exit code right away - the next command would overwrite errorlevel.
 set "RC=%errorlevel%"
 echo.
 if not "%RC%"=="0" goto failed
-echo [DONE] See the messages above.
 goto finish
 
 :failed
