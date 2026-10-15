@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.34.0
+**文档版本**：v1.35.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -50,6 +50,7 @@
 | v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
 | v1.33.0 | 2026-10-15 | §11.4 新增「评论必须可辨识」硬约定：快照评论标题须带「线 · 本线目标范围」（marker 是不可见注释）；且「未打任何标签」时**只由 JVM 线落一条**，不得出现两条同义评论（实测 PR #206）| @ACANX / CNXNC |
 | v1.34.0 | 2026-10-15 | §11.4 新增「跨线写交接说明」硬约定：目标属另一条线时，当前线把自己那条评论更新为「属 X 线，交由 X 处理」，**不得**停在「未打任何 `SNAPSHOT:*` 触发标签」（issue #205 的原始现象）| @ACANX / CNXNC |
+| v1.35.0 | 2026-10-15 | §8.1 新增「工作流的门不得与布尔字面量做宽松比较（强制）」：`push` 无 `inputs` ⇒ `inputs.x` 为 `null`，而 `null != false` 在 GitHub 表达式里是 **false** ⇒ `build-publish` 门失效、dev 的 JVM 预发行包**静默停发 4 天**（issue #213）；配套守卫 `check_yaml_input_bool_compare()` | @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -384,6 +385,24 @@ CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-2610-014-Native-Sk
   改动它等于改必需检查的名字。
 - 确需改名时，同一变更内必须同步更新分支保护，并在对应 Issue（当前
   [#85](https://github.com/ACANX/AHA/issues/85)）中刷新验收清单。
+
+**工作流的门不得与布尔字面量做宽松比较（强制）**：`push` 事件没有 `inputs` 上下文，`inputs.x` 读出来是 `null`；
+而 GitHub 表达式做宽松比较时把 `null`、`false`、`''` 都折算成数字 `0` ⇒ **`null != false` 求值为 `false`**
+—— 也就是说「**没传**」与「**传了 false**」变得无法区分，而这两者在门里通常是相反的意思。
+
+实测事故（issue [#213](https://github.com/ACANX/AHA/issues/213)，2026-10-15）：`BuildJVMArtifacts.yml` 的 `build-publish` 门
+写作 `inputs.publish != false && inputs.publish != 'false'`，本意是「push / dispatch 默认发布，只有显式 false 才跳过」，
+实际让 **`push` 到 `dev` 的每一次发布都被静默跳过** —— dev 的 JVM 预发行包从 `2026-10-14 06:52` 起
+**4 天没发出去**，而 run 结论一直是 `success`（作业 `skipped` 不染红）。
+
+因此：
+
+- **「没传」与「传了 false」必须能被区分**：判断一律**挪进脚本**（shell 里就是普通字符串比较），
+  归一成 `true` / `false` 字符串后，用 `needs.<job>.outputs.<x> == 'true'` 读；
+- 守卫：`bin/CheckScripts.py` 的 `check_yaml_input_bool_compare()` 会点名 workflow 里对 `inputs.*` 的
+  `== / != true|false` 比较（剥注释后匹配；新增于 2026-10-15）；
+- **「跳过」也要能被看见**：作业被 `skipped` 时整个 run 仍是绿的 —— 凡「跳过 = 少交付」的门，
+  必须有守卫或摘要把它暴露出来。
 
 **CI 必须容忍仓库侧瞬时失败（强制）**：门禁要拦的是**代码与配置的问题**，不是网络抖动。
 GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.apache.org/maven2)`，

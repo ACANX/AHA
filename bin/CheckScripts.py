@@ -722,6 +722,45 @@ def check_yaml_shell_vars(path: Path) -> list[str]:
     return problems
 
 
+#: 对 `inputs.*` 做宽松布尔比较 —— `null != false` 在 GitHub 表达式里是 **false**（issue #213）。
+INPUT_BOOL_COMPARE_RE = re.compile(
+    r"\binputs\.[A-Za-z_][A-Za-z0-9_-]*\s*(?:!==|===|!=|==)\s*(?:true|false)\b"
+)
+
+
+def check_yaml_input_bool_compare(path: Path) -> list[str]:
+    """工作流里禁止对 `inputs.*` 做 `== / != true|false` 的宽松比较。
+
+    来历（2026-10-15 实测，issue #213）：`build-publish` 的门写成
+    `inputs.publish != false && inputs.publish != 'false'`，意图是「push / dispatch 默认发布，
+    只有显式 false 才跳过」。但 `push` 事件**没有 `inputs`** ⇒ `inputs.publish` 为 `null`；
+    GitHub 表达式做宽松比较时把两侧折算成数字（`null → 0`、`false → 0`）
+    ⇒ `null != false` 求值为 `0 != 0` = **false** ⇒ 作业被**静默跳过**：
+    dev 的 JVM 预发行包自 2026-10-14 06:52 起再没发布过（#179 引入，4 天后才被发现）。
+
+    正确做法：把判断挪进脚本，归一成 `true` / `false` 字符串，再用
+    `needs.<job>.outputs.<x> == 'true'` —— 字符串比较没有这个折算坑。
+    """
+    problems: list[str] = []
+    rel = path.relative_to(ROOT)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return [f"{rel} 不是 UTF-8，无法检查 inputs 布尔比较"]
+    for number, raw in enumerate(text.splitlines(), 1):
+        # 剥掉注释再匹配（与 paths_block_literals / pull_request_paths_filters / concurrency_group 同一惯例）：
+        # 说明性注释里会**引用** `inputs.x != false` 这种反面例子，那是文档不是代码（本守卫初版就误报了它）。
+        line = raw.split("#", 1)[0]
+        for match in INPUT_BOOL_COMPARE_RE.finditer(line):
+            problems.append(
+                f"{rel}:{number} 对 `inputs` 做了宽松布尔比较（`{match.group(0)}`）——"
+                "`push` 事件没有 inputs、`inputs.x` 为 null，而 GitHub 把 null 与 false 都折算成 0，"
+                "`null != false` 求值为 false、作业被**静默跳过**（issue #213 实测：dev 预发行包停发 4 天）。"
+                "请把判断挪进脚本归一成 `true` / `false` 字符串，再用 `needs.<job>.outputs.<x> == 'true'`"
+            )
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 脚本文件规约检查")
     parser.add_argument("--verbose", action="store_true", help="输出每个文件的检查结果")
@@ -754,6 +793,10 @@ def main() -> int:
     problems.extend(snap_parity)
     snapshot = check_snapshot_manifest()
     problems.extend(snapshot)
+    input_compare: list[str] = []
+    for path in groups["yml"]:
+        input_compare.extend(check_yaml_input_bool_compare(path))
+    problems.extend(input_compare)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
@@ -761,6 +804,7 @@ def main() -> int:
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
+    print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
     if problems:
         print("\n[问题]")
         for problem in problems:
