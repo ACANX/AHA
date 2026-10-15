@@ -44,24 +44,23 @@ on:
     branches: [dev]
   # PR 上也跑一次：让「原生包能不能起」在**合并前**就看得见（issue #144）。
   #
-  # 路径过滤：只有碰了桌面前端 / 原生模块 / 根 POM / 本工作流自身时才跑——
-  # 否则每个文档 PR 都要烧一次 5 条腿的原生构建（约 10 分钟）。
-  #
   # 【重要】PR 事件下**不发布**（见 native-publish 的 if）：避免 PR 阶段就往发布页推预发行包、
   # 留下无人认领的 tag。制品仍会上传为 Actions artifact，在 PR 页面底部可见。
+  #
+  # 【为什么**不再**用 `paths:` 过滤（2026-10-15 实测 #203）】
+  # 过去用 `paths:` 白名单省成本（免得每个文档 PR 都烧 5 条腿），但它在**触发层**过滤事件：
+  # 只改 `Docs/**` 的 PR 哪怕**新打了触发标签**（显式请求），事件也进不来 ——
+  # 现象就是「打了标签毫无反应」，与 #165 验收 16「只改文档时新打标签 ⇒ 照出包并写明『显式请求』」冲突。
+  # 现在改为：**任何 PR 事件都让 `plan` 先跑**（约 10 秒、不编译不发包），
+  # 昂贵的腿一律由 `needs.plan.outputs.should_build` 门控（见 native-image 的 if 与各腿的步骤级 if）。
+  # 这条约定由 `bin/CheckScripts.py` 的 `pull_request_paths_filters()` 守住，别再往回加。
+  # 路径清单的唯一来源仍是 `.github/snapshot-paths.yml`（由 `plan` 作业里的判定脚本消费）；
+  # 本文件不再写死任何路径字面量，也不要再往 `paths:` 里加。
   pull_request:
     # 【注意】`types` 一旦写出来就会**覆盖**默认值（默认只有 opened / synchronize / reopened），
     # 所以必须把默认的三个一并列出，否则「PR 上跑一次」这条既有能力会静默消失。
     # `labeled` / `unlabeled` 是快照出包用的（#165 §三：打 `SNAPSHOT:NativeDesktop` 才出包）。
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - 'aha-desktop/**'
-      - 'aha-desktop-native/**'
-      - '**/pom.xml'
-      # 判定脚本与路径清单也会改变本工作流的行为（改清单 = 改「哪些改动算出包」）
-      - '.github/Python/**'
-      - '.github/snapshot-paths.yml'
-      - '.github/workflows/DesktopNative.yml'
   # 评论命令触发（`/snapshot Desktop-Native [os ...]`，见 #165 §三 补充触发方式 ②）。
   # 与标签的区别：命令是**一次性**的，标签是**粘性**的。
   issue_comment:
