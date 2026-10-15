@@ -93,6 +93,8 @@ GitHub 对 `pull_request`（含 `labeled`）用的是 `refs/pull/<N>/merge` 上�
 ## 5. 验证
 
 - `python3 bin/CheckScripts.py` 通过；
+- **工作流静态校验**：`actionlint`（v1.7.12）对三条工作流**无输出**（通过）—— 初版曾在
+  `concurrency.group` 里写 `? :` 三元，导致三条线在 GitHub 校验阶段直接失效（`got unexpected character '?'`）；
 - **守卫反向验证**：把 `DesktopNative.yml` 的 group 改回 `${{ github.ref }}` ⇒
   `❌ .github/workflows/DesktopNative.yml 的 concurrency.group 没有区分事件类别（'desktop-native-${{ github.ref }}'）…`，
   退出码 1；还原后复绿；
@@ -107,7 +109,11 @@ GitHub 对 `pull_request`（含 `labeled`）用的是 `refs/pull/<N>/merge` 上�
 - **`pull_request` 的工作流定义有「代际」**：base 更新后 merge ref 若不重建，事件仍按**旧定义**过滤。
   复验「触发层」类修复时，**先确认 PR 已同步 base**，否则测的是旧代码；
 - **注释与实现要对齐**：`plan` 的注释写着「dev/push 时被跳过」，`if` 却没跳 —— 这类「说了没做」
-  的偏差要靠守卫兜住，不能只靠读注释。
+  的偏差要靠守卫兜住，不能只靠读注释；
+- **GitHub Actions 表达式没有三元运算符**：`? :` 会 lex 失败，二选一必须写 `cond && 'A' || 'B'`。
+  这类错误只在**工作流校验阶段**暴露（「workflow file issue」、无日志、无 job），
+  本地 `CheckScripts` 与 PyYAML 都拦不住 ⇒ **工作流改动应过一遍 `actionlint`**（本机可临时从
+  `rhysd/actionlint` 下载静态二进制到 `/tmp`，不必安装）。
 
 ## 7. 涉及文件
 

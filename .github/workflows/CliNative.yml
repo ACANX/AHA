@@ -83,13 +83,14 @@ permissions:
 #   * `explicit`：labeled / unlabeled / issue_comment / workflow_dispatch（用户显式动作）；
 #   * `auto`：opened / synchronize / reopened / push（自动事件）。
 # 两组互不取消；各自组内仍只保留最新一次（连续 push 依旧只跑最后一条）。
+# 【写法注意】GitHub Actions 表达式**没有三元运算符** `? :` —— 用 `cond && 'explicit' || 'auto'`
+# 模拟（写成 `? :` 会让工作流在**校验阶段**直接失效：报「workflow file issue」，且不产生任何日志）。
 # 【为什么键里用 PR 号而不是 `github.ref`】issue_comment / workflow_dispatch 的
 # `github.ref` 是**默认分支**，多个 PR 会共享同一组而互相取消（与 SnapshotJVM.yml 对齐）。
 concurrency:
   group: >-
     cli-native-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr || github.ref }}-${{
-    (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled'))
-    || github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch' ? 'explicit' : 'auto' }}
+    ((github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled')) || github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch') && 'explicit' || 'auto' }}
   cancel-in-progress: true
 
 defaults:
