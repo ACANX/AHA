@@ -30,7 +30,7 @@
 
 ## 合并规则
 
-> **可选检查**：`snapshot-asserted`（快照自测留痕，issue #166）**默认启用但不做卡点** ——
+> **可选检查**：`snapshot-assert`（快照自测留痕，issue #166）**默认启用但不做卡点** ——
 > 它不在必需检查里，缺失不影响合并。要卡点由 ACANX 在分支保护里显式加入；
 > 口径与自测清单见 [ReleaseProcess.md](ReleaseProcess.md) §2.2。
 

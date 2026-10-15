@@ -647,7 +647,7 @@ def concurrency_group(text: str) -> str | None:
     return None
 
 
-def check_snapshot_asserted_contract() -> list[str]:
+def check_snapshot_assert_contract() -> list[str]:
     """快照自测留痕的契约（issue #166）：context / 命令 / 权限 / 清单编号 / 必测项 0 token。
 
     五条都对应「改坏了也照样跑、只在真用时才发现」的情形，所以在这里钉成断言。
@@ -662,9 +662,9 @@ def check_snapshot_asserted_contract() -> list[str]:
     wf_text = wf.read_text(encoding="utf-8")
 
     # ① status 的 context：分支保护里认的就是这个字符串（必须出现在**打标那一行**）
-    if not re.search(r"-f context=snapshot-asserted(\s|$)", wf_text, re.M):
+    if not re.search(r"-f context=snapshot-assert(\s|$)", wf_text, re.M):
         problems.append(
-            f"{rel}：找不到 `-f context=snapshot-asserted` —— 打出来的标不会指向分支保护里那个名字"
+            f"{rel}：找不到 `-f context=snapshot-assert` —— 打出来的标不会指向分支保护里那个名字"
         )
 
     # ② 两个命令前缀必须出现在**触发守卫**里（只看 `if:` 那一块）
@@ -1011,7 +1011,7 @@ def main() -> int:
             if args.verbose:
                 print(f"  {'❌' if found else '✅'} {path.relative_to(ROOT)}")
 
-    snap_assert = check_snapshot_asserted_contract()
+    snap_assert = check_snapshot_assert_contract()
     problems.extend(snap_assert)
     layout = check_package_layout()
     problems.extend(layout)
