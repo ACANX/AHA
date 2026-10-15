@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.23.0
+**文档版本**：v1.24.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-verified`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
 | v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增 1.0 发布的自举验收附加检查 | @ACANX |
@@ -125,6 +126,54 @@
    `gh run list --workflow Release.yml` 的 run 数不变（至今 **0 次**运行）。
 2. 清理由 `snapshot-cleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
    `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
+
+### 2.2 快照自测留痕（`snapshot-verified`）：默认启用、默认不卡点
+
+「这个包我跑过了」需要留痕，但**不能**变成流程税。机制见
+[`.github/workflows/SnapshotVerified.yml`](../../.github/workflows/SnapshotVerified.yml)（issue #166）：
+
+| 项 | 口径 |
+|---|---|
+| 启用 | **默认启用** —— 工作流随仓库就位，PR 上发评论即打标，无需任何开关 |
+| 卡点 | **默认不做卡点** —— `snapshot-verified` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
+| 命令 | `/verified <版本> <平台> [jdk27] [+model]`（打 `success`）；`/snapshot-failed <版本> <平台> [jdk27] <原因>`（打 `failure`，失败也要可见）|
+| 平台 / JDK | 平台词 `Win` / `MacOS` / `Ubuntu`（与快照出包同一套）；JDK 段省略即 `jdk25` |
+| 绑定 | status 绑在 PR 当时的 `head_sha` ⇒ **PR 再 push 后旧验证自动失效**（新 sha 上没有这条 status）|
+| 版本归属 | 发布页必须有对应 tag；若 tag 是快照，还必须属于**本 PR**（防止拿别的 PR 的版本打标）|
+| 权限 | 只认对该仓库有写权限的账号（`OWNER` / `MEMBER` / `COLLABORATOR`）；无权限者**不产生** status |
+| **token 开销** | **必测项一律 0 token** —— 清单里**不含**任何模型往返；需要真实 provider 请求的动作是**可选**（用 `+model` 声明）|
+
+**必测清单**（这条 status 断言的**就是**它；工作流里内置同一份，`bin/CheckScripts.py`
+断言两处编号一致、且必测行的 token 列必须为 0）：
+
+| # | 必测项 | 怎么算过 | token |
+|---|---|---|---|
+| A1 | 启动 | 包根 `AhaCli.bat` / `AhaCli.sh` 能起（等价 `java -jar aha-cli.jar`），`version` 与快照版本一致 | 0 |
+| A2 | 工具直调 | `tool list` 能列出工具；`tool invoke <工具名> -p k=v` **真的执行成功**（如读一个文件）—— **绕过模型**，覆盖工具注册 / 参数解析 / 权限确认 / 原生库 | 0 |
+| A3 | 供应商配置 | `provider list`、`provider test <id>`、`model show` 打得开、内容正确（`provider test` 按实现不发起请求）| 0 |
+| A4 | 本地命令 | `/help`、`/session` 等本地命令打得开、不崩 | 0 |
+| A5 | 运行期原生库 | 无 `UnsatisfiedLinkError`（工具调用 / 会话落盘即触发 sqlite 的库加载）| 0 |
+| B1 | 桌面端开窗 | 双击 `AhaDesktop.bat` / 执行 `AhaDesktop.sh`，窗口真的出现；无 `UnsatisfiedLinkError`、无「JavaFX runtime components are missing」 | 0 |
+| B2 | 主题对比 | 亮 / 暗来回切一次，标题与背景、输入框与页面底色对比正常 | 0 |
+| B3 | 字体观感 | 与 JVM 模式（或上一版）对照无明显劣化 | 0 |
+| B4 | 界面不崩 | 设置 / 供应商面板 / 会话列表各打开一次，不崩不退 | 0 |
+| C1 | 原生包免 JDK | 单文件直接运行，本机没有 JDK 也能跑 | 0 |
+| C2 | 原生包入口 | CLI：`--version` / `--help` 退出码 0；桌面端：开窗（同 B1）| 0 |
+| C3 | 与 JVM 包一致 | 用 A2（工具直调）对照一句：两边行为一致，或差异写进结论 | 0 |
+
+**为什么必测项里没有「真实对话」**：适配器只有 openai-compatible / anthropic / gemini（**无本地 mock**），
+任何真实对话都要花 token，而 token 由 owner 的 key 承担、快照又是按 PR 出的 —— 于是
+「发一句话看有没有回复」与「模型驱动的工具调用」降级为**可选**（`+model`），必测部分用
+**工具直调**（`tool invoke`，绕过模型）+ 配置 / 本地命令 + 开窗观感，即可覆盖「机器验不了」的那部分。
+
+**谁验什么（与 CI 的分工）**：CI 已覆盖「构建成功 / 包内条目 / `Main-Class` / 无 `module-info` /
+本平台原生库 / `java -jar … version` 冒烟」，这些**不进**本清单；本清单只列**机器验不了**的项。
+
+**可选 M 组**（token > 0，按需）：M1 真实 provider 往返（只发**一句话**）、M2 模型驱动的工具调用、
+M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示**（命中 `llm/` / `tool/` / `session/` /
+`view/` / `*Adapter*` 就提示建议做），不靠人记；做了就在命令末尾加 `+model`。
+
+**操作侧**用法见 [CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
 
 规范侧（载体、命名、单一来源、守卫）见 [BuildSpec.md](BuildSpec.md) 第 11 节；
 操作侧见 [BuildGuide.md](../Guide/BuildGuide.md) §3.3 与

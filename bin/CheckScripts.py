@@ -100,6 +100,13 @@ TRACKED_SCRIPT_DIRS = ("Dist",)
 #: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
 NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+#: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
+#: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
+SNAPSHOT_VERIFIED_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotVerified.yml"
+SNAPSHOT_VERIFIED_DOC = ROOT / "Docs" / "DevSpec" / "ReleaseProcess.md"
+#: 清单行的形状（两处都用同一张表）：`| A1 | 启动 | … | 0 |`
+CHECKLIST_ROW_RE = re.compile(r"^\s*\|\s*([ABC][0-9]+)\s*\|.*\|\s*([^|]*?)\s*\|\s*$", re.M)
+
 #: 发行包形态的单一来源（issue #218 / #217）：装配描述符、shade 所在 POM、
 #: 单体 jar 的落地名、启动脚本。四条一起断言，才不会出现「描述符改了、脚本没改」这种半吊子。
 ASSEMBLY_DESCRIPTORS = {
@@ -633,6 +640,75 @@ def concurrency_group(text: str) -> str | None:
     return None
 
 
+def check_snapshot_verified_contract() -> list[str]:
+    """快照自测留痕的契约（issue #166）：context / 命令 / 权限 / 清单编号 / 必测项 0 token。
+
+    五条都对应「改坏了也照样跑、只在真用时才发现」的情形，所以在这里钉成断言。
+    """
+    problems: list[str] = []
+
+    wf = SNAPSHOT_VERIFIED_WORKFLOW
+    rel = wf.relative_to(ROOT)
+    if not wf.exists():
+        problems.append(f"缺快照自测留痕工作流 {rel}（issue #166）")
+        return problems
+    wf_text = wf.read_text(encoding="utf-8")
+
+    # ① status 的 context：分支保护里认的就是这个字符串（必须出现在**打标那一行**）
+    if not re.search(r"-f context=snapshot-verified(\s|$)", wf_text, re.M):
+        problems.append(
+            f"{rel}：找不到 `-f context=snapshot-verified` —— 打出来的标不会指向分支保护里那个名字"
+        )
+
+    # ② 两个命令前缀必须出现在**触发守卫**里（只看 `if:` 那一块）
+    #    早先写成「文件里某处出现过就算过」，反向测试立刻抓到洞：把守卫里的命令换掉，工作流永远不触发，而守卫不报。
+    guard = re.search(r"^    if: >-\n(?:      .*\n)+", wf_text, re.M)
+    guard_text = guard.group(0) if guard else ""
+    for cmd in ("/verified", "/snapshot-failed"):
+        if f"startsWith(github.event.comment.body, '{cmd}')" not in guard_text:
+            problems.append(
+                f"{rel}：触发守卫里没有 `startsWith(github.event.comment.body, '{cmd}')`"
+                "（实测：命令发了也起不了运行）"
+            )
+
+    # ③ 顶层 permissions：漏 statuses: write 就是 403
+    if not re.search(r"^  statuses: write\b", wf_text, re.M):
+        problems.append(f"{rel}：顶层 permissions 缺 `statuses: write`（打标会 403）")
+
+    # ④⑤ 清单：工作流与规范两处编号一致；必测行的 token 列必须为 0
+    def rows(text: str) -> list[tuple[str, str]]:
+        return [(m.group(1), m.group(2)) for m in CHECKLIST_ROW_RE.finditer(text)]
+
+    wf_rows = rows(wf_text)
+    doc = SNAPSHOT_VERIFIED_DOC
+    if not doc.exists():
+        problems.append(f"缺规范 {doc.relative_to(ROOT)}（清单的原文在这里）")
+        return problems
+    doc_rows = rows(doc.read_text(encoding="utf-8"))
+
+    wf_ids = {i for i, _ in wf_rows}
+    doc_ids = {i for i, _ in doc_rows}
+    if not wf_ids:
+        problems.append(f"{rel}：没解析到自测清单行（形状应为 `| A1 | … | … | 0 |`）")
+    if wf_ids != doc_ids:
+        only_wf = sorted(wf_ids - doc_ids)
+        only_doc = sorted(doc_ids - wf_ids)
+        problems.append(
+            f"自测清单编号不一致：{rel} 独有 {only_wf or '无'}，"
+            f"{doc.relative_to(ROOT)} 独有 {only_doc or '无'}"
+            "（清单是这条检查的实质，两处必须逐条对齐）"
+        )
+    for src, rws in ((rel, wf_rows), (doc.relative_to(ROOT), doc_rows)):
+        bad = [i for i, token in rws if token.strip() != "0"]
+        if bad:
+            problems.append(
+                f"{src}：必测项 {', '.join(bad)} 的 token 开销不是 0 —— "
+                "「必测项不许烧 token」是硬约定（需 provider 的动作用 +model 声明，不进必测）"
+            )
+
+    return problems
+
+
 def check_package_layout() -> list[str]:
     """发行包必须仍是「包根平铺」：无 lib/、无 bin/、jar 名不带版本号（issue #218 第 7 条）。
 
@@ -916,6 +992,8 @@ def main() -> int:
             if args.verbose:
                 print(f"  {'❌' if found else '✅'} {path.relative_to(ROOT)}")
 
+    snap_verified = check_snapshot_verified_contract()
+    problems.extend(snap_verified)
     layout = check_package_layout()
     problems.extend(layout)
     shade = check_shade_attached()
@@ -936,6 +1014,7 @@ def main() -> int:
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
+    print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_verified else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
