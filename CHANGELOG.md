@@ -154,6 +154,10 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **原生 exe 里输入框的轮廓线丢失（issue #229，2026-10-15）**：只在 **原生镜像编出的 exe** 里，切换主题后对话输入框的轮廓线不见了 —— 而内容面底色按 #153 的口径与页底**同色**，轮廓线一没就分不出输入框的范围（JVM 模式正常）。根因：轮廓线此前**完全依赖 CSS**，而原生镜像下 modena 那些带 `derive()` / `linear-gradient()` 的规则会**整条声明被丢弃**（`TS-2610-029`）；`ThemePaint` 的属性 API 兜底只覆盖背景与文字，**边框漏在覆盖范围之外**。
+  - 修复：`ThemePaint` 新增 `paintBorder()`，把 `-fx-border-color`（+ 宽度 / 圆角，缺省 1 / 3）落到 `Region.setBorder(...)`；三处同类控件（对话输入框、会话搜索框、日志面板文本域）的内联样式补上轮廓线（值取自补丁样式表，JVM 下外观不变）。约定：样式串没写边框就不动现有边框，写 `transparent` / `none` 才清空。
+  - 断言：冒烟测试读输入框**实际生效的** `Region.getBorder()`，断言颜色为 `Palette.BORDER` 且**跟着主题换**。
+  - 记录见 [`TS-2610-046`](Docs/Troubleshooting/TS-2610-046-Input-Outline-Lost-In-Native.md)（含结论分层 / 观测数据 / 排除项 / 未决问题）。
 - **下拉列表里当前项「看不见，也没完全隐藏」（issue #227，2026-10-15）**：ComboBox 展开后，**当前值那一行**是白底白字（真机截图：三个选项里中间一行只有背景没有文字）。根因是** CSS 特异性失衡**：基面规则 `.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell` 是 **5 个类**，把 `.list-cell:filled:selected`（1 类 + 2 伪类）的强调色背景盖掉了；而选中态**文字**色来自更具体的 `.list-cell:filled:selected .text`（4）却能生效 ⇒ 亮色主题下基面底色与 `ON_ACCENT` 同为 `#FFFFFF`，两者同色。
   - 修复：两份主题模板的状态规则**加上与基面完全相同的选择器前缀**（同特异性时后者胜），弹出层再加一层 `.combo-box-popup > …` 留余量；通用规则保留。
   - 新守卫：`bin/CheckTheme.py` 第 8 项 `check_state_rules_not_shadowed()` —— 对每一条设背景色的基面规则，要求存在**类路径完全相同**的状态规则（更深的规则不能代表普通列表，反向验证 2/1 处如期被拦下）。

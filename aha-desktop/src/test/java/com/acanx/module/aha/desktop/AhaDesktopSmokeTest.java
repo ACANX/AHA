@@ -29,6 +29,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.text.Text;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -300,6 +301,18 @@ class AhaDesktopSmokeTest {
         assertThat(uiGet(() -> skinSurface(inputStage.get().getScene(), DesktopShell.COMPOSER_ID, ".content")))
                 .as("切回暗色同样要换回来（否则就是「切一次对、再切就错」）")
                 .isEqualTo(normalize(Palette.CONTROL_INNER));
+        // ── 输入框的轮廓线（issue #229，2026-10-15）─────────────────────────────
+        // 原生镜像 exe 里「输入框的轮廓线丢失，纯色界面下分不出输入框的范围」：
+        // modena 画那圈线的规则带 derive() / linear-gradient()，原生镜像下**整条声明被丢弃**
+        // （TS-2610-029）。现在轮廓线由 ThemePaint.paintBorder 走属性 API 落到 Region 上，
+        // 这条断言读的就是那个属性（不是样式串）——且必须跟着主题换。
+        assertThat(uiGet(() -> borderColor(inputStage.get().getScene(), DesktopShell.COMPOSER_ID)))
+                .as("输入框必须有轮廓线（原生镜像下 CSS 那条会被丢弃，纯色界面里就分不出范围）")
+                .isEqualTo(normalize(Palette.BORDER));
+        onUi(() -> inputShell.applyTheme(Theme.LIGHT));
+        assertThat(uiGet(() -> borderColor(inputStage.get().getScene(), DesktopShell.COMPOSER_ID)))
+                .as("切到亮色后轮廓线也要跟着换（否则又是一处「切主题不跟随」）")
+                .isEqualTo(normalize(Palette.BORDER));
         onUi(() -> inputStage.get().close());
 
         // 日志面板：级别过滤 + 渲染
@@ -523,6 +536,33 @@ class AhaDesktopSmokeTest {
 
     private static String hexOf(Color color) {
         return color == null ? null : String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
+    }
+
+    /**
+     * 读控件**实际生效的**边框色（{@code Region.getBorder()}，不是样式串）。
+     *
+     * <p>issue #229 的判据落在它上面：原生镜像下补丁样式表里那条 {@code -fx-border-color}
+     * 对 {@code TextArea} 不可靠，因此轮廓线必须由属性 API 落到这个属性上。</p>
+     *
+     * @param scene 场景
+     * @param id    控件 id
+     * @return {@code #RRGGBB}；没有边框时返回 {@code null}
+     */
+    private static String borderColor(Scene scene, String id) {
+        Node node = byId(scene, id);
+        if (!(node instanceof Region region) || region.getBorder() == null
+                || region.getBorder().getStrokes().isEmpty()) {
+            return null;
+        }
+        Paint stroke = region.getBorder().getStrokes().get(0).getTopStroke();
+        if (!(stroke instanceof Color color)) {
+            return null;
+        }
+        // 就地格式化（不依赖别处的小工具，避免分支间交叉引用）
+        return String.format("#%02X%02X%02X",
                 Math.round(color.getRed() * 255),
                 Math.round(color.getGreen() * 255),
                 Math.round(color.getBlue() * 255));
