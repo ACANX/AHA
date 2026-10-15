@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.37.0
+**文档版本**：v1.38.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.38.0 | 2026-10-15 | §7 CLI 发行包也改为**包根平铺**（`aha-cli.jar` + `Aha.sh` / `Aha.bat`，jar 名去版本号，无 `lib/` 与 `bin/`），两条线形态一致；新增「CLI 的 shade 也必须 `shadedArtifactAttached=true`」的理由（装配描述符与原生镜像线都要普通 jar，issue #217）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `BuildGuide.md` 拆分而来，承接其中的强制性约束 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增发行包产物约束（禁止 fat JAR / jlink） | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增跨平台脚本编码与行尾约束 | @ACANX |
@@ -240,12 +241,15 @@ POM 语法必须兼容 Maven 3.9.x：
     会用 fat jar **顶替项目主产物**，于是任何按「项目工件」取件的地方都会拿到 fat jar、
     模块化 jar 被挪成 `original-*.jar`（issue #217 的实测教训）；原生镜像线
     （`aha-desktop-native` 依赖 `aha-desktop`）与装配描述符都会因此拿错包。
-  - **CLI 发行包 = JPMS 模块路径目录**（`Dist/bin` + `Dist/lib`），由 `maven-assembly-plugin`
-    组装（`aha-cli/src/assembly/dist.xml`）：`bin/Aha.sh` / `bin/Aha.bat` 必须与 `Dist/`
-    布局保持一致（`$DIR/../lib`）。迁移为平铺单体 jar 见 issue #218 步骤一。
+  - **CLI 发行包 = 包根平铺**（`aha-cli.jar` + `Aha.sh` / `Aha.bat` + 文档），由
+    `maven-assembly-plugin` 组装（`aha-cli/src/assembly/dist.xml`）：描述符按
+    `standalone` classifier 取 shade 的附带产物，落地时**去掉版本号与 classifier**；
+    启动脚本必须与包根布局保持一致（`java -jar <脚本同目录>/aha-cli.jar`）。
+    与桌面端同一形态，两条线都不再有 `lib/` 与 `bin/`（issue #218）。
   - 早期本条的「**禁止**使用 `maven-shade-plugin` 打 fat JAR」（理由：合并后的单一 JAR 无法
     按模块追踪依赖与许可）**已按目标放宽**为上面两类：JVM 便携包面向「下载即可双击运行」的用户，
-    接受单体 jar 的代价；需要按模块追踪依赖与许可的场合仍用模块路径形态（CLI 与本地 `Dist/`）。
+    接受单体 jar 的代价；需要按模块追踪依赖与许可的场合改为直接读依赖树（`mvn dependency:tree` /
+    `jdeps`）——发行为平铺形态，包里不再有模块路径目录。
   - **禁止**在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块，jlink 不支持
   - `Dist/` 不入库，须在 `.gitignore` 中保持忽略
 - **构建产物一律输出到 `Dist/`（仓库根只放源码与文档）**：
@@ -299,7 +303,7 @@ POM 语法必须兼容 Maven 3.9.x：
 
 | 形态 | CLI | 桌面端 | 前提 |
 |---|---|---|---|
-| **JVM JAR 聚合包** | `aha-cli-<版本>.zip` | `aha-desktop-<版本>-<系统>-<架构>.zip` | 需自备 JDK 25 |
+| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`（包根平铺） | `aha-desktop-<版本>-<系统>-<架构>.zip`（包根平铺） | 需自备 JDK 25 |
 | **原生镜像二进制**（试验性） | `aha-cli-native` 的 `native-image` 单文件 | `aha-desktop-native` 的 `native-image` 单文件 | 无需 JVM |
 
 > `jpackage` 安装包**已决策跳过、不采用**：它是第三种发行形态，而「免装 JDK」这一目标

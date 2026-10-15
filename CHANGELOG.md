@@ -69,6 +69,22 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **CLI JVM 便携包改为「包根平铺」，并修掉包内同一份 jar 存两遍**（2026-10-15，issue #218 / #217）：
+  `aha-cli-<版本>.zip` 里不再有 `lib/` 与 `bin/` —— 单体 jar 落到**包根**并**去掉版本号**
+  （固定叫 `aha-cli.jar`），启动脚本 `Aha.sh` / `Aha.bat` 也从 `bin/` 移到包根，
+  解压后直接 `Aha.bat`（或 `java -jar aha-cli.jar`）就能跑。两条线（CLI / 桌面端）形态一致。
+  - **顺带修掉「里外重复」**：shade 出来的单体 jar 原先会**顶替项目主产物**，于是装配描述符的
+    `dependencySet`（`useProjectArtifact=true`）把它当「项目工件」又收进 `lib/` 一份 ——
+    包里同一个类存两遍，55MB（issue #217）；而且 `aha-cli-native` 那条线声明了对 `aha-cli`
+    的依赖，拿到的也是这个单体 jar，再叠上它自己拷的 runtime 依赖，classpath 上人人两份。
+    现在 shade 改为**附带产物**（`shadedArtifactAttached=true` + classifier `standalone`），
+    主产物保持普通 jar：装配描述符按 classifier 取单体 jar 铺成 `aha-cli.jar`，
+    原生镜像线拿到的仍是「模块 jar + 依赖 jar」。
+  - 启动脚本：源码检出处会在本目录、上一级与 `Dist/` 找 `aha-cli.jar`；都没有时自动解压
+    `Dist/aha-cli-*.zip`，**旧形态的包（`bin/` + `lib/`）会被点名拒绝**并给出处置办法
+    （不必再靠「找不到主类」之类的二次报错去猜）。
+  - 这条也把 issue #217 收掉：`lib/` 不再产生，自然不存在「fat jar 覆盖模块化 jar」。
+
 - **桌面端 JVM 便携包改为「包根平铺」形态（2026-10-15，issue #218）**：包内不再有 `lib/` 与 `bin/` ——
   包根只有 `aha-desktop.jar`（单体 jar：本项目模块 + 全部运行时依赖 + **本平台** OpenJFX 的类与
   原生库，原生库在运行期由 JavaFX 自己从 jar 取出并缓存）、`AhaDesktop.sh` / `AhaDesktop.bat` 与

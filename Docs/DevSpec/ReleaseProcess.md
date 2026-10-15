@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.22.0
+**文档版本**：v1.23.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `Aha.sh` / `Aha.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增 1.0 发布的自举验收附加检查 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增发行包构建与验证；制品改为 `dist.zip` | @ACANX |
@@ -170,7 +171,7 @@ git push origin V0.1.2                                         # 这次由人推
 
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | `Dist/` 目录（`bin/` + `lib/`），发布为 `aha-cli-<版本>.zip` | — |
+| 0.1 | 发布为 `aha-cli-<版本>.zip`（**包根平铺**：`aha-cli.jar` + `Aha.sh` / `Aha.bat` + 文档） | — |
 | 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2） |
 | 1.x | 同上 + `native-image` 单文件 | 同上 + `native-image` 单文件 |
 
@@ -226,11 +227,11 @@ git push origin V0.1.2                                         # 这次由人推
 
 ```bash
 ./mvnw clean package
-./Dist/bin/Aha.sh version     # 应输出版本号
-./Dist/bin/Aha.sh --help      # 应列出全部命令
+./Dist/Aha.sh version     # 应输出版本号
+./Dist/Aha.sh --help      # 应列出全部命令
 ```
 
-`Dist/` 结构：`bin/`（启动脚本）+ `lib/`（JPMS 模块路径：本项目模块 + 全部运行时依赖）。
+`Dist/` 结构：`aha-cli.jar`（单体 jar，含全部依赖）+ `Aha.sh` / `Aha.bat` + 文档，全在根。
 发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
@@ -244,7 +245,7 @@ git push origin V0.1.2                                         # 这次由人推
 
 | 形态 | 产物 | 启动方式 | 前提 |
 |---|---|---|---|
-| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `bin/Aha.sh`（CLI：JPMS 目录形态）、`AhaDesktop.sh` / `.bat`（桌面端：包根平铺单体 jar） | 机器需自备 JDK 25 |
+| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `Aha.sh` / `Aha.bat`（CLI）或 `AhaDesktop.sh` / `.bat`（桌面端）——两条线都是包根平铺单体 jar | 机器需自备 JDK 25 |
 | **原生镜像二进制** | `native-image` 单文件（`aha-cli-native` / `aha-desktop-native`，试验性） | 直接执行二进制 | 无需 JVM |
 
 **`jpackage` 安装包（MSI / DEB / DMG）已决策跳过，不采用**。理由：

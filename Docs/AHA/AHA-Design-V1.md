@@ -2039,7 +2039,7 @@ messages.add(ChatMessage.text(Role.USER, input));
 **验证线上请求体**（三家一次跑完，输出即上面三段 JSON）：
 
 ```java
-// 用 Dist/lib 作为 classpath，构造同样的 ChatRequest 再调各适配器
+// 用 Dist/aha-cli.jar 作为 classpath，构造同样的 ChatRequest 再调各适配器
 ChatRequest request = new ChatRequest("gpt-4o",
         List.of(ChatMessage.text(Role.SYSTEM, "片段1"),
                 ChatMessage.text(Role.SYSTEM, "片段2"),
@@ -3081,15 +3081,16 @@ Dist/
 
 由 `maven-assembly-plugin` 组装，描述符为 `aha-cli/src/assembly/dist.xml`：
 
-- `dependencySet` 以 `useProjectArtifact=true` 收集 `aha-cli` 自身与全部 runtime 依赖到 `lib/`
-- `fileSet` 附带 `bin/` 启动脚本与项目文档
-- `bin/Aha.sh` 取 `$DIR/../lib`，与平铺布局一致（`outputDirectory` 指向项目根，`finalName=Dist`）
+- （issue #218 起）`file` 取 shade 的 `standalone` 附带产物，落地为包根的 `aha-cli.jar`（去版本号）
+- `fileSet` 附带 `Aha.sh` / `Aha.bat` 与项目文档，全部平铺在 `Dist/` 根
+- `Aha.sh` 以 `java -jar "$DIR/aha-cli.jar"` 启动（`outputDirectory` 指向项目根，`finalName=Dist`）
 
 `Dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
-**为何不用 fat JAR**：shade 合并后的单一 JAR 无法按模块追踪依赖与许可，也无法与
-`Dist/{bin,lib}` 布局及 `bin/Aha.{sh,bat}` 保持一致（理由与 JPMS 无关，**不随「JPMS 非强制」
-的决策而改变**）。
+**关于 fat JAR**：本节早期口径是「禁止」——理由是 shade 合并后的单一 JAR 无法按模块追踪依赖
+与许可。issue #218 后**按目标放宽**：CLI 与桌面端两条线的发行包都改为包根平铺的单体 jar
+（面向「下载即可双击运行」的用户），需要按模块追踪依赖与许可时直接读依赖树
+（`mvn dependency:tree` / `jdeps`）。
 **为何不用 jlink**：`sqlite-jdbc` 为自动模块，jlink 不支持。
 **为何不用 jpackage（最终决策，2026-10-09）**：`jpackage` 安装包**已决策跳过**——发行形态只保留
 「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种；「免装 JDK」的目标由原生镜像覆盖，
@@ -3100,15 +3101,15 @@ Dist/
 
 | 文件 | 说明 |
 |---|---|
-| `bin/Aha.sh` | Linux / macOS； `$DIR/../lib` 作为模块路径 |
-| `bin/Aha.bat` | Windows； `%~dp0..\lib` 作为模块路径 |
+| `Aha.sh` | Linux / macOS；`java -jar "$DIR/aha-cli.jar"`（包根平铺）|
+| `Aha.bat` | Windows；`java -jar "%~dp0aha-cli.jar"`（包根平铺）|
 
 两个脚本均：
 
 - 优先使用 `JAVA_HOME`，未设置时回退到 `PATH` 中的 `java`
-- 在 `lib/` 缺失时给出可读错误，并提示构建命令与源码运行方式（`./mvnw -pl aha-cli exec:java`）
+- 在 `aha-cli.jar` 缺失时给出可读错误，并提示构建命令与源码运行方式（`./mvnw -pl aha-cli exec:java`）
 - 以 `exec` 启动（Linux），不额外派生进程，保证信号与退出码透传
-- 传递 `--enable-native-access=org.xerial.sqlitejdbc,org.jline`，消除 JDK 25 的受限方法警告
+- 传递 `--enable-native-access=ALL-UNNAMED`（classpath 启动下不能写具名模块），消除 JDK 25 的受限方法警告
 
 **脚本编码约束（强制）**：
 

@@ -99,6 +99,11 @@
             （aha-core / aha-common / aha-extension-api / aha-tool、picocli、JLine、
             sqlite-jdbc、log4j2、slf4j、Jackson…）。声明 scope=runtime：这里只需要 classpath。
 
+            这里拿到的必须是**普通 jar**（不是 shade 出来的单体 jar）：aha-cli 的 shade
+            已声明 `shadedArtifactAttached=true`，主产物保持模块 jar，单体 jar 只在
+            classifier `standalone` 上（issue #218）。若哪天把 attached 关掉，
+            classpath 上就会变成「单体 jar + 同一批依赖」各一份，编译出的镜像行为可疑。
+
             注意 groupId 是 com.acanx.module.aha：各模块**覆盖**了父 POM 的 groupId。
             写错这里不会报「坐标不对」，而是「在中央仓库找不到」——因为反应堆匹配不上。
         -->
@@ -286,7 +291,7 @@
                                 <!-- 输出用 `-o`（`-H:Path` / `-H:Name` 已弃用） -->
                                 <argument>-o</argument>
                                 <argument>${native.image.workdir}/${aha.native.name}</argument>
-                                <!-- 主类：与 bin/Aha.sh 走的是同一个入口 -->
+                                <!-- 主类：与发行包启动脚本 Aha.sh / Aha.bat 走的是同一个入口 -->
                                 <argument>com.acanx.module.aha.cli.AhaCli</argument>
                             </arguments>
                         </configuration>

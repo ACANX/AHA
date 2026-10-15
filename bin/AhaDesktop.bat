@@ -72,6 +72,7 @@ set "STAMP=%STAMP:.=%"
 set "BUNDLE=%ZDIR%%ZNAME%.%STAMP%"
 
 if not exist "%BUNDLE%\aha-desktop.jar" call :extract "%ZIP%" "%BUNDLE%" || goto :failed
+if not exist "%BUNDLE%\aha-desktop.jar" goto :legacy
 set "JARDIR=%BUNDLE%"
 
 :launch
@@ -99,6 +100,12 @@ echo [ERROR] Build the portable bundle first:  mvnw.cmd -pl aha-desktop -am pack
 echo [ERROR] Then run this script again; it extracts Dist\aha-desktop-*.zip automatically. 1>&2
 endlocal & exit /b 1
 
+:legacy
+echo [ERROR] No aha-desktop.jar inside "%ZIP%". 1>&2
+echo [ERROR] That bundle is likely the pre-#218 layout (bin/ + lib/, versioned jar). 1>&2
+echo [ERROR] Rebuild with:  mvnw.cmd clean package   -- or take bundle 0.1.3.00219+. 1>&2
+endlocal & exit /b 1
+
 :failed
-echo [ERROR] Failed to extract "%ZIP%" into "%BUNDLE%" 1>&2
+echo [ERROR] Failed to extract "%%ZIP%%" into "%%BUNDLE%%" 1>&2
 endlocal & exit /b 1

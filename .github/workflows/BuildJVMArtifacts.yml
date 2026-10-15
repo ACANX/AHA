@@ -360,24 +360,59 @@ jobs:
           JDK: ${{ matrix.jdk }}
         run: |
           set -euo pipefail
-          test -f Dist/bin/Aha.sh
-          test -d Dist/lib
-          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
           # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
           target="Dist/aha-cli-${VERSION}${suffix}.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
-          # 单体 fat jar（issue #200 的阶段产物，与 lib/ 并存）一并打进包里，
-          # 供真机验证 `java -jar aha-cli-<版本>.jar`；正式形态（去掉 lib/）见 #200。
-          (
-            cd Dist
-            fatjars=()
-            for f in aha-cli-*.jar; do
-              [ -e "$f" ] && fatjars+=("$f")
-            done
-            zip -qr "${RUNNER_TEMP}/aha-cli.zip" bin lib "${fatjars[@]}" README.md LICENSE CHANGELOG.md
-          )
+          # 只列这几个入口，不写 `.`：将来 Dist/ 里再放别的产物也不会被误收。
+          # （zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。）
+          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" aha-cli.jar Aha.sh Aha.bat README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
-          ls -lh "$target"
+          size=$(du -h "$target" | cut -f1)
+          # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
+          # 与桌面端同一套口径：判据落在「打出来的 zip 里实际有什么」，不看构建日志。
+          work="$RUNNER_TEMP/cli-pkg-check"
+          rm -rf "$work"; mkdir -p "$work"; cp -- "$target" "$work/pkg.zip"
+          entries="$work/entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
+          # ① 不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
+            exit 1
+          fi
+          # ② 三个入口都平铺在包根
+          for f in aha-cli.jar Aha.sh Aha.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
+          # ③ 单体 jar 自证：Main-Class、无 module-info、依赖真在里面、能真的跑起来
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-cli.jar )
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-cli.jar META-INF/MANIFEST.MF )
+          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
+          if [ "$main" != "com.acanx.module.aha.cli.AhaCli" ]; then
+            echo "::error::单体 jar 的 Main-Class 应为 AhaCli，实际：${main:-<空>}"; exit 1
+          fi
+          fat="$work/fat-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/aha-cli.jar" > "$fat"
+          if grep -qx 'module-info.class' "$fat"; then
+            echo "::error::单体 jar 不得含 module-info.class"; exit 1
+          fi
+          # 每个关键依赖挑一个类：证明 shade 真的把 runtime 依赖合进去了
+          # （而不是只打出了本项目自己的那几个模块）
+          for c in picocli/CommandLine.class org/sqlite/JDBC.class org/apache/logging/log4j/core/Logger.class; do
+            if ! grep -qx "$c" "$fat"; then
+              echo "::error::单体 jar 内缺 ${c}（shade 没把依赖合进来？）"; exit 1
+            fi
+          done
+          # 真跑一次：`version` 子命令不需要交互、也不需要图形环境
+          out=$("$JAVA_HOME/bin/java" -jar "$work/aha-cli.jar" version 2>&1 || true)
+          if ! grep -q "${VERSION}" <<<"$out"; then
+            echo "::error::单体 jar 跑不出预期版本（期望含 ${VERSION}）：$out"; exit 1
+          fi
+          echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2）"
+          echo "单体 jar 冒烟输出：$(head -1 <<<"$out")"
 
       - name: 上传制品（Actions 制品仓库）
         if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))

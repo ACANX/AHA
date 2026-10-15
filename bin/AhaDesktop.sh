@@ -80,6 +80,12 @@ if [ -z "$JARDIR" ] && [ -n "$ROOT" ]; then
             mkdir -p "$BUNDLE"
             ( cd "$BUNDLE" && "$JAR" --extract --file "$ZIP" )
         fi
+        if [ ! -f "$BUNDLE/aha-desktop.jar" ]; then
+            echo "错误：$ZIP 里没有 aha-desktop.jar。" >&2
+            echo "      这多半是 issue #218 之前的旧形态包（包内是 bin/ + lib/，versioned jar）。" >&2
+            echo "      请改用 ./mvnw clean package 重新构建，或取 0.1.3.00219 及以后的便携包。" >&2
+            exit 1
+        fi
         JARDIR="$BUNDLE"
     fi
 fi

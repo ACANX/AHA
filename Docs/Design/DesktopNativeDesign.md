@@ -452,7 +452,7 @@ POM 与工作流都**不需要动**：参数文件是单一来源，且会原样
 CLI 发行 zip）一律输出到 `Dist/`：
 
 - `Dist/` 已在 `.gitignore` 里，不会被误提交；
-- 它同时是 **CLI 发行目录的解包位置**（`Dist/bin`、`Dist/lib`，见 `ReleaseProcess.md` §3），
+- 它同时是 **CLI 发行目录的解包位置**（平铺的 `aha-cli.jar` + `Aha.*`，见 `ReleaseProcess.md` §3），
   因此 CLI 的 assembly **不能**再套一层 `Dist/`（否则会变成 `Dist/Dist/…`）；
   CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`，避免「把正在写入的自己收进归档」。
 
