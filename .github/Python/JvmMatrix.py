@@ -28,15 +28,15 @@ import sys
 
 #: 默认矩阵 = 三平台 × JDK 25/27 六条腿（与改造前逐条一致；YAML 里是同一个 JSON 字面量）。
 DEFAULT_MATRIX: list[dict] = [
-    {"os": "ubuntu-latest", "label": "ubuntu-x64", "jdk": 25, "upload_cli": True},
-    {"os": "windows-latest", "label": "windows-x64", "jdk": 25, "upload_cli": False},
+    {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 25, "upload_cli": True},
+    {"os": "windows-latest", "label": "windows-amd64", "jdk": 25, "upload_cli": False},
     {"os": "macos-latest", "label": "macos-arm64", "jdk": 25, "upload_cli": False},
-    {"os": "ubuntu-latest", "label": "ubuntu-x64", "jdk": 27, "upload_cli": True},
-    {"os": "windows-latest", "label": "windows-x64", "jdk": 27, "upload_cli": False},
+    {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 27, "upload_cli": True},
+    {"os": "windows-latest", "label": "windows-amd64", "jdk": 27, "upload_cli": False},
     {"os": "macos-latest", "label": "macos-arm64", "jdk": 27, "upload_cli": False},
 ]
 LEG_FIELDS = {"os", "label", "jdk", "upload_cli"}
-PLATFORM_LABELS = ("ubuntu-x64", "windows-x64", "macos-arm64")
+PLATFORM_LABELS = ("ubuntu-amd64", "windows-amd64", "macos-arm64")
 SUPPORTED_JDKS = (25, 27)
 
 
@@ -90,19 +90,21 @@ def describe(matrix: list[dict]) -> str:
 SELF_TEST_CASES: list[tuple[str, bool, str]] = [
     ("", True, "空输入 = 默认六条腿"),
     (json.dumps(DEFAULT_MATRIX), True, "显式给默认矩阵"),
-    ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25,"upload_cli":true}]', True,
+    ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":25,"upload_cli":true}]', True,
      "快照线的收窄矩阵（1 条腿）"),
-    ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25,"upload_cli":true},'
-     '{"os":"windows-latest","label":"windows-x64","jdk":25,"upload_cli":false}]', True,
+    ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":25,"upload_cli":true},'
+     '{"os":"windows-latest","label":"windows-amd64","jdk":25,"upload_cli":false}]', True,
      "JVM 线快照的两条腿（linux + windows，仅 JDK 25）"),
     ("[]", False, "空数组"),
     ("{}", False, "不是数组"),
     ("not json", False, "非法 JSON"),
-    ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25}]', False, "缺 upload_cli 字段"),
+    ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":25}]', False, "缺 upload_cli 字段"),
     ('[{"os":"ubuntu-latest","label":"linux-x64","jdk":25,"upload_cli":true}]', False,
-     "label 是旧叫法（linux-x64）——JVM 线已统一为 ubuntu-x64；原生线是 ubuntu-amd64"),
-    ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":26,"upload_cli":true}]', False, "jdk 越界"),
-    ('[{"os":"","label":"ubuntu-x64","jdk":25,"upload_cli":true}]', False, "os 为空"),
+     "label 不是现行取值（linux-x64）—— 两条线已统一为 ubuntu-amd64 / windows-amd64 / macos-arm64"),
+    ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25,"upload_cli":true}]', False,
+     "旧的 JVM 叫法（ubuntu-x64）已被 ubuntu-amd64 取代（2026-10-15 与原生线统一，issue #215）"),
+    ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":26,"upload_cli":true}]', False, "jdk 越界"),
+    ('[{"os":"","label":"ubuntu-amd64","jdk":25,"upload_cli":true}]', False, "os 为空"),
 ]
 
 

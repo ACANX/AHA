@@ -288,7 +288,7 @@ jobs:
           # CLI 包平台无关（只在 Ubuntu 腿产出）⇒ 按 §八 仍带平台段，用产出它的腿作标签
           for f in artifacts/aha-cli-*.zip; do
             [ -e "$f" ] || continue
-            mv "$f" "artifacts/AHA-Cli-JVM-${VERSION}-ubuntu-x64-jdk25.zip"
+            mv "$f" "artifacts/AHA-Cli-JVM-${VERSION}-ubuntu-amd64-jdk25.zip"
             count=$((count + 1))
           done
           echo "整理出 ${count} 个资产："

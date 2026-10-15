@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.20.0
+**文档版本**：v1.21.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -37,6 +37,7 @@
 | v1.19.1 | 2026-10-14 | §2 资产名表：Linux 包名由 `-linux-x64` 改为 `-ubuntu-x64`（平台标签统一用发行版名，因为验证环境只有 Ubuntu；ACANX 定案），行首补「验证环境为 Ubuntu」 | @cnxnc |
 
 ---
+| v1.21.0 | 2026-10-15 | §2/§3 的平台标签与资产名统一为 `windows-amd64` / `ubuntu-amd64`（原 `-x64`，与原生线一致；issue #215）| @ACANX / CNXNC |
 | v1.20.0 | 2026-10-15 | 新增 §2.1「快照包（pre-release）：与正式发布彻底隔离」：tag / 载体 / 触发 / 生命周期对照表 + 两条硬约束（`Release.yml` 必须保留 `!V*-SNAPSHOT`；清理不进必需检查）| @ACANX / CNXNC |
 
 ## 1. 发布前检查
@@ -183,8 +184,8 @@ git push origin V0.1.2                                         # 这次由人推
 
 | 平台 | 下载文件 |
 |---|---|
-| Windows x86_64 | `aha-desktop-<版本>-windows-x64.zip` |
-| Linux x86_64（验证环境为 Ubuntu） | `aha-desktop-<版本>-ubuntu-x64.zip` |
+| Windows x86_64 | `aha-desktop-<版本>-windows-amd64.zip` |
+| Linux x86_64（验证环境为 Ubuntu） | `aha-desktop-<版本>-ubuntu-amd64.zip` |
 | macOS Apple Silicon | `aha-desktop-<版本>-macos-arm64.zip` |
 
 包内布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +

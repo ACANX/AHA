@@ -147,7 +147,7 @@ Class.forName("sun.misc.Signal").getMethod("handle", Signal.class, SignalHandler
 | 作业 | 关键点 |
 |---|---|
 | `cli-native-version` | 同桌面端：基线读根 POM，PR 号按输入或提交 SHA 反查，取不到记 `00000` 并告警 |
-| `cli-native-image` | 矩阵三条基线腿（linux-x64 / windows-x64 / macos-arm64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
+| `cli-native-image` | 矩阵三条基线腿（ubuntu-amd64 / windows-amd64 / macos-arm64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
 | `cli-native-publish` | 单写者汇总制品，发 `V<版本>-aha-cli-native` **预发行版**；无产物时不发版也不失败 |
 
 **产物自证的七项**（与桌面端同形，判据换成 CLI 的不变式）：
