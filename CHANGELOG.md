@@ -69,6 +69,16 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **打包形态的静态守卫 + dev 线包体自证收紧（2026-10-15，issue #218 / #217）**：
+  `bin/CheckScripts.py` 新增 `check_package_layout()`（装配描述符不得再有 `dependencySet`、
+  `fileSet` 不得输出到 `bin/` 或 `lib/`、单体 jar 落地名不得带版本号、启动脚本不得回到
+  `--module-path`）与 `check_shade_attached()`（shade 必须显式 `shadedArtifactAttached=true`
+  + `shadedClassifierName=standalone`）—— 这四条各自对应一次真出过的问题（`lib/` 里同一份 jar
+  存两遍、fat jar 顶替主产物），而症状都是**静默**的（包照出、体积翻倍、某条链路拿到错包）。
+  同时把 `Release.yml` 的平台严格断言移植到 dev 线：桌面端包改为**按平台点名**本平台原生库
+  （`linux`⇒`libglass.so`、`win`⇒`glass.dll`、`mac-aarch64`⇒`libglass.dylib`）并禁止混进别的
+  平台的库（原来只判「原生库 > 0」）；CLI 补「任意深度的原生库 > 0」（CLI 无 JavaFX，
+  `sqlite-jdbc` / `jline` 的原生库在 `org/**` 下）。
 - **CLI JVM 便携包改为「包根平铺」，并修掉包内同一份 jar 存两遍**（2026-10-15，issue #218 / #217）：
   `aha-cli-<版本>.zip` 里不再有 `lib/` 与 `bin/` —— 单体 jar 落到**包根**并**去掉版本号**
   （固定叫 `aha-cli.jar`），启动脚本 **`AhaCli.sh` / `AhaCli.bat`** 也从 `bin/` 移到包根；

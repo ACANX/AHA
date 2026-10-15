@@ -48,6 +48,17 @@
     且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
     ——静默且难查。把它们钉在一起，漂移立刻可见。
 
+  发行包形态：两条线都必须是「包根平铺」（issue #218 / #217）
+    - 装配描述符里**不许**再有 `dependencySet`（依赖全在单体 jar 里）、
+      `fileSet` 的输出目录**不许**是 `bin/` 或 `lib/`、单体 jar 的 `destName`
+      **不许**带版本号或 classifier 占位；
+    - 启动脚本**不许**再走 `--module-path`，且必须引用那个去版本号的 jar 名；
+    - shade **必须**显式 `shadedArtifactAttached=true` + `shadedClassifierName`。
+    原因：这四条各自对应一次真出过的问题 —— 去掉 `lib/` 是为了不再背两份同一个 jar
+    （CLI 包 55 MB，issue #217）；`attached=false` 会让 fat jar **顶替主产物**，
+    于是装配描述符与原生镜像线都拿到错的包。配置漂回去的表现是**静默**的
+    （包照出、体积翻倍、某个链路拿到重复依赖），所以钉成断言。
+
   *.xml（含 pom.xml）
     - 必须是良构 XML（整体可被解析器解析）
     - 注释里不得出现 `--`，也不得嵌套 `<!--`
@@ -89,6 +100,26 @@ TRACKED_SCRIPT_DIRS = ("Dist",)
 #: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
 NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+#: 发行包形态的单一来源（issue #218 / #217）：装配描述符、shade 所在 POM、
+#: 单体 jar 的落地名、启动脚本。四条一起断言，才不会出现「描述符改了、脚本没改」这种半吊子。
+ASSEMBLY_DESCRIPTORS = {
+    "cli": ROOT / "aha-cli" / "src" / "assembly" / "dist.xml",
+    "desktop": ROOT / "aha-desktop" / "src" / "assembly" / "dist-desktop.xml",
+}
+FATJAR_POMS = {
+    "cli": ROOT / "aha-cli" / "pom.xml",
+    "desktop": ROOT / "aha-desktop" / "pom.xml",
+}
+#: 单体 jar 的落地名：**去版本号**，启动脚本与用户命令都写死这个名字（换版本不用改）
+FLAT_JAR_NAME = {"cli": "aha-cli.jar", "desktop": "aha-desktop.jar"}
+#: 启动脚本：包根平铺形态下它们是 `java -jar <去版本号的 jar>`，不再有模块路径
+FLAT_LAUNCHERS = {
+    "cli": (ROOT / "bin" / "AhaCli.sh", ROOT / "bin" / "AhaCli.bat"),
+    "desktop": (ROOT / "bin" / "AhaDesktop.sh", ROOT / "bin" / "AhaDesktop.bat"),
+}
+#: 装配描述符的命名空间（assembly 2.2.0）
+ASSEMBLY_NS = {"a": "http://maven.apache.org/ASSEMBLY/2.2.0"}
+
 #: 快照出包的单一来源（issue #165）：触发标签与变更分类路径清单。
 #: 消费方是 `SnapshotJVM.yml` / `DesktopNative.yml` 与文档——三者一旦漂移，表现是**静默**的
 #: （某个改动悄悄不出包 / 打错标签毫无反应），因此在这里钉成断言。
@@ -602,6 +633,106 @@ def concurrency_group(text: str) -> str | None:
     return None
 
 
+def check_package_layout() -> list[str]:
+    """发行包必须仍是「包根平铺」：无 lib/、无 bin/、jar 名不带版本号（issue #218 第 7 条）。
+
+    只看**配置的形状**：产物内容由工作流在打包后拆包自证（那才是用户真正拿到的东西）。
+    """
+    problems: list[str] = []
+
+    for kind, path in ASSEMBLY_DESCRIPTORS.items():
+        rel = path.relative_to(ROOT)
+        if not path.exists():
+            problems.append(f"缺装配描述符 {rel}（{kind} 线的发行包由它组装）")
+            continue
+        try:
+            tree = ElementTree.parse(path)
+        except ElementTree.ParseError as exc:
+            problems.append(f"{rel}：XML 解析失败（{exc}）")
+            continue
+
+        # ① 依赖不能再收进 lib/（依赖已在单体 jar 里，再收一份就是同一个类存两遍）
+        if tree.findall(".//a:dependencySet", ASSEMBLY_NS):
+            problems.append(
+                f"{rel}：仍有 <dependencySet> —— 依赖会再收进 lib/，"
+                "与单体 jar 里的重复（issue #218 起两条线都是包根平铺）"
+            )
+
+        # ② 脚本不能再铺到 bin/（或任何 lib/ 形态的目录）
+        for file_set in tree.findall(".//a:fileSet", ASSEMBLY_NS):
+            out = (file_set.findtext("a:outputDirectory", default="", namespaces=ASSEMBLY_NS) or "").strip()
+            if out in {"bin", "lib"}:
+                problems.append(
+                    f"{rel}：fileSet 仍输出到 {out}/（应为 `.`；启动脚本要平铺在包根）"
+                )
+
+        # ③ 单体 jar 的落地名：必须是去版本号的那一个，且铺在包根
+        want = FLAT_JAR_NAME[kind]
+        names = [(f.findtext("a:destName", default="", namespaces=ASSEMBLY_NS) or "").strip()
+                 for f in tree.findall(".//a:file", ASSEMBLY_NS)]
+        if want not in names:
+            problems.append(
+                f"{rel}：没有把单体 jar 落地为 {want}（实测到的是 {names or '无 <file> 条目'}）"
+            )
+        for name in names:
+            if name and name.endswith(".jar") and name != want:
+                problems.append(
+                    f"{rel}：单体 jar 落地名 {name!r} 不是 {want!r}"
+                    "（带版本号或 classifier 会让启动脚本与文档跟着版本变，issue #218）"
+                )
+
+    for kind, paths in FLAT_LAUNCHERS.items():
+        want = FLAT_JAR_NAME[kind]
+        for path in paths:
+            rel = path.relative_to(ROOT)
+            if not path.exists():
+                problems.append(f"缺启动脚本 {rel}（{kind} 线的包根入口）")
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "--module-path" in text or "module com.acanx.module.aha" in text:
+                problems.append(
+                    f"{rel}：仍按模块路径启动（出现 `--module-path` / `module com.acanx.module.aha`）"
+                    "—— 发行包已改为单体 jar，模块路径在包里根本不存在（issue #218）"
+                )
+            if want not in text:
+                problems.append(
+                    f"{rel}：没有引用 {want}（启动脚本必须认这个去版本号的名字）"
+                )
+
+    return problems
+
+
+def check_shade_attached() -> list[str]:
+    """shade 必须显式声明附带产物，否则 fat jar 顶替主产物（issue #217 第 3 条）。
+
+    取默认值 `false` 的后果实测过：`lib/` 里收进的是 fat jar、包体从 18 MB 涨到 55 MB，
+    而装配描述符与 `aha-cli-native` 那条线都会拿到错的包 —— 静默，只在体积和运行时才暴露。
+    """
+    problems: list[str] = []
+
+    for kind, path in FATJAR_POMS.items():
+        rel = path.relative_to(ROOT)
+        if not path.exists():
+            problems.append(f"缺 POM {rel}（{kind} 线的单体 jar 由它产出）")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "maven-shade-plugin" not in text:
+            problems.append(f"{rel}：找不到 maven-shade-plugin（{kind} 线应有单体 jar）")
+            continue
+        for tag, want in (("shadedArtifactAttached", "true"), ("shadedClassifierName", "standalone")):
+            found = re.search(rf"<{tag}>([^<]*)</{tag}>", text)
+            if not found:
+                problems.append(
+                    f"{rel}：shade 未显式声明 <{tag}>（默认值下 fat jar 会顶替项目主产物，issue #217）"
+                )
+            elif found.group(1).strip() != want:
+                problems.append(
+                    f"{rel}：<{tag}> 应为 {want}，实际 {found.group(1).strip()!r}（issue #217）"
+                )
+
+    return problems
+
+
 def check_snapshot_manifest() -> list[str]:
     """快照清单与它的消费方必须一致（见模块 docstring）。"""
     if not SNAPSHOT_MANIFEST.exists():
@@ -785,6 +916,10 @@ def main() -> int:
             if args.verbose:
                 print(f"  {'❌' if found else '✅'} {path.relative_to(ROOT)}")
 
+    layout = check_package_layout()
+    problems.extend(layout)
+    shade = check_shade_attached()
+    problems.extend(shade)
     ignored = check_ignored_sources()
     problems.extend(ignored)
     parity = check_native_update_parity()
@@ -801,6 +936,8 @@ def main() -> int:
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
+    print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
+    print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")

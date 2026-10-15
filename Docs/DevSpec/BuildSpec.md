@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.38.0
+**文档版本**：v1.39.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.39.0 | 2026-10-15 | §7 新增「包根平铺 + shade 附带产物」的**静态守卫**：`check_package_layout()` / `check_shade_attached()`；dev 线的包体自证补上**本平台原生库点名 + 跨平台污染检查**（原只判 `>0`），CLI 补「任意深度原生库 >0」（issue #218 第 7 条 / #217 第 3 条）| @ACANX / CNXNC |
 | v1.38.0 | 2026-10-15 | §7 CLI 发行包也改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，jar 名去版本号，无 `lib/` 与 `bin/`），两条线形态一致；新增「CLI 的 shade 也必须 `shadedArtifactAttached=true`」的理由（装配描述符与原生镜像线都要普通 jar，issue #217）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `BuildGuide.md` 拆分而来，承接其中的强制性约束 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增发行包产物约束（禁止 fat JAR / jlink） | @ACANX |
@@ -246,6 +247,13 @@ POM 语法必须兼容 Maven 3.9.x：
     `standalone` classifier 取 shade 的附带产物，落地时**去掉版本号与 classifier**；
     启动脚本必须与包根布局保持一致（`java -jar <脚本同目录>/aha-cli.jar`）。
     与桌面端同一形态，两条线都不再有 `lib/` 与 `bin/`（issue #218）。
+  - 上面三条形态约定由 `bin/CheckScripts.py` **静态守住**（`check_package_layout()`：
+    装配描述符不得再有 `dependencySet`、`fileSet` 不得输出到 `bin/` 或 `lib/`、单体 jar 的
+    `destName` 不得带版本号或 classifier、启动脚本不得回到 `--module-path`；
+    `check_shade_attached()`：shade 必须显式 `shadedArtifactAttached=true` +
+    `shadedClassifierName=standalone`）。配置的形状由静态守卫挡，**产物内容**另由
+    `BuildJVMArtifacts.yml` 与 `Release.yml` 在打包后拆包自证（含按平台点名本平台原生库、
+    以及禁止混进别的平台的原生库）—— 两道一起，既挡「改配置」也挡「改了没生效」。
   - 早期本条的「**禁止**使用 `maven-shade-plugin` 打 fat JAR」（理由：合并后的单一 JAR 无法
     按模块追踪依赖与许可）**已按目标放宽**为上面两类：JVM 便携包面向「下载即可双击运行」的用户，
     接受单体 jar 的代价；需要按模块追踪依赖与许可的场合改为直接读依赖树（`mvn dependency:tree` /
