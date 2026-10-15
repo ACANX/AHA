@@ -87,8 +87,8 @@ tag    ：V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT
   原生桌面端目标随后把 exe 替换到启动器同目录（旧版留 `.bak`）；
 - 清理链路：定时 run [38645500766](https://github.com/ACANX/AHA/actions/runs/38645500766) 真机回收孤儿快照
   （`已删除 V0.1.3.00188.10142007-AHA-Desktop-Native-SNAPSHOT ← PR #188 已合并`）；
-- 回归：`bin/CheckScripts.py` 的 `check_snapshot_manifest()` / `check_snapshot_fetch_parity()` /
-  `check_cheatsheet_copy()` 三条守卫在册，反向验证均如期失败并点名。
+- 回归：三条守卫在册（前两条在 `bin/CheckScripts.py`、第三条在 `bin/CheckDocs.py`）：`check_snapshot_manifest()` /
+  `check_snapshot_fetch_parity()` / `check_cheatsheet_copy()`，反向验证均如期失败并点名。
 
 ## 6. 教训与沉淀
 
