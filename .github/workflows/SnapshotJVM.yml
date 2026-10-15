@@ -92,10 +92,14 @@ jobs:
     name: Plan
     runs-on: ubuntu-latest
     # 评论触发的：只认 `/snapshot` 开头的评论，其它评论一律不理会（否则每条评论都起一次 run）。
+    # 排除 `/snapshot-verify*`（快照自测留痕，issue #166）：它是 `/snapshot` 前缀，但由
+    # SnapshotVerify.yml 负责；不排除的话，这条命令会让本工作流回一条
+    # 「命令格式应为 `/snapshot <target> [os ...]`」（误导性回复 + 一次空跑）。
     if: >-
       github.event_name != 'issue_comment'
       || (github.event.issue.pull_request != null
-          && startsWith(github.event.comment.body, '/snapshot'))
+          && startsWith(github.event.comment.body, '/snapshot')
+          && !startsWith(github.event.comment.body, '/snapshot-verify'))
     outputs:
       should_build: ${{ steps.plan.outputs.should_build }}
       pr: ${{ steps.plan.outputs.pr }}

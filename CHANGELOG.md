@@ -71,14 +71,15 @@
 ### 变更
 - **快照自测留痕：`snapshot-verified`（默认启用、默认不卡点；issue #166）**：PR 里发一条评论即可把
   「这一版快照我按清单跑过了」记成 commit status，留痕（版本 / 平台 / JDK / 验证人 / 时间 / 对应 sha）落在 PR 评论里。
-  - 命令：`/verified <版本> <平台> [jdk27] [+model]`（打 `success`）、
-    `/snapshot-failed <版本> <平台> [jdk27] <原因>`（打 `failure`——失败也要可见）；平台词与快照出包同一套。
+  - 命令：`/snapshot-verify <版本> <平台> [jdk27] [+model]`（打 `success`）、
+    `/snapshot-verify-fail <版本> <平台> [jdk27] <原因>`（打 `failure`——失败也要可见）；平台词与快照出包同一套。
+    该前缀以 `/snapshot` 开头 ⇒ 另外三条命令式工作流的守卫里加了一条排除，避免它们对这条命令回「命令格式应为 …」。
   - **默认不卡点**：`snapshot-verified` **不**进 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里显式加入。
   - **必测项一律 0 token**：清单（A1–A5 / B1–B4 / C1–C3）不含任何模型往返 —— 工具直调（`tool invoke`，绕过模型）
     + 配置 / 本地命令 + 开窗观感即可覆盖「机器验不了」的那部分；需要真实 provider 请求的动作降级为**可选**（`+model`），
     因为适配器没有本地 mock、任何真实对话都要花 token，而 token 由 owner 的 key 承担。
   - 安全与失效：只认有写权限的账号；status 绑 PR 当时的 `head_sha`，PR 再 push 后旧验证自动失效；快照 tag 必须属于本 PR。
-  - 配套守卫：`bin/CheckScripts.py::check_snapshot_verified_contract()`（context / 触发守卫里的命令 / `statuses: write` /
+  - 配套守卫：`bin/CheckScripts.py::check_snapshot_verified_contract()`（context / 触发守卫里的命令 / 三条工作流的排除 / `statuses: write` /
     清单编号两处一致 / 必测行 token 必须为 0），清单原文见 `ReleaseProcess.md` §2.2。
 - **打包形态的静态守卫 + dev 线包体自证收紧（2026-10-15，issue #218 / #217）**：
   `bin/CheckScripts.py` 新增 `check_package_layout()`（装配描述符不得再有 `dependencySet`、

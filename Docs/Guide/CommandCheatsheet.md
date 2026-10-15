@@ -318,8 +318,8 @@ Dist/
 **自测留痕（合并前的可选检查，`snapshot-verified`）**：在 PR 里发评论即可打标（**默认启用、默认不卡点**）：
 
 ```text
-/verified <版本> <平台> [jdk27] [+model]        :: 必测清单通过（打 success）——平台 Win / MacOS / Ubuntu
-/snapshot-failed <版本> <平台> [jdk27] <原因>    :: 自测失败（打 failure，失败也要可见）
+/snapshot-verify <版本> <平台> [jdk27] [+model]        :: 必测清单通过（打 success）——平台 Win / MacOS / Ubuntu
+/snapshot-verify-fail <版本> <平台> [jdk27] <原因>    :: 自测失败（打 failure，失败也要可见）
 ```
 
 必测清单（A1–A5 / B1–B4 / C1–C3）**一律 0 token**：工具直调 + 配置/本地命令 + 开窗观感即可，

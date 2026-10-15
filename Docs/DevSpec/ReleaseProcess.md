@@ -130,13 +130,13 @@
 ### 2.2 快照自测留痕（`snapshot-verified`）：默认启用、默认不卡点
 
 「这个包我跑过了」需要留痕，但**不能**变成流程税。机制见
-[`.github/workflows/SnapshotVerified.yml`](../../.github/workflows/SnapshotVerified.yml)（issue #166）：
+[`.github/workflows/SnapshotVerify.yml`](../../.github/workflows/SnapshotVerify.yml)（issue #166）：
 
 | 项 | 口径 |
 |---|---|
 | 启用 | **默认启用** —— 工作流随仓库就位，PR 上发评论即打标，无需任何开关 |
 | 卡点 | **默认不做卡点** —— `snapshot-verified` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
-| 命令 | `/verified <版本> <平台> [jdk27] [+model]`（打 `success`）；`/snapshot-failed <版本> <平台> [jdk27] <原因>`（打 `failure`，失败也要可见）|
+| 命令 | `/snapshot-verify <版本> <平台> [jdk27] [+model]`（打 `success`）；`/snapshot-verify-fail <版本> <平台> [jdk27] <原因>`（打 `failure`，失败也要可见）。两条命令同前缀 ⇒ 另外三条命令式工作流的守卫里**一条排除**即可覆盖 |
 | 平台 / JDK | 平台词 `Win` / `MacOS` / `Ubuntu`（与快照出包同一套）；JDK 段省略即 `jdk25` |
 | 绑定 | status 绑在 PR 当时的 `head_sha` ⇒ **PR 再 push 后旧验证自动失效**（新 sha 上没有这条 status）|
 | 版本归属 | 发布页必须有对应 tag；若 tag 是快照，还必须属于**本 PR**（防止拿别的 PR 的版本打标）|
@@ -172,6 +172,11 @@
 **可选 M 组**（token > 0，按需）：M1 真实 provider 往返（只发**一句话**）、M2 模型驱动的工具调用、
 M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示**（命中 `llm/` / `tool/` / `session/` /
 `view/` / `*Adapter*` 就提示建议做），不靠人记；做了就在命令末尾加 `+model`。
+
+**与另外三条命令式工作流的关系**：`/snapshot-verify*` 以 `/snapshot` 开头，会被
+`CliNative.yml` / `DesktopNative.yml` / `SnapshotJVM.yml` 的守卫命中，而它们对**不认识的目标**
+会回一条「命令格式应为 `/snapshot <target> [os ...]`」⇒ 那三处都加了
+`&& !startsWith(github.event.comment.body, '/snapshot-verify')`，并由 `bin/CheckScripts.py` 断言这条排除仍在。
 
 **操作侧**用法见 [CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
 
