@@ -340,7 +340,8 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
     def out(**kw) -> dict:
         base = {"owns_comment": True, "should_build": False, "pr": pr, "targets": [], "platforms": [],
                 "releases": [], "version": build_version(baseline, pr, now), "legs": [], "matrix": [],
-                "assets": [], "explicit": explicit_command, "marker": marker, "line": line, "reason": ""}
+                "assets": [], "explicit": explicit_command, "marker": marker, "line": line,
+                "native_target": native_target, "reason": ""}
         base.update(kw)
         return base
 
@@ -352,7 +353,12 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
         platforms = list(dict.fromkeys(cmd_platforms or platforms))
         reason_prefix = "显式请求：`/snapshot` 命令"
     elif not targets:
-        return out(reason="未打任何 `SNAPSHOT:*` 触发标签（四类目标默认都不出包）")
+        # 未打任何 `SNAPSHOT:*` 触发标签 ⇒ 四类目标默认都不出包。
+        # 评论**只由 JVM 线落一条**（原生线 owns_comment=False）：否则 JVM 线 + 两条原生线会各写
+        # 一条内容逐字相同的「本次未出包」，而区分用的 marker 只是**不可见的 HTML 注释** ⇒
+        # 读者看到两三条几乎一样、分不清是谁在说的评论（2026-10-15 PR #206 实测）。
+        return out(owns_comment=(line == "jvm"),
+                   reason="未打任何 `SNAPSHOT:*` 触发标签（四类目标默认都不出包）")
     elif label_event:
         # 打标签这一动作本身就是「显式请求」：只改文档也照出（#165 验收 16）
         reason_prefix = "显式请求：新打了触发标签"
@@ -399,16 +405,29 @@ def decide(labels: list[str], changed: list[str], baseline: str, pr: int,
                explicit=bool(reason_prefix) or explicit_command, reason=extra_reason)
 
 
-def notice_body(reason: str, marker: str = "<!-- aha-snapshot -->") -> str:
+def line_label(line: str, native_target: str = "") -> str:
+    """评论标题里的「线 · 目标范围」标识。
+
+    为什么必须有它：JVM 线与原生线各写一条 PR 评论（marker 不同、互不覆盖），而 marker 只是
+    **不可见的 HTML 注释** —— 没有这行标识时，两条评论逐字相同，读者根本分不清是谁在说
+    （2026-10-15 PR #206 实测：两条「本次未出包」除 marker 外完全一样）。
+    """
+    if line == "jvm":
+        return "JVM 线 · Desktop-JVM / Cli-JVM"
+    return f"原生线 · {native_target or 'Desktop-Native / Cli-Native'}"
+
+
+def notice_body(reason: str, marker: str = "<!-- aha-snapshot -->", label: str = "") -> str:
     """「未构建」类评论正文（用法错误 / 无权限 / 未打标签都走这里）。
 
     放在脚本里而不是 YAML 里，是为了让工作流里只出现**单行**调用：
     在 YAML 块标量里写多行字符串，行首缩进一旦小于块基准，块会被提前结束
     （本轮已因此把 SnapshotJVM.yml 写坏三次）。
     """
+    scope = f"（{label}）" if label else ""
     return (
         f"{marker}\n"
-        "### 快照包：未构建\n\n"
+        f"### 快照包{scope}：未构建\n\n"
         f"- 原因：{reason}\n"
         "- 用法：`/snapshot <target> [os ...]`；目标取 `Desktop` / `Cli`，"
         "平台取 `Win` / `MacOS` / `Ubuntu`（可多个，缺省 = 该目标全部平台）。\n"
@@ -419,8 +438,9 @@ def notice_body(reason: str, marker: str = "<!-- aha-snapshot -->") -> str:
 def comment_body(plan: dict, run_url: str = "") -> str:
     """PR 汇总评论（幂等标记 + 版本 + 到期日 + 资产 + run 链接 + 取件命令，见 #165 §六）。"""
     marker = plan.get("marker", "<!-- aha-snapshot -->")
+    label = line_label(plan.get("line", ""), plan.get("native_target", ""))
     if not plan["should_build"]:
-        return notice_body(plan["reason"], marker=marker).replace("未构建", "本次未出包")
+        return notice_body(plan["reason"], marker=marker, label=label).replace("未构建", "本次未出包")
     expiry = (datetime.now(timezone.utc).date()
               + timedelta(days=SNAPSHOT_TTL_DAYS)).isoformat()
     release_blocks = "\n".join(
@@ -444,7 +464,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
     ) if any(name.startswith(("AHA-Desktop-Native", "AHA-Cli-Native")) for name in plan["assets"]) else ""
     return (
         f"{marker}\n"
-        f"### 快照包：`{plan['version']}`\n\n"
+        f"### 快照包（{label}）：`{plan['version']}`\n\n"
         f"- 目标：{', '.join(plan['targets'])}（平台：{', '.join(plan['platforms'])}）\n"
         f"- 判定：{plan['reason']}\n"
         f"\n{release_blocks}\n"
@@ -649,6 +669,22 @@ def self_test() -> int:
     print(f"  {'✅' if ok_marker else '❌'} 两条线使用不同的评论标记（互不覆盖）")
     checks += 1
 
+    # 评论必须一眼看出是哪条线（2026-10-15 PR #206 实测：两条「本次未出包」除 marker 外完全相同）。
+    jvm_none = decide(labels=[], changed=["aha-common/src/main/java/A.java"], baseline="0.1.3",
+                      pr=206, now=now, groups=groups, line="jvm")
+    native_none = decide(labels=[], changed=["aha-common/src/main/java/A.java"], baseline="0.1.3",
+                         pr=206, now=now, groups=groups, line="native", native_target="Desktop-Native")
+    only_jvm = jvm_none["owns_comment"] and not native_none["owns_comment"]
+    problems += 0 if only_jvm else 1
+    print(f"  {'✅' if only_jvm else '❌'} 「未打任何标签」时只由 JVM 线落评论（原生线 owns_comment=False）")
+    checks += 1
+
+    jvm_seen = "JVM 线" in comment_body(jvm_none, "https://example/run")
+    native_seen = "原生线" in comment_body(native_none, "https://example/run")
+    problems += 0 if (jvm_seen and native_seen) else 1
+    print(f"  {'✅' if (jvm_seen and native_seen) else '❌'} 两条线的评论标题各自标明「JVM 线」/「原生线」")
+    checks += 1
+
     if problems:
         print(f"\n[问题] {problems} 条自检不符合预期")
         return 1
@@ -707,7 +743,7 @@ def emit_outputs(args) -> int:
         put("marker", marker)
         put_block("comment", notice_body(
             f"`/snapshot` 命令只对**本仓库有写权限**的账号生效（当前账号关联：{association or 'NONE'}）",
-            marker=marker))
+            marker=marker, label=line_label(args.line, args.native_target or "")))
         print(f"权限不足（{association or 'NONE'}）⇒ 回复说明，不构建")
         return 0
 
@@ -730,7 +766,8 @@ def emit_outputs(args) -> int:
         put("should_build", "false")
         put("owns_comment", "true")
         put("marker", marker)
-        put_block("comment", notice_body(str(exc), marker=marker))
+        put_block("comment", notice_body(str(exc), marker=marker,
+                                         label=line_label(args.line, args.native_target or "")))
         print(f"[问题] {exc} ⇒ 回复用法，不构建")
         return 0
 
@@ -787,7 +824,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.emit_outputs:
         return emit_outputs(args)
     if args.notice is not None:
-        print(notice_body(args.notice, marker=LINE_MARKERS[args.line]))
+        print(notice_body(args.notice, marker=LINE_MARKERS[args.line],
+                          label=line_label(args.line, args.native_target or "")))
         return 0
     try:
         _, groups = read_manifest(Path(args.manifest))
