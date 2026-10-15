@@ -71,8 +71,8 @@
 ### 变更
 - **CLI JVM 便携包改为「包根平铺」，并修掉包内同一份 jar 存两遍**（2026-10-15，issue #218 / #217）：
   `aha-cli-<版本>.zip` 里不再有 `lib/` 与 `bin/` —— 单体 jar 落到**包根**并**去掉版本号**
-  （固定叫 `aha-cli.jar`），启动脚本 **`AhaCli.sh` / `AhaCli.bat`** 也从 `bin/` 移到包根
-  解压后直接 `AhaCli.bat`（或 `java -jar aha-cli.jar`）就能跑。两条线（CLI / 桌面端）形态一致。
+  （固定叫 `aha-cli.jar`），启动脚本 **`AhaCli.sh` / `AhaCli.bat`** 也从 `bin/` 移到包根；
+  解压后直接 `AhaCli.bat`（或 `java -jar aha-cli.jar`）就能跑，两条线（CLI / 桌面端）形态一致。
   启动脚本同时**改名对齐桌面端**：jar 叫 `aha-<模块>.jar` 时脚本叫 `Aha<模块>.{bat,sh}` ——
   `aha-desktop.jar` ↔ `AhaDesktop.bat`，于是 `aha-cli.jar` ↔ **`AhaCli.bat` / `AhaCli.sh`**
   （原 `Aha.bat` / `Aha.sh`）。
@@ -88,6 +88,16 @@
     （不必再靠「找不到主类」之类的二次报错去猜）。
   - 这条也把 issue #217 收掉：`lib/` 不再产生，自然不存在「fat jar 覆盖模块化 jar」。
 
+- **JVM 便携包取件：新增「平铺到落地根」，并修掉「静默退回旧版本」（2026-10-15，issue #218）**：
+  `Dist\UpdateDesktopJvm.cmd` / `Dist\UpdateCliJvm.cmd` 取件后，除了把该版解压到
+  `Dist\desktop-jvm\<版本>\`（**留档**），还会把**去版本号**的入口**复制**到 `Dist\` 根
+  （桌面端 `aha-desktop.jar` / `AhaDesktop.bat` / `AhaDesktop.sh`，CLI 侧为 `aha-cli.jar`）——
+  于是命令**与版本无关**：`Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar` 直接可用，
+  换版本不必改任何一处；`-NoInstall` 可只解压不做平铺。
+  - **同时修掉一个会误导人的行为**：目标资产缺失时脚本原先**静默退回更旧的 release**
+    （实测：最新版缺 Windows/jdk25 那条腿的资产，于是退到 `00216` 那个 `bin/` + `lib/` 的旧包，
+    看起来就像「新版本不支持 fat jar」）。现在**只看最新一版**，缺资产即报错并列出该版实际有哪些资产；
+    真要退旧版必须显式说出口（`-AllowOlder`，或 `-Tag` 指定版本）。
 - **桌面端 JVM 便携包改为「包根平铺」形态（2026-10-15，issue #218）**：包内不再有 `lib/` 与 `bin/` ——
   包根只有 `aha-desktop.jar`（单体 jar：本项目模块 + 全部运行时依赖 + **本平台** OpenJFX 的类与
   原生库，原生库在运行期由 JavaFX 自己从 jar 取出并缓存）、`AhaDesktop.sh` / `AhaDesktop.bat` 与
