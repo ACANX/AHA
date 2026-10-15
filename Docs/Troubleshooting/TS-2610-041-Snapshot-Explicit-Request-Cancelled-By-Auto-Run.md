@@ -99,8 +99,11 @@ GitHub 对 `pull_request`（含 `labeled`）用的是 `refs/pull/<N>/merge` 上�
   `❌ .github/workflows/DesktopNative.yml 的 concurrency.group 没有区分事件类别（'desktop-native-${{ github.ref }}'）…`，
   退出码 1；还原后复绿；
 - **解析器自证**：三条线的 `concurrency.group` 都能被 `concurrency_group()` 正确抽出（含折叠多行）；
-- **真机验证**（合并后执行）：新开一个只改文档的 PR，**先确认 PR 已同步 base** 再打触发标签 ⇒
-  期望原生线启动、plan 写明「显式请求…」并出包。（本轮未做，是 `#204` §5 第三条与 `#165` 验收 16 的共同欠账。）
+- **真机验证（已在 PR #206 上完成）**：给 #206 打 `SNAPSHOT:NativeDesktop` + `OS:Win`（04:36）⇒
+  原生线启动、plan 判定「**显式请求：新打了触发标签 ⇒ 忽略变更分类（A 组…）**」并出包
+  `V0.1.3.00206.10151240-AHA-Desktop-Native-SNAPSHOT`；ACANX 下载运行**符合预期** ✓。
+  注：该场景是「A 组 + 已同步 base」，验证的是「显式请求 ⇒ 出包 ⇒ 可下载运行」全链路；
+  「只改文档（B 组）」与「labeled 与 synchronize 同时到达」的跨组竞态未在真机复现，仅由代码与守卫保证。
 
 ## 6. 教训与沉淀
 
@@ -144,8 +147,8 @@ GitHub 对 `pull_request`（含 `labeled`）用的是 `refs/pull/<N>/merge` 上�
 
 ### 未定位 / 未复现
 
-- 修复后的**真机**证据尚未取得：需在新 PR 上、且**已同步 base** 的前提下重打触发标签。
-  阻塞点只是「需要一次真机操作」，无技术未知。
+- 已取得真机证据（见 §5）；**跨组竞态**（`labeled` 与 `synchronize` 同时到达）未在真机复现，
+  仅由代码与守卫第 ⑥ 条保证。不构成技术未知项。
 
 ## 观测数据
 
