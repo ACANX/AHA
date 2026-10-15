@@ -19,8 +19,9 @@
       3. 下载 zip 到 `-Out`（已有同尺寸的包则复用；带 sha256 则校验）；
       4. 解压到 `<Out>\desktop-jvm\<版本>\` 或 `<Out>\cli-jvm\<版本>\`（**暂存**，只用来取里面的入口）；
       5. 把**去版本号**的入口**复制**到 `<Out>` 根（`Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`…），
-         让启动脚本与用户命令**与版本无关**；随后**删掉第 4 步的暂存目录** ——
-         同一份包在 `Dist/` 里存两遍没有意义（桌面端 25 MB、CLI 55 MB）。
+         让启动脚本与用户命令**与版本无关**；随后**删掉整个 `<Out>\<种类>\` 暂存目录** ——
+         同一份包在 `Dist/` 里存两遍没有意义（桌面端 25 MB、CLI 55 MB），
+         历次取件留下的旧版本子目录同样没用。
          `-NoInstall` 只做第 4 步；`-KeepExtract` 做完 5 步但保留暂存目录（想翻包内容时用）。
 
     ⚠️ 为什么和 `UpdateNative.ps1` **分开**、且不复用它（issue #210）：
@@ -149,6 +150,22 @@ if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" 
 elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
 # ── tag → 版本号（`V<a.b.c.PPPPP>-aha-jvm`）────────────────────────────────────
+#: 删掉**整个** `<种类>\` 暂存目录（`Dist\desktop-jvm` / `Dist\cli-jvm`，含历次取件留下的
+#: 各版本子目录）；父目录空了也一并删（issue #218 后续）。入口已经平铺到落地根，这里全是副本。
+#: 返回是否真的删了一个目录；删不掉时**抛出去**，由调用方决定是报错还是只提醒 ——
+#: 清不掉不是致命问题（入口已经在落地根），所以两处调用都只打一句「[注意]」。
+function Remove-StagingDir {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    Remove-Item -LiteralPath $Path -Recurse -Force
+    $parentDir = Split-Path -Path $Path -Parent
+    if ((Test-Path -LiteralPath $parentDir) -and
+        (@(Get-ChildItem -LiteralPath $parentDir -Force -ErrorAction SilentlyContinue).Count -eq 0)) {
+        Remove-Item -LiteralPath $parentDir -Force
+    }
+    return $true
+}
+
 function Get-TagVersion {
     param([string]$Name)
     if (-not $Name.EndsWith($TagSuffix)) { return $null }
@@ -317,6 +334,18 @@ if ($canSkip -and $NoInstall) {
     }
 }
 if ($canSkip) {
+    # 顺手收尾：上次可能是在「落地后不清理」的脚本版本下取的（或加了 -KeepExtract），
+    # 暂存目录还在就清掉 —— 否则「已是最新」会让它一直留在 `Dist\` 里。
+    # 清的是**整棵** `<种类>\`：历次取件留下的旧版本子目录同样没有用处。
+    if ((-not $NoInstall) -and (-not $KeepExtract) -and (Test-Path -LiteralPath $InstallDir)) {
+        try {
+            if (Remove-StagingDir -Path $InstallDir) {
+                Write-Host ("已清掉上次留下的暂存目录：{0}" -f $InstallDir)
+            }
+        } catch {
+            Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        }
+    }
     Write-Host ("`n✅ 本地已经是 {0}，无需更新（加 -Force 可强制重下）" -f $version) -ForegroundColor Green
     exit 0
 }
@@ -420,23 +449,20 @@ try {
 
     # ── 清掉暂存目录（issue #218 后续）────────────────────────────────────────
     #
-    # 平铺成功之后，版本目录就只剩「同一份包的又一份副本」（桌面端 25 MB、CLI 55 MB），
-    # 而用户真正要跑的是落地根的入口。默认删掉（连空的 `<种类>\` 父目录一起），
-    # `-KeepExtract` 可保留。
+    # 平铺成功之后，暂存目录 `Dist\<种类>\<版本>\` 就只剩「同一份包的又一份副本」
+    # （桌面端 25 MB、CLI 55 MB），而用户真正要跑的是落地根的入口。
+    # 默认把**整棵** `<种类>\` 删掉（含历次取件留下的旧版本子目录），`-KeepExtract` 可保留。
     #
     # 只在**至少铺出一个入口**之后才删：一个入口都没铺出来（旧形态的包）时，
     # 这份解压结果就是唯一能用的东西，删了等于什么都没给。
     if ((-not $NoInstall) -and (-not $KeepExtract) -and ($flat.Count -gt 0)) {
-        $freedMB = [math]::Round((($entries | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)
+        # 按**整棵**算省下多少（历次残留的旧版本目录也算进去，不然报出来的数字偏小）
+        $freedMB = [math]::Round((Get-ChildItem -LiteralPath $InstallDir -Recurse -File -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum).Sum / 1MB, 1)
         try {
-            Remove-Item -LiteralPath $targetDir -Recurse -Force
-            # 父目录（desktop-jvm / cli-jvm）空了就一并删掉，别在 Dist\ 下留个空壳
-            $parentDir = Split-Path -Path $targetDir -Parent
-            if ((Test-Path -LiteralPath $parentDir) -and
-                (@(Get-ChildItem -LiteralPath $parentDir -Force -ErrorAction SilentlyContinue).Count -eq 0)) {
-                Remove-Item -LiteralPath $parentDir -Force
-            }
-            Write-Host ("已清掉暂存目录（省约 {0} MB）：{1}" -f $freedMB, $targetDir)
+            # 见 Remove-StagingDir：删的是整个 `<种类>\`，不是只有当前版本那层
+            [void](Remove-StagingDir -Path $InstallDir)
+            Write-Host ("已清掉暂存目录（省约 {0} MB）：{1}" -f $freedMB, $InstallDir)
         } catch {
             Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
             Write-Host '       （不影响使用：入口已经平铺到落地根；想明说保留加 -KeepExtract）'

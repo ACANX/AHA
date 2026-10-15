@@ -106,7 +106,7 @@ Dist\UpdateDesktopJvm.cmd -KeepExtract   :: 平铺后保留暂存目录（默认
 | 位置 | 内容 |
 |---|---|
 | `Dist\`（落地根） | 该版的**去版本号**入口一份：`aha-desktop.jar`、`AhaDesktop.bat`、`AhaDesktop.sh`（**复制**，不是移动）|
-| `Dist\desktop-jvm\<版本>\` | 解压出来的**暂存**目录。平铺成功后**自动删掉**（同一个包在 `Dist/` 里存两遍没意义：桌面端 25 MB、CLI 55 MB）；要保留加 `-KeepExtract` |
+| `Dist\desktop-jvm\` | 解压出来的**暂存**目录（含历次取件留下的旧版本子目录）。平铺成功后**整个删掉** —— 同一个包在 `Dist/` 里存两遍没意义（桌面端 25 MB、CLI 55 MB），旧版本子目录更是纯占地；要保留加 `-KeepExtract` |
 
 于是「当前装的是哪一版」记在 `Dist\.aha-desktop-jvm.json`，而命令**与版本无关**：
 `Dist\AhaDesktop.bat`（或 `java -jar Dist\aha-desktop.jar`）永远指向最近一次取件的那一版。
