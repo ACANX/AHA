@@ -87,7 +87,7 @@ Dist/aha-cli-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  V<版
 与桌面端的三处不同：
 
 1. **没有 JavaFX**：classpath 里没有 `javafx-*`（产物自证会检查这一点——CLI 不该依赖 GUI 栈）；
-2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与发行包启动脚本 `Aha.sh` / `Aha.bat` 同一个入口）；
+2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与发行包启动脚本 `AhaCli.sh` / `AhaCli.bat` 同一个入口）；
 3. **GC 默认用 serial**（桌面端用 G1）：CLI 是「启动 → 干活 → 退出」的短命进程，
    serial 启动更快、体积更小；GUI 才关心长驻停顿。取舍不同，所以参数不同。
 

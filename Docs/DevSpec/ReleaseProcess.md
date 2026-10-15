@@ -13,7 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
-| v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `Aha.sh` / `Aha.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
+| v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增 1.0 发布的自举验收附加检查 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增发行包构建与验证；制品改为 `dist.zip` | @ACANX |
@@ -171,7 +171,7 @@ git push origin V0.1.2                                         # 这次由人推
 
 | 版本 | CLI（平台无关，一份包通吃） | 桌面端（按平台出包） |
 |---|---|---|
-| 0.1 | 发布为 `aha-cli-<版本>.zip`（**包根平铺**：`aha-cli.jar` + `Aha.sh` / `Aha.bat` + 文档） | — |
+| 0.1 | 发布为 `aha-cli-<版本>.zip`（**包根平铺**：`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat` + 文档） | — |
 | 0.2 | 同上 | `aha-desktop-<版本>-<系统>-<架构>.zip`（便携包，见 3.2） |
 | 1.x | 同上 + `native-image` 单文件 | 同上 + `native-image` 单文件 |
 
@@ -227,11 +227,11 @@ git push origin V0.1.2                                         # 这次由人推
 
 ```bash
 ./mvnw clean package
-./Dist/Aha.sh version     # 应输出版本号
-./Dist/Aha.sh --help      # 应列出全部命令
+./Dist/AhaCli.sh version     # 应输出版本号
+./Dist/AhaCli.sh --help      # 应列出全部命令
 ```
 
-`Dist/` 结构：`aha-cli.jar`（单体 jar，含全部依赖）+ `Aha.sh` / `Aha.bat` + 文档，全在根。
+`Dist/` 结构：`aha-cli.jar`（单体 jar，含全部依赖）+ `AhaCli.sh` / `AhaCli.bat` + 文档，全在根。
 发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 

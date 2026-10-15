@@ -291,7 +291,7 @@
                                 <!-- 输出用 `-o`（`-H:Path` / `-H:Name` 已弃用） -->
                                 <argument>-o</argument>
                                 <argument>${native.image.workdir}/${aha.native.name}</argument>
-                                <!-- 主类：与发行包启动脚本 Aha.sh / Aha.bat 走的是同一个入口 -->
+                                <!-- 主类：与发行包启动脚本 AhaCli.sh / AhaCli.bat 走的是同一个入口 -->
                                 <argument>com.acanx.module.aha.cli.AhaCli</argument>
                             </arguments>
                         </configuration>

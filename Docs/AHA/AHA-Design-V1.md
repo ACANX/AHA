@@ -566,8 +566,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 ```bash
 ./mvnw -pl aha-cli exec:java
 # 或
-./bin/Aha.bat chat           # Windows
-./bin/Aha.sh chat            # Linux
+./bin/AhaCli.bat chat        # Windows
+./bin/AhaCli.sh chat         # Linux
 ```
 
 ### 运行测试
@@ -865,8 +865,8 @@ aha/
 │   ├── Guide/
 │   └── Diagrams/
 ├── bin/
-│   ├── Aha.bat
-│   └── Aha.sh
+│   ├── AhaCli.bat
+│   └── AhaCli.sh
 ├── Script/
 │   └── Python/
 │       └── VersionDistribute.py ← 版本分发（根 POM <revision> / version 文件 / 文档声明）
@@ -3070,10 +3070,9 @@ wrapperUrl=https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-w
 
 ```
 Dist/
-├── bin/
-│   ├── Aha.sh
-│   └── Aha.bat
-├── lib/                  ← JPMS 模块路径：本项目模块 + 全部 runtime 依赖
+├── aha-cli.jar           ← 单体 jar（去版本号；全部 runtime 依赖都在里面）
+├── AhaCli.sh
+├── AhaCli.bat
 ├── README.md
 ├── LICENSE
 └── CHANGELOG.md
@@ -3082,8 +3081,8 @@ Dist/
 由 `maven-assembly-plugin` 组装，描述符为 `aha-cli/src/assembly/dist.xml`：
 
 - （issue #218 起）`file` 取 shade 的 `standalone` 附带产物，落地为包根的 `aha-cli.jar`（去版本号）
-- `fileSet` 附带 `Aha.sh` / `Aha.bat` 与项目文档，全部平铺在 `Dist/` 根
-- `Aha.sh` 以 `java -jar "$DIR/aha-cli.jar"` 启动（`outputDirectory` 指向项目根，`finalName=Dist`）
+- `fileSet` 附带 `AhaCli.sh` / `AhaCli.bat` 与项目文档，全部平铺在 `Dist/` 根
+- `AhaCli.sh` 以 `java -jar "$DIR/aha-cli.jar"` 启动（`outputDirectory` 指向项目根，`finalName=Dist`）
 
 `Dist/` 已在 `.gitignore` 中忽略，不作为源码提交。
 
@@ -3101,8 +3100,8 @@ Dist/
 
 | 文件 | 说明 |
 |---|---|
-| `Aha.sh` | Linux / macOS；`java -jar "$DIR/aha-cli.jar"`（包根平铺）|
-| `Aha.bat` | Windows；`java -jar "%~dp0aha-cli.jar"`（包根平铺）|
+| `AhaCli.sh` | Linux / macOS；`java -jar "$DIR/aha-cli.jar"`（包根平铺）|
+| `AhaCli.bat` | Windows；`java -jar "%~dp0aha-cli.jar"`（包根平铺）|
 
 两个脚本均：
 
@@ -3115,14 +3114,14 @@ Dist/
 
 | 文件 | 编码 | 行尾 |
 |---|---|---|
-| `bin/Aha.bat`（及一切 `*.bat`/`*.cmd`） | 纯 ASCII | CRLF |
-| `bin/Aha.sh`（及一切 `*.sh`/`*.py`） | UTF-8 | LF |
+| `bin/AhaCli.bat`（及一切 `*.bat`/`*.cmd`） | 纯 ASCII | CRLF |
+| `bin/AhaCli.sh`（及一切 `*.sh`/`*.py`） | UTF-8 | LF |
 
 `*.bat` 必须为纯 ASCII：CMD 按 ANSI 代码页解析批处理，UTF-8 中文字节会被误读并产生 `&`、`|`
 等元字符，使 `rem` / `echo` 行被当作命令执行；LF-only 批处理的 `if (...)` 块解析也不可靠。
 因此批处理中的用户提示一律用英文，中文说明放到文档。此约束由 `bin/CheckScripts.py` 在 CI 中校验。
 
-实际内容以仓库中的 `bin/Aha.sh` / `bin/Aha.bat` 为准，不在此处重复维护。
+实际内容以仓库中的 `bin/AhaCli.sh` / `bin/AhaCli.bat` 为准，不在此处重复维护。
 
 ## 4. GitHub Actions
 

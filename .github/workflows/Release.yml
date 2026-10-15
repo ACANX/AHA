@@ -58,7 +58,7 @@ jobs:
           #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
           #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
           #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" aha-cli.jar Aha.sh Aha.bat README.md LICENSE CHANGELOG.md)
+          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/${target}" Dist/
           # 产物统一落 Dist/：仓库根只放源码与文档
           ls -lh "Dist/${target}"
@@ -70,7 +70,7 @@ jobs:
             grep -E '^(lib|bin)/' "$entries" | head -5
             exit 1
           fi
-          for f in aha-cli.jar Aha.sh Aha.bat; do
+          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
             if ! grep -qx "$f" "$entries"; then
               echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
             fi

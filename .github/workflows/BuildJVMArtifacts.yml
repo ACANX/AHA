@@ -366,7 +366,7 @@ jobs:
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
           # 只列这几个入口，不写 `.`：将来 Dist/ 里再放别的产物也不会被误收。
           # （zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。）
-          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" aha-cli.jar Aha.sh Aha.bat README.md LICENSE CHANGELOG.md)
+          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
@@ -382,7 +382,7 @@ jobs:
             exit 1
           fi
           # ② 三个入口都平铺在包根
-          for f in aha-cli.jar Aha.sh Aha.bat; do
+          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
             if ! grep -qx "$f" "$entries"; then
               echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
             fi
@@ -511,5 +511,5 @@ jobs:
             ## 怎么用
             1. 按你的系统与 JDK 选对应包（`-jdk27` 后缀的需 JDK 27）；
             2. 解压后运行 `bin/AhaDesktop.bat`（Windows）或 `bin/AhaDesktop.sh`（Linux/macOS），
-               CLI 运行 `bin/Aha.bat` / `bin/Aha.sh`；
+               CLI 运行 `bin/AhaCli.bat` / `bin/AhaCli.sh`；
             3. 配置与数据在 `AHA_HOME`（默认 `~/.aha`）。

@@ -25,8 +25,8 @@
             <directory>${project.parent.basedir}/bin</directory>
             <outputDirectory>.</outputDirectory>
             <includes>
-                <include>Aha.sh</include>
-                <include>Aha.bat</include>
+                <include>AhaCli.sh</include>
+                <include>AhaCli.bat</include>
             </includes>
             <fileMode>0755</fileMode>
         </fileSet>

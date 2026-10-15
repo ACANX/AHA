@@ -71,8 +71,11 @@
 ### 变更
 - **CLI JVM 便携包改为「包根平铺」，并修掉包内同一份 jar 存两遍**（2026-10-15，issue #218 / #217）：
   `aha-cli-<版本>.zip` 里不再有 `lib/` 与 `bin/` —— 单体 jar 落到**包根**并**去掉版本号**
-  （固定叫 `aha-cli.jar`），启动脚本 `Aha.sh` / `Aha.bat` 也从 `bin/` 移到包根，
-  解压后直接 `Aha.bat`（或 `java -jar aha-cli.jar`）就能跑。两条线（CLI / 桌面端）形态一致。
+  （固定叫 `aha-cli.jar`），启动脚本 **`AhaCli.sh` / `AhaCli.bat`** 也从 `bin/` 移到包根
+  解压后直接 `AhaCli.bat`（或 `java -jar aha-cli.jar`）就能跑。两条线（CLI / 桌面端）形态一致。
+  启动脚本同时**改名对齐桌面端**：jar 叫 `aha-<模块>.jar` 时脚本叫 `Aha<模块>.{bat,sh}` ——
+  `aha-desktop.jar` ↔ `AhaDesktop.bat`，于是 `aha-cli.jar` ↔ **`AhaCli.bat` / `AhaCli.sh`**
+  （原 `Aha.bat` / `Aha.sh`）。
   - **顺带修掉「里外重复」**：shade 出来的单体 jar 原先会**顶替项目主产物**，于是装配描述符的
     `dependencySet`（`useProjectArtifact=true`）把它当「项目工件」又收进 `lib/` 一份 ——
     包里同一个类存两遍，55MB（issue #217）；而且 `aha-cli-native` 那条线声明了对 `aha-cli`

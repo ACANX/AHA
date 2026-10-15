@@ -13,7 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
-| v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/Aha.sh` / `Dist\Aha.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
+| v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增构建发行包（`Dist/`）说明 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增「运行中的 AHA 锁定 `Dist/lib` 导致 assembly 失败」排错项 | @ACANX |
@@ -88,15 +88,15 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 ```
 Dist/
 ├── aha-cli.jar              单体 jar（全部依赖都在里面，名字不带版本号）
-├── Aha.sh、Aha.bat          启动脚本（`java -jar aha-cli.jar`）
+├── AhaCli.sh、AhaCli.bat    启动脚本（`java -jar aha-cli.jar`）
 ├── README.md、LICENSE、CHANGELOG.md
 ```
 
 验证：
 
 ```bash
-./Dist/Aha.sh version     # Linux / macOS
-Dist\Aha.bat version      # Windows
+./Dist/AhaCli.sh version  # Linux / macOS
+Dist\AhaCli.bat version   # Windows
 ```
 
 由 `maven-assembly-plugin` 与 `aha-cli/src/assembly/dist.xml` 驱动。
@@ -135,7 +135,7 @@ python3 Script/Python/DesktopDistExtract.py
 
 ```bat
 Dist\AhaDesktop.bat              # Windows（桌面端：包根单体 jar）
-Dist\Aha.bat version              # CLI 同样平铺在 Dist\ 根
+Dist\AhaCli.bat version           # CLI 同样平铺在 Dist\ 根
 ```
 
 ```bash

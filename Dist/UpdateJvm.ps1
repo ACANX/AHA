@@ -326,7 +326,7 @@ try {
     $entries = @(Get-ChildItem -LiteralPath $targetDir -Recurse -File | Select-Object -First 2000)
     $jars = @($entries | Where-Object { $_.Name.EndsWith('.jar') })
     $hasBin = Test-Path -LiteralPath (Join-Path $targetDir 'bin')
-    $launcherName = if ($Kind -eq 'Cli') { 'Aha.bat' } else { 'AhaDesktop.bat' }
+    $launcherName = if ($Kind -eq 'Cli') { 'AhaCli.bat' } else { 'AhaDesktop.bat' }
     $launcher = if ($hasBin) { Join-Path $targetDir ("bin\{0}" -f $launcherName) } else { Join-Path $targetDir $launcherName }
     if (-not (Test-Path -LiteralPath $launcher)) { $launcher = $null }
     Write-Host ''

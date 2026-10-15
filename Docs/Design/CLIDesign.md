@@ -82,7 +82,7 @@ aha
 
 ## 4. 启动脚本
 
-`Aha.sh`、`Aha.bat`（issue #218 起平铺在包根）以 `java -jar aha-cli.jar` 启动单体 jar。
+`AhaCli.sh`、`AhaCli.bat`（issue #218 起平铺在包根）以 `java -jar aha-cli.jar` 启动单体 jar。
 
 ## 5. 实现现状（0.1.0）
 

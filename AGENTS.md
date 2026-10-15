@@ -75,8 +75,8 @@ python3 bin/CheckChanged.py
 ```bash
 ./mvnw -pl aha-cli exec:java
 # 或（需先执行 ./mvnw clean package 生成 Dist/）
-Dist/Aha.sh chat             # Linux / macOS
-Dist\Aha.bat chat            # Windows
+Dist/AhaCli.sh chat          # Linux / macOS
+Dist\AhaCli.bat chat         # Windows
 ```
 
 ### 运行测试

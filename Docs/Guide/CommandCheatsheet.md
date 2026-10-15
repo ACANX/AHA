@@ -32,7 +32,7 @@
 | 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
 | 启动桌面端（Dist 版） | `Dist\AhaDesktop.bat` | `./Dist/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
-| 启动 CLI（Dist 版） | `Dist\Aha.bat` | `./Dist/Aha.sh` |
+| 启动 CLI（Dist 版） | `Dist\AhaCli.bat` | `./Dist/AhaCli.sh` |
 | 启动**桌面端原生镜像** | `Dist\aha-desktop-native.exe` | `./Dist/aha-desktop-native` |
 | 启动 **CLI 原生镜像** | `Dist\aha-cli-native.exe` | `./Dist/aha-cli-native` |
 | 按变更跑检查 | `python3 bin\CheckChanged.py` | `python3 bin/CheckChanged.py` |
@@ -110,16 +110,16 @@ mvnw.cmd -pl aha-cli -am package -DskipTests     :: 只出 CLI
 mvnw.cmd clean package                           :: 全量（CLI + 桌面端 zip）
 ```
 
-产物：`Dist\aha-cli.jar` + `Dist\Aha.bat` / `Dist\Aha.sh`（**包根平铺**，无 `bin/`、无 `lib/`）。
+产物：`Dist\aha-cli.jar` + `Dist\AhaCli.bat` / `Dist\AhaCli.sh`（**包根平铺**，无 `bin/`、无 `lib/`）。
 
 ### 3.2 启动 / 运行
 
 ```bat
-Dist\Aha.bat                        :: 进入对话（等价 aha chat）
-Dist\Aha.bat run 用一句话介绍 AHA
-Dist\Aha.bat provider list
-Dist\Aha.bat tool list
-Dist\Aha.bat version
+Dist\AhaCli.bat                     :: 进入对话（等价 aha chat）
+Dist\AhaCli.bat run 用一句话介绍 AHA
+Dist\AhaCli.bat provider list
+Dist\AhaCli.bat tool list
+Dist\AhaCli.bat version
 ```
 
 从源码直接跑（不用先出包）：
@@ -219,7 +219,7 @@ unzip -j -o '<zip>' aha-cli-native -d Dist/
 chmod +x Dist/aha-cli-native
 ```
 
-**启动**（子命令与 `Dist\bin\Aha.bat` 一致，无需 JDK）：
+**启动**（子命令与 `Dist\AhaCli.bat` 一致，无需 JDK）：
 
 ```bat
 Dist\aha-cli-native.exe                                         :: 进入对话（等价 aha chat）
@@ -261,7 +261,7 @@ python3 bin\CheckChanged.py --dry-run  :: 只打印计划
 ```
 Dist/
 ├── aha-cli.jar             CLI 单体 jar（自 issue #218 起：包根平铺，名字不带版本号）
-├── Aha.bat / .sh           CLI 启动脚本（平铺在 Dist 根，不再有 bin\ 子目录）
+├── AhaCli.bat / .sh        CLI 启动脚本（平铺在 Dist 根，不再有 bin\ 子目录）
 ├── aha-desktop.jar         桌面端单体 jar（解压 / 取件后落在这里；脚本只认这个名字，与版本无关）
 ├── AhaDesktop.bat / .sh    桌面端启动脚本（同上，平铺在 Dist 根，不再有 bin\ 子目录）
 ├── aha-desktop-<版本>-<平台>.zip      桌面端便携包

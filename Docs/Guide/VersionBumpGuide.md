@@ -143,7 +143,7 @@ python3 .github/Python/ProjectVersion.py --verify
 ### 4.3 合并之后
 
 - [ ] `dev` 出包线（`BuildJVMArtifacts` / `DesktopNative` / `CliNative`）产物名带新版本
-- [ ] CLI `version` 输出新版本（`Dist/Aha.sh version`）
+- [ ] CLI `version` 输出新版本（`Dist/AhaCli.sh version`）
 - [ ] 若本次是**发布**，另按 `ReleaseProcess.md` §1 的发布前检查执行
 
 ## 5. 常见问题快速处置

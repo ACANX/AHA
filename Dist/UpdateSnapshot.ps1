@@ -383,7 +383,7 @@ try {
         # JVM 便携包自 issue #218 起是**包根平铺**：解压目录本身就是一个能直接启动的包，
         # 所以这里指出「跑哪个文件」，比只说一句「不安装」有用得多。
         $flatLauncher = $null
-        foreach ($name in @('AhaDesktop.bat', 'Aha.bat', 'AhaDesktop.sh', 'Aha.sh')) {
+        foreach ($name in @('AhaDesktop.bat', 'AhaCli.bat', 'AhaDesktop.sh', 'AhaCli.sh')) {
             $cand = Join-Path $extractDir $name
             if (Test-Path -LiteralPath $cand) { $flatLauncher = $cand; break }
         }

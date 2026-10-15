@@ -168,7 +168,7 @@
             <!--
                 让 `mvn clean` 清掉 Dist/ 里由构建产生的文件。
 
-                自 issue #218 起 CLI 包是**平铺**的（`aha-cli.jar` + `Aha.sh` / `Aha.bat`
+                自 issue #218 起 CLI 包是**平铺**的（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`
                 + 文档），清单里的 `bin/*` 与 `lib/*.jar` 只为清掉**旧形态的遗留**：
                 它们不再由构建产出，但升级上来的工作区里还会有，留着会让人误以为
                 包还是 JPMS 目录形态（JPMS 下同名模块出现两个版本更是致命错误
@@ -213,7 +213,7 @@
             <!--
                 发行包：单体 jar（shade 的 `standalone` 附带产物）+ 启动脚本 + 文档，
                 全部**平铺**到项目根 Dist/（issue #218）。
-                布局：Dist/{aha-cli.jar, Aha.sh, Aha.bat, README.md, LICENSE, CHANGELOG.md}。
+                布局：Dist/{aha-cli.jar, AhaCli.sh, AhaCli.bat, README.md, LICENSE, CHANGELOG.md}。
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -230,7 +230,7 @@
                                 <descriptor>src/assembly/dist.xml</descriptor>
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
-                            <!-- 平铺到项目根 Dist/，使 bin/Aha.sh 的 $DIR/../lib 成立 -->
+                            <!-- 平铺到项目根 Dist/：aha-cli.jar + AhaCli.sh / AhaCli.bat 与文档 -->
                             <!--
                                 注意：这里**刻意**是仓库根，不是 ${maven.multiModuleProjectDirectory}/Dist。
 
