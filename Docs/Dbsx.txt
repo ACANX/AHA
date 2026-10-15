@@ -151,8 +151,17 @@ AHA 待办事项
 
 仍属计划内（非缺口）：
   - Extensions.*（扩展运行时）→ 0.3
+    【仍成立（2026-10-15，复审 issue #121）】`ExtensionManager` 类**已存在**
+    （`aha-core/.../core/extension/ExtensionManager.java`：`load(Path)` / `start` / `stop` / `extensions()`），
+    但 `grep -rn "ExtensionManager"` 在**非测试代码里零引用** ⇒ `Extensions.*` 配置**仍未接入生产路径**，
+    该项继续按 0.3 跟踪。
   - aha-desktop / McpAdapter → 0.2
+    【半失效（2026-10-15，复审 issue #121）】**`aha-desktop` 这一半已交付**：main 下 39 个、test 下 35 个 Java 文件，
+    FXML 化四个批次、GUI 冒烟（`AhaDesktopSmokeTest`，CI `ui-smoke` 起 Xvfb 真开窗口）、主题 / 字体修复、
+    快照包与取件链路均已落地 ⇒ 读到本行时**不要**再理解成「桌面端还没做」。
+    **`McpAdapter` 这一半仍成立**：`aha-core/.../core/mcp/McpAdapter.java` 仍为 43 行骨架。
   - LLM 供应商真实 API Key 端到端验收 → 需外部环境
+    【仍成立（2026-10-15，复审 issue #121）】未找到完成证据；仍需**外部环境**（真机 + 真实 API Key）才能验收。
 
 0.2 桌面端 · 下一步待办（2026-10-08 汇总）
 ========================================
@@ -166,6 +175,9 @@ AHA 待办事项
 [待办]  3b. 压缩上下文（Ctrl+K / `/compact`）与自动压缩设置：AgentService 还没有对应入口
 [待办]  3c. 会话内搜索（Ctrl+F）与 `F6` 焦点循环
 [待办]  8. 供应商增强：连接测试（等价 aha provider test）、密钥写入密钥库而非明文
+         【仍成立（2026-10-15，复审 issue #121）】已开 issue #77 跟踪；**范围已校正**：「密钥库本体与生产读取
+         路径」在 0.1 就已完成（反证见上一节），本项只剩**桌面端保存流程接入**（复用 `SecretStores.create`）
+         与**连接测试**两件事。
 [待办]  9. 记忆面板（项目记忆 + 候选区）与 /stats 用量面板 → 0.3 范围
 [待办] 10. 桌面端覆盖率门禁上线（D-05：0.2 开发期 0.30，收尾向 0.70 对齐）
 [待办] 11. jpackage 自包含安装包（D-08 残留：用户无需自备 JDK）
