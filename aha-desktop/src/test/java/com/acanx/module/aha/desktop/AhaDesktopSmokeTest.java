@@ -17,7 +17,6 @@ import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
@@ -34,6 +33,9 @@ import javafx.scene.text.Text;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.image.PixelReader;
+import javafx.scene.image.WritableImage;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -456,6 +458,88 @@ class AhaDesktopSmokeTest {
         } finally {
             onUi(() -> stageRef.get().close());
         }
+    }
+
+    /**
+     * 像素级探针（issue #229 二次排查，2026-10-15 第二路）：属性对了 ≠ 看得见。
+     *
+     * <p>上一个探针证明「CSS 产不出值时不会冲掉属性 API 的 border」——那个假设被证伪了。
+     * 但两个探针读的都是 {@code getBorder()}（**属性**），而 ACANX 的判据是**原生 exe 里肉眼能否
+     * 看到轮廓线**。属性对、像素不对，同样是不合格：轮廓线可能被上面那层（{@code TextArea} 的
+     * {@code .content}）盖住，也可能根本没画到控件边缘上。</p>
+     *
+     * <p>本探针把**样式表的供给抽掉**（只剩属性 API 这条来源），再对输入框做快照，读
+     * 四个角与中心的实际像素：边缘应当是 {@code Palette.BORDER}、中心是 {@code CONTROL_INNER}。
+     * 这是与真机判据最接近的、JVM 侧能做的检查。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void borderFallbackIsVisiblyPaintedEvenWithoutCss() throws Exception {
+        startToolkit();
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
+        onUi(() -> {
+            Palette.setTheme(Theme.DARK);
+            DesktopShell shell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+            Stage stage = new Stage();
+            stage.setScene(new Scene(shell.buildRoot(), 900, 600));
+            stage.show();
+            stageRef.set(stage);
+        });
+        try {
+            Scene scene = uiGet(() -> stageRef.get().getScene());
+            Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229b] 样式表在场：" + ringSummary(composer));
+
+            // 抽掉样式表的供给，只留属性 API 那条来源（原生 exe 下 CSS 给不出值，等价于此）
+            onUi(() -> {
+                scene.getStylesheets().clear();
+                byId(scene, DesktopShell.COMPOSER_ID).setStyle(
+                        "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                                + "-fx-background-color: " + Palette.CONTROL_INNER + ";");
+            });
+            onUi(() -> {
+                Parent root = scene.getRoot();
+                root.applyCss();
+                root.layout();
+            });
+            String measured = ringSummary(composer);
+            System.out.println("[PROBE #229b] 抽掉样式表供给侧（只剩属性 API）：" + measured);
+            assertThat(measured)
+                    .as("属性 API 那条边框必须真的画出来（边缘 = %s，中心 = %s）——否则属性对了也没用",
+                            normalize(Palette.BORDER), normalize(Palette.CONTROL_INNER))
+                    .contains("边缘=" + normalize(Palette.BORDER))
+                    .contains("中心=" + normalize(Palette.CONTROL_INNER));
+        } finally {
+            onUi(() -> stageRef.get().close());
+        }
+    }
+
+    /**
+     * 对一个节点做快照，读出四个角与中心的实际颜色（{@code #RRGGBB}）。
+     *
+     * @param node 目标节点
+     * @return 形如 {@code 边缘=#3A3A3A/#3A3A3A/#3A3A3A/#3A3A3A 中心=#1E1E1E}
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    private static String ringSummary(Node node) throws Exception {
+        WritableImage image = uiGet(() -> node.snapshot(new SnapshotParameters(), null));
+        if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
+            return "快照不可用(" + (image == null ? "null" : image.getWidth() + "x" + image.getHeight()) + ")";
+        }
+        PixelReader pixels = image.getPixelReader();
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        return "边缘=" + hexAt(pixels, 0, 0)
+                + "/" + hexAt(pixels, width - 1, 0)
+                + "/" + hexAt(pixels, 0, height - 1)
+                + "/" + hexAt(pixels, width - 1, height - 1)
+                + " 中心=" + hexAt(pixels, width / 2, height / 2);
+    }
+
+    private static String hexAt(PixelReader pixels, int x, int y) {
+        Color color = pixels.getColor(x, y);
+        return color == null ? "null" : hexOf(color);
     }
 
     /**
