@@ -33,6 +33,9 @@ metadata:
 2. **不得只在对话里交代**。对话会滚走：漏掉之后既没有闭环，也无从判断「到底做过没有」。
 3. 开 Issue 前先**搜索是否已有同类 Issue**（`gh issue list --search`），避免重复；已有则补充评论而不是新开。
 4. 关闭 Issue **需要 ACANX 授权**；Agent 不自行关闭，除非用户明确要求。
+5. **新建 Issue / PR 必须挂里程碑**（含 Agent 自动创建）：先**继承**父任务 / 子任务的里程碑，
+   其次按**目标版本**判定；**确定不了先问 ACANX**，不要留空、也不要先建后补
+   （口径见 [`IssueTrackingSpec.md`](../../../Docs/DevSpec/IssueTrackingSpec.md) §2.1）。
 
 ## 何时不用
 
@@ -90,11 +93,16 @@ metadata:
 # 先查重
 gh issue list --repo ACANX/AHA --state all --search "关键词"
 
-# 新建（正文用文件，避免 shell 转义问题）
+# 新建（正文用文件，避免 shell 转义问题；**必须挂里程碑**，不确定先问 ACANX）
 gh issue create --repo ACANX/AHA \
   --title "模块：一句话" \
   --body-file /tmp/issue.md \
-  --label "enhancement,feature"
+  --label "enhancement,feature" \
+  --milestone "V0.1.3"
+
+# 开 PR 同样要挂里程碑（与所修复 / 关联的 Issue 一致）
+gh pr create --repo ACANX/AHA --base dev --head <分支> \
+  --title "..." --body-file /tmp/pr.md --milestone "V0.1.3"
 
 # 补一条进展评论
 gh issue comment <编号> --repo ACANX/AHA --body-file /tmp/comment.md

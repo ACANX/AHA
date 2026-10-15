@@ -27,6 +27,8 @@ import java.util.Properties;
  * @since 0.1.0
  */
 public final class AppVersion {
+    // S8（#176）TTL 探针：本行仅注释，无功能改动；本 PR **保持打开**，用于验证清理脚本对「超过 7 天」的真实删除。
+
 
     /** 资源文件名，与本类同包。 */
     private static final String RESOURCE = "version.properties";

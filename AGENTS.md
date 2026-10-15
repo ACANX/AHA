@@ -143,6 +143,10 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 依赖人工判断的项（真机观感、平台行为）要明说「以 ACANX 的判断为准」。
 关闭须经 ACANX 授权；细则与评论模板见技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
 
+**里程碑（强制）**：新建 Issue 与 PR —— **包括 Agent 自动创建的那些** —— **必须挂上里程碑**，不得留空：
+先**继承**所属父任务 / 子任务的里程碑，其次按**目标版本**判定；**确定不了就先问 ACANX 再建**。
+口径、判定顺序与复核命令见 [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) §2.1。
+
 **理由**：`TODO.md` 定位是「暂存区」，条目消化完即标记废弃或删除，长期问题放进去
 会被后续条目淹没而遗忘；Issue 有编号、状态、可被引用与检索，才能让「直到解决」有闭环。
 
