@@ -1,0 +1,292 @@
+name: Snapshot Assert
+
+# 把「某 PR 的快照自测通过」记成一条 commit status（`context = snapshot-assert`）。issue #166。
+#
+# 口径（2026-10-15）：
+#   * **默认启用**：本工作流随仓库就位，评论命令即可打标 —— 不需要任何开关、不需要新标签；
+#   * **默认不卡点**：本文件**不碰**分支保护。`snapshot-assert` 不在 required 清单里，缺它不影响合并；
+#     要卡点是 ACANX 的后续显式动作（把该 context 加进分支保护）；
+#   * **必测项 0 token**：下面的自测清单里**没有任何模型往返** —— 工具直调（`tool invoke`）与
+#     配置 / 本地命令就能覆盖「机器验不了」的那部分；需要打 provider 请求的动作（「发一句话看有没有回复」）
+#     **降级为可选**，命令末尾加 `+model` 表示做过。
+#     为什么这么定：适配器只有 openai-compatible / anthropic / gemini（没有本地 mock），任何真实对话都要花
+#     token，而 token 由 ACANX 的 provider key 承担；快照又是按 PR 出的，频率高。
+#
+# 命令用 `/snapshot-assert` 前缀（与 `/snapshot …` 同族，一眼看出是快照相关）：
+#   /snapshot-assert <版本> <平台> [jdk27] [+model]        ⇒ 打 success
+#   /snapshot-assert-fail <版本> <平台> [jdk27] <原因…>    ⇒ 打 failure（失败也要在 PR 上可见）
+# 平台词沿用 SnapshotPlan.py 的 OS_WORDS：Win / MacOS / Ubuntu。
+#
+# ⚠️ 这个前缀**以 `/snapshot` 开头**，会被 CliNative / DesktopNative / SnapshotJVM 的守卫
+# （`startsWith(body, '/snapshot')`）命中 —— 而 `SnapshotPlan.parse_command()` 对**不认识的目标**抛
+# `PlanError`、调用方会**回复用法**，于是它们会各回一条「命令格式应为 `/snapshot <target> [os ...]`」
+# （3 条误导性回复 + 3 次空跑）。因此那三条工作流的守卫里都加了
+# `&& !startsWith(github.event.comment.body, '/snapshot-assert')`（一条排除同时覆盖通过 / 失败两条命令），
+# 并由 `bin/CheckScripts.py` 的守卫断言这条排除仍在（改回去就会红）。
+#
+
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  # 顶层 permissions 会**覆盖**仓库默认权限，漏一项就是 403（现有工作流注释里记着这个坑）
+  issues: write        # 幂等回写 PR 评论（gh api 走 issues 接口）
+  pull-requests: read  # 读改动文件，给「要不要做可选 M 组」的提示
+  statuses: write      # 本工作流的唯一目的：POST commit status
+
+jobs:
+  snapshot-assert:
+    name: 快照自测留痕
+    # 只认「挂在 PR 上」的评论，且必须是本工作流的两个命令之一 —— 别的评论一条都不起运行。
+    if: >-
+      github.event.issue.pull_request != null
+      && (startsWith(github.event.comment.body, '/snapshot-assert')
+          || startsWith(github.event.comment.body, '/snapshot-assert-fail'))
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.issue.number }}
+      AUTHOR: ${{ github.event.comment.user.login }}
+      ASSOC: ${{ github.event.comment.author_association }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      BODY_RAW: ${{ github.event.comment.body }}
+      MARKER: <!-- snapshot-assert -->
+
+    steps:
+      # 回写评论要用仓库里的 SnapshotComment.py（幂等 + 503 有界重试都在那里面）
+      - uses: actions/checkout@v7
+
+      - name: 解析命令 / 校验权限与版本归属（任何拒绝都只回复用法，不打 status）
+        id: parse
+        run: |
+          # 刻意**不加** `-e`：拒绝路径要显式地「回复 + 退出 0」，而不是让作业变红。
+          set -uo pipefail
+
+          # 自测清单（编号 A1…C3）。这份清单就是这条 status 的**实质内容** ——
+          # 与 `Docs/DevSpec/ReleaseProcess.md` §2.1 同一份编号，`bin/CheckScripts.py` 会断言两处一致。
+          # 最后一列是 token 开销：**必测项一律 0**（见文件头说明）。
+          read -r -d '' CHECKLIST <<'LIST' || true
+          | # | 必测项 | 怎么算过 | token |
+          |---|---|---|---|
+          | A1 | 启动 | 包根 `AhaCli.bat` / `AhaCli.sh` 能起（等价 `java -jar aha-cli.jar`），`version` 与快照版本一致 | 0 |
+          | A2 | 工具直调 | `tool list` 能列出工具；`tool invoke <工具名> -p k=v` **真的执行成功**（如读一个文件）—— **绕过模型**，覆盖工具注册 / 参数解析 / 权限确认 / 原生库 | 0 |
+          | A3 | 供应商配置 | `provider list`、`provider test <id>`、`model show` 打得开、内容正确（`provider test` 按实现不发起请求）| 0 |
+          | A4 | 本地命令 | `/help`、`/session` 等本地命令打得开、不崩 | 0 |
+          | A5 | 运行期原生库 | 无 `UnsatisfiedLinkError`（工具调用 / 会话落盘即触发 sqlite 的库加载）| 0 |
+          | B1 | 桌面端开窗 | 双击 `AhaDesktop.bat` / 执行 `AhaDesktop.sh`，窗口真的出现；无 `UnsatisfiedLinkError`、无「JavaFX runtime components are missing」 | 0 |
+          | B2 | 主题对比 | 亮 / 暗来回切一次，标题与背景、输入框与页面底色对比正常 | 0 |
+          | B3 | 字体观感 | 与 JVM 模式（或上一版）对照无明显劣化 | 0 |
+          | B4 | 界面不崩 | 设置 / 供应商面板 / 会话列表各打开一次，不崩不退 | 0 |
+          | C1 | 原生包免 JDK | 单文件直接运行，本机没有 JDK 也能跑 | 0 |
+          | C2 | 原生包入口 | CLI：`--version` / `--help` 退出码 0；桌面端：开窗（同 B1）| 0 |
+          | C3 | 与 JVM 包一致 | 用 A2（工具直调）对照一句：两边行为一致，或差异写进结论 | 0 |
+          LIST
+
+          usage() {
+            cat <<EOF
+          用法：
+
+          \`\`\`
+          /snapshot-assert <版本> <平台> [jdk27] [+model]        # 必测清单通过（打 success）
+          /snapshot-assert-fail <版本> <平台> [jdk27] <原因>   # 自测失败（打 failure）
+          \`\`\`
+
+          - \`<平台>\`：\`Win\` / \`MacOS\` / \`Ubuntu\`（与快照出包同一套词）；省略 JDK 段默认 \`jdk25\`。
+          - \`+model\`：表示**额外**做了可选的真实 provider 往返（默认不做：必测清单 0 token）。
+          - 版本必须能在发布页找到对应 tag；若是快照 tag，还必须是**本 PR** 的快照。
+
+          必测清单（这条 status 断言的**就是**这份清单；与 \`ReleaseProcess.md\` §2.1 同一编号）：
+
+          ${CHECKLIST}
+
+          需要打 provider 请求的动作（「发一句话看有没有回复」/ 模型驱动的工具调用）**不在必测项里** ——
+          token 由 owner 的 key 承担，请按需用 \`+model\` 声明。
+          EOF
+          }
+
+          # 拒绝 / 提示用**独立 marker**：不能与留痕那条互相覆盖
+          reply() {
+            printf '%s\n' "$1" | python3 .github/Python/SnapshotComment.py \
+              --repo "${REPO}" --pr "${PR}" --marker '<!-- snapshot-assert-usage -->' || true
+          }
+
+          # 刻意**不**先写一个 `ok=false` 的默认值：同一个键在 `$GITHUB_OUTPUT` 里写两次的
+          # 优先级没有明确规定（可能「先写的赢」）。所有拒绝路径都在 `ok=true` 之前 `exit 0`，
+          # 因此「键不存在」本身就已表达「不打标」；`ok` 只在通过路径写一次。
+
+          # ── 权限：只认对该仓库有写权限的账号 ────────────────────────────────────
+          # 主判据用事件负载自带的 author_association（零 API 调用）：OWNER / MEMBER / COLLABORATOR
+          # 之外一律拒绝（外部贡献者、NONE）。无权限者**不产生任何 status**。
+          case "${ASSOC}" in
+            OWNER|MEMBER|COLLABORATOR) : ;;
+            *)
+              echo "无写权限（author_association=${ASSOC}）⇒ 不打 status"
+              reply "⚠️ 忽略：\`${AUTHOR}\` 对本仓库没有写权限，\`snapshot-assert\` 不会被打标。"
+              exit 0
+              ;;
+          esac
+
+          # ── 拆第一行 ──────────────────────────────────────────────────────────
+          line="${BODY_RAW%%$'\n'*}"
+          read -r -a parts <<< "${line}"
+          verb="${parts[0]:-}"
+
+          version="${parts[1]:-}"
+          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' <<< "${version}"; then
+            echo "版本号不合法：${version:-<空>}"
+            reply "⚠️ 版本号不合法：\`${version:-<空>}\`
+
+          $(usage)"
+            exit 0
+          fi
+
+          case "${parts[2]:-}" in
+            Win|Ubuntu|MacOS) platform="${parts[2]}" ;;
+            *)
+              echo "平台词不合法：${parts[2]:-<空>}"
+              reply "⚠️ 平台词必须是 \`Win\` / \`MacOS\` / \`Ubuntu\`（与快照出包同一套）。
+
+          $(usage)"
+              exit 0
+              ;;
+          esac
+
+          # 平台之后的 token：jdk 段与 +model 可任选顺序；其余文本在失败命令里是「原因」
+          jdk=25
+          model_note=""
+          rest=()
+          for tok in "${parts[@]:3}"; do
+            case "${tok}" in
+              jdk25) jdk=25 ;;
+              jdk27) jdk=27 ;;
+              +model) model_note="（含模型往返）" ;;
+              *) rest+=("${tok}") ;;
+            esac
+          done
+          reason="${rest[*]:-}"
+
+          if [ "${verb}" = "/snapshot-assert-fail" ] && [ -z "${reason}" ]; then
+            reply "⚠️ \`/snapshot-assert-fail\` 需要写一句原因（否则看不出哪里没过）。
+
+          $(usage)"
+            exit 0
+          fi
+
+          # ── 版本归属：tag 必须存在；快照 tag 还必须是本 PR 的 ────────────────────
+          tags=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[].tagName' 2>/dev/null || true)
+          tag=$(grep -E "^V${version}-" <<< "${tags}" | head -n1 || true)
+          if [ -z "${tag}" ]; then
+            echo "发布页上没有与 V${version} 对应的 tag"
+            reply "⚠️ 发布页上没有与 \`V${version}\` 对应的 tag（快照试包请用快照版本号）。
+
+          $(usage)"
+            exit 0
+          fi
+          case "${tag}" in
+            *-AHA-*-SNAPSHOT)
+              # 能从 release 正文解析出 PR 号就强校验：防止「拿别的 PR 的版本打标」
+              rel_pr=$(gh api "repos/${REPO}/releases/tags/${tag}" --jq '.body' 2>/dev/null \
+                | grep -oE '#[0-9]+' | head -n1 | tr -dc '0-9' || true)
+              if [ -n "${rel_pr}" ] && [ "${rel_pr}" != "${PR}" ]; then
+                echo "快照 ${tag} 属于 PR #${rel_pr}，不是本 PR #${PR}"
+                reply "⚠️ 快照 \`${tag}\` 属于 PR #${rel_pr}，**不是**本 PR #${PR} —— 不能拿别的 PR 的版本打标。"
+                exit 0
+              fi
+              ;;
+          esac
+
+          # ── 绑定的提交：PR 当前 head_sha（PR 之后再有 push，新 sha 上就没有这条 status）──
+          sha=$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)
+          if [ -z "${sha}" ]; then
+            echo "取不到 PR 的 head_sha"
+            exit 0
+          fi
+
+          # ── 可选 M 组的提示：按改动文件判断，不靠人记 ─────────────────────────────
+          changed=$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" --jq '.[].filename' 2>/dev/null || true)
+          if grep -qE '(^|/)(llm|tool|session|view|adapter)/|Adapter[^/]*\.java$' <<< "${changed}"; then
+            hint="命中模型 / 工具 / 会话 / 视图链路 ⇒ 建议做可选 M1/M2（命令末尾加 +model）"
+          else
+            hint="未触及模型链路 ⇒ 可选 M 组可跳过（必测清单本来就是 0 token）"
+          fi
+
+          {
+            echo "ok=true"
+            echo "state=$([ "${verb}" = "/snapshot-assert" ] && echo success || echo failure)"
+            echo "version=${version}"
+            echo "platform=${platform}"
+            echo "jdk=${jdk}"
+            echo "sha=${sha}"
+            echo "tag=${tag}"
+            echo "reason=${reason}"
+            echo "model_note=${model_note}"
+            echo "hint=${hint}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "解析通过：${verb} ${version} ${platform} jdk${jdk} → ${sha}"
+
+      - name: 打 commit status（context=snapshot-assert）
+        if: steps.parse.outputs.ok == 'true'
+        env:
+          STATE: ${{ steps.parse.outputs.state }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          PLATFORM: ${{ steps.parse.outputs.platform }}
+          JDK: ${{ steps.parse.outputs.jdk }}
+          SHA: ${{ steps.parse.outputs.sha }}
+          MODEL_NOTE: ${{ steps.parse.outputs.model_note }}
+        run: |
+          set -euo pipefail
+          if [ "${STATE}" = "success" ]; then
+            desc="快照 ${VERSION} @ ${PLATFORM} jdk${JDK}：必测清单通过${MODEL_NOTE}"
+          else
+            # 失败原因只写进评论（description 上限 140 字符，且可能是中文，不塞长文本）
+            desc="快照 ${VERSION} @ ${PLATFORM} jdk${JDK}：自测失败（详见 PR 评论）"
+          fi
+          gh api -X POST "repos/${REPO}/statuses/${SHA}" \
+            -f state="${STATE}" \
+            -f context=snapshot-assert \
+            -f description="${desc}" \
+            -f target_url="https://github.com/${REPO}/pull/${PR}#issuecomment-${COMMENT_ID}" >/dev/null
+          echo "已打 status：${STATE} / ${desc} / ${SHA}"
+
+      - name: 幂等回写留痕评论（marker + 瞬时重试都在 SnapshotComment.py 里）
+        if: steps.parse.outputs.ok == 'true'
+        env:
+          STATE: ${{ steps.parse.outputs.state }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          PLATFORM: ${{ steps.parse.outputs.platform }}
+          JDK: ${{ steps.parse.outputs.jdk }}
+          SHA: ${{ steps.parse.outputs.sha }}
+          TAG: ${{ steps.parse.outputs.tag }}
+          REASON: ${{ steps.parse.outputs.reason }}
+          MODEL_NOTE: ${{ steps.parse.outputs.model_note }}
+          HINT: ${{ steps.parse.outputs.hint }}
+        run: |
+          set -euo pipefail
+          if [ "${STATE}" = "success" ]; then
+            verdict="✅ 必测清单通过"
+          else
+            verdict="❌ 失败：${REASON}"
+          fi
+          {
+            echo "${MARKER}"
+            echo "### 快照自测留痕"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 快照版本 | \`${VERSION}\`（tag \`${TAG}\`）|"
+            echo "| 平台 / JDK | ${PLATFORM} / jdk${JDK} |"
+            echo "| 结论 | ${verdict} |"
+            echo "| token 开销 | 0${MODEL_NOTE} |"
+            echo "| 验证人 / 时间 | @${AUTHOR} / $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M %z') |"
+            echo "| 对应提交 | \`${SHA}\`（PR 再 push 后新 sha 上没有这条 status，本条自动失效）|"
+            echo "| 断言清单 | A1–A5 / B1–B4 / C1–C3（按取到的包种类适用；原文见 \`ReleaseProcess.md\` §2.1）|"
+            echo "| 可选 M 组建议 | ${HINT} |"
+          } > "${RUNNER_TEMP}/snapshot-assert.md"
+          python3 .github/Python/SnapshotComment.py \
+            --repo "${REPO}" --pr "${PR}" --marker "${MARKER}" \
+            < "${RUNNER_TEMP}/snapshot-assert.md"

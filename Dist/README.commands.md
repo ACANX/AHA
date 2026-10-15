@@ -315,6 +315,17 @@ Dist/
 实现见 #171 / #172 / #173 / #174）。它们挂在发布页的 pre-release 上，tag 形如
 `V0.1.3.00184.10141900-AHA-Cli-JVM-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
 
+**自测留痕（合并前的可选检查，`snapshot-assert`）**：在 PR 里发评论即可打标（**默认启用、默认不卡点**）：
+
+```text
+/snapshot-assert <版本> <平台> [jdk27] [+model]        :: 必测清单通过（打 success）——平台 Win / MacOS / Ubuntu
+/snapshot-assert-fail <版本> <平台> [jdk27] <原因>    :: 自测失败（打 failure，失败也要可见）
+```
+
+必测清单（A1–A5 / B1–B4 / C1–C3）**一律 0 token**：工具直调 + 配置/本地命令 + 开窗观感即可，
+不含任何模型往返；需要真实 provider 请求的动作是**可选**（命令末尾加 `+model` 声明）。
+清单原文与口径见 `Docs/DevSpec/ReleaseProcess.md` §2.2；**完整用法与端到端示例**见 `Docs/Guide/SnapshotSelfTestGuide.md`。
+
 **取件（一键，Windows 双击 / 脚本）**：
 
 ```bat
