@@ -42,6 +42,7 @@
   整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
+- **GraalVM / GitHub Actions 参考文档（2026-10-15，issue #28）**：新增 [`Docs/Guide/GraalVMInActionsGuide.md`](Docs/Guide/GraalVMInActionsGuide.md)——六层可配置面、Action 输入速查（**逐项抄自 `action.yml`**）、发行版与版本语法、native-image 参数定法与「四类清单」闭环、【**权威查询入口**】含 `native-image --help-extra` 等本地自证命令与逐个实测过的官方链接、症状→参数对照表、本仓库落地位置索引；`BuildGuide.md` / 两条原生设计文档 / 原生技能 `SKILL.md` / `AGENTS.md` 同步交叉引用。
 - **快照包文档补齐（2026-10-15）**：`BuildSpec.md` 新增 §11「快照产物（PR 试包）」（载体与命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系）；`BuildGuide.md` §3.3 补全原生线并更正取件口径；`ReleaseProcess.md` 新增 §2.1（快照与正式发布的隔离）；`CommandCheatsheet.md` §7 同步更正；新增 TS 记录 `[TS-2610-039](Docs/Troubleshooting/TS-2610-039-Artifact-Anonymous-Download-401.md)`。
 - **原生镜像取件工具：实现方案定稿与文档对齐（2026-10-14，issue #156）**：
   `Docs/Design/DesktopNativeUpdateDesign.md` 改为权威口径（v1.2.0）——标题与定位不再限桌面端，

@@ -80,6 +80,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 > 原生镜像包**不在默认构建里**：它们分别需要 `-Pdesktop-native` / `-Pcli-native`
 > 与 GraalVM 的 `native-image`，详见 [DesktopNativeDesign.md](../Design/DesktopNativeDesign.md)
 > 与 [CliNativeDesign.md](../Design/CliNativeDesign.md)。
+>
+> **Action 该怎么写、参数该怎么定、去哪查权威资料**：见 [GraalVMInActionsGuide.md](GraalVMInActionsGuide.md)。
 
 ```bash
 ./mvnw clean package
@@ -408,3 +410,4 @@ git push -u origin dependa
 | [TestingSpec.md](../DevSpec/TestingSpec.md) | 测试层级与覆盖率要求 |
 | [TroubleshootingGuide.md](TroubleshootingGuide.md) | 运行时与配置问题排错 |
 | [GettingStarted.md](GettingStarted.md) | 环境准备与首次运行 |
+| [GraalVMInActionsGuide.md](GraalVMInActionsGuide.md) | GitHub Actions 中的 GraalVM：Action 输入、参数定法与权威查询入口 |

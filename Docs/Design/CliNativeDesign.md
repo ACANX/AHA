@@ -216,6 +216,7 @@ python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
 
 ## 8. 相关文档
 
+- [GraalVMInActionsGuide.md](../Guide/GraalVMInActionsGuide.md)：**CI 里怎么配 GraalVM、native-image 参数怎么定、去哪查权威资料**（本模块参数语义与查询入口的总入口）
 - [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)：**取件工具的设计**——桌面端与 CLI
   共用一套引擎（本模块的原生包就是由它取到 `Dist/` 的），也是本文 §7.1「取件」一节的出处
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：**共享方法论**（隔离四面、版本规则、

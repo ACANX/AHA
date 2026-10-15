@@ -261,6 +261,7 @@ GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上�
 - [isolation-and-ci](references/isolation-and-ci.md)：四隔离的落地骨架与 CI 编排
 - [measurement-and-experiments](references/measurement-and-experiments.md)：启动速度与内存的测量口径与实验设计
 - [skill-lifecycle](references/skill-lifecycle.md)：这份技能自身的迭代方法、状态标记与迁移清单
+- [GraalVMInActionsGuide.md](../../../Docs/Guide/GraalVMInActionsGuide.md)：**本仓库的「GraalVM + GitHub Actions」参考**——Action 输入速查（抄自 `action.yml`）、权威查询入口与本地自证命令（`native-image --help-extra` 等）、症状→参数对照表
 - **[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)**（姊妹技能）：
   元数据的**发现 / 登记 / 验证 / 守卫**专精（反射 / JNI / 资源 / 初始化），
   含三路发现法、来源优先级与常见框架经验库 —— 本技能只管「从 jar 到原生二进制」的工程化
