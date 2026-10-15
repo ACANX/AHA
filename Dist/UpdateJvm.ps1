@@ -295,9 +295,14 @@ Write-Host ("落地：{0}" -f $targetDir)
 
 $stateFlat = @($state.flat | Where-Object { $_ })
 $canSkip = (-not $Force) -and ($state.tag -eq $pick.Release.tag_name) -and (Test-Path -LiteralPath $targetDir)
-if ($canSkip -and (-not $NoInstall) -and ($stateFlat.Count -gt 0)) {
-    # 上次平铺出去的入口被删了（或改了指 -Out）⇒ 不算「已是最新」，重解压补齐。
-    if (@($stateFlat | Where-Object { -not (Test-Path -LiteralPath (Join-Path $OutDir $_)) }).Count -gt 0) {
+if ($canSkip -and (-not $NoInstall)) {
+    $hasFlatInfo = @($state.PSObject.Properties.Name) -contains 'flat'
+    if (-not $hasFlatInfo) {
+        # 旧状态文件（「平铺」这个功能之前写的）：不知道铺没铺过 ⇒ 重解压补齐一次。
+        $canSkip = $false
+    } elseif ($stateFlat.Count -gt 0 -and
+              @($stateFlat | Where-Object { -not (Test-Path -LiteralPath (Join-Path $OutDir $_)) }).Count -gt 0) {
+        # 上次平铺出去的入口被删了（或这次指了别的 -Out）⇒ 同样不算「已是最新」。
         $canSkip = $false
     }
 }
