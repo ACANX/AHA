@@ -7,30 +7,17 @@
     <formats>
         <format>zip</format>
     </formats>
-    <!-- 内容直接铺到包里，与 bin/AhaDesktop.sh 的 $DIR/../lib 布局一致 -->
+    <!--
+        包内**平铺**（issue #218）：单体 jar + 启动脚本 + 三个文档，全在包根。
+        不再有 `lib/`（依赖与本平台 OpenJFX 都在单体 jar 里），也不再单独建 `bin/`。
+    -->
     <includeBaseDirectory>false</includeBaseDirectory>
 
-    <dependencySets>
-        <!--
-            桌面端便携包：
-            - 本项目工件（aha-desktop）与全部 runtime 依赖：aha-core / aha-common /
-              aha-extension-api / aha-tool，以及第三方 JAR；
-            - **本平台的** OpenJFX 分类器工件（javafx-base / graphics / controls）。
-            profile 已保证 classpath 上只有当前平台那一份原生库，因此这里不需要
-            再做 classifier 过滤（见 Docs/Design/DesktopDesign.md 第 5 节）。
-        -->
-        <dependencySet>
-            <outputDirectory>lib</outputDirectory>
-            <useProjectArtifact>true</useProjectArtifact>
-            <unpack>false</unpack>
-            <scope>runtime</scope>
-        </dependencySet>
-    </dependencySets>
-
     <fileSets>
+        <!-- 启动脚本平铺到包根：解压后直接双击/执行，不需要进子目录 -->
         <fileSet>
             <directory>${project.parent.basedir}/bin</directory>
-            <outputDirectory>bin</outputDirectory>
+            <outputDirectory>.</outputDirectory>
             <includes>
                 <include>AhaDesktop.sh</include>
                 <include>AhaDesktop.bat</include>
@@ -47,4 +34,17 @@
             </includes>
         </fileSet>
     </fileSets>
+
+    <files>
+        <!--
+            单体 jar：shade 的附带产物（classifier `standalone`）。落地时**刻意去掉版本号与
+            classifier**，固定叫 `aha-desktop.jar` —— 启动脚本、用户命令与文档因此都与版本无关，
+            换版本不用改任何一处（issue #218）。
+        -->
+        <file>
+            <source>${project.build.directory}/${project.artifactId}-${project.version}-standalone.jar</source>
+            <outputDirectory>.</outputDirectory>
+            <destName>aha-desktop.jar</destName>
+        </file>
+    </files>
 </assembly>

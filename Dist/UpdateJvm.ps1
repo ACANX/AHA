@@ -272,12 +272,20 @@ try {
     New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $targetDir)
 
-    # 包内是平铺的（bin/ + lib/ [+ 单体 jar] + 文档）；列出关键入口做一次自证。
+    # 列出关键入口做一次自证，并据此给出「怎么运行」的提示。
+    #
+    # 包内形态有两代（issue #218 起为**平铺**）：
+    #   新：单体 jar + 启动脚本 + 文档，全在包根（无 bin/、无 lib/）；
+    #   旧：bin/（启动脚本）+ lib/（模块与依赖）[+ 包根单体 jar]。
+    # 两代都要提示到，否则取到旧包就没有运行入口提示。
     $entries = @(Get-ChildItem -LiteralPath $targetDir -Recurse -File | Select-Object -First 2000)
     $jars = @($entries | Where-Object { $_.Name.EndsWith('.jar') })
     $hasBin = Test-Path -LiteralPath (Join-Path $targetDir 'bin')
+    $launcherName = if ($Kind -eq 'Cli') { 'Aha.bat' } else { 'AhaDesktop.bat' }
+    $launcher = if ($hasBin) { Join-Path $targetDir ("bin\{0}" -f $launcherName) } else { Join-Path $targetDir $launcherName }
+    if (-not (Test-Path -LiteralPath $launcher)) { $launcher = $null }
     Write-Host ''
-    Write-Host ("解压完成：{0} 个文件（jar {1} 个，bin\ {2}）" -f $entries.Count, $jars.Count, $(if ($hasBin) { '有' } else { '无' }))
+    Write-Host ("解压完成：{0} 个文件（jar {1} 个，启动脚本 {2}）" -f $entries.Count, $jars.Count, $(if ($launcher) { '有' } else { '无' }))
 } catch {
     Write-Host ''
     Write-Host ("[错误] {0}" -f $_.Exception.Message) -ForegroundColor Red
@@ -291,8 +299,7 @@ Write-Host ''
 Write-Host ("✅ 已取件到 {0}" -f $version) -ForegroundColor Green
 Write-Host ("目录：{0}" -f $targetDir)
 Write-Host ("下载包保留在：{0}（便于离线重装；不需要可删）" -f $zip)
-if ($hasBin) {
-    $launcher = if ($Kind -eq 'Cli') { 'bin\Aha.bat' } else { 'bin\AhaDesktop.bat' }
-    Write-Host ("运行：{0}（仓库根已构建出 Dist\ 布局时）" -f (Join-Path $targetDir $launcher))
+if ($launcher) {
+    Write-Host ("运行：{0}" -f $launcher)
 }
 exit 0

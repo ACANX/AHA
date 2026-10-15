@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.21.0
+**文档版本**：v1.22.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -37,6 +37,7 @@
 | v1.19.1 | 2026-10-14 | §2 资产名表：Linux 包名由 `-linux-x64` 改为 `-ubuntu-x64`（平台标签统一用发行版名，因为验证环境只有 Ubuntu；ACANX 定案），行首补「验证环境为 Ubuntu」 | @cnxnc |
 
 ---
+| v1.22.0 | 2026-10-15 | §3.2 桌面端便携包改为**包根平铺**形态（`aha-desktop.jar` + 启动脚本在包根，无 `lib/` 与 `bin/`；jar 名去版本号），并同步 §3.3 形态表的启动方式（issue #218）| @ACANX / CNXNC |
 | v1.21.0 | 2026-10-15 | §2/§3 的平台标签与资产名统一为 `windows-amd64` / `ubuntu-amd64`（原 `-x64`，与原生线一致；issue #215）| @ACANX / CNXNC |
 | v1.20.0 | 2026-10-15 | 新增 §2.1「快照包（pre-release）：与正式发布彻底隔离」：tag / 载体 / 触发 / 生命周期对照表 + 两条硬约束（`Release.yml` 必须保留 `!V*-SNAPSHOT`；清理不进必需检查）| @ACANX / CNXNC |
 
@@ -188,9 +189,11 @@ git push origin V0.1.2                                         # 这次由人推
 | Linux x86_64（验证环境为 Ubuntu） | `aha-desktop-<版本>-ubuntu-amd64.zip` |
 | macOS Apple Silicon | `aha-desktop-<版本>-macos-arm64.zip` |
 
-包内布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
-**本平台**三个 OpenJFX jar）+ `README.md` / `CHANGELOG.md` / `LICENSE`。
-解包后只需机器上有 JDK 25，运行 `bin/AhaDesktop.sh` 或 `bin/AhaDesktop.bat` 即可。
+包内布局（**包根平铺**，2026-10-15 起，issue #218）：`aha-desktop.jar`（单体 jar：本项目模块 +
+全部运行时依赖 + **本平台** OpenJFX 的类与原生库）+ `AhaDesktop.sh` / `AhaDesktop.bat` +
+`README.md` / `CHANGELOG.md` / `LICENSE`；**没有** `lib/` 与 `bin/`。
+解包后只需机器上有 JDK 25，运行 `AhaDesktop.sh` 或 `AhaDesktop.bat`（Windows 双击即可）——
+脚本与用户命令都只认**去版本号**的 `aha-desktop.jar`，换版本不必改任何一处。
 
 **自证（强制）**：矩阵每条腿声明本腿**应当**解析出的平台分类器；构建后脚本从**产物名**
 （`finalName` 由 profile 决定，含版本与分类器）解析实际值并断言两者一致，同时打印依赖树里
@@ -241,7 +244,7 @@ git push origin V0.1.2                                         # 这次由人推
 
 | 形态 | 产物 | 启动方式 | 前提 |
 |---|---|---|---|
-| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `bin/Aha.sh`、`bin/AhaDesktop.sh` / `.bat` | 机器需自备 JDK 25 |
+| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `bin/Aha.sh`（CLI：JPMS 目录形态）、`AhaDesktop.sh` / `.bat`（桌面端：包根平铺单体 jar） | 机器需自备 JDK 25 |
 | **原生镜像二进制** | `native-image` 单文件（`aha-cli-native` / `aha-desktop-native`，试验性） | 直接执行二进制 | 无需 JVM |
 
 **`jpackage` 安装包（MSI / DEB / DMG）已决策跳过，不采用**。理由：

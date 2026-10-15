@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-r"""AHA 桌面端便携包解压并更新 Dist/（把 zip 里的 lib/ 与 bin/ 铺进 Dist）。
+r"""AHA 桌面端便携包解压并更新 Dist/（把包内平铺的入口铺进 Dist）。
 
-配套 `DesktopDistBuild.py` 使用。构建出来的便携包是自包含的：
+配套 `DesktopDistBuild.py` 使用。构建出来的便携包是自包含的（issue #218 起为**平铺**形态）：
 
     Dist/aha-desktop-<版本>-<平台>.zip
-      ├── bin/   AhaDesktop.sh、AhaDesktop.bat
-      └── lib/   JPMS 模块路径（本项目模块 + 全部运行时依赖 + 本平台 OpenJFX）
+      ├── aha-desktop.jar   单体 jar（含本项目模块、全部运行时依赖与本平台 OpenJFX）
+      ├── AhaDesktop.sh     启动脚本（平铺，不再有 bin/）
+      └── AhaDesktop.bat
 
 解压它就能直接跑，不必记 `--module-path`。本脚本把「选包 -> 解压 -> 更新 Dist/」压成
-一条命令，并把 `lib/` 与 `bin/` 覆盖到 `Dist/`：
+一条命令，并把这三个入口平铺进 `Dist/`：
 
     python3 Script\Python\DesktopDistExtract.py
 
@@ -16,15 +17,16 @@ r"""AHA 桌面端便携包解压并更新 Dist/（把 zip 里的 lib/ 与 bin/ �
 
 三个关键取舍：
 
-1. **只铺 `lib/` 与 `bin/`**，不碰 `README.md` / `CHANGELOG.md` / `LICENSE`：
-   它们是「包」的说明，不是运行所需的文件，铺到 `Dist/` 只会造成混乱
-   （与 `DesktopNativeVersionUpdate.py` 只取可执行文件同一条思路）。
+1. **只铺运行入口**（`aha-desktop.jar` 与两个启动脚本），不碰 `README.md` /
+   `CHANGELOG.md` / `LICENSE`：它们是「包」的说明，不是运行所需的文件，
+   铺到 `Dist/` 只会造成混乱（与 `DesktopNativeVersionUpdate.py` 只取可执行文件同一条思路）。
 2. **先解压到暂存目录，全部成功后再逐个 `os.replace` 落地**：中途失败时 `Dist/` 保持原样，
    不会落一个「删了一半」的发行目录。
-3. **落盘前清掉上一版桌面端独占的 jar**（`aha-desktop-*.jar`、`javafx-*.jar`）：
-   版本升级后旧 jar 残留会让 JPMS 模块路径上出现同一模块的两个版本，
-   直接 `java.lang.module.FindException`。共享依赖（core / common / tool / 第三方）原地覆盖，
-   不动仅属于 CLI 的 `aha-cli-*.jar`，因此 `Dist/` 同时保留 CLI 用法。
+3. **落盘前清掉上一版（`lib/` + `bin/` 形态）的遗留文件**：升级到平铺形态后，
+   旧的 `lib/aha-desktop-*.jar`、`lib/javafx-*.jar` 与 `bin/AhaDesktop.*` 会与新入口并存，
+   让「跑的到底是哪一份」不可读（旧形态下更糟：JPMS 模块路径上出现同一模块的两个版本，
+   直接 `java.lang.module.FindException`）。共享依赖与属于 CLI 的 `aha-cli-*.jar` /
+   `bin/Aha.*` 一律不碰，因此 `Dist/` 仍同时保留 CLI 用法。
 
 另外：每次更新都会把命令速查 `Docs/Guide/CommandCheatsheet.md` 刷新为
 `Dist/README.commands.md`，让「怎么编 / 怎么启动」在发行目录里随手可见。
@@ -49,14 +51,52 @@ ROOT = Path(__file__).resolve().parents[2]
 #: 桌面端便携包的命名；`[0-9]` 用于排除 `aha-desktop-native-*.zip`（原生镜像包）。
 ZIP_GLOB = "aha-desktop-[0-9]*.zip"
 
-#: 只搬运包内的这两个目录。
-TRANSFER_PREFIXES = ("lib/", "bin/")
+#: 只搬运包内的这三个入口（issue #218 起的**平铺**形态）。
+TRANSFER_ENTRIES = ("aha-desktop.jar", "AhaDesktop.sh", "AhaDesktop.bat")
 
-#: 上一版桌面端独占、需要先清掉的 jar（不碰共享依赖，也不碰 aha-cli）。
-PRUNE_PATTERNS = ("aha-desktop-*.jar", "javafx-*.jar")
+#: 上一版（`lib/` + `bin/` 形态）遗留、需要清掉的文件。
+#: 不碰共享依赖（core / common / tool / 第三方），也不碰属于 CLI 的 aha-cli-*.jar 与 bin/Aha.*。
+LEGACY_PRUNE = ("lib/aha-desktop-*.jar", "lib/javafx-*.jar", "bin/AhaDesktop.sh", "bin/AhaDesktop.bat")
 
-#: 便携包里必须存在的 OpenJFX 工件个数（本平台三件套）。
-EXPECTED_JAVAFX_JARS = 3
+#: 单体 jar 在包内的落地名（去版本号，issue #218）。
+FATJAR_ENTRY = "aha-desktop.jar"
+
+#: 启动脚本（zip 内路径，平铺在包根）。
+LAUNCHER_ENTRIES = ("AhaDesktop.sh", "AhaDesktop.bat")
+
+#: OpenJFX 原生库的名字特征（Windows / Linux / macOS 三种命名都在内）。
+#: 判据刻意不看「有任意 .dll」——sqlite-jdbc 等也带原生库，那样会漏掉 JavaFX 缺失。
+FX_NATIVE_HINTS = ("glass", "prism", "javafx_font", "decora", "javafx_iio")
+
+
+def fatjar_problems(archive, entry: str) -> list[str]:
+    """检查单体 jar **内部**：含 JavaFX 类、含本平台 OpenJFX 原生库、不含 module-info。
+
+    OpenJFX 的原生库就在 javafx-graphics 分类器 jar 的根部，运行期由 JavaFX 自己从 jar
+    取出并缓存（`NativeLibLoader.loadLibraryFromResource`），所以「jar 里有没有它」是可判的：
+    少了它，用户双击启动只会看到「JavaFX runtime components are missing」。
+    """
+    import io
+
+    problems: list[str] = []
+    with archive.open(entry) as handle:
+        payload = io.BytesIO(handle.read())
+    try:
+        with zipfile.ZipFile(payload) as jar:
+            inner = jar.namelist()
+    except zipfile.BadZipFile:
+        return [f"{entry} 不是有效的 jar"]
+
+    if "javafx/application/Application.class" not in inner:
+        problems.append(f"{entry} 内含不到 JavaFX 类（javafx/application/Application.class）")
+    natives = [name for name in inner if name.endswith((".dll", ".so", ".dylib"))]
+    fx_natives = [name for name in natives if any(hint in Path(name).name.lower() for hint in FX_NATIVE_HINTS)]
+    if not fx_natives:
+        problems.append(f"{entry} 内没有本平台 OpenJFX 原生库（glass / prism / javafx_font 等）")
+    if "module-info.class" in inner:
+        problems.append(f"{entry} 不应含 module-info.class")
+    return problems
+
 
 #: 文档 / 帮助里统一展示的用法（Windows 路径分隔符）。
 USAGE_CMD = r"python3 Script\Python\DesktopDistExtract.py"
@@ -151,36 +191,35 @@ def pick_zip(dist: Path, classifier: str, explicit: str | None) -> Path:
 def verify_zip(path: Path) -> list[str]:
     """解压前先看清 zip 内容；返回问题列表（空表示合格）。
 
-    判据与 `Release.yml` / `DesktopDistBuild.py` 对齐，避免把一个原生镜像包或残缺包
-    铺进 Dist/。用「恰好 3 个 OpenJFX jar」而不是「至少 3 个」，理由见构建脚本。
+    判据与 `DesktopDistBuild.py` 对齐（同一个平铺形态），避免把原生镜像包、旧形态包
+    或残缺包铺进 Dist/。
     """
     try:
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
+            problems: list[str] = []
+            if FATJAR_ENTRY not in names:
+                problems.append(
+                    f"缺单体 jar {FATJAR_ENTRY}（包内应为平铺形态）"
+                    f"{'——包里出现 lib/ 旧形态，请改用新包' if any(n.startswith('lib/') for n in names) else ''}"
+                )
+            else:
+                problems.extend(fatjar_problems(archive, FATJAR_ENTRY))
+            for entry in TRANSFER_ENTRIES[1:]:
+                if entry not in names:
+                    problems.append(f"缺启动脚本 {entry}")
     except zipfile.BadZipFile as error:
         raise ExtractError(f"{path.name} 不是有效的 zip：{error}") from error
-
-    jars = [name for name in names if name.startswith("lib/") and name.endswith(".jar")]
-    problems: list[str] = []
-    if not any(Path(name).name.startswith("aha-desktop-") for name in jars):
-        problems.append("缺 aha-desktop 模块 jar")
-    javafx = [name for name in jars if Path(name).name.startswith("javafx-")]
-    if len(javafx) != EXPECTED_JAVAFX_JARS:
-        problems.append(f"本平台 OpenJFX jar 应为 {EXPECTED_JAVAFX_JARS} 个，实际 {len(javafx)} 个")
-    for entry in ("bin/AhaDesktop.sh", "bin/AhaDesktop.bat"):
-        if entry not in names:
-            problems.append(f"缺启动脚本 {entry}")
     return problems
 
 
 def stage(zip_path: Path, staging: Path) -> None:
-    """把 zip 里的 lib/ 与 bin/ 解到暂存目录（保持可执行位）。"""
+    """把 zip 里平铺的三个入口解到暂存目录（保持可执行位）。"""
     with zipfile.ZipFile(zip_path) as archive:
         for name in archive.namelist():
-            if name.endswith("/") or not name.startswith(TRANSFER_PREFIXES):
+            if name not in TRANSFER_ENTRIES:
                 continue
             target = staging / name
-            target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(name) as source, target.open("wb") as sink:
                 shutil.copyfileobj(source, sink)
             if name.endswith(".sh"):
@@ -191,10 +230,10 @@ def stage(zip_path: Path, staging: Path) -> None:
 
 
 def apply(staging: Path, dist: Path, prune: bool) -> tuple[list[Path], list[Path], list[Path]]:
-    """把暂存内容落地到 Dist/，并清掉上一版独占 jar。
+    """把暂存内容落地到 Dist/，并清掉上一版（lib/ + bin/ 形态）的遗留文件。
 
-    返回 (新增, 覆盖, 删除)。清理只针对 `lib/` 下的 desktop 独占 jar，且跳过本次刚写入的
-    同名文件——共享依赖与 `aha-cli-*.jar` 不受影响。
+    返回 (新增, 覆盖, 删除)。清理只针对桌面端自己的旧入口，且跳过本次刚写入的文件
+    ——共享依赖与属于 CLI 的 `aha-cli-*.jar` / `bin/Aha.*` 不受影响。
     """
     added: list[Path] = []
     updated: list[Path] = []
@@ -213,12 +252,11 @@ def apply(staging: Path, dist: Path, prune: bool) -> tuple[list[Path], list[Path
         (updated if existed else added).append(target)
 
     removed: list[Path] = []
-    lib = dist / "lib"
-    if prune and lib.is_dir():
-        keep = {path.name for path in (*added, *updated) if path.parent == lib}
-        for pattern in PRUNE_PATTERNS:
-            for old in sorted(lib.glob(pattern)):
-                if old.name in keep:
+    if prune:
+        keep = {path.relative_to(dist).as_posix() for path in (*added, *updated)}
+        for pattern in LEGACY_PRUNE:
+            for old in sorted(dist.glob(pattern)):
+                if old.relative_to(dist).as_posix() in keep:
                     continue
                 try:
                     old.unlink()
@@ -259,11 +297,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         with zipfile.ZipFile(zip_path) as archive:
-            entries = [
-                name
-                for name in archive.namelist()
-                if not name.endswith("/") and name.startswith(TRANSFER_PREFIXES)
-            ]
+            entries = [name for name in archive.namelist() if name in TRANSFER_ENTRIES]
         print(f"\n[dry-run] 将写入 {len(entries)} 个文件到 {dist}：")
         for name in sorted(entries):
             print(f"  {name}")
@@ -289,15 +323,15 @@ def run(args: argparse.Namespace) -> int:
         print(f"  ~ {cheatsheet.relative_to(dist)}（命令速查）")
 
     print("\n✅ Dist/ 已更新为便携包内容")
-    print(r"   运行（Windows）：Dist\bin\AhaDesktop.bat")
-    print("   运行（POSIX）  ：./Dist/bin/AhaDesktop.sh")
+    print(r"   运行（Windows）：Dist\AhaDesktop.bat")
+    print("   运行（POSIX）  ：./Dist/AhaDesktop.sh")
     return 0
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="DesktopDistExtract.py",
-        description="解压 AHA 桌面端便携包，并把 lib/ 与 bin/ 更新到 Dist/。",
+        description="解压 AHA 桌面端便携包，并把单体 jar 与启动脚本平铺更新到 Dist/。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "示例（Windows；POSIX 下把反斜杠换成 `/`）：\n"
@@ -311,7 +345,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--zip", dest="zip_path", help="同位置参数，显式指定 zip")
     parser.add_argument("--dist", help="发行目录（默认仓库根的 Dist/；兼容小写 dist/）")
     parser.add_argument("--no-prune", action="store_true",
-                        help="不清理 lib/ 里上一版桌面端独占的 jar")
+                        help="不清理上一版（lib/ + bin/ 形态）的遗留文件")
     parser.add_argument("--dry-run", action="store_true", help="只列出将写入的文件，不落地")
     return parser.parse_args(argv)
 

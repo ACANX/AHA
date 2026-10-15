@@ -30,15 +30,17 @@
 | 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击，无需 Python）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
 | 下载最新**桌面端 JVM 便携包** | `Dist\UpdateDesktopJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-desktop-<版本>-<平台>.zip` |
 | 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
-| 启动桌面端（Dist 版） | `Dist\bin\AhaDesktop.bat` | `./Dist/bin/AhaDesktop.sh` |
+| 启动桌面端（Dist 版） | `Dist\AhaDesktop.bat` | `./Dist/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
 | 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
 | 启动**桌面端原生镜像** | `Dist\aha-desktop-native.exe` | `./Dist/aha-desktop-native` |
 | 启动 **CLI 原生镜像** | `Dist\aha-cli-native.exe` | `./Dist/aha-cli-native` |
 | 按变更跑检查 | `python3 bin\CheckChanged.py` | `python3 bin/CheckChanged.py` |
 
-> `bin\AhaDesktop.*` / `bin/AhaDesktop.sh` 在源码根运行时，若没有 `lib/`，会自动挑本平台的
-> `Dist/aha-desktop-*.zip` 解压后再启动；无需先手动解压。
+> 桌面端自 issue #218 起是**包根平铺**形态（单体 jar `aha-desktop.jar` + 启动脚本），
+> 不再有 `lib/` 与 `bin/`。`bin\AhaDesktop.*` / `bin/AhaDesktop.sh` 在源码根运行时，
+> 若同目录（或上一级）找不到 `aha-desktop.jar`，会自动挑本平台的 `Dist/aha-desktop-*.zip`
+> 解压后再启动；无需先手动解压。
 
 ## 2. 桌面端（JVM 便携包）
 
@@ -68,19 +70,20 @@ python3 Script\Python\DesktopDistExtract.py --dry-run
 python3 Script\Python\DesktopDistExtract.py --no-prune
 ```
 
-效果：把 zip 里的 `lib/`、`bin/` 铺进 `Dist/`，清掉上一版桌面端独占 jar
-（`aha-desktop-*.jar` / `javafx-*.jar`），完成后 `Dist\bin\AhaDesktop.bat` 即可用。
-共享依赖与 `aha-cli-*.jar` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
+效果：把 zip 里**平铺**的 `aha-desktop.jar` 与两个启动脚本铺进 `Dist/`，并清掉上一版
+（`lib/` + `bin/` 形态）的遗留文件（`lib/aha-desktop-*.jar`、`lib/javafx-*.jar`、
+`bin/AhaDesktop.*`），完成后 `Dist\AhaDesktop.bat` 即可用。
+属于 CLI 的 `aha-cli-*.jar` 与 `bin/Aha.*` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
 
 ### 2.3 启动桌面端
 
 ```bat
-Dist\bin\AhaDesktop.bat          :: 用 Dist\lib（需先执行 2.2 或 2.1+解压）
-bin\AhaDesktop.bat               :: 源码根：没有 lib 时自动解压便携包
+Dist\AhaDesktop.bat              :: 跑 Dist\aha-desktop.jar（需先执行 2.2 或 2.1+解压）
+bin\AhaDesktop.bat               :: 源码根：找不到单体 jar 时自动解压便携包
 ```
 
 ```bash
-./Dist/bin/AhaDesktop.sh
+./Dist/AhaDesktop.sh
 ./bin/AhaDesktop.sh
 ```
 
@@ -257,8 +260,10 @@ python3 bin\CheckChanged.py --dry-run  :: 只打印计划
 
 ```
 Dist/
-├── bin/                    Aha.bat / Aha.sh、AhaDesktop.bat / AhaDesktop.sh
-├── lib/                    JPMS 模块路径（CLI 与桌面端共用）
+├── bin/                    Aha.bat / Aha.sh（CLI；JPMS 目录形态）
+├── lib/                    CLI 的 JPMS 模块路径（桌面端自 issue #218 起改用单体 jar，不再用它）
+├── aha-desktop.jar         桌面端单体 jar（解压 / 取件后落在这里；脚本只认这个名字，与版本无关）
+├── AhaDesktop.bat / .sh    桌面端启动脚本（同上，平铺在 Dist 根，不再有 bin\ 子目录）
 ├── aha-desktop-<版本>-<平台>.zip      桌面端便携包
 ├── aha-desktop-native-*.zip           桌面端原生镜像包
 ├── aha-desktop-native.exe             桌面端原生镜像（更新脚本或手动解压落在这里）
