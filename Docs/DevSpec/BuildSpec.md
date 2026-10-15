@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.31.0
+**文档版本**：v1.32.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -47,6 +47,7 @@
 ---
 | v1.30.0 | 2026-10-15 | 新增 §11「快照产物（PR 试包）」：载体 / 命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系（含 `Release.yml` 负向过滤这条不可忘的约束） | @ACANX / CNXNC |
 | v1.31.0 | 2026-10-15 | §11.2 新增硬约定：**快照工作流不得在 `pull_request` 上用 `paths:` 过滤**（触发层过滤会让「只改文档 + 新打触发标签」的显式请求进不来，实测 PR #203 原生线毫无反应）；§8.1 同步 `DesktopNative.yml` 不再按路径过滤 | @ACANX / CNXNC |
+| v1.32.0 | 2026-10-15 | §11.2 再补两条硬约定：**快照工作流的 `concurrency` 必须按事件类别分层**（否则后到的 `synchronize` 用 `cancel-in-progress` 取消先到的 `labeled`，显式请求被静默吞掉 —— 实测 PR #203 复验）；**`plan` 作业必须跳过 `push`**（`push: dev` 无 PR 号 ⇒ 判定脚本退出 1，把运行染红）| @ACANX / CNXNC |
 
 ## 1. 适用范围
 
@@ -559,6 +560,23 @@ native 侧的质量保证分**三层**：
 [PR #203](https://github.com/ACANX/AHA/pull/203)：JVM 线正常判定后退出，原生线被 `paths` 挡在门外，什么都不会发生）。
 正确做法：让 `plan` 作业先跑（约 10 秒、不编译不发包），昂贵的腿按 `needs.plan.outputs.should_build` 门控。
 守卫：`bin/CheckScripts.py` 的 `pull_request_paths_filters()` 会点名违规工作流（新增于 2026-10-15）。
+
+**且快照工作流的 `concurrency` 必须按「事件类别」分层**（2026-10-15 实测 [PR #203](https://github.com/ACANX/AHA/pull/203) 后新增）——
+同一个 `concurrency.group` 下 `cancel-in-progress: true` 会让**后到的事件取消先到的**：
+`pull_request` 的 `labeled`（用户显式请求）与 `synchronize`（自动事件）若同组，
+「打完触发标签紧接着 push / 同步 base」就会把显式请求**静默吞掉**（实测：`03:07:45` 打的标签，
+run 在 `03:07:47` 建立、被 `03:08:04` 的 `synchronize` 取消）。
+做法：显式请求（`labeled` / `unlabeled` / `issue_comment` / `workflow_dispatch`）与自动事件
+（`opened` / `synchronize` / `reopened` / `push`）分成两组（如后缀 `-explicit` / `-auto`），
+两组互不取消，组内仍只保留最新一次；分组键用 **PR 号**（`issue_comment` / `workflow_dispatch`
+的 `github.ref` 是默认分支，多个 PR 会共享同一组而互相取消）。
+守卫：`bin/CheckScripts.py` 的 `concurrency_group()` 与守卫第 ⑥ 条会点名未区分事件类别的工作流（新增于 2026-10-15）。
+
+**且快照工作流的 `plan` 作业必须跳过 `push` 事件**（2026-10-15 新增）——
+`push: dev` 没有 PR 号，判定脚本会以「没能确定 PR 号」退出 1，把整次运行染红；
+而构建腿本就靠 `github.event_name == 'push'` 全量构建、`native-publish` 也照发 ⇒ 红叉纯属噪声。
+`plan` 的 `if` 必须含 `github.event_name != 'push'`（实测：自引入 `plan` 工作流起，
+每次合并到 `dev` 的两条原生线都因这里报错而红）。
 
 判定逻辑**不得**写进 YAML 的块标量（既跑不快也测不了），一律放仓库脚本：
 
