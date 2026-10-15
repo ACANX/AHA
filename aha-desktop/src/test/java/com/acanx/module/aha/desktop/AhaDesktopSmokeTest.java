@@ -513,10 +513,11 @@ class AhaDesktopSmokeTest {
             }
             System.out.println("[PROBE #229b] 图层转储 end");
             assertThat(measured)
-                    .as("属性 API 那条边框必须真的画出来（中心 = %s，边缘带里必须有 %s）——否则属性对了也没用",
+                    .as("属性 API 那条边框必须真的画出来（中心 = %s，边中点 = %s）——否则属性对了也没用",
                             normalize(Palette.CONTROL_INNER), normalize(Palette.BORDER))
                     .contains("中心=" + normalize(Palette.CONTROL_INNER))
-                    .contains(normalize(Palette.BORDER));
+                    .contains("边中点=" + normalize(Palette.BORDER) + "/" + normalize(Palette.BORDER)
+                            + "/" + normalize(Palette.BORDER) + "/" + normalize(Palette.BORDER));
 
             // 再钉一条：轮廓线必须在**靠近边缘的位置**，不能只出现在画面中间（否则就不是「范围」了）
             String band = uiGet(() -> edgeBandColors(composer, 3));
@@ -544,10 +545,13 @@ class AhaDesktopSmokeTest {
         PixelReader pixels = image.getPixelReader();
         int width = (int) image.getWidth();
         int height = (int) image.getHeight();
-        return "边缘=" + hexAt(pixels, 0, 0)
-                + "/" + hexAt(pixels, width - 1, 0)
-                + "/" + hexAt(pixels, 0, height - 1)
-                + "/" + hexAt(pixels, width - 1, height - 1)
+        // 取样点必须避开圆角：半径 3 的圆角处，最外圈像素是「背景没画到」的透明角落，
+        // 读出来是快照的伪色（本轮实测 #F9F9F9）——那是判据取错点，不是产品缺陷。
+        // 取四条边的**中点**（轮廓线真正所在的位置），外加中心。
+        return "边中点=" + hexAt(pixels, width / 2, 0)
+                + "/" + hexAt(pixels, width / 2, height - 1)
+                + "/" + hexAt(pixels, 0, height / 2)
+                + "/" + hexAt(pixels, width - 1, height / 2)
                 + " 中心=" + hexAt(pixels, width / 2, height / 2);
     }
 
