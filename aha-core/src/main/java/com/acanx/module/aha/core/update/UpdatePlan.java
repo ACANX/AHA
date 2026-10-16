@@ -27,6 +27,7 @@ import java.util.Locale;
  *
  * @param version   目标版本
  * @param installRoot 安装根（绝对路径）
+ * @param packageRoot 解压后的新包目录（绝对路径）—— helper 从这里拷文件
  * @param backupDir 备份目录（绝对路径）
  * @param pid       App 进程号（helper 据此等它退出）
  * @param restart   换装成功后拉起 App 的命令（绝对路径，串行执行）
@@ -38,6 +39,7 @@ import java.util.Locale;
 public record UpdatePlan(
         @JsonProperty("version") String version,
         @JsonProperty("installRoot") String installRoot,
+        @JsonProperty("packageRoot") String packageRoot,
         @JsonProperty("backupDir") String backupDir,
         @JsonProperty("pid") long pid,
         @JsonProperty("restart") List<String> restart,
@@ -105,10 +107,12 @@ public record UpdatePlan(
      * @param actions     文件动作
      * @return 计划
      */
-    public static UpdatePlan create(AhaVersion version, Path installRoot, Path backupDir, long pid,
-                                    List<String> restart, List<Action> actions) {
-        return new UpdatePlan(version.value(), installRoot.toString(), backupDir.toString(), pid,
-                List.copyOf(restart), List.copyOf(actions), Instant.now().toString());
+    public static UpdatePlan create(AhaVersion version, Path installRoot, Path packageRoot,
+                                    Path backupDir, long pid, List<String> restart,
+                                    List<Action> actions) {
+        return new UpdatePlan(version.value(), installRoot.toString(), packageRoot.toString(),
+                backupDir.toString(), pid, List.copyOf(restart), List.copyOf(actions),
+                Instant.now().toString());
     }
 
     /**
@@ -141,7 +145,7 @@ public record UpdatePlan(
                     "换装计划不存在：" + file);
         }
         try {
-            UpdatePlan plan = JSON.readValue(Files.readString(file),
+            UpdatePlan plan = JSON.readValue(stripBom(Files.readString(file)),
                     new TypeReference<UpdatePlan>() {
                     });
             if (plan == null) {
@@ -178,6 +182,15 @@ public record UpdatePlan(
      */
     public Path installRootPath() {
         return Path.of(installRoot);
+    }
+
+    /**
+     * 解压后的新包目录（绝对路径）。
+     *
+     * @return 新包根目录
+     */
+    public Path packageRootPath() {
+        return Path.of(packageRoot);
     }
 
     /**
@@ -221,6 +234,7 @@ public record UpdatePlan(
                     "换装计划的版本不合法：" + version, e);
         }
         Path install = PathSafety.requireAbsolute(installRoot, "换装计划的 installRoot");
+        PathSafety.requireAbsolute(packageRoot, "换装计划的 packageRoot");
         PathSafety.requireAbsolute(backupDir, "换装计划的 backupDir");
         if (actionList().isEmpty()) {
             throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
@@ -241,5 +255,16 @@ public record UpdatePlan(
         for (String command : restartList()) {
             PathSafety.requireAbsolute(command, "换装计划的拉起命令");
         }
+    }
+
+    /**
+     * 去掉可能存在的 UTF-8 BOM。
+     *
+     * <p>回执与计划都可能由 Windows 侧的 PowerShell 写出，而 PS 5.1 的
+     * {@code Set-Content -Encoding UTF8} 会写 BOM —— 那三个字节会让 JSON 解析直接失败。
+     * 这不是理论问题：helper 写回执、App 读回执正好是这条路径。</p>
+     */
+    private static String stripBom(String text) {
+        return text != null && text.startsWith("\uFEFF") ? text.substring(1) : text;
     }
 }

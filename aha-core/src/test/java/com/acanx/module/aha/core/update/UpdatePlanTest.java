@@ -28,8 +28,9 @@ class UpdatePlanTest {
     Path tempDir;
 
     private UpdatePlan sample(List<UpdatePlan.Action> actions) {
-        return UpdatePlan.create(VERSION, tempDir.resolve("install"), tempDir.resolve("backup"),
-                4242, List.of(tempDir.resolve("AhaDesktop.bat").toString()), actions);
+        return UpdatePlan.create(VERSION, tempDir.resolve("install"), tempDir.resolve("new"),
+                tempDir.resolve("backup"), 4242,
+                List.of(tempDir.resolve("AhaDesktop.bat").toString()), actions);
     }
 
     @Test
@@ -43,6 +44,7 @@ class UpdatePlanTest {
 
         assertThat(back.targetVersion()).isEqualTo(VERSION);
         assertThat(back.installRootPath()).isEqualTo(tempDir.resolve("install"));
+        assertThat(back.packageRootPath()).isEqualTo(tempDir.resolve("new"));
         assertThat(back.backupDirPath()).isEqualTo(tempDir.resolve("backup"));
         assertThat(back.pid()).isEqualTo(4242);
         assertThat(back.restartList()).hasSize(1);
@@ -56,13 +58,15 @@ class UpdatePlanTest {
     @Test
     void refusesRelativeInstallRootOrBackupDir() {
         assertThatThrownBy(() -> UpdatePlan.create(VERSION, Path.of("relative/install"),
-                tempDir.resolve("backup"), 1, List.of(), List.of(UpdatePlan.Action.replace("a.jar")))
+                tempDir.resolve("new"), tempDir.resolve("backup"), 1, List.of(),
+                List.of(UpdatePlan.Action.replace("a.jar")))
                 .write(tempDir.resolve("p.json")))
                 .isInstanceOf(UpdateException.class)
                 .hasMessageContaining("必须是绝对路径");
 
         assertThatThrownBy(() -> UpdatePlan.create(VERSION, tempDir.resolve("install"),
-                Path.of("relative/backup"), 1, List.of(), List.of(UpdatePlan.Action.replace("a.jar")))
+                tempDir.resolve("new"), Path.of("relative/backup"), 1, List.of(),
+                List.of(UpdatePlan.Action.replace("a.jar")))
                 .write(tempDir.resolve("p.json")))
                 .isInstanceOf(UpdateException.class)
                 .hasMessageContaining("必须是绝对路径");
@@ -94,7 +98,7 @@ class UpdatePlanTest {
                 .hasMessageContaining("没有任何文件动作");
 
         UpdatePlan relativeRestart = UpdatePlan.create(VERSION, tempDir.resolve("install"),
-                tempDir.resolve("backup"), 1, List.of("AhaDesktop.bat"),
+                tempDir.resolve("new"), tempDir.resolve("backup"), 1, List.of("AhaDesktop.bat"),
                 List.of(UpdatePlan.Action.replace("aha-desktop.jar")));
         assertThatThrownBy(() -> relativeRestart.write(tempDir.resolve("p.json")))
                 .isInstanceOf(UpdateException.class)
