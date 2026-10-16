@@ -41,6 +41,9 @@ public final class UpdateService {
 
     private final PackageDownloader downloader;
 
+    /** 启动清理的年龄下限（与 {@link StagingArea} 的那条一致，用于文案）。 */
+    private final Duration cleanupMinAge;
+
     /**
      * 生产构造：真实的发布页与暂存区。
      *
@@ -60,11 +63,25 @@ public final class UpdateService {
      */
     public UpdateService(UpdatePaths paths, GitHubReleaseClient client,
                          PackageDownloader downloader) {
+        this(paths, client, downloader, StagingArea.DEFAULT_MIN_AGE);
+    }
+
+    /**
+     * 可注入清理年龄下限的构造（测试用：免得每个用例都去改文件的修改时间）。
+     *
+     * @param paths        路径布局
+     * @param client       发布页客户端
+     * @param downloader   下载器
+     * @param cleanupMinAge 删除的年龄下限
+     */
+    UpdateService(UpdatePaths paths, GitHubReleaseClient client, PackageDownloader downloader,
+                  Duration cleanupMinAge) {
         this.paths = paths;
-        this.staging = new StagingArea(paths);
+        this.staging = new StagingArea(paths, cleanupMinAge);
         this.log = new UpdateLog(paths);
         this.client = client;
         this.downloader = downloader;
+        this.cleanupMinAge = cleanupMinAge;
     }
 
     /**
@@ -164,10 +181,9 @@ public final class UpdateService {
                     "新包与已装包的文件清单完全一致，没有可执行的动作（可能装的就是这一版）");
         }
         AhaVersion backupVersion = current == null ? staged.version() : current;
-        // 上一次换装还在跑（计划在、启动标记是刚写的、还没回执）⇒ 拒绝再写一份计划：
-        // 两个 helper 同时换装会把安装目录搅成两半（2026-10-16 第二轮审查 P3）。
-        if (swapMayBeInFlight(Files.isRegularFile(paths.planFile()),
-                Files.isRegularFile(paths.helperStartedFile()),
+        // 上一次换装还在跑 ⇒ 拒绝再写一份计划：两个 helper 同时换装会把安装目录搅成两半
+        // （2026-10-16 第二轮审查 P3）。
+        if (swapInFlight(Files.isRegularFile(paths.planFile()),
                 !Files.isRegularFile(paths.resultFile()))) {
             throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
                     "上一次换装还在进行（helper 已启动、还没留下回执）——稍等片刻再试");
@@ -296,7 +312,7 @@ public final class UpdateService {
         Optional<UpdateResult> result = consumeLastResult();
         boolean planLeft = Files.isRegularFile(paths.planFile());
         boolean markerLeft = Files.isRegularFile(paths.helperStartedFile());
-        boolean swapInFlight = swapMayBeInFlight(planLeft, markerLeft, result.isEmpty());
+        boolean swapInFlight = swapInFlight(planLeft, result.isEmpty());
         String warning = null;
         int stagingCleared = 0;
         int backupsRemoved = 0;
@@ -321,14 +337,28 @@ public final class UpdateService {
             // 换装 helper 用完就该消失（设计 §8.2 第 5 项的验收口径）：`.ps1` 自己删自己，
             // `.cmd` 是正在运行的批处理删不掉，由这里补刀 —— 不删的话用户「升级完看目录」
             // 会看到它，以为没生效。下次换装会重新拷（2026-10-16 第二轮审查 P2-④）。
+            // 这里**不套年龄下限**：这两个文件在 `~/.aha/update/` 里，不是用户数据；真在跑的
+            // 情况已经被上面的 swapInFlight 分支拦住了。
             deleteHelperFiles();
-            // 计划文件只用来判断「上一轮到底有没有跑起来」，报完就删，免得下次再报一遍；
-            // 「已启动」标记同理：helper 正常结束时已自删，这里是兜底（比如 helper 被杀的残留）。
-            try {
-                Files.deleteIfExists(paths.helperStartedFile());
-                Files.deleteIfExists(paths.planFile());
-            } catch (IOException e) {
-                log.append("cleanup", "清不掉旧的换装计划或启动标记（无碍）：" + e.getMessage());
+            // 计划与启动标记：只用来判断「上一轮跑没跑起来」，报完就删 —— 但**太新的不删**：
+            // 刚写下的计划可能是「另一个进程刚开始换装」，删它等于把对方的活掐了（年龄兜底）。
+            for (Path file : List.of(paths.planFile(), paths.helperStartedFile())) {
+                Duration age = ageOf(file);
+                if (age == null || age.compareTo(cleanupMinAge) < 0) {
+                    continue;
+                }
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException e) {
+                    log.append("cleanup", "清不掉旧的换装计划或启动标记（无碍）：" + e.getMessage());
+                }
+            }
+            // 清理会跳过「太新」的残留：那是刻意的，但要如实告诉用户（免得以为丢了）
+            if (staging.hasVersionDirectories()) {
+                String note = "有不到 " + cleanupMinAge.toMinutes()
+                        + " 分钟的换装残留，本次刻意没动，下次启动再清";
+                warning = warning == null ? note : warning + "；" + note;
+                log.append("cleanup", note);
             }
         }
         boolean helperNeverRan = planLeft && !markerLeft && result.isEmpty();
@@ -348,17 +378,49 @@ public final class UpdateService {
      * @param noResult   回执是否不存在
      * @return 可能在跑返回 {@code true}
      */
-    private boolean swapMayBeInFlight(boolean planLeft, boolean markerLeft, boolean noResult) {
-        if (!planLeft || !markerLeft || !noResult) {
+    private boolean swapInFlight(boolean planLeft, boolean noResult) {
+        if (!planLeft || !noResult) {
             return false;
         }
-        try {
-            Instant started = Files.getLastModifiedTime(paths.helperStartedFile()).toInstant();
-            return Duration.between(started, Instant.now())
-                    .compareTo(SWAP_IN_FLIGHT_WINDOW) < 0;
-        } catch (IOException e) {
-            log.append("cleanup", "读不到 helper 启动标记的时间（按『不在进行』处理）：" + e.getMessage());
+        Path marker = paths.helperStartedFile();
+        if (!Files.isRegularFile(marker)) {
             return false;
+        }
+        Duration age = ageOf(marker);
+        if (age == null || age.compareTo(HELPER_MARKER_MAX_AGE) > 0) {
+            // 读不出时间、或久到不可能还在换：当残留（否则一个被复用的进程号会让残留永远清不掉）
+            log.append("cleanup", "换装标记太旧或读不出时间（按残留处理）：" + age);
+            return false;
+        }
+        Long pid = helperPid(marker);
+        if (pid != null) {
+            boolean alive = ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+            log.append("cleanup", "换装标记里的进程号 " + pid + (alive ? " 还活着" : " 已经不在了"));
+            return alive;
+        }
+        // 老格式的标记（只写了时间戳）：只能按新鲜度猜，这是兜底而不是主判据
+        boolean fresh = age.compareTo(HELPER_MARKER_FALLBACK_WINDOW) < 0;
+        log.append("cleanup", "标记里没有进程号（老格式），按新鲜度判断：" + (fresh ? "算在跑" : "算残留"));
+        return fresh;
+    }
+
+    /** 文件多大了；读不出时间返回 {@code null}。 */
+    private static Duration ageOf(Path file) {
+        try {
+            return Duration.between(Files.getLastModifiedTime(file).toInstant(), Instant.now());
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** 从标记文件里读进程号（helper 写的是 `&lt;进程号&gt; &lt;ISO 时间&gt;`）；老格式没有则返回 {@code null}。 */
+    private static Long helperPid(Path marker) {
+        try {
+            String text = Files.readString(marker).replace("\uFEFF", "").trim();
+            String head = text.isEmpty() ? "" : text.split("\\s+")[0];
+            return head.isEmpty() ? null : Long.parseLong(head);
+        } catch (IOException | NumberFormatException e) {
+            return null;
         }
     }
 
@@ -391,12 +453,17 @@ public final class UpdateService {
     }
 
     /**
-     * 换装可能还在跑的判定窗口：helper 自报启动后，最慢多久算「一定结束了」。
+     * 标记里**读不出进程号**时的兜底窗口（老 helper 只写时间戳）：标记比这更新就算还在跑。
      *
-     * <p>取 10 分钟：helper 自身的等待上限是 60s，剩下的就是拷贝与逐文件哈希自证（
-     * 一个包 25–55 MB，慢盘 / 杀毒软件扫描下也不至于超过它）。</p>
+     * <p>这是兜底，不是主判据 —— 主判据是「标记里的进程号还活着吗」（`swapInFlight`）。</p>
      */
-    public static final Duration SWAP_IN_FLIGHT_WINDOW = Duration.ofMinutes(10);
+    public static final Duration HELPER_MARKER_FALLBACK_WINDOW = Duration.ofMinutes(10);
+
+    /**
+     * 硬顶：标记超过这么久，一律按残留处理（进程号会被系统复用，一个活着的无关进程
+     * 不该让残留永远清不掉）。
+     */
+    public static final Duration HELPER_MARKER_MAX_AGE = Duration.ofHours(6);
 
     /**
      * 启动收尾报告。

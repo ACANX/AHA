@@ -116,12 +116,18 @@ class UpdateServiceTest {
     }
 
     private UpdateService service() {
+        return service(StagingArea.DEFAULT_MIN_AGE);
+    }
+
+    /** 清理年龄下限可注入：验「删什么」的用例不必去改文件的修改时间。 */
+    private UpdateService service(Duration cleanupMinAge) {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         return new UpdateService(UpdatePaths.at(tempDir.resolve("update")),
                 new GitHubReleaseClient(server.base(), GitHubReleaseClient.DEFAULT_REPOSITORY, 100, http,
                         tools.jackson.databind.json.JsonMapper.builder().build()),
                 new PackageDownloader(http, Set.of("127.0.0.1"), server.base().toString(),
-                        Duration.ofMillis(1)));
+                        Duration.ofMillis(1)),
+                cleanupMinAge);
     }
 
     @Test
@@ -328,7 +334,7 @@ class UpdateServiceTest {
         Files.createDirectories(paths.backupDir(AhaVersion.parse("0.1.3.00242")));
         Files.createDirectories(paths.root().resolve("手工目录"));
 
-        UpdateService.StartupReport report = service.onStartup(CURRENT, 1);
+        UpdateService.StartupReport report = service(Duration.ZERO).onStartup(CURRENT, 1);
 
         // 回执读到了、读完即消费
         assertThat(report.result()).isPresent();
@@ -353,12 +359,14 @@ class UpdateServiceTest {
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
         Files.createDirectories(paths.root());
         Files.writeString(paths.planFile(), "{}");
+        // 够老才会被删（太新的计划可能是「另一个进程刚开始换装」，见年龄下限）
+        Files.setLastModifiedTime(paths.planFile(), FileTime.from(Instant.now().minus(Duration.ofMinutes(20))));
 
         UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
 
         assertThat(report.result()).isEmpty();
         assertThat(report.helperNeverRan()).isTrue();
-        // 计划文件只用来判断，报完即删
+        // 计划文件只用来判断，报完（且够老）即删
         assertThat(paths.planFile()).doesNotExist();
     }
 
@@ -399,15 +407,68 @@ class UpdateServiceTest {
     }
 
     @Test
+    void startupKeepsEverythingWhileTheHelperProcessIsAlive() throws IOException {
+        // 主判据：标记里写着 helper 的进程号，那个进程**还活着** ⇒ 不动任何东西。
+        // 用本进程自己的 pid 当「活着的 helper」，确定性最好（不依赖计时）。
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+        Files.writeString(paths.helperStartedFile(),
+                ProcessHandle.current().pid() + " 2026-10-16T03:30:00Z");
+        Files.createDirectories(paths.newPackageDir(TARGET));
+        Files.writeString(paths.packageZip(TARGET), "in-flight");
+        Files.createDirectories(paths.backupDir(CURRENT));
+        Files.writeString(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT), "helper");
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 0);
+
+        assertThat(report.swapInFlight()).as("标记里的进程号还活着 ⇒ 换装还在跑").isTrue();
+        assertThat(report.stagingCleared()).isZero();
+        assertThat(report.backupsRemoved()).isZero();
+        assertThat(report.warning()).contains("可能还在进行");
+        assertThat(paths.versionDir(TARGET)).exists();
+        assertThat(paths.backupDir(CURRENT)).exists();
+        assertThat(paths.planFile()).as("helper 可能还没读计划").exists();
+        assertThat(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT)).exists();
+    }
+
+    @Test
+    void startupKeepsRecentLeftoversEvenAfterTheHelperDied() throws IOException {
+        // 第二条保险：进程号已经不在了（helper 被杀），但文件是**刚出炉**的 ⇒
+        // 年龄下限（10 分钟）仍然不许删 —— 万一进程号判断失误，这一层兜住。
+        // 这也正是「升级后立刻删 .zip 包」这种做法的替代：新东西一律先留着。
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+        Files.writeString(paths.helperStartedFile(),
+                "2147483000 2026-10-16T03:30:00Z");
+        Files.createDirectories(paths.versionDir(TARGET));
+        Files.writeString(paths.packageZip(TARGET), "just-downloaded");
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
+
+
+        assertThat(report.swapInFlight()).as("进程号已经不存在 ⇒ 不算在跑").isFalse();
+        assertThat(paths.versionDir(TARGET)).as("太新的残留必须先留着").exists();
+        assertThat(paths.planFile()).as("太新的计划也不删").exists();
+        assertThat(paths.helperStartedFile()).exists();
+        assertThat(report.stagingCleared()).isZero();
+        assertThat(report.warning()).as("要如实说「本次刻意没动」").contains("没动");
+    }
+
+    @Test
     void startupTreatsAStaleSwapMarkerAsLeftovers() throws IOException {
         // helper 起来过、却从没写过回执，而且标记早已过期 ⇒ 按残留清理，并把这件事说出来
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
         Files.createDirectories(paths.root());
         Files.writeString(paths.planFile(), "{}");
         Files.writeString(paths.helperStartedFile(), "2026-10-16T03:30:00Z");
-        Files.setLastModifiedTime(paths.helperStartedFile(), FileTime.from(
-                Instant.now().minus(UpdateService.SWAP_IN_FLIGHT_WINDOW).minusSeconds(60)));
+        // 「20 分钟前」的残留：标记与暂存都够老 ⇒ 该清就清（年龄下限是 10 分钟）
+        Instant old = Instant.now().minus(Duration.ofMinutes(20));
+        Files.setLastModifiedTime(paths.helperStartedFile(), FileTime.from(old));
+        Files.setLastModifiedTime(paths.planFile(), FileTime.from(old));
         Files.createDirectories(paths.versionDir(TARGET));
+        Files.setLastModifiedTime(paths.versionDir(TARGET), FileTime.from(old));
         Files.writeString(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT), "helper");
 
         UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
@@ -457,6 +518,14 @@ class UpdateServiceTest {
         UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
                 paths.packageZip(TARGET), manifest, true);
 
+        assertThatThrownBy(() -> service().prepareSwap(staged,
+                InstallLayout.of(installRoot.resolve("aha-desktop.jar")), CURRENT))
+                .isInstanceOf(UpdateException.class)
+                .hasMessageContaining("还在进行");
+
+        // 换成「标记里写着活着的进程号」：同样要拒（主判据）
+        Files.writeString(paths.helperStartedFile(),
+                ProcessHandle.current().pid() + " 2026-10-16T03:30:00Z");
         assertThatThrownBy(() -> service().prepareSwap(staged,
                 InstallLayout.of(installRoot.resolve("aha-desktop.jar")), CURRENT))
                 .isInstanceOf(UpdateException.class)

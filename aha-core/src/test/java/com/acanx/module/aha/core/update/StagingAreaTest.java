@@ -6,6 +6,10 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,8 +26,9 @@ class StagingAreaTest {
     @TempDir
     Path tempDir;
 
+    /** 既有用例验的是「删什么」，不验年龄规则，所以把年龄下限关掉（默认 10 分钟那种在下面单测）。 */
     private StagingArea staging() {
-        return new StagingArea(UpdatePaths.at(tempDir.resolve("update")));
+        return new StagingArea(UpdatePaths.at(tempDir.resolve("update")), Duration.ZERO);
     }
 
     @Test
@@ -78,7 +83,7 @@ class StagingAreaTest {
     @Test
     void clearOthersRemovesEveryOtherVersionButKeepsTheGivenOneAndStrayDirs() throws IOException {
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
-        StagingArea staging = new StagingArea(paths);
+        StagingArea staging = new StagingArea(paths, Duration.ZERO);
         AhaVersion running = AhaVersion.parse("0.1.3.00243");
         AhaVersion failedTarget = AhaVersion.parse("0.1.3.00244");
         Files.createDirectories(paths.versionDir(running));
@@ -97,6 +102,32 @@ class StagingAreaTest {
         assertThat(paths.versionDir(failedTarget)).doesNotExist();
         assertThat(paths.root().resolve("手工目录")).exists();
         assertThat(paths.backupRoot().resolve(running.value())).exists();
+    }
+
+    @Test
+    void clearRefusesToDeleteAnythingYoungerThanTheMinimumAge() throws IOException {
+        // 年龄下限是**第二道保险**：就算「换装是否还在跑」的判断失误，刚出炉的文件也不该被删。
+        // 背景（2026-10-16 讨论）：换装真正在用的 `pkg.zip` / `new/` / `backup/` 都是刚创建的，
+        // 而「它是不是刚出炉」是文件自己的属性 —— 比拿标记文件去推断硬得多。
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        StagingArea area = new StagingArea(paths, Duration.ofMinutes(10));
+        AhaVersion target = AhaVersion.parse("0.1.3.00243");
+        area.prepare(target);
+        Files.writeString(area.packageZip(target), "just-downloaded");
+
+        assertThat(area.clear(target)).as("太新 ⇒ 一个都不删").isFalse();
+        assertThat(paths.versionDir(target)).exists();
+        assertThat(area.packageZip(target)).exists();
+
+        // 把所有条目改成「20 分钟前」：这下才允许清
+        Instant old = Instant.now().minus(Duration.ofMinutes(20));
+        try (Stream<Path> walk = Files.walk(paths.root())) {
+            for (Path each : walk.toList()) {
+                Files.setLastModifiedTime(each, FileTime.from(old));
+            }
+        }
+        assertThat(area.clear(target)).as("够老 ⇒ 清掉").isTrue();
+        assertThat(paths.versionDir(target)).doesNotExist();
     }
 
     @Test

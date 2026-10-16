@@ -5,6 +5,8 @@ import com.acanx.module.aha.common.exception.UpdateException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -20,15 +22,38 @@ import java.util.stream.Stream;
  */
 public final class StagingArea {
 
+    /**
+     * 删除的**年龄下限**：比这个还新的文件（含目录里任何一个文件）一律不删。
+     *
+     * <p>为什么要有它（2026-10-16）：清理动作发生在「每次启动」，而换装真正在用的
+     * `pkg.zip`、解包出来的 `new/`、回滚用的 `backup/` 都是**刚创建**的。判断「换装程序还在不在跑」
+     * 只能靠标记文件（还可能判断失误），而「这个东西是不是刚出炉的」是文件自己的属性 ——
+     * 直接按年龄兜一层，比任何推断都硬。代价只是残留多留十几分钟。</p>
+     */
+    public static final Duration DEFAULT_MIN_AGE = Duration.ofMinutes(10);
+
     private final UpdatePaths paths;
 
+    private final Duration minAge;
+
     /**
-     * 构造。
+     * 构造（用默认年龄下限 {@link #DEFAULT_MIN_AGE}）。
      *
      * @param paths 路径布局
      */
     public StagingArea(UpdatePaths paths) {
+        this(paths, DEFAULT_MIN_AGE);
+    }
+
+    /**
+     * 构造（可指定年龄下限，测试用）。
+     *
+     * @param paths  路径布局
+     * @param minAge 年龄下限；{@link Duration#ZERO} 表示不做限制
+     */
+    StagingArea(UpdatePaths paths, Duration minAge) {
         this.paths = paths;
+        this.minAge = minAge;
     }
 
     /**
@@ -101,7 +126,7 @@ public final class StagingArea {
      * @throws UpdateException 删除失败（{@link UpdateException#CODE_DOWNLOAD_FAILED}）
      */
     public boolean clear(AhaVersion version) {
-        return deleteRecursively(paths.versionDir(version));
+        return deleteIfOldEnough(paths.versionDir(version));
     }
 
     /**
@@ -136,8 +161,9 @@ public final class StagingArea {
             if (version == null || version.equals(keep)) {
                 continue;
             }
-            deleteRecursively(entry);
-            removed++;
+            if (deleteIfOldEnough(entry)) {
+                removed++;
+            }
         }
         return removed;
     }
@@ -179,10 +205,32 @@ public final class StagingArea {
                 kept++;
                 continue;
             }
-            deleteRecursively(backup);
-            removed++;
+            if (deleteIfOldEnough(backup)) {
+                removed++;
+            }
         }
         return removed;
+    }
+
+    /**
+     * 暂存根下还有没有「版本目录」。
+     *
+     * <p>给启动收尾的文案用：清理完之后如果这里还有版本目录，多半是**太新而被刻意留下**的残留
+     * （年龄下限），要如实告诉用户，而不是让他以为东西丢了。</p>
+     *
+     * @return 还有版本目录返回 {@code true}
+     */
+    public boolean hasVersionDirectories() {
+        Path parent = paths.root();
+        if (!Files.isDirectory(parent)) {
+            return false;
+        }
+        try (Stream<Path> listing = Files.list(parent)) {
+            return listing.filter(Files::isDirectory)
+                    .anyMatch(entry -> parseOrNull(entry.getFileName().toString()) != null);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static AhaVersion parseOrNull(String text) {
@@ -190,6 +238,45 @@ public final class StagingArea {
             return AhaVersion.parse(text);
         } catch (RuntimeException e) {
             return null;
+        }
+    }
+
+    /**
+     * 递归删除（不跟随符号链接）——**但绝不碰刚出炉的东西**。
+     *
+     * @param path 目标
+     * @return 真的删了返回 {@code true}（不存在、或太新而跳过都返回 {@code false}）
+     */
+    private boolean deleteIfOldEnough(Path path) {
+        if (!Files.exists(path)) {
+            return false;
+        }
+        if (tooRecentToDelete(path)) {
+            return false;
+        }
+        return deleteRecursively(path);
+    }
+
+    /**
+     * 这棵子树里有没有「还在保鲜期内」的东西（任何一个文件的修改时间比 lower bound 新，就整棵不删）。
+     *
+     * <p>读不出时间的一律当「新」——宁可留着，也不冒删掉正在用的文件的风险。</p>
+     *
+     * @param path 目标
+     * @return 太新返回 {@code true}
+     */
+    private boolean tooRecentToDelete(Path path) {
+        Instant floor = Instant.now().minus(minAge);
+        try (Stream<Path> walk = Files.walk(path)) {
+            return walk.anyMatch(each -> {
+                try {
+                    return Files.getLastModifiedTime(each).toInstant().isAfter(floor);
+                } catch (IOException e) {
+                    return true;
+                }
+            });
+        } catch (IOException e) {
+            return true;
         }
     }
 

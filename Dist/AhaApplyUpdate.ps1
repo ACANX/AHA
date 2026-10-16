@@ -48,8 +48,10 @@ $startedFile = Join-Path $root 'helper-started'
 # App 拉起本脚本后会**等这个标记出现**才退出（见 UpdateService.launchHelper）。
 # 等不到就说明本脚本根本没跑起来（典型：机器级执行策略拦下 PowerShell）——那时 App
 # 留在前台报错，而不是「App 关了、什么都没发生」。
+# 内容格式：`<进程号> <ISO 时间>`。进程号是给 App 用的 —— 它靠「这个进程还活着吗」
+# 判断换装是否**真的**还在跑（比拿时间猜准；2026-10-16）。
 try {
-    Set-Content -LiteralPath $startedFile -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding UTF8 -ErrorAction Stop
+    Set-Content -LiteralPath $startedFile -Value ("{0} {1}" -f $PID, (Get-Date).ToUniversalTime().ToString('o')) -Encoding UTF8 -ErrorAction Stop
 } catch {
     # 写不进标记不阻断换装：App 会等到超时并报错，这比静默好
 }
