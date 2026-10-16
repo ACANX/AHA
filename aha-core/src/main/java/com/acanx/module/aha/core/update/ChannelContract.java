@@ -73,8 +73,8 @@ public final class ChannelContract {
     /** 平台标签片段（{@code windows-amd64} / {@code macos-arm64}）。 */
     private static final String PLATFORM_GROUP = "(?<platform>[a-z0-9]+(?:-[a-z0-9]+)*)";
 
-    /** JDK 段片段（可选）。 */
-    private static final String JDK_GROUP = "(?:-jdk(?<jdk>[0-9]+))";
+    /** 资产名末尾的 JDK 段（解析时先剥掉它，再匹配剩下的核心部分）。 */
+    private static final Pattern JDK_SUFFIX = Pattern.compile("-jdk([0-9]+)$");
 
     private ChannelContract() {
     }
@@ -181,12 +181,12 @@ public final class ChannelContract {
                     kind.targetWord() + " 的资产名没有平台段（平台无关），不应传入：" + platformTag);
         }
         String platform = kind.hasPlatform() ? "-" + platformTag : "";
-        return switch (channel) {
-            case STABLE, BETA -> kind.assetPrefix() + version.value() + platform
-                    + variantJdkSuffix(jdk) + ZIP_SUFFIX;
-            case ALPHA -> "AHA-" + kind.targetWord() + "-" + version.value() + platform
-                    + JDK_INFIX + jdk + ZIP_SUFFIX;
-        };
+        // JDK 段的两种口径：**原生线与快照线始终带** -jdk<JDK>；JVM 线只有非默认变体才带。
+        String jdkSuffix = jdkRequired(channel, kind) ? JDK_INFIX + jdk : variantJdkSuffix(jdk);
+        String prefix = channel == ReleaseChannel.ALPHA
+                ? "AHA-" + kind.targetWord() + "-"
+                : kind.assetPrefix();
+        return prefix + version.value() + platform + jdkSuffix + ZIP_SUFFIX;
     }
 
     /**
@@ -201,7 +201,23 @@ public final class ChannelContract {
         if (assetName == null || !supports(channel, kind)) {
             return Optional.empty();
         }
-        Matcher matcher = assetPattern(channel, kind).matcher(assetName.trim());
+        String name = assetName.trim();
+        if (!name.endsWith(ZIP_SUFFIX)) {
+            return Optional.empty();
+        }
+        // 先把末尾的 -jdk<JDK> 剥掉再匹配核心部分：JVM 线的 JDK 段是**可选**的，
+        // 若把它交给主模式里的可选组，平台段会因为贪婪而把它吃掉（实测：
+        // `…-ubuntu-amd64-jdk27.zip` 曾被解析成平台 `ubuntu-amd64-jdk27`）。
+        String core = name.substring(0, name.length() - ZIP_SUFFIX.length());
+        int jdk = DEFAULT_JDK;
+        Matcher jdkMatcher = JDK_SUFFIX.matcher(core);
+        if (jdkMatcher.find()) {
+            jdk = Integer.parseInt(jdkMatcher.group(1));
+            core = core.substring(0, jdkMatcher.start());
+        } else if (jdkRequired(channel, kind)) {
+            return Optional.empty();
+        }
+        Matcher matcher = assetCorePattern(channel, kind).matcher(core);
         if (!matcher.matches()) {
             return Optional.empty();
         }
@@ -209,8 +225,6 @@ public final class ChannelContract {
         if (!matchesForm(channel, version)) {
             return Optional.empty();
         }
-        String jdkGroup = matcher.group("jdk");
-        int jdk = jdkGroup == null ? DEFAULT_JDK : Integer.parseInt(jdkGroup);
         String platform = kind.hasPlatform() ? matcher.group("platform") : null;
         return Optional.of(new Asset(version, platform, jdk));
     }
@@ -238,16 +252,27 @@ public final class ChannelContract {
         };
     }
 
-    /** 资产名的匹配模式（按通道与形态生成，带具名组）。 */
-    private static Pattern assetPattern(ReleaseChannel channel, UpdateKind kind) {
+    /** 资产名的**核心部分**模式（已去掉 {@code .zip} 与末尾的 {@code -jdk<JDK>}）。 */
+    private static Pattern assetCorePattern(ReleaseChannel channel, UpdateKind kind) {
         String platform = kind.hasPlatform() ? "-" + PLATFORM_GROUP : "";
         return switch (channel) {
             case STABLE, BETA -> Pattern.compile("^" + Pattern.quote(kind.assetPrefix())
-                    + VERSION_GROUP + platform + "(?:" + JDK_GROUP + ")?" + Pattern.quote(ZIP_SUFFIX)
-                    + "$");
+                    + VERSION_GROUP + platform + "$");
             case ALPHA -> Pattern.compile("^AHA-" + Pattern.quote(kind.targetWord()) + "-"
-                    + VERSION_GROUP + platform + JDK_GROUP + Pattern.quote(ZIP_SUFFIX) + "$");
+                    + VERSION_GROUP + platform + "$");
         };
+    }
+
+    /**
+     * 该组合的资产名是否**必须**带 JDK 段。
+     *
+     * <p>实查（2026-10-16）：dev 线原生包的资产名是
+     * {@code AHA-Desktop-Native-0.1.3.00242-ubuntu-amd64-jdk25.zip}（始终带），
+     * 而 JVM 线的默认变体是 {@code aha-desktop-0.1.3.00242-windows-amd64.zip}（不带）。
+     * 两者口径不同，不能共用一条规则。</p>
+     */
+    private static boolean jdkRequired(ReleaseChannel channel, UpdateKind kind) {
+        return kind.nativeImage() || channel == ReleaseChannel.ALPHA;
     }
 
     /**
