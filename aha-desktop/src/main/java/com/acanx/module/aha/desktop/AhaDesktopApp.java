@@ -24,6 +24,7 @@ import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.UpgradePane;
 import com.acanx.module.aha.desktop.view.SystemTheme;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopSettings;
@@ -278,12 +279,19 @@ public final class AhaDesktopApp extends Application {
                 LOG.info("系统配色变化，跟随系统主题生效：{}", resolved.label());
             }
         });
-        shell.onOpenSettings(() -> new SettingsDialog(
-                settings,
-                this::configSummary,
-                () -> shell.openProviderDialogForSettings(),
-                shell::applyTheme,
-                shell::fontSize).show(stage));
+        // 设置面板（两个 tab：界面 / 升级）。升级 tab 的换装动作要**主动退出**进程——
+        // 正在运行的进程换不掉自己的文件（issue #51 §4.5）：由它拉起 helper，然后退出，
+        // 剩下的交给 helper（等本进程退出 → 替换 → 自证 → 重新拉起 → 写回执）。
+        UpgradePane upgradePane = new UpgradePane(settings, dispatcher, () -> {
+            shell.appendNotice("正在替换并重启…（换装日志：~/.aha/update/update.log）");
+            stage.close();
+            System.exit(0);
+        }, null);
+        SettingsDialog settingsDialog = new SettingsDialog(settings, this::configSummary,
+                () -> shell.openProviderDialogForSettings(), shell::applyTheme, shell::fontSize,
+                upgradePane);
+        shell.onOpenSettings(() -> settingsDialog.show(stage));
+        shell.onCheckUpdate(() -> settingsDialog.showUpgradeTab(stage));
 
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),

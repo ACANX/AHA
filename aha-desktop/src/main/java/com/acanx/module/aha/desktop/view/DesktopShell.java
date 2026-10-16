@@ -297,6 +297,9 @@ public final class DesktopShell implements ChatView {
     /** 打开设置面板。 */
     private Runnable onOpenSettings;
 
+    /** 帮助菜单里「检查更新…」的动作（打开设置并直接切到升级 tab，issue #51 §3.1）。 */
+    private Runnable onCheckUpdate;
+
     /** 根节点（换字号时要用）。 */
     private Parent rootNode;
 
@@ -386,6 +389,9 @@ public final class DesktopShell implements ChatView {
 
     @FXML
     private MenuItem themeItem;
+
+    @FXML
+    private MenuItem checkUpdateItem;
 
     @FXML
     private MenuItem aboutItem;
@@ -1046,6 +1052,15 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
+     * 帮助菜单「检查更新…」的动作接线（由宿主接到设置面板的升级 tab，issue #51 §3.1）。
+     *
+     * @param handler 动作
+     */
+    public void onCheckUpdate(Runnable handler) {
+        this.onCheckUpdate = handler;
+    }
+
+    /**
      * 设置「全部撤销本会话授权」动作。
      *
      * @param handler 动作
@@ -1302,6 +1317,14 @@ public final class DesktopShell implements ChatView {
         });
 
         helpMenu.setText("帮助(_H)");
+        checkUpdateItem.setText("检查更新…");
+        checkUpdateItem.setOnAction(event -> {
+            if (onCheckUpdate == null) {
+                appendNotice("检查更新尚不可用（未接线）。");
+            } else {
+                onCheckUpdate.run();
+            }
+        });
         aboutItem.setText("关于 AHA");
         aboutItem.setOnAction(event -> showAbout());
     }

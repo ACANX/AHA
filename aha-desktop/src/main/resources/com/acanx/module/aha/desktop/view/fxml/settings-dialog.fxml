@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-    设置面板的界面骨架（批次 4 / issue #137）。
+    设置面板的界面骨架（批次 4 / issue #137；TabPane 改造见 issue #51 §3.1）。
+
+    两个 tab：
+      * 「界面」：原有内容**原样**搬进来（主题 / 字号 / 默认模型 + 说明），行为不变；
+      * 「升级」：内容由 UpgradePane 程序化构建（它有自己的类，避免本对话框膨胀）。
 
     改动**立即生效并立即保存**——面板里没有「应用」按钮：用户改完主题看不到变化、
     还得去找一个确定键，是没必要的摩擦。
 
-    三行设置各自是「控件 + 一行说明」的两列结构（原实现由 `row(...)` 逐行拼出来）：
-    左侧是设置名、右侧是 VBox(控件, 说明)。三行之后是设置文件路径与两段说明文案。
+    三行设置各自是「控件 + 一行说明」的两列结构：左侧是设置名、右侧是 VBox(控件, 说明)。
 
     「关闭」是 Dialog 自己的 ButtonType，不进本文件。
 -->
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
@@ -22,42 +27,56 @@
       xmlns:fx="http://javafx.com/fxml"
       fx:id="root">
     <children>
-        <GridPane fx:id="grid">
-            <children>
-                <Label fx:id="themeKey" GridPane.rowIndex="0" GridPane.columnIndex="0" text="主题"/>
-                <VBox fx:id="themeBox" GridPane.rowIndex="0" GridPane.columnIndex="1">
-                    <children>
-                        <ComboBox fx:id="theme" id="aha.settings.theme"/>
-                        <Label fx:id="themeNote"
-                               text="「跟随系统」按操作系统的浅色 / 深色偏好解析"/>
-                    </children>
-                </VBox>
-
-                <Label fx:id="fontKey" GridPane.rowIndex="1" GridPane.columnIndex="0" text="字号"/>
-                <VBox fx:id="fontBox" GridPane.rowIndex="1" GridPane.columnIndex="1">
-                    <children>
-                        <ComboBox fx:id="font" id="aha.settings.font"/>
-                        <Label fx:id="fontNote" text="默认 13px"/>
-                    </children>
-                </VBox>
-
-                <Label fx:id="modelKey" GridPane.rowIndex="2" GridPane.columnIndex="0" text="默认模型"/>
-                <VBox fx:id="modelBox" GridPane.rowIndex="2" GridPane.columnIndex="1">
-                    <children>
-                        <HBox fx:id="modelRow">
+        <TabPane fx:id="tabs" id="aha.settings.tabs" tabClosingPolicy="UNAVAILABLE">
+            <tabs>
+                <Tab fx:id="interfaceTab" text="界面">
+                    <content>
+                        <VBox fx:id="interfaceBox" spacing="8">
                             <children>
-                                <Button fx:id="model" id="aha.settings.model"
-                                        text="打开供应商配置…"/>
-                            </children>
-                        </HBox>
-                        <Label fx:id="modelNote" text="供应商与模型在同一个对话框里改"/>
-                    </children>
-                </VBox>
-            </children>
-        </GridPane>
+                                <GridPane fx:id="grid">
+                                    <children>
+                                        <Label fx:id="themeKey" GridPane.rowIndex="0" GridPane.columnIndex="0" text="主题"/>
+                                        <VBox fx:id="themeBox" GridPane.rowIndex="0" GridPane.columnIndex="1">
+                                            <children>
+                                                <ComboBox fx:id="theme" id="aha.settings.theme"/>
+                                                <Label fx:id="themeNote"
+                                                       text="「跟随系统」按操作系统的浅色 / 深色偏好解析"/>
+                                            </children>
+                                        </VBox>
 
-        <Label fx:id="pathLabel"/>
-        <Label fx:id="configLabel"/>
-        <Label fx:id="todoLabel"/>
+                                        <Label fx:id="fontKey" GridPane.rowIndex="1" GridPane.columnIndex="0" text="字号"/>
+                                        <VBox fx:id="fontBox" GridPane.rowIndex="1" GridPane.columnIndex="1">
+                                            <children>
+                                                <ComboBox fx:id="font" id="aha.settings.font"/>
+                                                <Label fx:id="fontNote" text="默认 13px"/>
+                                            </children>
+                                        </VBox>
+
+                                        <Label fx:id="modelKey" GridPane.rowIndex="2" GridPane.columnIndex="0" text="默认模型"/>
+                                        <VBox fx:id="modelBox" GridPane.rowIndex="2" GridPane.columnIndex="1">
+                                            <children>
+                                                <HBox fx:id="modelRow">
+                                                    <children>
+                                                        <Button fx:id="model" id="aha.settings.model"
+                                                                text="打开供应商配置…"/>
+                                                    </children>
+                                                </HBox>
+                                                <Label fx:id="modelNote" text="供应商与模型在同一个对话框里改"/>
+                                            </children>
+                                        </VBox>
+                                    </children>
+                                </GridPane>
+
+                                <Label fx:id="pathLabel"/>
+                                <Label fx:id="configLabel"/>
+                                <Label fx:id="todoLabel"/>
+                            </children>
+                        </VBox>
+                    </content>
+                </Tab>
+                <!-- 「升级」tab 的 id 与内容都在 SettingsDialog / UpgradePane 里设（契约见 issue #51 §3.1） -->
+                <Tab fx:id="upgradeTab" text="升级"/>
+            </tabs>
+        </TabPane>
     </children>
 </VBox>

@@ -11,8 +11,13 @@ import com.acanx.module.aha.desktop.view.ApprovalDialog;
 import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.Theme;
+import com.acanx.module.aha.core.update.UpdatePaths;
+import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.desktop.view.ThemePaint;
+import com.acanx.module.aha.desktop.view.DesktopSettings;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.UpgradePane;
 import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
@@ -20,6 +25,10 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
@@ -37,7 +46,9 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -438,6 +449,44 @@ class AhaDesktopSmokeTest {
      * @param id    节点 id
      * @return 节点；找不到返回 {@code null}
      */
+    /**
+     * 设置面板：两个 tab（界面 / 升级）+ 升级 tab 的契约控件（issue #51 §3.1）。
+     *
+     * <p>断言走 {@code byId}：点号节点 id 会被 CSS 当成类选择器，`lookup("#aha.upgrade.list")`
+     * 实测全返回 null。tab 本身不是节点，所以从 {@code TabPane.getTabs()} 取 id 断言 ——
+     * 这不依赖皮肤（没有场景时皮肤不建，未选中的 tab 内容也不在节点树上）。</p>
+     *
+     * @param tempDir 临时目录（设置文件与升级暂存都放这里，不碰真实家目录）
+     */
+    @Test
+    void settingsDialogHasBothTabsAndTheUpgradeControls(@TempDir Path tempDir) throws Exception {
+        DesktopSettings settings = DesktopSettings.load(tempDir.resolve(DesktopSettings.FILE_NAME));
+        UpgradePane pane = uiGet(() -> new UpgradePane(settings, new PlatformFxDispatcher(),
+                () -> { }, new UpdateService(UpdatePaths.at(tempDir.resolve("update")))));
+        Dialog<ButtonType> dialog = uiGet(() -> new SettingsDialog(settings, () -> "配置：测试",
+                () -> { }, theme -> { }, size -> { }, pane).build());
+        Node content = dialog.getDialogPane().getContent();
+
+        TabPane tabs = (TabPane) byId(content, SettingsDialog.TABS_ID);
+        assertThat(tabs).as("设置面板必须是 TabPane").isNotNull();
+        assertThat(tabs.getTabs()).extracting(Tab::getId)
+                .containsExactly(SettingsDialog.INTERFACE_TAB_ID, UpgradePane.ID_TAB);
+
+        // 界面 tab 的原有三块设置仍在（纯重构，行为不回退）
+        assertThat(byId(content, SettingsDialog.THEME_ID)).isNotNull();
+        assertThat(byId(content, SettingsDialog.FONT_ID)).isNotNull();
+        assertThat(byId(content, SettingsDialog.MODEL_ID)).isNotNull();
+
+        // 升级 tab 的契约控件：断言它自己的根节点（不依赖 tab 是否选中）
+        VBox upgradeRoot = uiGet(pane::build);
+        assertThat(byId(upgradeRoot, UpgradePane.ID_CHANNEL)).isNotNull();
+        assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(Label.class);
+        assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
+        assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
+        assertThat(byId(upgradeRoot, UpgradePane.ID_STATUS)).isInstanceOf(Label.class);
+        assertThat(byId(upgradeRoot, UpgradePane.ID_ACTION)).isInstanceOf(Button.class);
+    }
+
     private static Node byId(Scene scene, String id) {
         return scene == null ? null : byId(scene.getRoot(), id);
     }
