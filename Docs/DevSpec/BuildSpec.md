@@ -1,9 +1,9 @@
 # 构建规范
 
-**文档版本**：v1.39.0
+**文档版本**：v1.40.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-15
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.40.0 | 2026-10-16 | §10.2 新增 `#117` 结论行：picocli `--help` 渲染依赖的 JDK 文本断行资源（`sun/text/resources/LineBreakIteratorData`，**无扩展名**）必须显式登记；两份 CLI 参数文件同步补齐（issue #117）| @ACANX / CNXNC |
 | v1.39.0 | 2026-10-15 | §7 新增「包根平铺 + shade 附带产物」的**静态守卫**：`check_package_layout()` / `check_shade_attached()`；dev 线的包体自证补上**本平台原生库点名 + 跨平台污染检查**（原只判 `>0`），CLI 补「任意深度原生库 >0」（issue #218 第 7 条 / #217 第 3 条）| @ACANX / CNXNC |
 | v1.38.0 | 2026-10-15 | §7 CLI 发行包也改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，jar 名去版本号，无 `lib/` 与 `bin/`），两条线形态一致；新增「CLI 的 shade 也必须 `shadedArtifactAttached=true`」的理由（装配描述符与原生镜像线都要普通 jar，issue #217）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `BuildGuide.md` 拆分而来，承接其中的强制性约束 | @ACANX |
@@ -525,7 +526,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   原生镜像只在专用 profile（`-Pcli-native` / `-Pdesktop-native`）里构建；
 - **不进必需检查**：见 10.3。
 
-### 10.2 依赖可达性结论（E-02 ~ E-09，2026-10-09 核对）
+### 10.2 依赖可达性结论（E-02 ~ E-09、#117，2026-10-16 核对）
 
 | 编号 | 依赖 / 能力 | 结论 | 处理方式 |
 |---|---|---|---|
@@ -537,6 +538,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
 | E-07 | Log4j2 兼容性 | ✅ 已实测 | 自带 `reflect-config.json` + `resource-config.json`；加 `--initialize-at-run-time=org.apache.logging.log4j.core.config` / `.core.util` |
 | E-08 | `java.net.http` 的 TLS / SSL | ⚠️ 实际在用、无独立结论 | `aha-core` 的 `DefaultLlmClient` 使用 `HttpClient` 且随产物发布；**未观察到**需要额外 TLS / 证书参数，但缺参数登记与结论——新增网络能力时须补测 |
 | E-09 | 虚拟线程 | ⚠️ 实际在用、无独立结论 | `LocalAgentService` / `DefaultLlmClient` / `ChatCommand` / `ChatController` / `AhaDesktopApp` 均使用，且随产物构建通过；但**支持现状未系统调研** |
+| **#117** | picocli `--help` 的 JDK 文本断行资源 | ✅ 已实测（2026-10-16） | `--help` 走 `CommandLine$Help$TextTable` → `BreakIterator` 读 `sun/text/resources/LineBreakIteratorData`（**无扩展名**，按扩展名的正则匹不上）——两份 CLI 参数文件补 `-H:IncludeResources=sun/text/resources/LineBreakIteratorData`（另补 `.*\.icu$`）。**缺它的症状是运行期 `InternalError` 崩溃，不是构建失败**；桌面端参数文件早含此条，CLI 侧一直缺 |
 
 > 参数实体在 `aha-cli-native/src/native/native-image-args*.txt` 与
 > `aha-desktop-native/src/native/native-image-args*.txt`（含 `-jdk27` 变体）；

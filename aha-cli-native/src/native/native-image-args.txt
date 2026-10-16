@@ -70,6 +70,15 @@
 # 同批一并修正（见 CliNativeDesign.md 与 DevLog）。
 -H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin)$
 -H:IncludeResources=META-INF/services/.*
+#   5. JDK 的文本断行数据：`sun/text/resources/LineBreakIteratorData` **没有扩展名**，
+#      上面那条按扩展名的正则匹不上，必须显式点名。picocli 渲染 `--help` 表格时走
+#      `CommandLine$Help$TextTable` → `BreakIterator` 去读它，缺了会以
+#      `InternalError: Can't load sun/text/resources/LineBreakIteratorData` 崩溃——
+#      症状是**运行期崩、构建却全绿**（issue #117：三平台 `--help` 一致退出码非 0）。
+#      `.*\.icu$`（`ubidi.icu` 等双向文本数据）是同批从桌面端对齐补的：同一盲区，
+#      只在渲染 RTL / 双向文本时才可能触发，置信度低于上一条。
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
 
 # ── 必须运行期初始化的类 ────────────────────────────────────────────────────
 # 判据：**构建期初始化就会去碰「运行时才存在的东西」**（数据库文件、终端、文件系统路径）。
