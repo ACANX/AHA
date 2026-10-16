@@ -171,9 +171,16 @@ public final class AhaDesktopApp extends Application {
                     ? "（" + result.reason() + "）" : "";
             return "上次换装结果：" + result.summary() + extra + "（日志：~/.aha/update/update.log）";
         }
+        if (report.swapInFlight()) {
+            return "上次换装可能还在进行（暂存与备份本次不动，也不动它的计划文件）；"
+                    + "换装结束后下次启动会给出结果。";
+        }
         if (report.helperNeverRan()) {
-            return "上次升级没有完成：换装程序没有启动（可能被安全策略拦下），安装目录未改动；"
-                    + "可手动到发布页取件。";
+            return "上次写过换装计划，但换装程序没有启动 —— 可能被安全策略拦下了，"
+                    + "也可能只是「只暂存没执行」；安装目录未改动。";
+        }
+        if (report.warning() != null) {
+            return "启动收尾有情况：" + report.warning();
         }
         return null;
     }
@@ -345,7 +352,9 @@ public final class AhaDesktopApp extends Application {
         // 正在运行的进程换不掉自己的文件（issue #51 §4.5）：由它拉起 helper，然后退出，
         // 剩下的交给 helper（等本进程退出 → 替换 → 自证 → 重新拉起 → 写回执）。
         UpgradePane upgradePane = new UpgradePane(settings, dispatcher, () -> {
-            shell.appendNotice("正在替换并重启…（换装日志：~/.aha/update/update.log）");
+            // 真正给用户看的提示在升级页的状态行上（"正在替换并重启…"）；这里再 append 一条
+            // 只会随着 System.exit 一起消失，改为只留日志（2026-10-16 第二轮审查 P3）。
+            LOG.info("换装已拉起，正在退出：~/.aha/update/update.log");
             stage.close();
             System.exit(0);
         }, null);

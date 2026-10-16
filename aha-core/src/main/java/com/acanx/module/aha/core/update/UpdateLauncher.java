@@ -17,7 +17,9 @@ import java.util.List;
  *
  * <ol>
  *   <li>先把 helper 两个文件从安装根复制到 {@code <AHA_HOME>/update/}（<b>不放安装根</b>：
- *       它会自删，且不该出现在被替换的目录里）；</li>
+ *       它用完就该消失，也不该出现在被替换的目录里）；换装后 `.ps1` 自己删自己，
+ *       `.cmd` 是正在运行的批处理删不掉，由 App 下次启动的收尾一并删掉（见
+ *       {@code UpdateService#onStartup}）；</li>
  *   <li>用脱离式命令拉起它（Windows {@code cmd /c start "" /b …}，POSIX {@code sh -c 'nohup … &'}）——
  *       与 App 无父子句柄依赖，App 退出不会带走它；</li>
  *   <li>App 自己退出（界面显示「正在替换并重启…」之后）。</li>
@@ -98,6 +100,28 @@ public final class UpdateLauncher {
             return null;
         }
         return "应用内自更新目前只在 Windows 上实现（换装脚本的 POSIX 版本尚未实现，issue #51 §7 P4）";
+    }
+
+    /**
+     * 平台 + **安装形态**两层的能力门：任一不满足就返回原因，界面据此提前置灰。
+     *
+     * <p>形态这一层是「换装后能不能自己回来」：启动命令为空（安装根里既没有启动脚本、
+     * 也没有原生单文件，只剩一个单体 jar）时，换装成功后得用户自己去点 —— 那比不换更差，
+     * 所以直接拦在下载之前（2026-10-16 第二轮审查 P1-①）。</p>
+     *
+     * @param layout 当前安装布局
+     * @return 不支持的原因；支持则返回 {@code null}
+     */
+    public static String unsupportedReason(InstallLayout layout) {
+        String platform = unsupportedReason();
+        if (platform != null) {
+            return platform;
+        }
+        if (layout.restartCommand().isEmpty()) {
+            return "这个安装形态没有可用的启动脚本（安装根里没有 AhaDesktop.bat / 原生单文件，"
+                    + "只剩一个单体 jar），换装后无法自动重启，因此不在界面里做自更新";
+        }
+        return null;
     }
 
     /**

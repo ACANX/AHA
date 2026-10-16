@@ -63,6 +63,16 @@ jobs:
           JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
           javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
             -d /tmp/skill-templates $(find .agents/skills -name '*.java')
+      - name: 换装 helper 自测（Windows：真跑一键入口 apply-update.cmd）
+        # 【它补的是哪一段】一键入口 `apply-update.cmd` 是 P0-1 的主角（曾经根本没进仓库），
+        # 而 `native-update-script` 作业跑在 **ubuntu 的 pwsh** 上 —— `%~dp0` / `%~1` /
+        # 退出码传递从来没被执行过。自测脚本在 Windows 上会多跑一条「经 .cmd 换装」的用例，
+        # 同时在 Windows PowerShell 5.1 下真跑一遍 helper（BOM / 编码那条路径，2026-10-16
+        # 第二轮审查 P2-③）。
+        # 只在 Windows 跑：Linux 上那条用例自己会跳过，没必要重复跑一遍。
+        if: matrix.maven == 'wrapper' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./Script/PowerShell/HelperSelfTest.ps1
 
   # ── GUI 冒烟：真开窗口跑 AhaDesktopSmokeTest（Linux + Xvfb，非阻塞）──────────
   #

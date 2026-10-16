@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -163,6 +164,14 @@ public final class UpdateService {
                     "新包与已装包的文件清单完全一致，没有可执行的动作（可能装的就是这一版）");
         }
         AhaVersion backupVersion = current == null ? staged.version() : current;
+        // 上一次换装还在跑（计划在、启动标记是刚写的、还没回执）⇒ 拒绍再写一份计划：
+        // 两个 helper 同时换装会把安装目录搅成两半（2026-10-16 第二轮审查 P3）。
+        if (swapMayBeInFlight(Files.isRegularFile(paths.planFile()),
+                Files.isRegularFile(paths.helperStartedFile()),
+                !Files.isRegularFile(paths.resultFile()))) {
+            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
+                    "上一次换装还在进行（helper 已启动、还没留下回执）——稍等片刻再试");
+        }
         // 先把 helper 装到 <AHA_HOME>/update/，**再**写计划：反过来的话，helper 缺失
         // （包没带 / 本平台没实现）会留下一个永远执行不到的计划文件，下次启动还会把它
         // 当成「上次换装没做完」报告给用户（2026-10-16 审查 P2-10）。
@@ -258,12 +267,14 @@ public final class UpdateService {
      *
      * @param version 版本
      * @param keepBackups 备份保留份数
+     * @return 清理计数（暂存目录数 / 旧备份份数），给用户看的数字要如实（2026-10-16 审查 P2-⑤）
      */
-    public int cleanupAfterSwap(AhaVersion version, int keepBackups) {
-        staging.clear(version);
-        int removed = staging.pruneBackups(keepBackups);
-        log.append("cleanup", "已清理暂存 " + version.value() + "，清理旧备份 " + removed + " 份");
-        return removed;
+    public Cleanup cleanupAfterSwap(AhaVersion version, int keepBackups) {
+        int stagingRemoved = (staging.clear(version) ? 1 : 0) + staging.clearOthers(version);
+        int backupsRemoved = staging.pruneBackups(keepBackups);
+        log.append("cleanup", "已清理暂存 " + version.value() + " 及其它版本共 " + stagingRemoved
+                + " 个，清理旧备份 " + backupsRemoved + " 份");
+        return new Cleanup(stagingRemoved, backupsRemoved);
     }
 
     /**
@@ -273,32 +284,94 @@ public final class UpdateService {
      * `pkg.zip` 与解包副本永不清理（每次升级/失败白占 50–110 MB），
      * `Update.BackupKeep` 成了死配置。收尾失败不影响启动，只在日志里留痕。</p>
      *
+     * <p><b>换装可能还在跑时什么都不删</b>（2026-10-16 第二轮审查 P1-②）：用户在换装那几秒里
+     * 再启动一次 App 时，helper 正要从 {@code <版本>/new} 拷文件、回滚还要用 {@code backup/}，
+     * 这时清掉会把本次升级毁掉（而且回执会把锅甩给包：新包里没有这个文件）。</p>
+     *
      * @param runningVersion 本次运行的版本（它的暂存目录清掉，其它版本的也一并清）
      * @param keepBackups    备份保留份数（来自设置 `Update.BackupKeep`）
-     * @return 报告（回执 / 上次换装是否根本没开始 / 清理计数 / 警告）
+     * @return 报告（回执 / 上次换装是否根本没开始 / 是否可能还在进行 / 清理计数 / 情况说明）
      */
     public StartupReport onStartup(AhaVersion runningVersion, int keepBackups) {
         Optional<UpdateResult> result = consumeLastResult();
         boolean planLeft = Files.isRegularFile(paths.planFile());
         boolean markerLeft = Files.isRegularFile(paths.helperStartedFile());
+        boolean swapInFlight = swapMayBeInFlight(planLeft, markerLeft, result.isEmpty());
         String warning = null;
         int stagingCleared = 0;
         int backupsRemoved = 0;
-        try {
-            backupsRemoved = cleanupAfterSwap(runningVersion, keepBackups);
-            stagingCleared = staging.clearOthers(runningVersion) + 1;
-        } catch (UpdateException e) {
-            warning = e.getMessage();
-            log.append("cleanup", "启动清理失败（不影响使用）：" + e.getMessage());
-        }
-        // 计划文件只用来判断「上一轮到底有没有跑起来」，报完就删，免得下次再报一遍
-        try {
-            Files.deleteIfExists(paths.planFile());
-        } catch (IOException e) {
-            log.append("cleanup", "清不掉旧的换装计划（无碍）：" + e.getMessage());
+        if (swapInFlight) {
+            warning = "换装可能还在进行（" + paths.helperStartedFile()
+                    + " 是刚写的）——本次不动暂存与备份，也不动计划文件";
+            log.append("cleanup", warning);
+        } else {
+            try {
+                Cleanup done = cleanupAfterSwap(runningVersion, keepBackups);
+                stagingCleared = done.stagingRemoved();
+                backupsRemoved = done.backupsRemoved();
+            } catch (UpdateException e) {
+                warning = e.getMessage();
+                log.append("cleanup", "启动清理失败（不影响使用）：" + e.getMessage());
+            }
+            if (planLeft && markerLeft && result.isEmpty()) {
+                // helper 起来过、却没留下回执（中途被杀 / 卡在中途）：把残留报告出来
+                warning = "上次换装没有留下回执（可能中途失败了），已把残留暂存清掉";
+                log.append("cleanup", warning);
+            }
+            // 换装 helper 用完就该消失（设计 §8.2 第 5 项的验收口径）：`.ps1` 自己删自己，
+            // `.cmd` 是正在运行的批处理删不掉，由这里补刀 —— 不删的话用户「升级完看目录」
+            // 会看到它，以为没生效。下次换装会重新拷（2026-10-16 第二轮审查 P2-④）。
+            deleteHelperFiles();
+            // 计划文件只用来判断「上一轮到底有没有跑起来」，报完就删，免得下次再报一遍；
+            // 「已启动」标记同理：helper 正常结束时已自删，这里是兜底（比如 helper 被杀的残留）。
+            try {
+                Files.deleteIfExists(paths.helperStartedFile());
+                Files.deleteIfExists(paths.planFile());
+            } catch (IOException e) {
+                log.append("cleanup", "清不掉旧的换装计划或启动标记（无碍）：" + e.getMessage());
+            }
         }
         boolean helperNeverRan = planLeft && !markerLeft && result.isEmpty();
-        return new StartupReport(result, helperNeverRan, stagingCleared, backupsRemoved, warning);
+        return new StartupReport(result, helperNeverRan, swapInFlight, stagingCleared,
+                backupsRemoved, warning);
+    }
+
+    /**
+     * 换装是否可能还在跑：写了计划 + helper 自报过启动 + 还没有回执，且启动标记是**刚写的**。
+     *
+     * <p>为什么看标记的时间：helper 若被机器级策略拦下后死掉、或者中途被杀，残留物会永远
+     * 停在那 —— 加一个窗口（{@link #SWAP_IN_FLIGHT_WINDOW}），超时就当残留清掉，
+     * 免得暂存磁盘永远不回收。</p>
+     *
+     * @param planLeft   计划文件是否还在
+     * @param markerLeft 「已启动」标记是否还在
+     * @param noResult   回执是否不存在
+     * @return 可能在跑返回 {@code true}
+     */
+    private boolean swapMayBeInFlight(boolean planLeft, boolean markerLeft, boolean noResult) {
+        if (!planLeft || !markerLeft || !noResult) {
+            return false;
+        }
+        try {
+            Instant started = Files.getLastModifiedTime(paths.helperStartedFile()).toInstant();
+            return Duration.between(started, Instant.now())
+                    .compareTo(SWAP_IN_FLIGHT_WINDOW) < 0;
+        } catch (IOException e) {
+            log.append("cleanup", "读不到 helper 启动标记的时间（按『不在进行』处理）：" + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 删掉用完的换装 helper（`.cmd` / `.ps1`；POSIX 的入口也一并试，不存在时无害）。 */
+    private void deleteHelperFiles() {
+        for (String name : List.of(UpdateLauncher.WINDOWS_ENTRY, UpdateLauncher.WINDOWS_SCRIPT,
+                UpdateLauncher.POSIX_ENTRY)) {
+            try {
+                Files.deleteIfExists(paths.root().resolve(name));
+            } catch (IOException e) {
+                log.append("cleanup", "helper 删不掉（无碍）：" + name + "（" + e.getMessage() + "）");
+            }
+        }
     }
 
     /**
@@ -318,17 +391,37 @@ public final class UpdateService {
     }
 
     /**
+     * 换装可能还在跑的判定窗口：helper 自报启动后，最慢多久算「一定结束了」。
+     *
+     * <p>取 10 分钟：helper 自身的等待上限是 60s，剩下的就是拷贝与逐文件哈希自证（
+     * 一个包 25–55 MB，慢盘 / 杀毒软件扫描下也不至于超过它）。</p>
+     */
+    public static final Duration SWAP_IN_FLIGHT_WINDOW = Duration.ofMinutes(10);
+
+    /**
      * 启动收尾报告。
      *
      * @param result         上次换装的回执（没有则为空）
      * @param helperNeverRan 上一轮写了计划、helper 却没自报启动（**回执也不会存在**）——
      *                       这一条以前是不可见的「静默什么都没发生」
-     * @param stagingCleared 清掉的暂存目录数
+     * @param swapInFlight   换装可能**还在进行**（回执没出、启动标记是刚写的）：本次什么都没动，
+     *                       换装结束后下次启动会给出结果
+     * @param stagingCleared 清掉的暂存目录数（如实计数，不再固定 +1）
      * @param backupsRemoved 清掉的旧备份份数
-     * @param warning        清理失败的原因；成功为 {@code null}
+     * @param warning        没做清理 / 清理失败 / 残留说明；无事为 {@code null}
      */
     public record StartupReport(Optional<UpdateResult> result, boolean helperNeverRan,
-                                int stagingCleared, int backupsRemoved, String warning) {
+                                boolean swapInFlight, int stagingCleared, int backupsRemoved,
+                                String warning) {
+    }
+
+    /**
+     * 一次收尾清理的计数。
+     *
+     * @param stagingRemoved 清掉的暂存目录数
+     * @param backupsRemoved 清掉的旧备份份数
+     */
+    public record Cleanup(int stagingRemoved, int backupsRemoved) {
     }
 
     /**

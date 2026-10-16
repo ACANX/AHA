@@ -83,6 +83,33 @@ class UpdateLauncherTest {
     }
 
     @Test
+    void unsupportedReasonExplainsWhicheverLayerBlocks() throws IOException {
+        // 两层门：平台（POSIX 脚本还没实现）+ 安装形态（只剩单体 jar ⇒ 换装后回不来）
+        Path root = tempDir.resolve("only-jar");
+        Files.createDirectories(root);
+        Path jar = root.resolve("aha-desktop.jar");
+        Files.writeString(jar, "jar");
+
+        String jarOnly = UpdateLauncher.unsupportedReason(InstallLayout.of(jar));
+        if (InstallLayout.isWindows()) {
+            assertThat(jarOnly).as("只剩单体 jar 的布局要被提前拦住")
+                    .contains("没有可用的启动脚本");
+        } else {
+            assertThat(jarOnly).as("POSIX 仍先因平台被拦（脚本未实现）").contains("只在 Windows");
+        }
+
+        // 补上启动脚本：Windows 上就没话说了；POSIX 仍然被平台拦（脚本未实现，见 TD-00020）
+        Files.writeString(root.resolve(InstallLayout.isWindows()
+                ? InstallLayout.WINDOWS_LAUNCHER : InstallLayout.POSIX_LAUNCHER), "launcher");
+        String withLauncher = UpdateLauncher.unsupportedReason(InstallLayout.of(jar));
+        if (InstallLayout.isWindows()) {
+            assertThat(withLauncher).isNull();
+        } else {
+            assertThat(withLauncher).contains("只在 Windows");
+        }
+    }
+
+    @Test
     void installHelpersFailsLoudlyWhenThePackageShipsNoHelper() throws IOException {
         Path installRoot = tempDir.resolve("install");
         Files.createDirectories(installRoot);

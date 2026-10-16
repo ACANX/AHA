@@ -43,7 +43,7 @@ public final class StagingArea {
     /**
      * 准备某个版本的暂存目录（幂等）。
      *
-     * <p>只会创建，<b>不会清空</b>：已下载好的 {@code .part} 要留着续传，
+     * <p>只会创建，<b>不会清空</b>：已下载好的 {@code .part} 要留着（重试会重新下载，但它也是排查现场），
      * 已下好的包也要留着复用 —— 清理由用户显式触发（见 {@link #clear(AhaVersion)}）。</p>
      *
      * @param version 目标版本
@@ -96,10 +96,12 @@ public final class StagingArea {
      * 删除某个版本的整个暂存目录（幂等）。
      *
      * @param version 目标版本
+     * @return 真的删了东西返回 {@code true}（原本就不存在则 {@code false}）——
+     *         启动收尾要用它给用户一个**如实**的清理计数（2026-10-16 第二轮审查 P2-⑤）
      * @throws UpdateException 删除失败（{@link UpdateException#CODE_DOWNLOAD_FAILED}）
      */
-    public void clear(AhaVersion version) {
-        deleteRecursively(paths.versionDir(version));
+    public boolean clear(AhaVersion version) {
+        return deleteRecursively(paths.versionDir(version));
     }
 
     /**
@@ -191,15 +193,16 @@ public final class StagingArea {
         }
     }
 
-    /** 递归删除（不跟随符号链接；不存在即视为成功）。 */
-    private static void deleteRecursively(Path path) {
+    /** 递归删除（不跟随符号链接）；返回是否真的删了（路径不存在时 {@code false}）。 */
+    private static boolean deleteRecursively(Path path) {
         if (!Files.exists(path)) {
-            return;
+            return false;
         }
         try (Stream<Path> walk = Files.walk(path)) {
             for (Path each : walk.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(each);
             }
+            return true;
         } catch (IOException e) {
             throw new UpdateException(UpdateException.CODE_DOWNLOAD_FAILED,
                     "删除失败：" + path + "（" + e.getMessage() + "）", e);

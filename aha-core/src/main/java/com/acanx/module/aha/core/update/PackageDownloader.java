@@ -29,7 +29,10 @@ import java.util.Set;
  *       有校验和时会先核对，核对不过则丢弃重下（缓存坏了不该等价于失败）；</li>
  *   <li><b>重试有边界</b>：只对网络中断 / 超时 / 5xx 重试 2 次（指数退避）；<b>4xx 不重试</b>（重试无意义）；</li>
  *   <li><b>只跟随白名单跳转</b>：先判初始地址前缀，逐跳判主机（GitHub 资产会 302 到
- *       {@code objects.githubusercontent.com}）；</li>
+ *       {@code objects.githubusercontent.com}）；<b>跳转还拒绝 {@code https → 非 https}</b>
+ *       （跳转目标换成明文等于把包交给中间人）。初始地址的 scheme 由前缀白名单定死
+ *       （默认 {@code https://github.com/}），测试用的本机 mock 服务器走 http，
+ *       所以那条路径靠「调用方显式传入的前缀」兜住，而不是靠 scheme 兜；</li>
  *   <li><b>可取消</b>：取消在下一个数据块生效，抛 {@code UPDATE_CANCELLED}（不是错误），`.part` 保留。</li>
  * </ul>
  *

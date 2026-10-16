@@ -21,7 +21,9 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -368,6 +370,97 @@ class UpdateServiceTest {
         assertThat(report.result()).isEmpty();
         assertThat(report.helperNeverRan()).isFalse();
         assertThat(report.warning()).isNull();
+    }
+
+    @Test
+    void startupLeavesAnInFlightSwapAlone() throws IOException {
+        // 换装中又启动了一次 App：helper 正要用 <版本>/new 里的包、回滚还要用 backup/，
+        // 这时**什么都不能删**（2026-10-16 第二轮审查 P1-②）
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+        Files.writeString(paths.helperStartedFile(), "2026-10-16T03:30:00Z");
+        Files.createDirectories(paths.newPackageDir(TARGET));
+        Files.writeString(paths.packageZip(TARGET), "in-flight");
+        Files.createDirectories(paths.backupDir(CURRENT));
+        Files.writeString(paths.backupDir(CURRENT).resolve("aha-desktop.jar"), "old");
+        Files.writeString(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT), "helper");
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 0);
+
+        assertThat(report.swapInFlight()).as("标记是刚写的 ⇒ 判定为可能还在跑").isTrue();
+        assertThat(report.stagingCleared()).isZero();
+        assertThat(report.backupsRemoved()).isZero();
+        assertThat(report.warning()).as("要如实告诉用户「本次没动它」").contains("可能还在进行");
+        assertThat(paths.versionDir(TARGET)).as("helper 还要从这里拷文件").exists();
+        assertThat(paths.backupDir(CURRENT).resolve("aha-desktop.jar")).exists();
+        assertThat(paths.planFile()).as("helper 可能还没读计划，不能删").exists();
+        assertThat(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT)).as("helper 还在跑，不能删").exists();
+    }
+
+    @Test
+    void startupTreatsAStaleSwapMarkerAsLeftovers() throws IOException {
+        // helper 起来过、却从没写过回执，而且标记早已过期 ⇒ 按残留清理，并把这件事说出来
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+        Files.writeString(paths.helperStartedFile(), "2026-10-16T03:30:00Z");
+        Files.setLastModifiedTime(paths.helperStartedFile(), FileTime.from(
+                Instant.now().minus(UpdateService.SWAP_IN_FLIGHT_WINDOW).minusSeconds(60)));
+        Files.createDirectories(paths.versionDir(TARGET));
+        Files.writeString(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT), "helper");
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
+
+        assertThat(report.swapInFlight()).isFalse();
+        assertThat(paths.versionDir(TARGET)).doesNotExist();
+        assertThat(paths.helperStartedFile()).doesNotExist();
+        assertThat(paths.root().resolve(UpdateLauncher.WINDOWS_SCRIPT))
+                .as("换装结束（或残留）时 helper 该消失——这是 §8.2 第 5 项的验收口径")
+                .doesNotExist();
+        assertThat(report.warning()).contains("没有留下回执");
+    }
+
+    @Test
+    void startupCountsOnlyWhatItReallyRemoved() throws IOException {
+        // P2-⑤：以前无论如何都 +1，什么都没清也会说「清理 1 个暂存目录」
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
+
+        assertThat(report.stagingCleared()).isZero();
+        assertThat(report.backupsRemoved()).isZero();
+    }
+
+    @Test
+    void prepareSwapRefusesWhileAnotherSwapIsInFlight() throws IOException {
+        // 两个 helper 同时换装会把安装目录搅成两半（2026-10-16 第二轮审查 P3）
+        Path installRoot = tempDir.resolve("install");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve("aha-desktop.jar"), "jar");
+        Files.writeString(installRoot.resolve("AhaDesktop.bat"), "launcher");
+        Files.writeString(installRoot.resolve(UpdateLauncher.WINDOWS_ENTRY), "cmd-helper");
+        Files.writeString(installRoot.resolve(UpdateLauncher.WINDOWS_SCRIPT), "ps1-helper");
+        Files.writeString(installRoot.resolve(UpdateLauncher.POSIX_ENTRY), "sh-helper");
+        Path packageRoot = tempDir.resolve("newpkg");
+        Files.createDirectories(packageRoot);
+        Files.writeString(packageRoot.resolve("aha-desktop.jar"), "jar");
+        PackageManifest manifest = PackageManifest.parse("""
+                {"kind":"desktop-jvm","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
+                 "files":[{"path":"aha-desktop.jar","sha256":"%s","size":3}]}
+                """.formatted("0".repeat(64)));
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+        Files.writeString(paths.helperStartedFile(), "2026-10-16T03:30:00Z");
+        UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
+                paths.packageZip(TARGET), manifest, true);
+
+        assertThatThrownBy(() -> service().prepareSwap(staged,
+                InstallLayout.of(installRoot.resolve("aha-desktop.jar")), CURRENT))
+                .isInstanceOf(UpdateException.class)
+                .hasMessageContaining("还在进行");
     }
 
     @Test

@@ -79,6 +79,9 @@ function Write-Result {
     } catch {
         Write-UpdateLog ("写入回执失败：" + $_.Exception.Message)
     }
+    # 有了回执就不需要「我还活着」的标记了：留着它会让 App 下次启动以为换装还在跑
+    # （Java 侧 UpdateService#swapMayBeInFlight 就是看这个标记）。best-effort。
+    Remove-Item -LiteralPath $startedFile -Force -ErrorAction SilentlyContinue
 }
 
 function Get-Sha256 {
@@ -127,6 +130,50 @@ while ($true) {
     Start-Sleep -Milliseconds 500
 }
 Write-UpdateLog ("应用已退出（pid {0}）" -f $appPid)
+
+# ── 计划自检：路径必须落在该在的地方 ─────────────────────────────────────────
+# helper 只认计划文件（唯一入参），所以**它自己也必须校验**：Java 侧写计划时有
+# PathSafety，但 helper 读的是 JSON、不经过 Java（2026-10-16 第二轮审查 P2-⑦）。
+# 位置放在「等 App 退出」之后：这样拒绝的姿势与其它拒绝（缺清单 / 版本不符）完全一致——
+# 写回执 + 拉起旧版本，不会把用户留在一个起不来的目录前。
+$comparison = if ($env:OS -eq 'Windows_NT') { [System.StringComparison]::OrdinalIgnoreCase }
+              else { [System.StringComparison]::Ordinal }
+$absoluteChecks = @()
+$absoluteChecks += , @('installRoot', $installRoot)
+$absoluteChecks += , @('packageRoot', $packageRoot)
+$absoluteChecks += , @('backupDir', $backupDir)
+$pathsOk = $true
+foreach ($pair in $absoluteChecks) {
+    if (-not [System.IO.Path]::IsPathRooted([string]$pair[1])) {
+        $pathsOk = $false
+        Write-UpdateLog ("计划里的 " + $pair[0] + " 不是绝对路径：" + [string]$pair[1])
+    }
+}
+if ($pathsOk) {
+    $installFull = [System.IO.Path]::GetFullPath($installRoot)
+    $inside = $installFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($action in $actions) {
+        $relative = [string]$action.path
+        if ([string]::IsNullOrWhiteSpace($relative) -or
+            [System.IO.Path]::IsPathRooted($relative) -or
+            $relative.Contains('..')) {
+            $pathsOk = $false
+            Write-UpdateLog ("计划里的动作路径不合法（逃出安装根）：" + $relative)
+            break
+        }
+        $target = [System.IO.Path]::GetFullPath((Join-Path $installFull $relative))
+        if (-not $target.StartsWith($inside, $comparison)) {
+            $pathsOk = $false
+            Write-UpdateLog ("计划里的动作路径不合法（逃出安装根）：" + $relative)
+            break
+        }
+    }
+}
+if (-not $pathsOk) {
+    Write-Result -Ok $false -Reason '计划里的路径不合法（逃出安装根或不是绝对路径）——未做任何改动' -RolledBack $false -PreviousVersion ''
+    Invoke-Relaunch
+    exit 1
+}
 
 # ── 包自证：清单版本必须与计划一致（挂错包 / 版本对不上就此打住）─────────────
 $manifestPath = Join-Path $packageRoot 'AHA-PACKAGE.json'
@@ -267,7 +314,8 @@ Write-Result -Ok $true -Reason $restartNote -RolledBack $false -PreviousVersion 
 Invoke-Relaunch
 
 # ── 自删（best-effort）──────────────────────────────────────────────────────
-# 是否可靠是 P2 的实测项之一（见 issue #51 §4.5）：删不掉只是留下两个小文件，不该影响结论。
+# 自己删自己；一键入口 `apply-update.cmd` 是正在运行的批处理，删不掉，由 App 下次
+# 启动的收尾一并删（见 UpdateService#onStartup）。删不掉只是留下两个小文件，不影响结论。
 try {
     Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 } catch {

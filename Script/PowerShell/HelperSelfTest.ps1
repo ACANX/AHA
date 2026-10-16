@@ -182,6 +182,60 @@ Assert-True ((Get-Content -LiteralPath (Join-Path $good.BackupDir 'old-file.txt'
     '被删的文件也在备份里（删除走备份，不直接丢）'
 Remove-Item -LiteralPath $good.Base -Recurse -Force -ErrorAction SilentlyContinue
 
+# ── 用例 3：计划里的动作路径逃出安装根 ⇒ 拒绝 ───────────────────────────────
+# 为什么 helper 要自己校验：Java 侧写计划时有 PathSafety，但 helper 读的是 JSON、
+# 不经过 Java；把校验放在两侧才叫「防注入」（2026-10-16 第二轮审查 P2-⑦）。
+Write-Host ''
+Write-Host '用例 3：动作路径逃出安装根 ⇒ 拒绝换装、留回执、退出码 1'
+$escape = New-Scenario -Name 'escape' -WithManifest $true
+$escapePlan = Get-Content -LiteralPath $escape.PlanFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$escapePlan.actions[0].path = '../escape.txt'
+$escapePlan.actions[1].path = '../escape2.txt'
+($escapePlan | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $escape.PlanFile -Encoding UTF8
+$code = Invoke-Helper -PlanFile $escape.PlanFile
+Assert-True ($code -eq 1) "退出码为 1（实际 $code）"
+$resultPath = Join-Path $escape.UpdateRoot 'update-result.json'
+Assert-True (Test-Path -LiteralPath $resultPath) '写了回执 update-result.json'
+if (Test-Path -LiteralPath $resultPath) {
+    $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-True (-not [bool]$result.ok) '回执 ok=false'
+    Assert-True ([string]$result.reason -like '*不合法*') '回执说明了原因（路径不合法）'
+}
+Assert-True ((Get-Content -LiteralPath (Join-Path $escape.InstallRoot 'aha-desktop-native') -Raw) -eq 'OLD-EXE') `
+    '拒绝换装时安装目录没被动过'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $escape.Base 'escape.txt'))) `
+    '安装根外面没有被写入文件'
+Remove-Item -LiteralPath $escape.Base -Recurse -Force -ErrorAction SilentlyContinue
+
+# ── 用例 4（仅 Windows）：经「一键入口」apply-update.cmd 真跑一遍 ─────────────
+# 为什么单列：一键入口是 P0-1 的主角（曾经根本没进仓库），而 native-update-script
+# 作业跑在 ubuntu 的 pwsh 上 —— `%~dp0` / `%~1` / 退出码传递从来没被执行过
+# （2026-10-16 第二轮审查 P2-③）。
+if ($env:OS -eq 'Windows_NT') {
+    Write-Host ''
+    Write-Host '用例 4：经 Dist/apply-update.cmd（一键入口）换装'
+    $entry = Join-Path $repoRoot 'Dist/apply-update.cmd'
+    $viaCmd = New-Scenario -Name 'entry' -WithManifest $true
+    $entryCommand = '"' + $entry + '" "' + $viaCmd.PlanFile + '"'
+    cmd.exe /c $entryCommand | Out-Null
+    $code = $LASTEXITCODE
+    Assert-True ($code -eq 0) "一键入口退出码为 0（实际 $code）"
+    $resultPath = Join-Path $viaCmd.UpdateRoot 'update-result.json'
+    Assert-True (Test-Path -LiteralPath $resultPath) '一键入口也写了回执'
+    if (Test-Path -LiteralPath $resultPath) {
+        $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-True ([bool]$result.ok) '回执 ok=true'
+    }
+    Assert-True ((Get-Content -LiteralPath (Join-Path $viaCmd.InstallRoot 'aha-desktop-native') -Raw) -eq 'NEW-EXE') `
+        '一键入口真的把文件换了'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $viaCmd.UpdateRoot 'helper-started'))) `
+        '一键入口跑完后「已启动」标记被清掉（否则 App 下次会以为换装还在跑）'
+    Remove-Item -LiteralPath $viaCmd.Base -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host ''
+    Write-Host '用例 4 跳过：一键入口 apply-update.cmd 只在 Windows 上跑（本机不是 Windows）'
+}
+
 Write-Host ''
 if ($failures -gt 0) {
     Write-Host "❌ 换装 helper 自测失败：$failures 项"

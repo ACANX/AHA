@@ -148,32 +148,16 @@ public record InstallLayout(Path root, boolean jarBased) {
                 return List.copyOf(command);
             }
         }
-        if (Files.isRegularFile(jar())) {
-            // 必须用**绝对路径**的 java：计划校验（UpdatePlan.validate）要求拉起命令是绝对路径，
-            // 裸 `java` 会让计划写不出来 —— 情形虽少见（便携包总有启动脚本），但那时用户会看到
-            // 「换装计划的拉起命令不合法」这种莫名其妙的失败（2026-10-16 审查 P1-6）。
-            Path java = javaExecutable();
-            if (java != null) {
-                command.add(java.toString());
-                command.add("-jar");
-                command.add(jar().toAbsolutePath().toString());
-            }
-        }
+        // 只有单体 jar 的布局：**不给兜底**，返回空。
+        // 计划（`update-plan.json` 的 `restart`）的契约是「每个元素 = 一个可执行文件」——
+        // helper 逐个 `Start-Process -FilePath` 拉起，而 `java -jar x.jar` 是「命令 + 参数」，
+        // 塞进这个列表过不了 `UpdatePlan` 的绝对路径校验（`-jar` 不是绝对路径），
+        // 计划根本写不出来（2026-10-16 第二轮审查 P1-①：上一轮改成
+        // `<java.home>/bin/java` 只修了「第一个元素不绝对」，参数仍在列表里）。
+        // 空列表是**合法**的：helper 会往回执里写「请手动启动应用」；
+        // 而界面会用 {@link UpdateLauncher#unsupportedReason(InstallLayout)} 提前拦住这种形态，
+        // 宁可不换，也不换完不回来。
         return List.copyOf(command);
-    }
-
-    /**
-     * 从 {@code java.home} 推出当前 JVM 的 java 可执行文件（绝对路径）。
-     *
-     * @return {@code <java.home>/bin/java[.exe]}；不存在时 {@code null}
-     */
-    private static Path javaExecutable() {
-        String home = System.getProperty("java.home");
-        if (home == null || home.isBlank()) {
-            return null;
-        }
-        Path candidate = Path.of(home).resolve("bin").resolve(isWindows() ? "java.exe" : "java");
-        return Files.isRegularFile(candidate) ? candidate.toAbsolutePath() : null;
     }
 
     /**
@@ -187,7 +171,7 @@ public record InstallLayout(Path root, boolean jarBased) {
 
     /**
      * 入口是否存在（换装「自证」用：入口在）——
-     * 启动脚本缺失不算失败：helper 可以退回 {@code java -jar}。
+     * 启动脚本缺失不算失败：原生单文件形态不需要它。
      *
      * @throws UpdateException 入口缺失
      */

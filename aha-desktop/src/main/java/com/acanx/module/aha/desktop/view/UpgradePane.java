@@ -140,6 +140,9 @@ public final class UpgradePane {
 
     private final ProgressBar progress = new ProgressBar();
 
+    /** 安装布局（构造时探测一次：能力门、形态判定与换装都用同一份，不重复探测）。 */
+    private final InstallLayout installLayout;
+
     private VBox root;
 
     private boolean busy;
@@ -159,10 +162,11 @@ public final class UpgradePane {
         this.onRequestExit = onRequestExit == null ? () -> { } : onRequestExit;
         this.service = service == null ? new UpdateService(UpdatePaths.defaultPaths()) : service;
         this.platform = PlatformTag.detect();
-        InstallLayout layout = detectLayout();
-        this.kind = layout.jarBased() ? UpdateKind.DESKTOP_JVM : UpdateKind.DESKTOP_NATIVE;
+        this.installLayout = detectLayout();
+        this.kind = installLayout.jarBased() ? UpdateKind.DESKTOP_JVM : UpdateKind.DESKTOP_NATIVE;
         this.current = UpdateService.runningVersion();
-        this.unsupportedReason = UpdateLauncher.unsupportedReason();
+        // 平台 + 安装形态两层门（形态这一层看「换装后能不能自己回来」，2026-10-16 第二轮审查 P1-①）
+        this.unsupportedReason = UpdateLauncher.unsupportedReason(installLayout);
     }
 
     /**
@@ -440,7 +444,7 @@ public final class UpgradePane {
                         dispatcher.dispatch(() -> progress.setProgress(value));
                     }
                 }, PackageDownloader.CancelSignal.NEVER);
-                Path plan = service.prepareSwap(staged, InstallLayout.detect(), current);
+                Path plan = service.prepareSwap(staged, installLayout, current);
                 // 拉起 helper 并**等它自报启动**：这条等待不能放在界面线程上（会卡界面），
                 // 更不能省——helper 没起来就退出，用户会面对「App 关了、什么都没发生」
                 // （2026-10-16 审查 P1-8）。

@@ -800,6 +800,59 @@ class AhaDesktopSmokeTest {
     }
 
     /**
+     * 换装可能还在跑时，启动收尾**什么都不动**，并把这件事说出来（第二轮审查 P1-②）。
+     *
+     * <p>背景：换装那几秒里用户再启动一次 App，helper 正要从 {@code <版本>/new} 拷文件、
+     * 回滚还要用 {@code backup/}；以前这里无条件清，会把本次升级毁掉，而回执把锅甩给包。</p>
+     *
+     * @param tempDir 临时目录（不碰真实家目录）
+     */
+    @Test
+    void startupLeavesAnInFlightSwapAloneAndSaysSo(@TempDir Path tempDir) throws Exception {
+        startToolkit();
+        Path home = tempDir.resolve("aha-home");
+        Path updateRoot = home.resolve("update");
+        AhaVersion inFlight = AhaVersion.parse("0.1.3.00243");
+        Files.createDirectories(updateRoot.resolve(inFlight.value()).resolve("new"));
+        Files.writeString(updateRoot.resolve(inFlight.value()).resolve("pkg.zip"), "in-flight");
+        Files.writeString(updateRoot.resolve("update-plan.json"), "{}");
+        Files.writeString(updateRoot.resolve("helper-started"), "2026-10-16T03:30:00Z");
+        String previousHome = System.getProperty("AHA_HOME");
+        System.setProperty("AHA_HOME", home.toString());
+        try {
+            AtomicReference<Stage> stageRef = new AtomicReference<>();
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            onUi(() -> {
+                try {
+                    AhaDesktopApp app = new AhaDesktopApp();
+                    app.init();
+                    Stage stage = new Stage();
+                    app.start(stage);
+                    stageRef.set(stage);
+                } catch (Throwable t) {
+                    failure.set(t);
+                }
+            });
+            assertThat(failure.get()).isNull();
+            Stage stage = stageRef.get();
+            assertThat(stage).isNotNull();
+
+            String text = awaitMessagesText(stage, "可能还在进行");
+            assertThat(text).as("必须告诉用户「本次没动它」").contains("可能还在进行");
+            assertThat(updateRoot.resolve(inFlight.value())).as("helper 还要从这里拷文件")
+                    .exists();
+            assertThat(updateRoot.resolve("update-plan.json")).as("helper 可能还没读计划")
+                    .exists();
+        } finally {
+            if (previousHome == null) {
+                System.clearProperty("AHA_HOME");
+            } else {
+                System.setProperty("AHA_HOME", previousHome);
+            }
+        }
+    }
+
+    /**
      * 本平台没实现换装脚本时，动作按钮必须**提前**置灰并说明原因（issue #51 审查 P1-7）。
      *
      * <p>以前是「下完 55 MB 才报该包不完整」——把锅甩给包，还白等一场。</p>

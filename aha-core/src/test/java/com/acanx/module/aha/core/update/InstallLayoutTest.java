@@ -59,20 +59,19 @@ class InstallLayoutTest {
     }
 
     @Test
-    void restartCommandUsesTheLauncherThenFallsBackToJava() throws IOException {
-        Files.writeString(tempDir.resolve("aha-desktop.jar"), "jar");
-        InstallLayout layout = InstallLayout.of(tempDir.resolve("aha-desktop.jar"));
+    void restartCommandIsEmptyWhenOnlyAJarIsLeft() throws IOException {
+        Path jar = tempDir.resolve("aha-desktop.jar");
+        Files.writeString(jar, "jar");
+        InstallLayout layout = InstallLayout.of(jar);
 
-        // 只有 jar：退回 `<java.home>/bin/java -jar`。**必须绝对路径** —— 计划校验
-        // （UpdatePlan.validate）要求拉起命令绝对，裸 `java` 会让计划写不出来、自更新直接不可用
-        // （2026-10-16 审查 P1-6 修正；这条断言原来写的就是裸 `java`，正是那个矛盾的来源）。
-        List<String> fallback = layout.restartCommand();
-        assertThat(fallback).hasSize(3);
-        assertThat(Path.of(fallback.get(0))).isAbsolute();
-        assertThat(Path.of(fallback.get(0))).exists();
-        assertThat(fallback.get(0)).endsWith(InstallLayout.isWindows() ? "java.exe" : "java");
-        assertThat(fallback.get(1)).isEqualTo("-jar");
-        assertThat(fallback.get(2)).isEqualTo(tempDir.resolve("aha-desktop.jar").toString());
+        // 只有单体 jar：**故意不兜底** —— `java -jar x.jar` 是「命令 + 参数」，而计划里
+        // restart 的契约是「每个元素 = 一个可执行文件」（helper 逐个 Start-Process -FilePath），
+        // 塞进去过不了 UpdatePlan 的绝对路径校验（`-jar` 不是绝对路径），计划直接写不出来。
+        // 上一轮我改成 `<java.home>/bin/java` 只修了「第一个元素不绝对」——那是个只改一半的
+        // 修复，还写了个只断言列表形状的测试把它固化了（2026-10-16 第二轮审查 P1-①）。
+        // 空列表是合法的：helper 会往回执里写「请手动启动应用」，
+        // 而界面会用 UpdateLauncher.unsupportedReason(layout) 提前拦住这种形态。
+        assertThat(layout.restartCommand()).isEmpty();
 
         // 有启动脚本：优先用它（脚本里带着正确的 JVM 参数）
         Path launcher = tempDir.resolve(InstallLayout.isWindows()

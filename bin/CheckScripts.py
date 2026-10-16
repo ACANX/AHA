@@ -177,6 +177,8 @@ HELPER_PACKAGES = {
 REPO_SCRIPT_CALL_RE = re.compile(
     r"\b(?:python3?|bash|sh|pwsh|powershell)\s+(?:-\S+\s+)*[\"']?(\.github/|bin/|Script/|Dist/)[\w./-]+"
 )
+#: YAML 键（`name:` / `uses:` / `with:` …）：剥掉 `- run:` 前缀后仍像键的，不可能是命令
+YAML_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]*:")
 JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 #: 「被忽略却被引用」的判定只看这几类**本该手写**的扩展名（产物不在其列）
 IGNORED_REF_SUFFIXES = {".cmd", ".bat", ".ps1", ".psm1", ".sh", ".py", ".md", ".txt"}
@@ -1436,16 +1438,38 @@ def check_repo_script_steps_have_checkout() -> list[str]:
             if "actions/checkout" in body:
                 continue
             for line in block:
-                stripped = line.strip()
-                if stripped.startswith("#") or stripped.startswith("run:") or "\n" in line:
+                # 【为什么要剥前缀（2026-10-16 第二轮审查 P2-⑥）】
+                # 以前直接跳过以 `run:` 开头的行 —— 于是**单行** `run: python3 …` 这种调用
+                # 完全看不见（注进去验证过：漏报）。反过来，`echo "… python3 bin/CheckDocs.py …"`
+                # 会被误报成调用。所以：剥掉 `- run:` / `run:` 前缀后只看命令本身，
+                # 并排除 shell 的「只喊不做」（echo / printf / :）。
+                text = _strip_yaml_step_prefix(line.strip())
+                if not text or text.startswith(("#", "echo ", "printf ", ": ")):
                     continue
-                if REPO_SCRIPT_CALL_RE.search(stripped):
+                if YAML_KEY_RE.match(text):
+                    continue
+                if REPO_SCRIPT_CALL_RE.search(text):
                     problems.append(
                         f"{rel}：作业 {name} 调用了仓库内脚本但**没有 `actions/checkout`**"
-                        f"（{stripped[:60]}）—— CI 上找不到脚本，本地却永远正常"
+                        f"（{text[:60]}）—— CI 上找不到脚本，本地却永远正常"
                     )
                     break
     return problems
+
+
+def _strip_yaml_step_prefix(stripped: str) -> str:
+    """把 `- run: …` / `run: …` 的 YAML 前缀剥掉，只留下要执行的命令文本。
+
+    @param stripped 已 strip 过的一行
+    @return 命令文本；这行不是命令时原样返回
+    """
+    text = stripped
+    if text.startswith("- "):
+        text = text[2:].strip()
+    if text.startswith("run:"):
+        text = text[len("run:"):].strip()
+    # `run: |` / `run: >` 这种块头本身就是命令文本（后续行另计）
+    return "" if text in ("|", ">", "|-", ">-", "|+", ">+") else text
 
 
 def main() -> int:

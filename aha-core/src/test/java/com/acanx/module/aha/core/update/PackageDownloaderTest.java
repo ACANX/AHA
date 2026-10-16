@@ -244,7 +244,7 @@ class PackageDownloaderTest {
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_CHECKSUM_MISMATCH));
 
-        // 正式文件绝不出现；未完成的 .part 保留（可续传/可排查）
+        // 正式文件绝不出现；未完成的 .part 保留（当排查现场用；重试是重新下载，不做 Range 续传）
         assertThat(staging.resolve("a.zip")).doesNotExist();
         assertThat(staging.resolve("a.zip.part")).exists();
     }

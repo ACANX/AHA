@@ -190,6 +190,15 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **桌面端应用内升级：第二轮代码审查的 P1/P2 优化（issue #51，2026-10-16）**：按第二轮审查逐条修：
+  - **P1 启动收尾会把「正在进行的换装」清掉**：`onStartup` 每次启动都无条件清其它版本暂存与旧备份 —— 用户在换装那几秒里再启动一次 App，就会删掉 helper 正要用解包目录（报「新包里没有这个文件」，把锅甩给包），`BackupKeep=0` 时还会删掉回滚基准。修复：先判「有没有换装在飞」（计划在 + 启动标记是 10 分钟内写的 + 还没回执）⇒ 什么都不删、连计划也不删，只把这件事说出来；标记过期才按残留清理并如实报告；
+  - **P1 `restart` 契约与 jar 兜底不一致**：计划里 `restart` 的语义是「每个元素 = 一个可执行文件」，而兜底塞的是 `[java, -jar, jar]` —— 过不了绝对路径校验，计划根本写不出来（上一轮只修了「第一个元素不绝对」，还写了个只断言列表形状的测试把它固化了）。修复：**删掉兜底**，改用安装形态门（`UpdateLauncher.unsupportedReason(layout)`）在下载前拦住「只剩单体 jar」的布局——宁可不换，也不换完不回来；
+  - **P2 清理计数是编的**：以前固定 `+1`，什么都没清也说「清理 1 个暂存目录」；`StartupReport.warning` 在生产代码里没人用。修复：`StagingArea.clear` 返回「真的删了没有」，计数如实，`warning` 写进消息流；
+  - **P2 helper 用完不消失**：文档 §8.2 第 5 项的验收口径是「两个 helper 文件消失」，而 `.cmd` 是正在运行的批处理、删不掉。修复：启动收尾补刀删掉两个 helper 与 `helper-started` 标记；
+  - **P2 一键入口从没被真跑过**：`native-update-script` 在 ubuntu 的 pwsh 上，`%~dp0` / `%~1` / 退出码传递零覆盖。修复：自测脚本新增「经 `Dist/apply-update.cmd` 换装」用例，并在 Windows 腿上真跑一遍（顺带覆盖 Windows PowerShell 5.1 的 BOM / 编码路径）；
+  - **P2 helper 无条件信任计划**：Java 侧有 `PathSafety`，但 helper 读的是 JSON、不经过 Java。修复：helper 自己校验（路径必须绝对、动作必须落在安装根内、拒绝 `..`），自测新增「动作逃出安装根 ⇒ 拒绝」用例；
+  - **P2 守卫自身有洞也会误报**：`check_repo_script_steps_have_checkout()` 跳过以 `run:` 开头的行 ⇒ **单行** `run: python3 …` 漏检；反过来 `echo "… python3 bin/CheckDocs.py …"` 会误报。修复：剥掉 `- run:` / `run:` 前缀后只看命令本身，排除 `echo` / `printf` / YAML 键，并删掉死条件；
+  - **P3**：并发换装加互斥（`prepareSwap` 拒绝第二个 helper）；退出前那句 `appendNotice` 看不到 → 改为只记日志；`helperNeverRan` 文案区分「只暂存没执行」；`.part` 不再是「可续传」而是排查现场（重试重新下载）；「切回上一版」记入 `TD-00021`。
 - **桌面端原生镜像：设置面板打不开（FXML 里的枚举属性，2026-10-16 真机自测）**：`settings-dialog.fxml` 的 TabPane 写了 `tabClosingPolicy="UNAVAILABLE"`。JVM 上没问题（`FXMLLoader` 用反射转换枚举、反射可用），但原生镜像属 closed-world：该类型未登记在 `reachability-metadata.json`，转换直接抛 `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`，用户点「设置」**什么都没发生**。修复：枚举改为在 Java 里设（`SettingsDialog#wireTabs`）；新增守卫 `NativeImageMetadataTest#fxmlNeverSetsEnumValuedAttributes`（扫全部 `.fxml`，出现「大写枚举值」即失败并给出改法）；并把「设置面板装载失败」兜住 → 在消息流里说明原因，不再是一条未捕获异常；规则写进 `DesktopNativeDesign.md` R12。
 - **桌面端应用内升级：代码审查后的 P0/P1 修复（issue #51，2026-10-16）**：对 PR #243 做了一次全量自查，发现**功能实际不可用而门禁全绿**，逐条修复：
   - **P0 换装入口根本没进仓库**：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉（`git add -A` 静默跳过、`git status` 干净），因此打出来的包里没有它，应用内升级在「复制 helper」这一步**必然失败**。修复：`.gitignore` 放行该文件、文件本体改为**纯 ASCII + CRLF**（中文注释移出）、`maven-assembly` 的静默跳过由**新守卫**接住；

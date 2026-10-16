@@ -40,7 +40,7 @@ public class UpdateException extends AhaException {
     /** 包内清单不合格：缺失、路径非法、大小/哈希不符，或版本与形态对不上（§4.3 第②③层）。 */
     public static final String CODE_PACKAGE_INVALID = "UPDATE_PACKAGE_INVALID";
 
-    /** 用户取消（不是错误：界面不该弹错误框，且 `.part` 保留可续传）。 */
+    /** 用户取消（不是错误：界面不该弹错误框，`.part` 会保留下来当排查现场，重试是重新下载）。 */
     public static final String CODE_CANCELLED = "UPDATE_CANCELLED";
 
     /**
