@@ -2,7 +2,7 @@
 
 > 待办编号：TD-00018
 > 标题：自动打的 `V*` tag 不触发 `Release.yml` —— 不配 PAT 前提下打通自动出包
-> 状态：☐ 未开始（**方案已定：B（`workflow_dispatch` + `--ref main`），待实施**）
+> 状态：◐ 进行中（实现：PR [#240](https://github.com/ACANX/AHA/pull/240)；闭环验收需一次真实发版）
 > 跟踪 Issue 状态：**OPEN**
 > 跟踪 Issue：[#238](https://github.com/ACANX/AHA/issues/238)
 > 创建日期：2026-10-16
@@ -80,14 +80,29 @@ GitHub 规定：**由 `GITHUB_TOKEN` 执行的动作所触发的事件，不会�
 > **无需改** `gate` / `compat` 的 checkout：`--ref main` 使整个 run 的 `GITHUB_SHA` = `main` head
 > （= tag 指向的提交），所有 `actions/checkout` 默认检出的就是它。
 
+### 实施记录（2026-10-16）
+
+已按上表落地，实现见 **PR [#240](https://github.com/ACANX/AHA/pull/240)**（分支 `ci/issue-238-release-dispatch`，
+commit `32a8557`）。除上表外多做了两处：
+
+- 两条出包线**显式 `checkout` 发布 tag**（`ref: ${{ inputs.tag || github.ref_name }}`）——
+  `workflow_dispatch` 下 `github.ref` 是分支，靠默认值会取到分支头部；
+- 发布 tag 用 `inputs.tag || github.ref_name` 取，**不用** `!= ''` 之类的比较——`push` 事件下
+  `inputs` 整体是 `null`，宽松比较会折算成数字并静默给出错误结论（issue #213 的教训，
+  `bin/CheckScripts.py` 有对应守卫）。
+
 ## 验收标准
 
-- [ ] 选定方案 → **B**（2026-10-16 已拍板）；
+- [x] 选定方案 → **B**（2026-10-16 已拍板）；
+- [x] 代码与文档同步修改（`Release.yml` / `Build.yml` / `ReleaseProcess.md` / `VersionBumpGuide.md` / `BuildSpec.md` / `CHANGELOG.md`）—— PR [#240](https://github.com/ACANX/AHA/pull/240)；
 - [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现 `aha-cli-<版本>.zip` 与三平台 `aha-desktop-<版本>-<系统>-<架构>.zip`；
 - [ ] 全流程**不使用 PAT / GitHub App token**（只用 `GITHUB_TOKEN`）；
 - [ ] 人工推 tag 的既有路径（`push: tags`）不被破坏；
 - [ ] **幂等**：tag 已存在（重复合入 `main`）时不重复派发；
 - [ ] `ReleaseProcess.md` §2 / §4.2 与 `VersionBumpGuide.md` §5 第 6 条同步为「已自动化」口径。
+
+> 前三项以外的验收都需要一次**真实发版**（合并到 `main`）才能判定，因此本单在 PR #240 合并、
+> 且首次自动发版出包后再关闭。
 
 ## 关联
 
