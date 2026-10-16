@@ -4,9 +4,9 @@
 > 标题：给「切换到上一版本」一个界面入口（现在备份留着，但只能手工还原）
 > 状态：⏳ 待做（**触发条件**：有人真的需要切回去 / 收到相关反馈）
 > 跟踪 Issue 状态：**OPEN**
-> 跟踪 Issue：[#51](https://github.com/ACANX/AHA/issues/51)
+> 跟踪 Issue：[#251](https://github.com/ACANX/AHA/issues/251)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-16（原载体 [#51](https://github.com/ACANX/AHA/issues/51) 已随 PR #243 交付后关闭；本单转由 [#251](https://github.com/ACANX/AHA/issues/251) 跟踪）
 
 ---
 
