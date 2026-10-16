@@ -144,7 +144,7 @@ public final class UpgradePane {
 
     private final HBox actionRow = new HBox();
 
-    private final Label channelTitle = new Label("发布通道（决定从哪条发布线取版本）");
+    private final Label channelTitle = new Label("版本发布通道");
 
     private final Label channelNote = new Label();
 
@@ -217,8 +217,12 @@ public final class UpgradePane {
             return root;
         }
         channelRow.setId(ID_CHANNEL);
-        channelRow.setAlignment(Pos.CENTER_LEFT);
+        // 标题与三个选项**同一行**：标题在左、选项在右（`channelRow` 吃掉剩余宽度并右对齐）。
+        // 真机反馈（2026-10-16）：原先标题独占一行、下面才是三个单选项，两行看不出是一件事；
+        // 标题后的括号说明（「决定从哪条发布线取版本」）也多余 —— 下面的通道说明已经讲清了。
+        channelRow.setAlignment(Pos.CENTER_RIGHT);
         channelRow.setSpacing(12);
+        HBox.setHgrow(channelRow, Priority.ALWAYS);
         stableButton.setId(ID_CHANNEL_STABLE);
         betaButton.setId(ID_CHANNEL_BETA);
         alphaButton.setId(ID_CHANNEL_ALPHA);
@@ -296,7 +300,9 @@ public final class UpgradePane {
 
         // 内边距不是装饰：TabPane 的内容区默认**没有**留白，通道那一行会紧贴着 tab 标题，
         // 看着挤、点击也容易落在 tab 头上（2026-10-16 真机反馈）。
-        root = new VBox(10, channelTitle, channelRow, channelNote, currentLabel, checkRow,
+        HBox channelHeader = new HBox(8, channelTitle, channelRow);
+        channelHeader.setAlignment(Pos.CENTER_LEFT);
+        root = new VBox(10, channelHeader, channelNote, currentLabel, checkRow,
                 versionList, actionRow, progress, statusArea);
         root.setPadding(new Insets(12, 14, 12, 14));
         root.setId(ID_TAB);

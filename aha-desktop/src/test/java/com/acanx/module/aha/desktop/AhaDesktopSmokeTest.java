@@ -42,6 +42,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -516,11 +517,17 @@ class AhaDesktopSmokeTest {
         // 升级 tab 的契约控件：断言它自己的根节点（不依赖 tab 是否选中）
         VBox upgradeRoot = uiGet(pane::build);
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHANNEL)).isNotNull();
-        // 三个通道选项必须有标题说明它们是干什么的（真机反馈：不知道这三行是什么）
+        // 通道区：标题说明这三个选项是干什么的，且**与选项同一行**（标题在左、选项在右）。
+        // 真机反馈（2026-10-16）：标题原先独占一行、下面才是选项，两行看不出是一件事；
+        // 标题里的括号说明也是多余的。
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHANNEL_TITLE))
                 .as("通道区要有标题").isInstanceOf(Label.class);
-        assertThat(((Label) byId(upgradeRoot, UpgradePane.ID_CHANNEL_TITLE)).getText())
-                .contains("发布通道");
+        Label channelTitle = (Label) byId(upgradeRoot, UpgradePane.ID_CHANNEL_TITLE);
+        assertThat(channelTitle.getText()).as("标题文案").isEqualTo("版本发布通道");
+        assertThat(channelTitle.getParent()).as("标题与选项必须在同一行").isInstanceOf(HBox.class);
+        assertThat(((HBox) channelTitle.getParent()).getChildren())
+                .as("同一行里要装着三个选项那一组")
+                .contains(channelRowOf(upgradeRoot));
         assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(Label.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
@@ -539,6 +546,11 @@ class AhaDesktopSmokeTest {
         assertThat(pane.upgradeInfoForCopy()).as("一键复制上下文里的关键几行")
                 .contains("形态").contains("通道").contains("状态");
         assertThat(byId(upgradeRoot, UpgradePane.ID_ACTION)).isInstanceOf(Button.class);
+    }
+
+    /** 取「三个通道选项」那一组所在的容器（`ID_CHANNEL`）：用来断言它与标题同处一行。 */
+    private static Parent channelRowOf(Parent root) {
+        return (Parent) byId(root, UpgradePane.ID_CHANNEL);
     }
 
     private static Node byId(Scene scene, String id) {
