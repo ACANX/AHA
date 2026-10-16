@@ -232,6 +232,10 @@ Remove-Item -LiteralPath $escape.Base -Recurse -Force -ErrorAction SilentlyConti
 # 为什么单列：一键入口是 P0-1 的主角（曾经根本没进仓库），而 native-update-script
 # 作业跑在 ubuntu 的 pwsh 上 —— `%~dp0` / `%~1` / 退出码传递从来没被执行过
 # （2026-10-16 第二轮审查 P2-③）。
+# 它还顺带验一件真机上真踩到的事：helper 由 cmd 拉起 powershell（5.1），而**本自测跑在
+# pwsh 7 里** —— 子进程会继承 pwsh 7 的 PSModulePath，5.1 因此加载不到自己的模块。
+# 这正是「helper 不能依赖调用者的 PowerShell 环境」那条约束的回归测试
+# （当时 Get-FileHash 报「不是 cmdlet」⇒ 自证失败 ⇒ 回滚）。
 if ($env:OS -eq 'Windows_NT') {
     Write-Host ''
     Write-Host '用例 4：经 Dist/apply-update.cmd（一键入口）换装'

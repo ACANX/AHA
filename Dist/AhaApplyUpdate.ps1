@@ -86,7 +86,28 @@ function Write-Result {
 
 function Get-Sha256 {
     param([string]$Path)
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    # 【为什么不用 Get-FileHash（2026-10-16 真机实测）】
+    # helper 是 `apply-update.cmd` 用 `cmd → powershell`（Windows PowerShell 5.1）拉起来的。
+    # 如果调用者（App / 自测 / 用户控制台）跑在 pwsh 7 里，环境变量 PSModulePath 就是 pwsh 7 的
+    # —— 5.1 子进程加载不到自己的 Utility 模块，Get-FileHash 直接报「不是 cmdlet」：
+    # 于是逐文件自证失败 → 回滚（本次真机上就是这么兜住的，但也把一次成功换装变成了失败）。
+    # 改用 .NET 直接算：没有模块依赖，也没有自动加载开销。
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $hash = $sha.ComputeHash($stream)
+        } finally {
+            $sha.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+    $builder = New-Object System.Text.StringBuilder
+    foreach ($byte in $hash) {
+        [void]$builder.Append($byte.ToString('x2'))
+    }
+    return $builder.ToString()
 }
 
 # ── 读计划 ──────────────────────────────────────────────────────────────────
