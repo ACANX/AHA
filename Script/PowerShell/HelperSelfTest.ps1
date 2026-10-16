@@ -132,8 +132,17 @@ function Invoke-Helper {
     if (-not $pwshExe) {
         throw "找不到 pwsh 可执行文件（PSHOME=$PSHOME），无法在子进程里跑换装 helper"
     }
-    & $pwshExe -NoProfile -NonInteractive -File $Helper -Plan $PlanFile *> $null
-    return $LASTEXITCODE
+    # 子进程的输出**不能吞掉**：helper 拒绍或崩掉时，那几行就是唯一的线索
+    # （2026-10-16：用例 3 在 CI 上只看到「退出码 64」，因为输出被 *> $null 吞了）。
+    $output = & $pwshExe -NoProfile -NonInteractive -File $Helper -Plan $PlanFile 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        Write-Host "  [helper 输出] 退出码 $exitCode"
+        foreach ($line in @($output)) {
+            Write-Host ("    " + [string]$line)
+        }
+    }
+    return $exitCode
 }
 
 Write-Host "换装 helper 自测：$Helper"
@@ -144,8 +153,10 @@ Write-Host '用例 1：新包缺 AHA-PACKAGE.json ⇒ 拒绝换装、留回执�
 $bad = New-Scenario -Name 'bad' -WithManifest $false
 $code = Invoke-Helper -PlanFile $bad.PlanFile
 Assert-True ($code -eq 1) "退出码为 1（实际 $code）"
-Assert-True (Test-Path -LiteralPath (Join-Path $bad.UpdateRoot 'helper-started')) `
-    '写了 helper-started 标记（App 靠它判断 helper 是否真的起来了）'
+# 标记是「我还活着」用的：有了回执就不需要它了（否则 App 下次启动会以为换装还在跑）。
+# 「标记是在做任何慢活之前写的」这条握手契约由用例 5 专门验。
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $bad.UpdateRoot 'helper-started'))) `
+    '写了回执后把「已启动」标记清掉（否则下次启动会以为换装还在跑）'
 $resultPath = Join-Path $bad.UpdateRoot 'update-result.json'
 Assert-True (Test-Path -LiteralPath $resultPath) '写了回执 update-result.json'
 if (Test-Path -LiteralPath $resultPath) {
@@ -235,6 +246,23 @@ if ($env:OS -eq 'Windows_NT') {
     Write-Host ''
     Write-Host '用例 4 跳过：一键入口 apply-update.cmd 只在 Windows 上跑（本机不是 Windows）'
 }
+
+# ── 用例 5：计划文件坏了 ⇒ 「已启动」标记已经写下、但写不出回执 ───────────────
+# 它验的是握手契约里最关键的一点：**标记是在做任何慢活之前写的**（App 等它出现才退出）。
+# 计划坏掉时 helper 还没写回执就退出了，标记会留下 —— 这正是 Java 侧
+# `UpdateService#swapMayBeInFlight` 那个 10 分钟窗口存在的理由（超时后按残留清掉）。
+# 权威校验在 Java 侧（计划是它写的），这里只是把已有行为钉住。
+Write-Host ''
+Write-Host '用例 5：计划不是合法 JSON ⇒ 标记已写、无回执、退出码非 0'
+$broken = New-Scenario -Name 'broken' -WithManifest $true
+Set-Content -LiteralPath $broken.PlanFile -Value '{ 这不是 JSON' -Encoding UTF8
+$code = Invoke-Helper -PlanFile $broken.PlanFile
+Assert-True ($code -ne 0) "退出码非 0（实际 $code）"
+Assert-True (Test-Path -LiteralPath (Join-Path $broken.UpdateRoot 'helper-started')) `
+    '标记是在解析计划**之前**写的（App 靠它判断 helper 是否真的起来了）'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $broken.UpdateRoot 'update-result.json'))) `
+    '计划坏掉时写不出回执（这正是「启动时按残留清理」那条分支的来由）'
+Remove-Item -LiteralPath $broken.Base -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($failures -gt 0) {

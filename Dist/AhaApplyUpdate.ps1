@@ -134,39 +134,27 @@ Write-UpdateLog ("应用已退出（pid {0}）" -f $appPid)
 # ── 计划自检：路径必须落在该在的地方 ─────────────────────────────────────────
 # helper 只认计划文件（唯一入参），所以**它自己也必须校验**：Java 侧写计划时有
 # PathSafety，但 helper 读的是 JSON、不经过 Java（2026-10-16 第二轮审查 P2-⑦）。
-# 位置放在「等 App 退出」之后：这样拒绝的姿势与其它拒绝（缺清单 / 版本不符）完全一致——
+#
+# 规则只有三条：三个根路径必须绝对；动作路径必须非空、相对、不含 `..`。
+# 刻意只用最朴素的判断（不做 GetFullPath / 符号链接解析）：权威校验在 Java 侧，
+# 这里要的是「绝不出圈的粗筛」，调用面越小越不会因平台差异出岔子。
+# 位置放在「等 App 退出」之后：拒绝的姿势与其它拒绝（缺清单 / 版本不符）完全一致 ——
 # 写回执 + 拉起旧版本，不会把用户留在一个起不来的目录前。
-$comparison = if ($env:OS -eq 'Windows_NT') { [System.StringComparison]::OrdinalIgnoreCase }
-              else { [System.StringComparison]::Ordinal }
-$absoluteChecks = @()
-$absoluteChecks += , @('installRoot', $installRoot)
-$absoluteChecks += , @('packageRoot', $packageRoot)
-$absoluteChecks += , @('backupDir', $backupDir)
 $pathsOk = $true
-foreach ($pair in $absoluteChecks) {
-    if (-not [System.IO.Path]::IsPathRooted([string]$pair[1])) {
-        $pathsOk = $false
-        Write-UpdateLog ("计划里的 " + $pair[0] + " 不是绝对路径：" + [string]$pair[1])
-    }
+if (-not [System.IO.Path]::IsPathRooted($installRoot) -or
+    -not [System.IO.Path]::IsPathRooted($packageRoot) -or
+    -not [System.IO.Path]::IsPathRooted($backupDir)) {
+    $pathsOk = $false
+    Write-UpdateLog ("计划里的根路径不全是绝对路径：" + $installRoot + " / " + $packageRoot + " / " + $backupDir)
 }
-if ($pathsOk) {
-    $installFull = [System.IO.Path]::GetFullPath($installRoot)
-    $inside = $installFull.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-    foreach ($action in $actions) {
-        $relative = [string]$action.path
-        if ([string]::IsNullOrWhiteSpace($relative) -or
-            [System.IO.Path]::IsPathRooted($relative) -or
-            $relative.Contains('..')) {
-            $pathsOk = $false
-            Write-UpdateLog ("计划里的动作路径不合法（逃出安装根）：" + $relative)
-            break
-        }
-        $target = [System.IO.Path]::GetFullPath((Join-Path $installFull $relative))
-        if (-not $target.StartsWith($inside, $comparison)) {
-            $pathsOk = $false
-            Write-UpdateLog ("计划里的动作路径不合法（逃出安装根）：" + $relative)
-            break
-        }
+foreach ($action in $actions) {
+    $relative = [string]$action.path
+    if ([string]::IsNullOrWhiteSpace($relative) -or
+        [System.IO.Path]::IsPathRooted($relative) -or
+        $relative.Contains('..')) {
+        $pathsOk = $false
+        Write-UpdateLog ("计划里的动作路径不合法（逃出安装根）：" + $relative)
+        break
     }
 }
 if (-not $pathsOk) {
