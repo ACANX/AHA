@@ -248,6 +248,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [DesktopNativeDesign.md](Docs/Design/DesktopNativeDesign.md) - 桌面端原生镜像（试验性，`aha-desktop-native` + `DesktopNative.yml`）
 - [DesktopNativeUpdateDesign.md](Docs/Design/DesktopNativeUpdateDesign.md) - 原生镜像版本更新脚本（`Script/Python/DesktopNativeVersionUpdate.py`）
 - [CliNativeDesign.md](Docs/Design/CliNativeDesign.md) - CLI 原生镜像（试验性，`aha-cli-native` + `CliNative.yml`）
+- [DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md) - **桌面端应用内升级**（通道契约、服务层职责、换装协议与计划文件、界面与配置键、安全模型、**验证记录**）
 
 ## 用户指南
 
@@ -257,6 +258,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [BuildGuide.md](Docs/Guide/BuildGuide.md) - 构建指南
 - [VersionBumpGuide.md](Docs/Guide/VersionBumpGuide.md) - **版本切换指南**（操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案；规范见 `ReleaseProcess.md`）
 - [CommandCheatsheet.md](Docs/Guide/CommandCheatsheet.md) - 常用命令速查（编译 / 更新 / 解压 / 启动；落地为 `Dist/README.commands.md`）
+- [AppUpdateGuide.md](Docs/Guide/AppUpdateGuide.md) - **应用内升级使用指南**（界面步骤 / 命令行入口 / 失败排查 / 平台支持范围；设计见 `DesktopAutoUpdateDesign.md`）
 - [SnapshotSelfTestGuide.md](Docs/Guide/SnapshotSelfTestGuide.md) - **快照自测留痕使用指南**（`/snapshot-assert` 的完整用法与端到端示例；规范见 `ReleaseProcess.md` §2.2）
 - [ConfigurationGuide.md](Docs/Guide/ConfigurationGuide.md) - 配置指南
 - [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) - 供应商设置

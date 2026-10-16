@@ -1001,6 +1001,17 @@ jobs:
           ls -lh "$target"
           echo "发布资产：${target}"
 
+      - name: 打包内清单（AHA-PACKAGE.json，issue #51 §6）
+        # 另起一步、**不**沿用上一步的 continue-on-error：清单是升级器替换文件与逐项校验的依据，
+        # 缺了它这个包对升级器就是不合格的 —— 宁可这条腿红，也不要静默出一个不合格的包。
+        if: steps.verify.outputs.produced == 'true'
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/AHA-Desktop-Native-${{ env.AHA_VERSION }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip" \
+            --kind desktop-native --version "${{ env.AHA_VERSION }}" \
+            --platform "${{ matrix.label }}" --jdk "${{ matrix.jdk }}"
+
       - name: 自证：Windows 10 兼容清单已嵌进 exe（issue #151）
         # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。
         if: steps.verify.outputs.produced == 'true' && runner.os == 'Windows'
@@ -1083,6 +1094,10 @@ jobs:
       && (github.event_name == 'push' || needs.plan.outputs.should_build == 'true')
     runs-on: ubuntu-latest
     steps:
+      # 要跑仓库里的脚本（发布前生成 SHA256SUMS 用 .github/Python/PackageManifest.py），
+      # 必须先检出；下面的 download-artifact 只往 artifacts/ 里放产物，两者不是一回事，
+      # 且上传步骤只列 artifacts/*，不会把工作区文件当成发布资产。
+      - uses: actions/checkout@v7
       # 注意：这里下载的是「制品（artifact）」，与仓库里的构建产物目录 Dist/ 不是一回事，
       # 因此目录名刻意用 artifacts/，免得看起来像在往 Dist/ 里塞东西。
       - name: 下载全部制品
@@ -1167,6 +1182,13 @@ jobs:
             echo "name=${name}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: 生成发布页校验和（SHA256SUMS）
+        if: steps.collect.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          # 每个 zip 一行（含报告包）：升级器只用得上镜像包，但用户拿到任一资产都该能自己核一遍。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts
+
       - name: PreRelease-AHA-Desktop-Native-VPR
         # 只有真的收上来包才发版：没有产物却去建一个空 release，比不发更糟
         if: steps.collect.outputs.any == 'true'
@@ -1179,7 +1201,9 @@ jobs:
           name: ${{ steps.carrier.outputs.name }}
           # 预发行版：不出现在 releases/latest，不会被误当成正式版本
           prerelease: true
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            artifacts/SHA256SUMS
           body: |
             ## 这是什么
 

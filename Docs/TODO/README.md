@@ -77,8 +77,8 @@ TD-00014-ManualAndExternalActions.md
 
 ## 3. 当前编号
 
-- 已用：`TD-00001` ~ `TD-00018`
-- **下一个可用编号：`TD-00019`**
+- 已用：`TD-00001` ~ `TD-00022`
+- **下一个可用编号：`TD-00022`**
 
 > 订正（2026-10-13）：本行此前停在 `TD-00017`（已用区间与之矛盾）。
 
@@ -125,6 +125,10 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ✅ 已完成（2026-10-16） | [#85](https://github.com/ACANX/AHA/issues/85)（**已关闭**） | 六项均有结论（G-02 / G-05 不做、G-03 已验、G-06 完成、0.1.1 结项、真机 7 项通过）；「tag 不触发 `Release.yml`」转 [#238](https://github.com/ACANX/AHA/issues/238)（TD-00018） |
 | [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | [#92](https://github.com/ACANX/AHA/issues/92)（父；子 [#93](https://github.com/ACANX/AHA/issues/93)~[#97](https://github.com/ACANX/AHA/issues/97)） | 含根因反思；分 5 阶段（P1 校验 → P2 读取收敛 → P3 `${revision}` → P4 分发器 → P5 文档） |
 | [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 排查档案正文对齐 TroubleShootingDocSpec 的**四节必备项** | ✅ 已完成（2026-10-13） | [#128](https://github.com/ACANX/AHA/issues/128)（**已关闭**） | 取**选项 C**：32 篇 + 模板补齐四节；规范新增 §5（+ §4 入口）；`CheckDocs.py` 新增机器检查 |
+| [TD-00019](TD-00019-DefaultChannelBackToStable.md) | 默认升级通道从 `Beta` 改回 `Stable` | ⏳ 待做（触发条件：出现带资产的正式发版） | [#51](https://github.com/ACANX/AHA/issues/51) | D9 的临时默认值（Stable 当时无可下包）；机制已就绪：`Update.Channel` **缺键不写盘**，所以改回默认值会惠及「从没选过该键」的安装 |
+| [TD-00022](TD-00022-NativeImageSelfUpdate.md) | 原生镜像（`AhaDesktopNative`）的应用内自更新 | ◐ 进行中（同日**重新定级**：机制已打通，缺真机验收）| [#247](https://github.com/ACANX/AHA/issues/247) | 通道契约 / 资产选择 / 形态判定 / 包内清单与 helper / 换装计划 / 重启命令**逐层核对均已就绪**；我曾误判为「未实现」并多拦一层（表现为「升级按钮永远是灰的」），门已撤、正向用例已补；剩下的是**真机验一次「替换正在运行的 exe」**（`TS-2610-047` §4.1 记录了这次误判的更正）|
+| [TD-00020](TD-00020-PosixUpdateHelper.md) | POSIX 换装 helper（Linux / macOS 的应用内升级） | ⏳ 待做 | [#51](https://github.com/ACANX/AHA/issues/51) | 服务层 / 计划 / 回执 / 握手都已平台无关，增量只在一个 `apply-update.sh`；现状是界面**提前置灰**并说明原因（2026-10-16 审查 P1-7 已修），功能本身仍缺 |
+| [TD-00021](TD-00021-RollbackToPreviousVersion.md) | 回滚到上一版（界面入口） | ⏳ 待做 | [#51](https://github.com/ACANX/AHA/issues/51) | 备份与 `SwapPlan.rollback` 都已就绪，缺的是「让用户看得见、点得到」；入口必须照实说明 `Update.BackupKeep` 决定了能切回的范围（2026-10-16 第二轮审查 P3-⑤） |
 | [TD-00018](TD-00018-ReleaseTagAutoTrigger.md) | 自动打的 `V*` tag 不触发 `Release.yml`：不配 PAT 打通自动出包 | ◐ 进行中 | [#238](https://github.com/ACANX/AHA/issues/238) | **方案 B 已实现**（`workflow_dispatch` + `--ref main`）：`Build.yml` 新建出 tag 后 `gh workflow run Release.yml --ref main` 派发；代码与文档见 PR [#240](https://github.com/ACANX/AHA/pull/240)，闭环验收需一次真实发版 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）

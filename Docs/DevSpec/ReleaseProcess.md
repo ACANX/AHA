@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.27.0
+**文档版本**：v1.30.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,9 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
+| v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
+| v1.28.0 | 2026-10-16 | 新增 §3.4「发布资产里的两份契约文件」：四种包形态的 zip 带包内清单 `AHA-PACKAGE.json`、每个 release 带 `SHA256SUMS`；生成/校验只有一份实现（`.github/Python/PackageManifest.py`），四条出包线都调它；`Release.yml` 新增收尾作业统一出完整校验和（issue #51 §6）| @ACANX / CNXNC |
 | v1.27.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
 | v1.25.0 | 2026-10-16 | **自动打的 tag 现在会自动触发发布**（issue #238）：`Release.yml` 新增 `workflow_dispatch`（防递归规则的**官方例外**，由 `Build.yml` 的 tag 作业用 `gh workflow run --ref main` 派发）；两条出包线显式 `checkout` 发布 tag，`action-gh-release` 显式 `tag_name`；§2 第 5 步、§2.1 与 §4.2 按新口径重写（手工重建 tag 降为兜底） | @ACANX / CNXNC |
@@ -381,6 +384,81 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 
 > 备注：`jlink` 与 `jpackage` 的**技术限制**（不接受自动模块、不能交叉编译）仍保留在设计文档里——
 > 它们是「桌面端产物为何必须分平台构建」的依据，不因本决策而删除。
+
+### 3.4 发布资产里的两份契约文件（`AHA-PACKAGE.json` / `SHA256SUMS`）
+
+自 0.2 起，**四种包形态的每个 zip 都带包内清单**，**每个 release 都带校验和**（issue #51 §6）：
+
+| 文件 | 位置 | 内容 | 产出方 |
+|---|---|---|---|
+| `AHA-PACKAGE.json` | **包根** | `{"kind":"desktop-jvm\|desktop-native\|cli-jvm\|cli-native","version":"…","platform":"windows-amd64","jdk":25,"files":[{"path":"aha-desktop.jar","sha256":"…","size":123},…]}` | 四条出包线（`BuildJVMArtifacts.yml` / `CliNative.yml` / `DesktopNative.yml` / `Release.yml`）的打包步骤 |
+| `SHA256SUMS` | release 的**资产** | 每个 zip 一行：`<sha256>  <文件名>`（`sha256sum` 文本格式） | `Release.yml` 的收尾作业；三条 dev / 快照线在各自的发布作业里 |
+
+口径（改这里就等于改契约，必须同步 `bin/CheckScripts.py` 的守卫与 Java 侧的解析）：
+
+1. 清单里的 `path` 是**包根相对路径**，`sha256` 与 `size` 指的是**解压后**的文件 —— 升级器就是这么逐项核对的；
+2. `AHA-PACKAGE.json` **自身不进** `files`（否则校验和自指）；`kind` 取值与 `UpdateKind.of()` 一致；
+3. `cli-jvm` 平台无关，清单里 `platform` 为 `null`；其余三种必须带平台标签；
+4. 打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）**一律失败**，不写进清单；
+5. 生成与校验**只有一份实现**：`.github/Python/PackageManifest.py`（四条线都调它）。各写一段 shell
+   必然漂移，而漂移的表现是「某个通道的包永远校验不过」，静默且难查；
+6. 清单在**所有包内自证之后**才写入：那些自证看的是「构建产出的包」，判据不该被清单文件干扰；
+7. 原生线这一步**不**沿用「改名」步骤的 `continue-on-error`：缺清单的包对升级器就是不合格的，
+   宁可这条腿红，也不要静默出一个不合格的包；
+8. `Release.yml` 的校验和由**单独一个收尾作业**生成：CLI 与桌面端是并列的两个作业、各自直传资产，
+   若各自写一份 `SHA256SUMS`，后写的那份会覆盖先写的，得到「只列了一半资产」的校验和 —— 比没有更坏。
+
+本地复核（不需要联网，用发布页上下来的包就能核）：
+
+```bash
+unzip -p Dist/aha-desktop-0.1.3.00242-windows-amd64.zip AHA-PACKAGE.json | head -20
+python3 .github/Python/PackageManifest.py verify --zip Dist/aha-desktop-0.1.3.00242-windows-amd64.zip
+python3 .github/Python/PackageManifest.py --self-test     # 正向 5 项 + 反向 11 项
+```
+
+### 3.5 升级通道契约（三通道 ↔ tag ↔ 资产名）
+
+应用内升级（issue #51）按三个通道取包。**这张表是契约的唯一定义**；三处实现
+（`Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`、`Script/Python/NativeVersionUpdate.py`、
+Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致，由 `bin/CheckScripts.py` 的
+`check_release_channel_contract()` 钉住（改任一处漏改另一处，守卫会报出来）。
+
+| 通道 | 版本形态 | tag | 资产名 | 产出线 |
+|---|---|---|---|---|
+| **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| `aha-desktop-<版本>-<平台>.zip`（桌面端 JVM）、`aha-cli-<版本>.zip` | `Release.yml` |
+| **Beta** | `x.y.z.PPPPP` | JVM 线 `V<版本>-aha-jvm`；原生线 `V<版本>-aha-desktop-native` / `-aha-cli-native` | JVM 线同上（JDK 27 变体带 `-jdk27`）；原生线 `AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip` | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
+| **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<目标词>-SNAPSHOT` | `AHA-<目标词>-<快照版本>-<平台>-jdk<JDK>.zip` | 快照线（同上，7 天有效期） |
+
+配套口径（每一条都有对应的实现或守卫，不是口号）：
+
+1. **平台标签**只有三个：`windows-amd64` / `ubuntu-amd64` / `macos-arm64`（Windows ARM64 打不出包，
+   见 §3.2 的 OpenJFX 分类器限制）；
+2. **JDK 轴**：升级默认只取 JDK 25 变体（JVM 线资产名**不带** `-jdk` 后缀的那份）；`-jdk27` 是试验分支、
+   **不默认**；原生线与快照线**始终**带 `-jdk<JDK>`；
+3. **形态不可混升**：JVM 便携包只升 JVM 包，原生单文件只升原生包；
+4. **缺资产不退化**：某版本缺本平台的腿 ⇒ 明确报错并列出该版本**实际有哪些资产**，
+   **不得**退到更旧的版本（issue #210 的教训）；
+5. Stable 通道的 tag 形态与其余两条线的**预发行 tag 互不匹配**，因此正式发版不会被误当成 Beta；
+6. 桌面端的默认通道与配置键（`Update.Channel` 等）见
+   [DesktopAutoUpdateDesign.md](../Design/DesktopAutoUpdateDesign.md) §6；默认值改回 Stable 的触发条件
+   登记在 [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)。
+
+### 3.6 发行包必须带换装 helper（桌面端两条线）
+
+应用内升级要在用户机器上完成换装，靠的是随包分发的两个文件：`apply-update.cmd`（入口）
+与 `AhaApplyUpdate.ps1`（实现）。它们必须落在**包根**，否则 `UpdateLauncher.installHelpers`
+会在「复制 helper」这一步就失败（报「该包不完整」）——**用户装得再对也用不了应用内升级**。
+
+| 要求 | 细节 |
+|---|---|
+| 两条线都要带 | `aha-desktop/src/assembly/dist-desktop.xml`（jar 便携包）与 `aha-desktop-native/src/assembly/dist-native.xml`（原生单文件） |
+| 位置是包根 | 与 `aha-desktop.jar` / `aha-desktop-native[.exe]` 同级（`<outputDirectory>.</outputDirectory>`） |
+| 两个文件都不带版本号 | 计划文件才是唯一入参，换版本不用改脚本 |
+| **文件必须被 git 跟踪** | 只写进装配描述符不算：被 `.gitignore` 吃掉的文件在 CI 上不存在，`maven-assembly` 对匹配不到的 `<include>` **静默跳过** —— 表现是「本地全绿、包是残的」 |
+
+守卫：`bin/CheckScripts.py` 的 `check_update_helper_packaging()`（两处描述符 + `git ls-files` 跟踪性）
+与 `check_ignored_sources()` 的「被忽略却被引用」判定；helper 自身的行为由
+`Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑（`Build.yml` 的 `native-update-script` 作业）。
 
 ---
 

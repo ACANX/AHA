@@ -105,6 +105,12 @@ public final class DesktopShell implements ChatView {
     /** 消息流容器 id。 */
     public static final String MESSAGES_ID = "aha.messages";
 
+    /** 消息流右键菜单「复制全部消息」的 id。 */
+    public static final String MESSAGES_COPY_ALL_ID = "aha.messages.copy.all";
+
+    /** 单条消息右键菜单「复制这条」的 id。 */
+    public static final String MESSAGE_COPY_ID = "aha.messages.copy.one";
+
     /** 输入区 id。 */
     public static final String COMPOSER_ID = "aha.composer";
 
@@ -297,6 +303,9 @@ public final class DesktopShell implements ChatView {
     /** 打开设置面板。 */
     private Runnable onOpenSettings;
 
+    /** 帮助菜单里「检查更新…」的动作（打开设置并直接切到升级 tab，issue #51 §3.1）。 */
+    private Runnable onCheckUpdate;
+
     /** 根节点（换字号时要用）。 */
     private Parent rootNode;
 
@@ -386,6 +395,9 @@ public final class DesktopShell implements ChatView {
 
     @FXML
     private MenuItem themeItem;
+
+    @FXML
+    private MenuItem checkUpdateItem;
 
     @FXML
     private MenuItem aboutItem;
@@ -1046,6 +1058,15 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
+     * 帮助菜单「检查更新…」的动作接线（由宿主接到设置面板的升级 tab，issue #51 §3.1）。
+     *
+     * @param handler 动作
+     */
+    public void onCheckUpdate(Runnable handler) {
+        this.onCheckUpdate = handler;
+    }
+
+    /**
      * 设置「全部撤销本会话授权」动作。
      *
      * @param handler 动作
@@ -1302,6 +1323,14 @@ public final class DesktopShell implements ChatView {
         });
 
         helpMenu.setText("帮助(_H)");
+        checkUpdateItem.setText("检查更新…");
+        checkUpdateItem.setOnAction(event -> {
+            if (onCheckUpdate == null) {
+                appendNotice("检查更新尚不可用（未接线）。");
+            } else {
+                onCheckUpdate.run();
+            }
+        });
         aboutItem.setText("关于 AHA");
         aboutItem.setOnAction(event -> showAbout());
     }
@@ -1559,6 +1588,12 @@ public final class DesktopShell implements ChatView {
         messages.getChildren().add(createEmptyState());
 
         messageScroll.setFitToWidth(true);
+        // 「复制全部消息」挂在滚动区上（VBox 不是 Control，没有 setContextMenu；而且右击空白处
+        // 也该能复制 —— 反馈问题时经常要整段粘走）。单条的菜单挂在各自的内容 Label 上。
+        MenuItem copyAllMessages = new MenuItem("复制全部消息");
+        copyAllMessages.setId(MESSAGES_COPY_ALL_ID);
+        copyAllMessages.setOnAction(event -> Clipboards.copy(collectText(messages)));
+        messageScroll.setContextMenu(new ContextMenu(copyAllMessages));
         // 滚动区底色跟随主题，避免暗色下露出 modena 默认白底（issue #49）
         themed(messageScroll, () -> "-fx-background: " + Palette.BASE + ";"
                 + "-fx-background-color: " + Palette.BASE + ";");
@@ -1952,7 +1987,36 @@ public final class DesktopShell implements ChatView {
         Label body = new Label(text);
         body.setWrapText(true);
         themed(body, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
+        // 错误与提示都走这条路：右键就能把这一条（含来源）复制走 —— 反馈问题时最省事
+        // （2026-10-16 真机反馈：报错只能手打）
+        MenuItem copy = new MenuItem("复制这条");
+        copy.setId(MESSAGE_COPY_ID);
+        copy.setOnAction(event -> Clipboards.copy(who + "：" + text));
+        body.setContextMenu(new ContextMenu(copy));
         addRow(who, body, accent);
+    }
+
+    /**
+     * 把消息流里的文字按顺序拼起来（右键「复制全部消息」用；冒烟测试也用它读界面文字 ——
+     * 一份实现两处用，免得测试的读法与界面给的不一致）。
+     *
+     * @param parent 消息容器
+     * @return 纯文本（每行一条）
+     */
+    public static String collectText(Parent parent) {
+        StringBuilder builder = new StringBuilder();
+        collectText(parent, builder);
+        return builder.toString();
+    }
+
+    private static void collectText(Parent parent, StringBuilder builder) {
+        for (Node child : parent.getChildrenUnmodifiable()) {
+            if (child instanceof Label label) {
+                builder.append(label.getText()).append('\n');
+            } else if (child instanceof Parent nested) {
+                collectText(nested, builder);
+            }
+        }
     }
 
     /**

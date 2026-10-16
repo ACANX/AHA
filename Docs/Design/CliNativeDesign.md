@@ -1,6 +1,6 @@
 # AHA CLI 原生镜像设计（试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.1.0
 > **状态**：草案（试验性能力，随实验迭代）
 > **生效日期**：2026-10-08
 > **最后更新**：2026-10-09
@@ -29,6 +29,16 @@
 > **并列**、互不牵连，共用同一套 `a.b.c.PPPPP` 版本规则。该 JVM 线还含一份 **JDK 27 编译产物**
 > （包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的 **JVM 字节码**，与本工作流里用
 > GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。
+
+## 0.1 与桌面端的共同约束：Jackson 反射登记（2026-10-16）
+
+更新模块（`com.acanx.module.aha.core.update`）的 record 会被 Jackson 反序列化，而**原生镜像里读
+record components 需要构建期登记**：漏登记的症状是**运行期**抛
+`UnsupportedFeatureError: Record components not available for record class …`（桌面端真机先踩到，
+见 `DesktopNativeDesign.md` R13）。CLI 与桌面端**共用 aha-core**，所以同一份 21 条类型也要登记进
+本模块的 `aha-cli/reachability-metadata.json`（已登记）。守卫是桌面模块的
+`NativeImageMetadataTest#everyUpdateRecordAndEnumIsRegisteredForReflection`：它同时校验两份元数据，
+以后新增 record 忘了登记，Build/Gate 阶段就会红 —— 原生镜像管线本身是可选、不上门禁的。
 
 ## 1. 目标与非目标
 

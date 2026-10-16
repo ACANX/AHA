@@ -47,6 +47,17 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+      - name: 换装 helper 自测（Windows：真跑一键入口 apply-update.cmd）
+        # 【它补的是哪一段】一键入口 `apply-update.cmd` 是 P0-1 的主角（曾经根本没进仓库），
+        # 而 `native-update-script` 作业跑在 **ubuntu 的 pwsh** 上 —— `%~dp0` / `%~1` /
+        # 退出码传递从来没被执行过。自测脚本在 Windows 上会多跑一条「经 .cmd 换装」的用例，
+        # 同时在 Windows PowerShell 5.1 下真跑一遍 helper（BOM / 编码那条路径，2026-10-16
+        # 第二轮审查 P2-③）。
+        # 只在 Windows 跑：Linux 上那条用例自己会跳过，没必要重复跑一遍。
+        if: matrix.maven == 'wrapper' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./Script/PowerShell/HelperSelfTest.ps1
+
       - name: Test (Wrapper / Maven 4)
         if: matrix.maven == 'wrapper'
         uses: ./.github/actions/maven-run
@@ -63,7 +74,6 @@ jobs:
           JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
           javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
             -d /tmp/skill-templates $(find .agents/skills -name '*.java')
-
   # ── GUI 冒烟：真开窗口跑 AhaDesktopSmokeTest（Linux + Xvfb，非阻塞）──────────
   #
   # 【它补的是哪一段】界面路径此前是三段式覆盖：
@@ -172,7 +182,7 @@ jobs:
   # 【权限】推 tag 需要 `contents: write`、派发工作流需要 `actions: write`。若仓库把 Actions
   #         默认权限设成了只读，这两步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
   native-update-script:
-    name: native-update-script（Windows 一键入口：PowerShell 语法 + 参数绑定 + 选包）
+    name: native-update-script（Windows 一键入口：PowerShell 语法 + 参数绑定 + 选包；换装 helper 自测）
     # 这条曾经只能靠肉眼：本仓库在它上面连踩两次——参数名与局部变量大小写冲突
     # （PowerShell 变量名不区分大小写）、批处理的括号转义——都是运行期才暴露的坑，
     # 静态检查看不见。这里用 runner 自带的 pwsh 真跑一遍 -List。
@@ -185,6 +195,11 @@ jobs:
           # 带上 token：未认证时按 IP 限流 60 次/小时，CI 共享出口 IP 很容易撞上
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
+      - name: 换装 helper 自测（失败路径 + 成功路径 + 启动标记 + 备份）
+        # 这是升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查。
+        # 自测在临时目录里真跑：拒绝不合格的包 / 替换+删除+自证+回执 / 备份可回滚。
+        # 平台行为（Windows 上被占用的 exe、cmd /c start 的生命周期）仍属真实机验证项。
+        run: pwsh -NoProfile -File Script/PowerShell/HelperSelfTest.ps1
 
   static-guards:
     name: static-guards（文档 / 技能 / 脚本 / 主题：四道静态门禁）
@@ -207,6 +222,12 @@ jobs:
         # 这条边界放在静态守卫里，是因为它一旦被改宽（"什么都接受"）不会立刻暴露——
         # 打错的版本号会被静默一路带进产物名与 tag。
         run: python3 .github/Python/ProjectVersion.py --self-test
+
+      - name: 包清单工具自检（PackageManifest.py --self-test）
+        # 清单 / 校验和是四条出包线的共用实现（issue #51 §6）。它的闸口有两个：
+        # 一是不把打包垃圾与逃逸路径写进清单，二是清单与包内容必须逐项一致。
+        # 这两条都是「放宽了也不会立刻暴露」的边界，所以放静态守卫里跑正反例。
+        run: python3 .github/Python/PackageManifest.py --self-test
 
   tag:
     name: tag（V<版本号>）

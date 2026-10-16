@@ -10,6 +10,8 @@ dist/*
 # 它们与 README 一样属于**手写源文件**，不是构建产物，所以要跟着仓库走；
 # 其余 Dist/ 内容（exe / zip / 状态文件）仍全部忽略。
 !Dist/Update*.cmd
+# 自更新换装入口（issue #51）：被 dist-desktop.xml / dist-native.xml 打进包，必须跟踪
+!Dist/apply-update.cmd
 !Dist/*.ps1
 
 aha-desktop-*.zip
