@@ -190,6 +190,26 @@ class PackageDownloaderTest {
     }
 
     @Test
+    void allowsEveryHostGithubServesAssetsFrom() {
+        // 2026-10-16 真机实测：GitHub 把发布资产换成 release-assets.githubusercontent.com，
+        // 而白名单只有 objects.githubusercontent.com ⇒ 用户点升级直接失败在跳转白名单上。
+        // mock 服务器给不出真实跳转，所以规则本身在这里单测（含「别把相似域名放进来」的反例）。
+        Set<String> allowed = PackageDownloader.DEFAULT_ALLOWED_HOSTS;
+
+        assertThat(PackageDownloader.isAllowedHost("github.com", allowed)).isTrue();
+        assertThat(PackageDownloader.isAllowedHost("api.github.com", allowed)).isTrue();
+        assertThat(PackageDownloader.isAllowedHost("objects.githubusercontent.com", allowed)).isTrue();
+        assertThat(PackageDownloader.isAllowedHost("release-assets.githubusercontent.com", allowed))
+                .as("GitHub 换过 CDN 主机名，这条规则就是为它加的").isTrue();
+        assertThat(PackageDownloader.isAllowedHost("githubusercontent.com", allowed)).isTrue();
+
+        assertThat(PackageDownloader.isAllowedHost("evil.example.com", allowed)).isFalse();
+        assertThat(PackageDownloader.isAllowedHost("githubusercontent.com.evil.com", allowed))
+                .as("后缀匹配必须贴在域名边界上").isFalse();
+        assertThat(PackageDownloader.isAllowedHost("evilgithubusercontent.com", allowed)).isFalse();
+    }
+
+    @Test
     void refusesRedirectsLeavingTheWhitelist() {
         // 同端口、但主机名不同（localhost ≠ 127.0.0.1）⇒ 必须拒绝，且不再发第二次请求
         server.responder((path, out) -> redirect(out, "http://localhost:" + server.port() + "/evil.zip"));

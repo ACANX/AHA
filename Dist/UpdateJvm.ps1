@@ -142,7 +142,8 @@ Write-Host ("仓库：{0}    种类：{1}    JDK：{2}" -f $Repo, $kindInfo.Titl
 if ($kindInfo.ByPlatform) { Write-Host ("平台：{0}" -f $Platform) } else { Write-Host '平台：（CLI 包平台无关）' }
 
 # API 请求才带 token（未认证的 60 次/小时容易撞上）；**下载请求不带**——
-# 下载地址会 302 到 objects.githubusercontent.com，没必要把凭据交给另一个主机。
+# 下载地址会 302 到资产 CDN（objects / release-assets.githubusercontent.com），
+# 没必要把凭据交给另一个主机。
 # 本脚本在完全没有 token 的环境里也必须能用。
 $headers = @{ 'User-Agent' = 'AHA-UpdateJvm'; 'Accept' = 'application/vnd.github+json' }
 $downloadHeaders = @{ 'User-Agent' = 'AHA-UpdateJvm' }

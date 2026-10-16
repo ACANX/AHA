@@ -48,7 +48,19 @@ public final class PackageDownloader {
 
     /** 默认允许的主机（issue #51 §4.7）。 */
     public static final Set<String> DEFAULT_ALLOWED_HOSTS = Set.of(
-            "github.com", "objects.githubusercontent.com", "api.github.com");
+            "github.com", "api.github.com",
+            "objects.githubusercontent.com", "release-assets.githubusercontent.com");
+
+    /**
+     * GitHub 的资产 CDN 域名：它的**子域**一律放行。
+     *
+     * <p>为什么不能只列主机名（2026-10-16 真机实测）：GitHub 会把发布资产换到新的 CDN 主机上 ——
+     * 那次是 {@code objects.githubusercontent.com} → {@code release-assets.githubusercontent.com}，
+     * 表现为用户点升级后直接失败在「跳转目标的主机不在白名单」上（这种失败只有真机能撞到，
+     * mock 服务器永远给不出真实跳转）。这个域名归 GitHub 所有，放行它的子域不会把包交给第三方；
+     * 而不放行，下次换名又会坏在用户那里。</p>
+     */
+    private static final String GITHUB_ASSETS_DOMAIN = "githubusercontent.com";
 
     /** 默认允许的资产地址前缀：只从本仓库的发布页取件。 */
     public static final String DEFAULT_ALLOWED_URL_PREFIX =
@@ -206,9 +218,11 @@ public final class PackageDownloader {
             throw new UpdateException(UpdateException.CODE_UNTRUSTED_SOURCE,
                     "下载地址不在允许的范围内（只从本仓库发布页取件）：" + url);
         }
-        if (!allowedHosts.contains(host(uri))) {
+        if (!isAllowedHost(host(uri), allowedHosts)) {
             throw new UpdateException(UpdateException.CODE_UNTRUSTED_SOURCE,
-                    "下载地址的主机不在白名单：" + host(uri) + "（允许：" + allowedHosts + "）");
+                    "下载地址的主机不在白名单：" + host(uri) + "（允许："
+                            + allowedHostsDescription(allowedHosts) + "）——为安全起见不继续；"
+                            + "可到发布页手动下载");
         }
         return uri;
     }
@@ -309,9 +323,11 @@ public final class PackageDownloader {
                     return fatal(UpdateException.CODE_UNTRUSTED_SOURCE,
                             "跳转把 https 降级成了 " + next.getScheme() + "，拒绝继续：" + next);
                 }
-                if (!allowedHosts.contains(host(next))) {
+                if (!isAllowedHost(host(next), allowedHosts)) {
                     return fatal(UpdateException.CODE_UNTRUSTED_SOURCE,
-                            "跳转目标的主机不在白名单：" + host(next) + "（允许：" + allowedHosts + "）");
+                            "跳转目标的主机不在白名单：" + host(next) + "（允许："
+                                    + allowedHostsDescription(allowedHosts) + "）——为安全起见不继续；"
+                                    + "可到发布页手动下载");
                 }
                 closeQuietly(response);
                 current = next;
@@ -423,6 +439,28 @@ public final class PackageDownloader {
      */
     static boolean downgradesScheme(URI from, URI to) {
         return "https".equalsIgnoreCase(from.getScheme()) && !"https".equalsIgnoreCase(to.getScheme());
+    }
+
+    /**
+     * 主机是否允许（显式白名单 + GitHub 资产 CDN 的子域）。
+     *
+     * @param candidate 主机名（小写）
+     * @param allowed   显式允许的主机集合
+     * @return 允许返回 {@code true}
+     */
+    static boolean isAllowedHost(String candidate, Set<String> allowed) {
+        if (allowed.contains(candidate)) {
+            return true;
+        }
+        // 注意是「等于域名」或「以 .域名 结尾」：githubusercontent.com.evil.com 与
+        // evilgithubusercontent.com 都不算（有单测钉着）
+        return candidate.equals(GITHUB_ASSETS_DOMAIN)
+                || candidate.endsWith("." + GITHUB_ASSETS_DOMAIN);
+    }
+
+    /** 白名单的可读描述（错误信息里用，要说清允许了什么规则）。 */
+    static String allowedHostsDescription(Set<String> allowed) {
+        return allowed + " 以及 " + GITHUB_ASSETS_DOMAIN + " 的子域";
     }
 
     private static String host(URI uri) {
