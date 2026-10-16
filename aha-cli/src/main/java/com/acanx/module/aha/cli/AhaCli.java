@@ -1,5 +1,6 @@
 package com.acanx.module.aha.cli;
 
+import com.acanx.module.aha.cli.tty.ConsoleEncoding;
 import com.acanx.module.aha.core.boot.AhaBootstrap;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -67,6 +68,10 @@ public final class AhaCli implements Runnable {
      * @param args 命令行参数
      */
     public static void main(String[] args) {
+        // 控制台编码协商：**必须在任何输出之前**——包括日志装配与启动引导的警告。
+        // 仅 Windows 控制台会改，管道 / 重定向 / CI 不动；退出时恢复原代码页。
+        // 详见 ConsoleEncoding / WindowsConsole 与 Docs/Guide/WindowsTerminalAndShellGuide.md。
+        ConsoleEncoding.prepare();
         // 读配置 → 装配日志 → 装密钥库回退源：与桌面端共用同一份引导（AhaBootstrap）。
         // 日志要尽早生效，故放在 picocli 之前。
         // 注意：ConfigLoader 自身有 INFO 日志，读配置时 log4j2 已按默认配置（仅 console、ERROR）
