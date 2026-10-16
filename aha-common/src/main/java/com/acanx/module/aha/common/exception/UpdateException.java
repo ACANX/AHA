@@ -28,6 +28,21 @@ public class UpdateException extends AhaException {
     /** 本平台不在发布范围内（如 Windows ARM64 —— 打不出包，与「应用内升级还没实现」是两码事）。 */
     public static final String CODE_PLATFORM_UNPUBLISHED = "UPDATE_PLATFORM_UNPUBLISHED";
 
+    /** 下载失败：重试后仍不行、读流中断、写盘失败，或读取已下载文件失败。 */
+    public static final String CODE_DOWNLOAD_FAILED = "UPDATE_DOWNLOAD_FAILED";
+
+    /** 下载地址不在白名单（issue #51 §4.7）：只允许 GitHub 发布页与它的资产域。 */
+    public static final String CODE_UNTRUSTED_SOURCE = "UPDATE_UNTRUSTED_SOURCE";
+
+    /** 校验和不符：**不落地**（issue #51 §4.3 第①层）。 */
+    public static final String CODE_CHECKSUM_MISMATCH = "UPDATE_CHECKSUM_MISMATCH";
+
+    /** 包内清单不合格：缺失、路径非法、大小/哈希不符，或版本与形态对不上（§4.3 第②③层）。 */
+    public static final String CODE_PACKAGE_INVALID = "UPDATE_PACKAGE_INVALID";
+
+    /** 用户取消（不是错误：界面不该弹错误框，且 `.part` 保留可续传）。 */
+    public static final String CODE_CANCELLED = "UPDATE_CANCELLED";
+
     /**
      * 构造异常。
      *

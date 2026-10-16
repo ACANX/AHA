@@ -140,14 +140,15 @@ public record PlatformTag(String os, String arch) {
         if (token.isEmpty()) {
             throw new IllegalArgumentException("操作系统名不能为空");
         }
+        // 先判 macOS：`Darwin` 里含子串 "win"（dar-WIN），顺序反了会被判成 Windows（实测被单测抓到）。
+        if (token.contains("mac") || token.contains("darwin") || token.contains("osx")) {
+            return MACOS;
+        }
         if (token.contains("win")) {
             return WINDOWS;
         }
         if (token.contains("linux")) {
             return UBUNTU;
-        }
-        if (token.contains("mac") || token.contains("darwin") || token.contains("osx")) {
-            return MACOS;
         }
         return token;
     }
