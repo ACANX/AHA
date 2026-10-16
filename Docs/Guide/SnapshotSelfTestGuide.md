@@ -1,6 +1,6 @@
 # 快照自测留痕使用指南
 
-**文档版本**：v1.0.1
+**文档版本**：v1.0.2
 **状态**：冻结
 **生效日期**：2026-10-15
 **最后更新**：2026-10-16
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-15 | 初版：`/snapshot-assert` 的完整用法与端到端示例（issue #166）| @ACANX / CNXNC |
+| v1.0.2 | 2026-10-16 | §5.2 的取件落地行为更正：JVM 线（桌面端 / CLI）现在把包**平铺到 `Dist\` 根**，取完件就能就地启动；`-NoInstall` / `-KeepExtract` 两个开关补进示例（issue #244）| @ACANX / CNXNC |
 | v1.0.1 | 2026-10-16 | §7 里工作流的显示名改为 **`SnapshotAssert`**（与文件名一致；原写作 `Snapshot Assert`）| @ACANX / CNXNC |
 
 ---
@@ -119,6 +120,8 @@ Dist\UpdateDesktopJvmSnapshot.cmd              :: 桌面端 JVM 快照：取最�
 Dist\UpdateCliJvmSnapshot.cmd -List            :: 列出快照（版本 / 目标 / 剩余天数）
 Dist\UpdateCliJvmSnapshot.cmd -Pr 225          :: 指定 PR
 Dist\UpdateCliJvmSnapshot.cmd -DryRun          :: 只预览：下哪个包、解压到哪
+Dist\UpdateCliJvmSnapshot.cmd -NoInstall       :: 只取件：只解压到 Dist\<资产名>\，不平铺到 Dist\ 根
+Dist\UpdateCliJvmSnapshot.cmd -KeepExtract     :: 平铺后保留解压目录（默认会清掉；zip 始终保留）
 
 :: 原生线
 Dist\UpdateCliNativeSnapshot.cmd
@@ -130,8 +133,10 @@ Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装
 
 | 包 | 落地 |
 |---|---|
-| JVM CLI / JVM 桌面端 / 原生 CLI | 解压到 `Dist\<资产名>\` 的**独立目录**（互不覆盖）|
-| 原生桌面端 | 包里 exe 被复制到 `Dist\aha-desktop-native.exe`（旧版备份为 `.bak`），解压目录同时保留 |
+| JVM CLI / JVM 桌面端 | 解压后把包根内容**平铺到 `Dist\`**（`Dist\aha-cli.jar` / `Dist\AhaDesktop.bat` …），取完件即可就地启动；被覆盖的既有文件先备份为 `<名字>.bak`，之后解压目录被清掉（issue #244）|
+| 原生桌面端 | 包里 exe 被复制到 `Dist\aha-desktop-native.exe`（旧版备份为 `.bak`），之后解压目录被清掉 |
+| 其它平台的原生包 | 只解压到 `Dist\<资产名>\` 的**独立目录**（本机跑不了，也就没有可替换的 exe）|
+| 任意 `-NoInstall` | 只解压到 `Dist\<资产名>\`，不平铺、不替换任何既有文件 |
 
 ### 5.3 第三步：按 A 组清单自测（CLI，0 token）
 
