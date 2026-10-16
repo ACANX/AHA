@@ -218,6 +218,11 @@ public final class SettingsDialog {
 
     /** 两个 tab：id 按 §3.1 的契约设好；升级 tab 的内容交给 {@link UpgradePane}。 */
     private void wireTabs() {
+        // 关闭按钮的可见性在 **Java 里设，不写在 FXML 里**：原生镜像下 FXMLLoader 转换枚举
+        // 属性值走反射（BeanAdapter），未登记的类型会抛
+        // `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy` —— 2026-10-16
+        // 真机自测踩到（点「设置」直接打不开），而 JVM 版与 CI 冒烟全绿（JVM 反射可用）。
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         interfaceTab.setId(INTERFACE_TAB_ID);
         upgradeTab.setId(UpgradePane.ID_TAB);
         if (upgradePane == null) {

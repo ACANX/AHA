@@ -475,6 +475,11 @@ class AhaDesktopSmokeTest {
 
         TabPane tabs = (TabPane) byId(content, SettingsDialog.TABS_ID);
         assertThat(tabs).as("设置面板必须是 TabPane").isNotNull();
+        // 关闭按钮策略必须在 **Java 里**设：FXML 写枚举属性在原生镜像里会 Unable to coerce
+        // （2026-10-16 真机自测发现；这条断言同时钉住「改了哪一边」）
+        assertThat(tabs.getTabClosingPolicy())
+                .as("tab 的关闭按钮必须隐藏，且是在 Java 里设的")
+                .isEqualTo(TabPane.TabClosingPolicy.UNAVAILABLE);
         assertThat(tabs.getTabs()).extracting(Tab::getId)
                 .containsExactly(SettingsDialog.INTERFACE_TAB_ID, UpgradePane.ID_TAB);
 

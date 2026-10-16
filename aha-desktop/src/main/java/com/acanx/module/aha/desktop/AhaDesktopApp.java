@@ -134,6 +134,26 @@ public final class AhaDesktopApp extends Application {
      * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
      */
     /**
+     * 打开设置面板，并把**装载失败**说给用户听。
+     *
+     * <p>为什么要兜：设置面板的 FXML 是「点了才装载」，失败时抛在 JavaFX 线程上 ——
+     * 用户的体验是「点了设置，什么都没发生」。而原生镜像下的装载失败（反射 / 资源类）
+     * 恰恰只会在**运行期**暴露，编译与 JVM 冒烟都看不见（2026-10-16 真机自测）。</p>
+     *
+     * @param shell 壳（把提示写进消息流）
+     * @param open  打开动作
+     */
+    private static void openSettingsSafely(DesktopShell shell, Runnable open) {
+        try {
+            open.run();
+        } catch (RuntimeException failure) {
+            LOG.warn("设置面板打不开", failure);
+            shell.appendNotice("设置面板打不开：" + failure.getMessage()
+                    + "（详情见日志；可先直接改 ~/.aha/settings.properties）");
+        }
+    }
+
+    /**
      * 上次换装收尾结果 → 一句话（没有可说的返回 {@code null}）。
      *
      * <p>结论文案交给 {@link UpdateResult#summary()}（界面不自己拼），这里只补两件它不知道的事：
@@ -332,8 +352,11 @@ public final class AhaDesktopApp extends Application {
         SettingsDialog settingsDialog = new SettingsDialog(settings, this::configSummary,
                 () -> shell.openProviderDialogForSettings(), shell::applyTheme, shell::fontSize,
                 upgradePane);
-        shell.onOpenSettings(() -> settingsDialog.show(stage));
-        shell.onCheckUpdate(() -> settingsDialog.showUpgradeTab(stage));
+        // 装载失败不要在 JavaFX 线程上抛未捕获异常（那样用户点「设置」只会「什么也没发生」）——
+        // 2026-10-16 真机自测就撞到过：FXML 里一个枚举属性让原生镜像装载失败，界面上一点提示都没有。
+        // 现在兜住并把原因说出来（完整栈仍在日志里）。
+        shell.onOpenSettings(() -> openSettingsSafely(shell, () -> settingsDialog.show(stage)));
+        shell.onCheckUpdate(() -> openSettingsSafely(shell, () -> settingsDialog.showUpgradeTab(stage)));
 
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),

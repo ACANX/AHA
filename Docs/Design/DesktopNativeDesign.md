@@ -1,9 +1,9 @@
 # AHA 桌面端原生镜像设计（试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.1.0
 > **状态**：草案（试验性能力，随实验迭代）
 > **生效日期**：2026-10-08
-> **最后更新**：2026-10-09
+> **最后更新**：2026-10-16
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
 > **定位**：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流的设计、风险与迭代指南
@@ -316,6 +316,8 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | R10 | **FXML 界面骨架**引入后，反射登记与资源收录各多一层（登记要**按声明类**、`.fxml` 必须进镜像），且**fxml 自身的错误在编译期完全不可见** | **已处理（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 / 状态栏 / 输入区）迁到 `desktop-shell.fxml`，本类改作 FXML 控制器；**真机已踩一次**：fxml 漏写 `<?import?>` ⇒ 原生包启动即 `LoadException: BorderPane is not a valid type.`，而当时 `Build` / 原生构建 / GUI 冒烟**三方全绿**（详见 `TS-2610-032`） | 资源：`.fxml` 并入扩展名白名单（**不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像 → 运行期 `defineClass` → 崩，见 TS-2610-003）；元数据：新增 20 条（`FXMLLoader` / `FXML` / 骨架里各控件与布局 / StAX 实现），并把 `Node` / `Parent` / `Region` / `Pane` / `Control` / `Labeled` 从「只有类名」升级为 `allDeclared*`；守卫：`NativeImageMetadataTest` 新增 FXML 用例 + **可复用的 `FxmlViewChecks`**（元素类型名必须已 import / 实例化类型必须登记构造器 / `fx:id` ↔ 字段双向 / 资源白名单），由各视图的测试类调用；批次 2 起新增视图只需补一个约 60 行的测试类；可观测：启动打印 ASCII 标记 `[aha-version]`（含构建号）与 `[ui-fxml-loaded]` / `[ui-fxml-load-failed]`；**冒烟已改为正面断言**（必须命中 `[aha-version]` 与 `[ui-fxml-loaded]`） |
 | R11 | **native 按名回写 Java 字段**："类加载得到" ≠ "它的字段能被 native 访问"（issue #60） | **已处理（2026-10-13）**：`prism.verbose` 打印的 OS / D3D 驱动信息全是零值（`Windows version 0.0 build 0`、`ven_0000`），根因是 `prism_d3d.dll` 的 `nGetDriverInformation` 用 `GetFieldID` 按名回写 `D3DDriverInformation` 的字段，而该类及其字段在**两份元数据里都是 0 条**；字段访问不足时 native 拿不到成员 ID，字段保持 Java 默认值（0 / null）——**表现为「值全零」而不是报错**，比抛异常更难发现 | 已在 `jni-config.json` 登记 `com.sun.prism.d3d.D3DDriverInformation`（`allDeclared*`）；`NativeImageMetadataTest` 加断言、工作流 ⑧b 加 `require_jni` 守卫；**Windows GUI 冒烟加可判别断言**：必须打印 `OS Information:`，且不得出现 `Windows version 0.0 build 0`（改前必然出现 ⇒ 真前/后对照）。⚠ 该 dll 的字段查找**曾被 ⑧b 的清单整段遗漏**（清单是按 native 源码扫的，漏了 `prism_d3d`）⇒ 同类审查要覆盖到 `prism_d3d` / `prism_common` / `decora_sse`。**已实测验证**（PR #150）：改前 `Driver null, version 0.0.0.0` / `ven_0000` ⇒ 改后 `Driver d3d10warp.dll, version 10.0.26100.33438` / `Pixel Shader version 3.0` / `ven_1414, dev_008C` / `Max Multisamples supported: 4`（WARP 软件设备，印证 CI runner 无硬件 GPU）；遗留：OS 版本取到 `Windows 8.0 build 9200`（GetVersionEx 缺 Win10 清单的兼容性撒谎，已记入 `TS-2610-034` Q3，**已转 issue #151 承接**），驱动取值已在真机确认为真实值（`Intel(R) UHD Graphics` / `igd10iumd64.dll 31.0.101.4502`） |
 | R12 | **触摸 / 笔手势（`WinGestureSupport`）在本环境无法验证** | **已知、不可达（issue #125）**：本环境**无触摸屏 / 数位板**，故「手势是否顺手」这一层**无法验收**；但「**类可达**」这一层**已验证**——`glass.dll` 的按名查找在**每次开窗时**都会执行（姊妹工程 LegionFanControl 的异常栈正是在 `WinWindow._createWindow` 处抛出的，说明该查找**无条件**执行），而 CI 的 Windows 腿与真机启动日志长期**无** `ClassNotFoundException` ⇒ 登记有效 | 登记由 `NativeImageMetadataTest` 与工作流步骤 ⑧b 的 `require_jni` 守卫保持；**待有触摸设备时再覆盖**。届时注意：不要用「没看到报错」代替「功能真的可用」（`TS-2610-003` / `TS-2610-032` 的教训）；且手势本身属 **JavaFX / WinGlass 平台行为**，不在本仓库实现范围内 |
+
+| R12 | **FXML 里的枚举型属性**在原生镜像下要走反射转换，未登记就抛 `Unable to coerce …`（issue #51 真机自测） | **已处理（2026-10-16）**：`settings-dialog.fxml` 写了 `tabClosingPolicy="UNAVAILABLE"` —— 真机点「设置」直接打不开（`Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`），而 **JVM 版、单测、CI 冒烟三方全绿**（JVM 上反射可用，只有 closed-world 的镜像会失败）；同类写法全仓只有这一处（脚本扫过全部 `.fxml`） | 改法：FXML 里**不写**枚举属性，在 Java 里 `set`（`SettingsDialog#wireTabs`）；守卫：`NativeImageMetadataTest#fxmlNeverSetsEnumValuedAttributes` 扫全部 `.fxml`，出现「大写枚举值」即失败并给出改法（白名单只放 `fx:id`/`text` 这类字符串属性）；另：设置面板装载失败现在会给用户一句提示，不再是未捕获异常 |
 
 **已踩的反射坑：JavaFX 入口（issue #26，2026-10-08）**：
 

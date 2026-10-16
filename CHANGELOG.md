@@ -190,6 +190,7 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **桌面端原生镜像：设置面板打不开（FXML 里的枚举属性，2026-10-16 真机自测）**：`settings-dialog.fxml` 的 TabPane 写了 `tabClosingPolicy="UNAVAILABLE"`。JVM 上没问题（`FXMLLoader` 用反射转换枚举、反射可用），但原生镜像属 closed-world：该类型未登记在 `reachability-metadata.json`，转换直接抛 `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`，用户点「设置」**什么都没发生**。修复：枚举改为在 Java 里设（`SettingsDialog#wireTabs`）；新增守卫 `NativeImageMetadataTest#fxmlNeverSetsEnumValuedAttributes`（扫全部 `.fxml`，出现「大写枚举值」即失败并给出改法）；并把「设置面板装载失败」兜住 → 在消息流里说明原因，不再是一条未捕获异常；规则写进 `DesktopNativeDesign.md` R12。
 - **桌面端应用内升级：代码审查后的 P0/P1 修复（issue #51，2026-10-16）**：对 PR #243 做了一次全量自查，发现**功能实际不可用而门禁全绿**，逐条修复：
   - **P0 换装入口根本没进仓库**：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉（`git add -A` 静默跳过、`git status` 干净），因此打出来的包里没有它，应用内升级在「复制 helper」这一步**必然失败**。修复：`.gitignore` 放行该文件、文件本体改为**纯 ASCII + CRLF**（中文注释移出）、`maven-assembly` 的静默跳过由**新守卫**接住；
   - **P0 原生包不带 helper**：`dist-native.xml` 只打「exe + README + 参数 + 许可证」，于是「Windows 原生形态自更新」这条路**注定失败**（它正是 §8.2 第 9 项待验内容）。修复：原生包也把两个 helper 铺到包根；

@@ -27,7 +27,14 @@
       xmlns:fx="http://javafx.com/fxml"
       fx:id="root">
     <children>
-        <TabPane fx:id="tabs" id="aha.settings.tabs" tabClosingPolicy="UNAVAILABLE">
+        <!--
+            这里**不要**写枚举型属性（例如 tabClosingPolicy="UNAVAILABLE"）：原生镜像里
+            FXMLLoader 的枚举强制转换走反射，未在 reachability-metadata.json 登记的类型会抛
+            `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy` —— 2026-10-16
+            真机自测：设置面板直接打不开，而 JVM 版与 CI 全绿。改在 Java 里设，
+            见 SettingsDialog#wireTabs；本条规则由 NativeImageMetadataTest 守住。
+        -->
+        <TabPane fx:id="tabs" id="aha.settings.tabs">
             <tabs>
                 <Tab fx:id="interfaceTab" text="界面">
                     <content>
