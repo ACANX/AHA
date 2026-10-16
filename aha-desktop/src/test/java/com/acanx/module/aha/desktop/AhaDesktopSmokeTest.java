@@ -473,10 +473,13 @@ class AhaDesktopSmokeTest {
         assertThat(tabs.getTabs()).extracting(Tab::getId)
                 .containsExactly(SettingsDialog.INTERFACE_TAB_ID, UpgradePane.ID_TAB);
 
-        // 界面 tab 的原有三块设置仍在（纯重构，行为不回退）
-        assertThat(byId(content, SettingsDialog.THEME_ID)).isNotNull();
-        assertThat(byId(content, SettingsDialog.FONT_ID)).isNotNull();
-        assertThat(byId(content, SettingsDialog.MODEL_ID)).isNotNull();
+        // 界面 tab 的原有三块设置仍在（纯重构，行为不回退）。
+        // 注意：Tab 的内容**不在** TabPane 的节点子树里（要等皮肤物化才挂上去），
+        // 所以从 Tab.getContent() 取，而不是从 TabPane 往下找。
+        Parent interfaceContent = (Parent) tabs.getTabs().get(0).getContent();
+        assertThat(byId(interfaceContent, SettingsDialog.THEME_ID)).isNotNull();
+        assertThat(byId(interfaceContent, SettingsDialog.FONT_ID)).isNotNull();
+        assertThat(byId(interfaceContent, SettingsDialog.MODEL_ID)).isNotNull();
 
         // 升级 tab 的契约控件：断言它自己的根节点（不依赖 tab 是否选中）
         VBox upgradeRoot = uiGet(pane::build);

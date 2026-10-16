@@ -135,7 +135,9 @@ class SwapPlanTest {
 
         SwapPlan.apply(installRoot, packageRoot, backupDir, actions);
         assertThat(Files.readString(installRoot.resolve(executable))).isEqualTo("NEW-EXE");
-        assertThat(installRoot.resolve("old-native-helper")).doesNotExist();
+        // 被新包删掉的文件要消失；它留下的**空目录**保留（落地器只动清单里的文件，
+        // 不去猜哪些目录已经空了 —— 猜错就是删用户目录）
+        assertThat(installRoot.resolve("old-native-helper").resolve("x.txt")).doesNotExist();
 
         SwapPlan.rollback(installRoot, backupDir, actions);
         assertThat(Files.readString(installRoot.resolve(executable))).isEqualTo("OLD-EXE");

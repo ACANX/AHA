@@ -31,7 +31,7 @@
             <tabs>
                 <Tab fx:id="interfaceTab" text="界面">
                     <content>
-                        <VBox fx:id="interfaceBox" spacing="8">
+                        <VBox spacing="8">
                             <children>
                                 <GridPane fx:id="grid">
                                     <children>
