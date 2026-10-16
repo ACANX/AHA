@@ -10,6 +10,8 @@ import com.acanx.module.aha.cli.render.Style;
 import com.acanx.module.aha.cli.render.Renderers;
 import com.acanx.module.aha.cli.render.TextWidth;
 import com.acanx.module.aha.cli.session.AutoCompactor;
+import com.acanx.module.aha.cli.session.PasteSessionCommand;
+import com.acanx.module.aha.cli.session.PendingInput;
 import com.acanx.module.aha.cli.session.SessionCommand;
 import com.acanx.module.aha.cli.session.SessionCommandCompleter;
 import com.acanx.module.aha.cli.session.SessionCommandHighlighter;
@@ -111,6 +113,11 @@ public final class ChatCommand implements Runnable {
         // 启动横幅不在这里打印：右侧标志要与信息栏并排，就必须先知道终端宽度，
         // 而宽度只有 JLine 终端能给。挪到能力探测之后（见下方 banner 组装）。
         SessionCommandRegistry registry = new SessionCommandRegistry();
+        // /paste 要读剪贴板并把内容交回输入循环（命令本身不发消息），
+        // 因此在这里注入而不是做成内置命令：注册表只认识「命令」，不认识输入循环。
+        // 传统控制台（conhost）不支持括号粘贴时，这是唯一能把多行内容作为一条消息发出去的入口。
+        PendingInput pendingInput = new PendingInput();
+        registry.register(new PasteSessionCommand(pendingInput));
 
         // 退出时输出会话 ID 与续接命令，否则用户无法从上次位置继续。
         // 同时注册 shutdown hook，覆盖 Ctrl+C / kill 等强制退出。
@@ -146,6 +153,23 @@ public final class ChatCommand implements Runnable {
                 System.out.println("       Switch the console to UTF-8, then restart:");
                 System.out.println("         CMD:        chcp 65001");
                 System.out.println("         PowerShell: [Console]::OutputEncoding = [Text.Encoding]::UTF8");
+            }
+            if (capabilities.tty() && !capabilities.bracketedPaste()) {
+                // 终端不支持「括号粘贴」⇒ 粘贴的多行内容会被**逐行提交**（每行成为一条消息）。
+                // 这是终端能力，Harness 侧改不了，只能提前说清并给出替代入口；
+                // 中文提示在编码表示不了中文时要换成 ASCII，否则提示本身也读不了
+                System.out.println();
+                if (encoding.cjk()) {
+                    System.out.println("[warn] 本终端不支持「括号粘贴」：粘贴多行内容会被逐行提交"
+                            + "（每行成为一条消息）。");
+                    System.out.println("       替代做法：先把内容复制到剪贴板，再输入 /paste"
+                            + " —— 它会把剪贴板内容作为一条消息发送。");
+                } else {
+                    System.out.println("[warn] This console does not support bracketed paste:"
+                            + " pasting multi-line text submits it line by line.");
+                    System.out.println("       Workaround: copy the text, then type /paste"
+                            + " -- it sends the clipboard content as a single message.");
+                }
             }
             // 启动横幅：分两块输出。
             //  · 顶栏（标题 + 供应商/模型/端点/工作目录）与右侧 ASCII 标志并排——
@@ -269,7 +293,7 @@ public final class ChatCommand implements Runnable {
                     }
                     String input = trimmed;
                     turns.submit(() -> runTurn(input, sessionContext, registry, renderer,
-                            service, sessionId, currentTurn, out));
+                            service, sessionId, currentTurn, out, pendingInput));
                 }
             } finally {
                 turns.shutdownNow();
@@ -302,17 +326,26 @@ public final class ChatCommand implements Runnable {
      * @param sessionId    会话 ID
      * @param currentTurn  当前回合的取消令牌（供主线程 Ctrl+C 使用）
      * @param out          输出流
+     * @param pendingInput 会话内命令交回的内容（如 {@code /paste} 读到的剪贴板文本）
      */
     private static void runTurn(String input, SessionContext sessionContext,
                                 SessionCommandRegistry registry, Renderer renderer,
                                 AgentService service, String sessionId,
-                                AtomicReference<CancellationToken> currentTurn, PrintStream out) {
+                                AtomicReference<CancellationToken> currentTurn, PrintStream out,
+                                PendingInput pendingInput) {
         CancellationToken token = new CancellationToken();
         currentTurn.set(token);
         try {
             Optional<SessionCommand.Outcome> outcome = registry.dispatch(sessionContext, input);
             if (outcome.isPresent()) {
-                return;
+                // 命令把内容交回来了（目前只有 /paste）：用它代替用户输入跑一轮。
+                // 取到才继续，取不到就是普通命令（或读了剪贴板但内容为空、读失败）——
+                // 那些情况命令自己已经报过，这里不再发消息
+                String loaded = pendingInput.take();
+                if (loaded == null || outcome.get() == SessionCommand.Outcome.EXIT) {
+                    return;
+                }
+                input = loaded;
             }
             renderer.beginTurn();
             service.streamChat(sessionId, input, renderer::onEvent, token);

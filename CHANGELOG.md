@@ -11,6 +11,11 @@
 ## [Unreleased]
 
 ### 新增
+- **CLI：`/paste` —— 多行粘贴的可靠入口（issue #75，2026-10-16）**：把内容复制到剪贴板，输入 `/paste [附加说明]` 即可把多行文本作为**一条**消息发出。
+  - **为什么需要它**：传统 Windows 控制台（conhost）不支持「括号粘贴」，粘贴多行文本会被终端**逐行提交**（每行一条消息）—— 这是终端能力，Harness 侧改不了；而剪贴板这条路径**不经过终端**，因此不受该限制。Linux / macOS 的常见终端与 Windows Terminal / mintty 本就支持括号粘贴，不受影响。
+  - **启动时会说明**：探测到终端不支持时打印一次提示（含替代入口）；探测结果也进启动日志摘要（`bracketedPaste=…`），真机对不上账时可直接看日志。
+  - **读取方式按平台**：Windows `PowerShell Get-Clipboard -Raw`（显式 UTF-8，避免中文按控制台代码页编码后读成乱码）、macOS `pbpaste`、Linux `wl-paste` / `xclip` / `xsel`；都不行时给出「尝试过哪些方式 + 需要装什么」的可行动提示，而不是异常堆栈。
+  - 设计与降级矩阵：[Docs/Design/TUIDesign.md](Docs/Design/TUIDesign.md) §5.4；用法：[Docs/Guide/ReferenceGuide.md](Docs/Guide/ReferenceGuide.md) §3.2。
 - **桌面端应用内升级（issue #51，2026-10-16）**：设置面板里多一个「升级」tab，可选通道、检查更新、看版本列表、升级 / 降级；下载 → 校验 → 由外部 helper 换装 → 自动重启。
   - **三通道**：`Stable`（正式发版，当前还没有带资产的正式发版）/ `Beta`（dev 最新合并，**默认**）/ `Alpha`（PR 试包，7 天有效期，首次切换需确认）；
   - **契约只有一处**：通道 ↔ tag ↔ 资产名定义在 `ReleaseProcess.md` §3.5，PowerShell / Python / Java 三处实现逐字一致由守卫钉住；

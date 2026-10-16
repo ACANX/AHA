@@ -1,9 +1,9 @@
 # 命令与配置参考
 
-**文档版本**：v1.31.0
+**文档版本**：v1.32.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -45,6 +45,7 @@
 | v1.29.0 | 2026-10-07 | `aha chat` 新增 `--logo` 选项（auto / pixel / ascii / off） | @ACANX |
 | v1.30.0 | 2026-10-08 | 版本号说明改为「已发行版本 / dev 上版本 / 改版本号不止根 POM」，并指向 ReleaseProcess.md 第 2 节 | @ACANX |
 | v1.31.0 | 2026-10-08 | 版本号说明补充资源所在模块（`aha-common`，CLI 与桌面端共用） | @ACANX |
+| v1.32.0 | 2026-10-16 | §3.2 新增 `/paste`（把剪贴板内容作为一条消息发送）与输出示例；说明 conhost 不支持括号粘贴、多行粘贴会被逐行提交（issue #75） | @cnxnc |
 
 ---
 
@@ -337,7 +338,25 @@ AHA 交互式对话（/help 查看命令，exit / quit 退出）
 | `/compact [保留条数]` | 压缩上下文（模型摘要 + 消息替换） |
 | `/autocompact [阈值\|off]` | 设置自动压缩阈值，如 `/autocompact 285k` |
 | `/memory [view\|files\|edit\|append\|reload]` | 查看或编辑 Agent 身份文件（`AGENTS.md` / `AHA.md`） |
+| `/paste [附加说明]` | 把剪贴板内容作为**一条**消息发送（终端不支持多行粘贴时的替代入口） |
 | `/exit` | 结束会话 |
+
+`/paste` 的用途：**传统 Windows 控制台（conhost）不支持「括号粘贴」**，粘贴多行文本会被终端
+逐行提交（每行一条消息）。把内容复制到剪贴板后用 `/paste`，多行内容就作为一条消息发出，
+完全不经过终端。带说明时会作为最后一段附在内容之后（例：`/paste 这段报错怎么修`）：
+
+```
+> /paste
+已读取剪贴板：3 行 / 17 字符（来源：powershell -NoProfile … Get-Clipboard -Raw）
+  预览（前 3 行）：
+  | line1
+  | line2
+  | line3
+已作为本条消息提交（要附加说明：/paste <说明>）
+```
+
+读不到剪贴板时会如实说明尝试过哪些方式、缺什么（Windows 需要 PowerShell，macOS 用系统自带
+`pbpaste`，Linux 需要 `wl-clipboard` 或 `xclip` / `xsel`）。
 
 `/clear` 输出示例（只删历史消息，会话与身份保留）：
 
