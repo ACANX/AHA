@@ -11,7 +11,13 @@
 ## [Unreleased]
 
 ### 新增
-- **CLI：`/paste` —— 多行粘贴的可靠入口（issue #75，2026-10-16）**：把内容复制到剪贴板，输入 `/paste [附加说明]` 即可把多行文本作为**一条**消息发出。
+- **CLI：多行粘贴 —— `Alt+V` 插入 / `/paste` 发送（issue #75，2026-10-16）**：终端不支持「括号粘贴」时（典型是传统 Windows 控制台 conhost），直接粘贴多行会被**逐行提交**；从此有两个**不经过终端输入流**的入口：
+  - **`Alt+V`**（`Ctrl+V` 在 conhost / Windows Terminal 里被宿主截获，所以主键位是 `Alt+V`）：AHA 自己读剪贴板，整块**插入输入行**，可以继续编辑；超过 10 行或 1000 字符时折叠成 `[paste #1 +42 lines]`，回车提交时自动展开（与 pi / Claude Code 同一门槛、同一形状）；
+  - **`/paste [附加说明]`**：读剪贴板后**直接作为一条消息发送**；
+  - 两者读不到剪贴板时都给「尝试过哪些方式 + 需要装什么」的可行动提示。
+  - **说明（更正上一轮的说法）**：同目录下先前的 `/paste` 单独一轮并不足以解决该问题 —— conhost 上「直接粘贴」改不了：JLine 的 Windows 终端把粘贴里的每个换行都变成与「用户敲回车」**完全相同**的输入，进程侧拿不到「这是粘贴」的信号；因此本轮把「替代入口」做成了**按键**（不必敲命令）。
+  - **真机排查**：`AHA_INPUT_TRACE=<文件>`（或 `-Daha.input.trace`，值为 `1` 时写 `AHA_HOME/input-trace.log`）会记录每次输入的**时间间隔与转义内容**：一次输入里带字面 `\n` ⇒ 终端发了括号粘贴标记；毫秒级连续多行 ⇒ 被拆成了多次回车。只记输入，默认关闭。
+  - 设计与对照表：[Docs/Design/TUIDesign.md](Docs/Design/TUIDesign.md) §5.4；用法：[Docs/Guide/ReferenceGuide.md](Docs/Guide/ReferenceGuide.md) §3.2。
   - **为什么需要它**：传统 Windows 控制台（conhost）不支持「括号粘贴」，粘贴多行文本会被终端**逐行提交**（每行一条消息）—— 这是终端能力，Harness 侧改不了；而剪贴板这条路径**不经过终端**，因此不受该限制。Linux / macOS 的常见终端与 Windows Terminal / mintty 本就支持括号粘贴，不受影响。
   - **启动时会说明**：探测到终端不支持时打印一次提示（含替代入口）；探测结果也进启动日志摘要（`bracketedPaste=…`），真机对不上账时可直接看日志。
   - **读取方式按平台**：Windows `PowerShell Get-Clipboard -Raw`（显式 UTF-8，避免中文按控制台代码页编码后读成乱码）、macOS `pbpaste`、Linux `wl-paste` / `xclip` / `xsel`；都不行时给出「尝试过哪些方式 + 需要装什么」的可行动提示，而不是异常堆栈。

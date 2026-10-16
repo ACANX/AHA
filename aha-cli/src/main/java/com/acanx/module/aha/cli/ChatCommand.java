@@ -18,8 +18,12 @@ import com.acanx.module.aha.cli.session.SessionCommandHighlighter;
 import com.acanx.module.aha.cli.session.SessionCommandRegistry;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
+import com.acanx.module.aha.cli.tty.Clipboard;
+import com.acanx.module.aha.cli.tty.ClipboardPaste;
+import com.acanx.module.aha.cli.tty.InputTrace;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
 import com.acanx.module.aha.cli.tty.OutputEncoding;
+import com.acanx.module.aha.cli.tty.PastePlaceholder;
 import com.acanx.module.aha.cli.tty.StatusSurface;
 import com.acanx.module.aha.cli.tty.TerminalCapabilities;
 import com.acanx.module.aha.cli.tty.TerminalHandover;
@@ -130,7 +134,8 @@ public final class ChatCommand implements Runnable {
         Thread hook = new Thread(exitHint, "aha-exit-hint");
         Runtime.getRuntime().addShutdownHook(hook);
 
-        try (Terminal terminal = TerminalBuilder.builder().system(true).build()) {
+        try (Terminal terminal = TerminalBuilder.builder().system(true).build();
+             InputTrace trace = InputTrace.of(System.err)) {
             // JLine 是终端信息的更权威来源：它能识别 dumb 终端与实际列数。
             // 探测的是能力而非平台，因此不必为 CMD / PowerShell / Windows Terminal /
             // WSL / Linux 或第三方终端（Tabby、Xshell 等）分别适配。
@@ -155,20 +160,23 @@ public final class ChatCommand implements Runnable {
                 System.out.println("         PowerShell: [Console]::OutputEncoding = [Text.Encoding]::UTF8");
             }
             if (capabilities.tty() && !capabilities.bracketedPaste()) {
-                // 终端不支持「括号粘贴」⇒ 粘贴的多行内容会被**逐行提交**（每行成为一条消息）。
-                // 这是终端能力，Harness 侧改不了，只能提前说清并给出替代入口；
+                // 终端不支持「括号粘贴」⇒ 直接粘贴的多行内容会被**逐行提交**（每行成为一条消息）。
+                // 逐行提交发生在**终端内部**（粘贴的换行被宿主转成了回车），进程侧收不到任何
+                // 「这是粘贴」的信号，因此只能绕开终端输入流：自己去读剪贴板（Alt+V）。
                 // 中文提示在编码表示不了中文时要换成 ASCII，否则提示本身也读不了
                 System.out.println();
                 if (encoding.cjk()) {
-                    System.out.println("[warn] 本终端不支持「括号粘贴」：粘贴多行内容会被逐行提交"
+                    System.out.println("[warn] 本终端不支持「括号粘贴」：直接粘贴多行内容会被逐行提交"
                             + "（每行成为一条消息）。");
-                    System.out.println("       替代做法：先把内容复制到剪贴板，再输入 /paste"
-                            + " —— 它会把剪贴板内容作为一条消息发送。");
+                    System.out.println("       改用 Alt+V：AHA 自己读剪贴板，整块内容作为一条消息"
+                            + "（大块会先折叠成 [paste #1 +N lines]，回车时展开）。");
+                    System.out.println("       也可以输入 /paste 直接发送剪贴板内容。");
                 } else {
                     System.out.println("[warn] This console does not support bracketed paste:"
                             + " pasting multi-line text submits it line by line.");
-                    System.out.println("       Workaround: copy the text, then type /paste"
-                            + " -- it sends the clipboard content as a single message.");
+                    System.out.println("       Use Alt+V instead: AHA reads the clipboard itself and"
+                            + " sends the whole block as one message.");
+                    System.out.println("       /paste sends the clipboard content directly.");
                 }
             }
             // 启动横幅：分两块输出。
@@ -200,6 +208,10 @@ public final class ChatCommand implements Runnable {
                     // 容错匹配：/cmpct 也能匹配到 /compact
                     .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
                     .build();
+            trace.note("terminal=" + terminal.getClass().getName()
+                    + " type=" + terminal.getType()
+                    + " capabilities=[" + capabilities.description() + "]"
+                    + " encoding=" + encoding.charsetName());
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
@@ -233,6 +245,12 @@ public final class ChatCommand implements Runnable {
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
             Renderer renderer = Renderers.of(capabilities, encoding, statusModel(service), out,
                     statusSurface);
+
+            // Alt+V / Ctrl+V：自己读剪贴板并原子插入输入行 —— 不经过终端输入流，
+            // 因此在「终端不支持括号粘贴」的控制台上也能把多行内容作为一条消息送出去。
+            // 必须先有 out（提示经 printAbove 上抛），所以绑定放在这里而不是 reader 建好处
+            PastePlaceholder placeholders =
+                    ClipboardPaste.bind(reader, Clipboard::read, out);
 
             // 工具授权发生在回合线程上，而 reader 由主线程持有，
             // 因此授权问答走队列：主线程把接下来的输入递给它
@@ -273,6 +291,8 @@ public final class ChatCommand implements Runnable {
                     if (line == null) {
                         break;
                     }
+                    // 留痕放在这里而不是别的层：这一层看到的正是「终端送来的是一次整体输入还是多次回车」
+                    trace.input(line);
                     // 工具授权期间，敲下的是「回答」而不是新消息
                     if (awaitingAnswer.get()) {
                         answers.put(line);
@@ -291,9 +311,12 @@ public final class ChatCommand implements Runnable {
                     if ("/exit".equalsIgnoreCase(trimmed)) {
                         break;
                     }
-                    String input = trimmed;
+                    // 「整行以占位符开头」= 这一行来自粘贴，不是用户敲的命令：
+                    // 展开后即便内容以 '/' 开头，也不该被当成会话内命令
+                    boolean pasted = placeholders.startsWithMarker(trimmed);
+                    String input = placeholders.expand(trimmed);
                     turns.submit(() -> runTurn(input, sessionContext, registry, renderer,
-                            service, sessionId, currentTurn, out, pendingInput));
+                            service, sessionId, currentTurn, out, pendingInput, pasted));
                 }
             } finally {
                 turns.shutdownNow();
@@ -327,16 +350,21 @@ public final class ChatCommand implements Runnable {
      * @param currentTurn  当前回合的取消令牌（供主线程 Ctrl+C 使用）
      * @param out          输出流
      * @param pendingInput 会话内命令交回的内容（如 {@code /paste} 读到的剪贴板文本）
+     * @param pasted       该行是否来自粘贴（{@link PastePlaceholder} 展开）：是则不按命令解析
      */
     private static void runTurn(String input, SessionContext sessionContext,
                                 SessionCommandRegistry registry, Renderer renderer,
                                 AgentService service, String sessionId,
                                 AtomicReference<CancellationToken> currentTurn, PrintStream out,
-                                PendingInput pendingInput) {
+                                PendingInput pendingInput, boolean pasted) {
         CancellationToken token = new CancellationToken();
         currentTurn.set(token);
         try {
-            Optional<SessionCommand.Outcome> outcome = registry.dispatch(sessionContext, input);
+            // 粘贴来的整行不做命令分发：内容里以 '/' 开头的是日志、配置、代码，
+            // 不是用户敲的命令（展开前那一行整行就是一个占位符）
+            Optional<SessionCommand.Outcome> outcome = pasted
+                    ? Optional.empty()
+                    : registry.dispatch(sessionContext, input);
             if (outcome.isPresent()) {
                 // 命令把内容交回来了（目前只有 /paste）：用它代替用户输入跑一轮。
                 // 取到才继续，取不到就是普通命令（或读了剪贴板但内容为空、读失败）——
