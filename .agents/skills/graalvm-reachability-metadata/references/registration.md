@@ -89,6 +89,35 @@ javap -p com/example/Bar.class | grep ' doThing'
 > **AHA 实测**：Jackson 3 **不自带** native-image 元数据，
 > 配置 POJO / 会话记录必须自己注册，否则"能启动、一读配置就炸"。
 
+**`record` 还有一条单独的坑**：Jackson 反序列化 `record` 时要读 **record components**
+（`Class#getRecordComponents()`），`allDeclaredMethods` / `allDeclaredFields` **都不覆盖它**。
+症状是运行期抛 `UnsupportedFeatureError: Record components not available for record class …`
+（或对应的 `MissingReflectionRegistrationError`），而 JVM 模式、单测、CI 冒烟**全绿** ——
+因为它们都跑在 JVM 上，那里反射永远可用。
+
+> **AHA 实测（2026-10-16，PR #243）**：原生包一点「检查更新」必崩，
+> 因为更新模块的 **21 个 `record` / `enum` 一条都没登记**。
+> 修法：全量登记 + 加一道**扫源码 ↔ 两份元数据文件**的静态守卫
+> （新增 record 忘了登记就会红；反向注入验证过）。
+
+### 3.3 「类型在册」≠「用途在册」
+
+登记是**按用途**生效的：`methods` 不等于允许反射 `new`，`allDeclaredMethods` 也不等于
+「可以 `getDeclaredConstructor()`」。AHA 实测：`Region` 在元数据里早就有条目
+（`allDeclaredMethods` / `allDeclaredFields` 都在），但因为 FXML 里有一处
+`<Region fx:id="leftSpacer"/>` 需要**反射实例化**，而它**没有登记构造器** ⇒
+原生包启动即 `LoadException: Region is not a valid type.`（`TS-2610-032`）。
+
+| 用途 | 需要的登记 |
+|---|---|
+| `Class.forName("X")` + `getDeclaredMethod` | `methods` / `allDeclaredMethods` |
+| `getDeclaredConstructor(...)` / FXML 实例化元素 | **`allDeclaredConstructors` / `constructors`** |
+| 静态字段读写 | `fields` / `allDeclaredFields` |
+| native 按名查找 | `jniAccessible`（另一段） |
+
+**审查动作**：新增界面 / 新增 `Class.forName` 的代码时，对着「这个类型将来会被怎么用」逐项核对，
+而不是看到「类型在册」就放过。
+
 ## 4. `jni` 段：反射之外的另一半
 
 `jniAccessible` 解决的是「**原生库按名字找 Java 成员**」，与「Java 反射加载类」是两件事：
@@ -119,6 +148,22 @@ javap -p com/example/Bar.class | grep ' doThing'
 **排查顺序**：先看是不是 JNI 问题（`UnsatisfiedLinkError`、原生回调失败），
 是的话光加反射条目无效，必须补 `jniAccessible`。
 
+### 4.1 「值全零」：JNI 缺口最隐蔽的一种表现
+
+JNI 缺口**不一定抛异常**。当原生代码按**字段名**回写 Java 对象（`GetFieldID`）时，
+字段没登记 ⇒ 拿不到成员 ID ⇒ **回写不发生** ⇒ 字段保持 Java 默认值，
+表现为 `0` / `0.0` / `null` / 空串。进程不崩、界面照开，只有打开 verbose 日志才看得见。
+
+> **AHA 实测（2026-10-13，issue #60）**：`prism.verbose` 打印的 OS / D3D 驱动信息
+> 全是零值（`Windows version 0.0 build 0`、`ven_0000`）。根因是 `prism_d3d.dll` 的
+> `nGetDriverInformation` 用 `GetFieldID` 按名回写 `D3DDriverInformation` 的字段，
+> 而该类及其字段在**两份元数据里都是 0 条**。修法是登记到 `jni-config.json`
+> （`allDeclared*`），并在**产物自证**里加 `require_jni`、在 Windows 原生冒烟里加
+> 「不得出现全零指纹」的可判别断言。
+
+**识别信号**：某个诊断 / 状态输出**恰好是默认值**，而对应的 native 路径确实会回写它。
+这类问题在审查清单里要单列一问：**「这些成员登记了吗？」**
+
 ## 5. `resources` 段：别只写一行正则
 
 两种写法：
@@ -142,7 +187,17 @@ javap -p com/example/Bar.class | grep ' doThing'
 2. **必带**：`META-INF/services/.*`；框架的原生库扩展名（`.so` / `.dylib` / `.dll`）；
    框架自身的资源（着色器 `.obj`/`.frag`/`.vert`、字体、样式）；
 3. **必做**：把源码里每个 `getResourceAsStream` 的实际路径列出来逐项核对
-   （见 [discovery](discovery.md) §1.2）——凭扩展名直觉一定会漏。
+   （见 [discovery](discovery.md) §1.2）——凭扩展名直觉一定会漏；
+4. **别忘了 JDK 自带的资源**：它们既不在你的源码里，也常常**没有扩展名**，
+   按扩展名写的正则一条都匹不上。AHA 实测（issue #117）：CLI 原生镜像 `--help`
+   在三平台一致退出码非 0 —— picocli 渲染用法表格时经 `BreakIterator` 读
+   `sun/text/resources/LineBreakIteratorData`（**无扩展名**），缺了它直接抛 `InternalError`：
+   ```text
+   -H:IncludeResources=sun/text/resources/LineBreakIteratorData
+   -H:IncludeResources=.*\.icu$
+   ```
+   **判据**：`--version` 正常、`--help` 崩，且三平台表现一致 ⇒ 优先怀疑资源 / 逻辑，
+   而不是平台差异。
 
 > **收窄与完整的关系**：先把该有的补齐（漏 = 运行期缺文件），再谈收窄（体积）。
 > 顺序反了就是"用体积优化换运行期崩溃"。

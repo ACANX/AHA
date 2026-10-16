@@ -42,6 +42,9 @@
 | `ClassNotFoundException` / `NoSuchMethodException`（**创建某对象时**） | 反射目标未注册 | 补反射配置或运行期初始化 |
 | `ClassNotFoundException: <你的 Application 子类>`（**启动即报**，栈顶是 `javafx.application.Application.launch`） | JavaFX 入口的两处反射未注册：`launch(String...)` 用 `Class.forName(调用类名)` 加载主类，`LauncherImpl` 用 `getConstructor().newInstance()` 实例化它 | 在 `reachability-metadata.json` 注册主类构造器（`allDeclaredConstructors` / `allPublicConstructors`）；`main` 改用 `launch(YourApp.class, args)` 去掉前一处；再用单测钉住注册（构建成功不等于启动得起来） |
 | `ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit`（栈顶是 `com.sun.javafx.tk.Toolkit.getToolkit`，随后 `RuntimeException: No toolkit found`） | **JavaFX 的启动反射是链式的**：工具包 → Glass 平台工厂 → Prism 管线 → 渲染器 → 字体 / 日志 / 反射辅助，全靠 `Class.forName` + 反射构造 | 按「启动链路」一次补齐，不要只补报错里那一个类：`QuantumToolkit`、三平台 `*PlatformFactory`、四条 `*Pipeline`（含 `getInstance`）、`PPSRenderer` / `PSWRenderer` / `JSWRendererDelegate` / `SSERendererDelegate`、`PrintLogger` / `JFRPulseLogger` / `Trampoline` / `control.skin.Utils`。且**反射 ≠ JNI**：Glass / 字体还要 `jniAccessible` + 方法 / 字段注册（用 `allDeclaredMethods` / `allDeclaredFields` 更稳） |
+| `LoadException: X is not a valid type.`（界面装载时） | FXML 的元素类型名靠**本文件的 `<?import?>` 表**解析，漏了不会编译报错，只在装载那一刻炸 | 补 `<?import?>`；加「元素类型名必须已 import」的静态对账（`TS-2610-032`） |
+| `Unable to coerce <大写枚举值> to class …`（原生包独有） | FXML 属性里的**枚举值走 `BeanAdapter` 反射强转**（`valueOf`），原生镜像缺该枚举常量元数据 | **能用 Java 属性 API 表达的，就不要写在 FXML 里**（`tabs.setTabClosingPolicy(UNAVAILABLE)`）；并加「FXML 不许出现大写枚举值」的守卫（PR #243） |
+| `Record components not available for record class …`（原生包独有） | Jackson 反序列化 `record` 要读 **record components**，`allDeclaredMethods` 覆盖不到 | 登记 record 类型（详见 [graalvm-reachability-metadata](../../graalvm-reachability-metadata/references/registration.md) §3.2） |
 | `ServiceConfigurationError` / 「找不到实现」 | `META-INF/services` 没进镜像 | `-H:IncludeResources=META-INF/services/.*` |
 | 缺图标/模板/字体/`properties` | 资源未包含 | 扩展 `-H:IncludeResources` |
 | 界面文字变乱码 / `UnsupportedCharsetException` | 字符集不全 | `-H:+AddAllCharsets` |
@@ -59,7 +62,13 @@
 - **网络请求失败**：确认 `--enable-url-protocols=http,https`（以及项目用到的其它协议）；
 - **某个工具/适配器找不到**：多半是 `ServiceLoader`（见 2.2）；
 - **文件写入失败**：原生镜像里**没有**构建机的路径概念，检查配置里是不是有写死的路径；
-- **数据库/驱动异常**：驱动主类常需运行期初始化 + 本地库作为资源。
+- **数据库/驱动异常**：驱动主类常需运行期初始化 + 本地库作为资源；
+- **什么都正常，只是某几个值是 `0` / `null` / 空串**（诊断信息、驱动版本、设备名）：
+  这是 **native 按名回写 Java 字段失败**的指纹 —— 去 `jni-config.json` 补字段登记，
+  见 [graalvm-reachability-metadata](../../graalvm-reachability-metadata/references/registration.md) §4.1
+  （AHA 实测：`Windows version 0.0 build 0`，issue #60 / `TS-2610-034`）；
+- **什么都正常，只是「长得不一样」**（文字发虚、背景发黑、边框没了、颜色带不过来）：
+  属**原生包专属的表现退化**，判据只能是真机观感，见 SKILL.md 的「不崩但表现退化」一节。
 
 ### 2.5 怀疑平台错配时
 
@@ -82,6 +91,10 @@
 | 版本号变成空的（无报错） | XML 解析器标签**带命名空间**，`findtext('version')` 静默返回 None | 用「第一个以 `version` 结尾的直接子节点」这类写法 |
 | Maven 解析 POM 报 `String '--' not allowed in comment` | XML 注释里出现了双短横（例如写了 `native-image --version`，或在注释里写 `--gc=G1`） | 改写措辞（别在注释里直接写双短横选项）；`bin/CheckScripts.py` 已有守卫，扫 `<!--(.*?)-->` 体内是否含 `--` |
 | XML 报错位置指向注释之后的一大段 | 注释里**嵌套**了 `<!--`：外层被内层的 `-->` 提前闭合 | 内层去掉注释标记，改成普通文字；同上守卫也会拦 |
+| `mt.exe` 报 `c1010070: Failed to load and parse the manifest` | **链接器的工作目录不是 Maven 的 `workingDirectory`**：`native-image` 用自己的构建临时目录（`%TEMP%\SVM-…`）调链接器，相对路径被解析到那里 | 清单路径用 `${project.basedir}` 展开成**绝对路径**；另：只给 `/MANIFESTINPUT` 不够，还要 `/MANIFEST:EMBED`（`TS-2610-037`） |
+| 「加了参数但没生效」，而 CI 是绿的 | 该步骤带 `continue-on-error` ⇒ 作业层面「失败」与「成功」长得一样 | **看步骤的 `outcome` 而不是 `conclusion`**；并用「产物字节里查一下」的自证兜住（清单是否嵌进 exe，grep 二进制即知） |
+| 产物**少文件**而构建全绿 | 打包描述符（assembly）里**匹配不到的 `<include>` 被静默跳过**，不报错 | 产物自带清单（每文件 sha256）+ 守卫断言「描述符引用的每个手写产物都存在、且被 git 跟踪」（PR #243） |
+| `publish` / 汇总作业找不到仓库脚本 | 这些作业**只下载制品、不检出仓库** | 加 `actions/checkout`（或把脚本改成不依赖仓库文件） |
 
 ### 「静默跳过」为什么最恶劣，怎么根除
 
@@ -100,6 +113,31 @@
    不存在就 `::warning::` 并写进 Job Summary，把「被跳过」与「早退」两种可能都点名。
 
 > 一句话判据：**「构建成功」不是验收标准，只有「产物存在且自证通过」才是。**
+
+**「静默跳过」是一个家族，不止 `native.skip` 一个成员。** 同一类问题在 CI 上反复出现过：
+
+| 成员 | 静默的方式 | 判据 / 兜底 |
+|---|---|---|
+| `native.skip` 被模块属性覆盖 | 构建成功、零产物、零报错 | 默认值单一来源 + 命令行兜底 + 执行痕迹自证 |
+| 触发层的 `paths:` 过滤 | 「只改文档 + 新打标签」的显式请求被滤掉 ⇒ **零运行** | 门控下沉到**作业层**（`TS-2610-040`） |
+| 并发组的 `cancel-in-progress` | `labeled` 与 `synchronize` 同组时，自动运行把显式请求**取消** | 并发组**按事件类别分层**（`TS-2610-041`） |
+| `inputs.publish != false` | `push` 事件没有 `inputs` ⇒ `null != false` 为 **false** ⇒ 发布被跳过，而 run 报 success（dev 包停发 4 天） | 显式判 `inputs` 是否存在；并用「产物是否存在」自证（`TS-2610-044`） |
+| assembly 匹配不到的 `include` | 包里少文件，构建全绿 | 描述符 ↔ `git ls-files` 对账（PR #243） |
+
+**共同修法**：凡是「本该发生某件事」的地方，都要有一条**独立于该判断**的存在性自证
+（产物在不在、评论发没发、包够不够），而不是相信流程走到了。
+
+### 门禁纪律：一次性验证不要常驻化
+
+原生镜像这条线上，「验证一次就够」的事不少（某个平台的产物能不能双击跑起来、
+某次换装能不能成功）。这类事**不要**做成每次构建都跑的自测 ——
+占机器时间、制造噪声，还会让人误以为「已经在守着了」。
+
+判据（本项目现行）：
+
+- **必然复发且复发时静默**的缺陷 → 留**毫秒级静态守卫**（扫文件 / 扫描述符 / 扫元数据）；
+- 只能靠真机 / 真实环境触发的 → 列成**真机验收项**，验一次即可；
+- 一次性确认 → **绝不**进常驻门禁（2026-10-16 曾把一个换装自测接进 CI，已按 ACANX 判定整套撤掉）。
 
 ## 4. 排错习惯（这几条比任何单条修法都值钱）
 
