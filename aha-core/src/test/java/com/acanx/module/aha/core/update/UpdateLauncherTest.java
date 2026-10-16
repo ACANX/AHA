@@ -88,9 +88,11 @@ class UpdateLauncherTest {
         Files.createDirectories(installRoot);
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
 
+        // 文案分两种：Windows 上是「包不完整（缺文件）」，POSIX 上是「本平台尚未实现」——
+        // 后者的锅不在包，界面也会提前置灰（2026-10-16 审查 P1-7）
         assertThatThrownBy(() -> UpdateLauncher.installHelpers(installRoot, paths))
                 .isInstanceOf(UpdateException.class)
-                .hasMessageContaining("没有换装 helper")
+                .hasMessageContaining(InstallLayout.isWindows() ? "没有换装 helper" : "暂不支持应用内自更新")
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_PACKAGE_INVALID));
     }

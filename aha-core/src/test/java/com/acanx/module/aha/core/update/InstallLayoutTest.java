@@ -63,10 +63,16 @@ class InstallLayoutTest {
         Files.writeString(tempDir.resolve("aha-desktop.jar"), "jar");
         InstallLayout layout = InstallLayout.of(tempDir.resolve("aha-desktop.jar"));
 
-        // 只有 jar：退回 `java -jar`（java 不是绝对路径，因此这种情况不会被写进计划，
-        // 见 UpdatePlan 的校验 —— helper 按 PATH 解析它）
-        assertThat(layout.restartCommand()).containsExactly("java", "-jar",
-                tempDir.resolve("aha-desktop.jar").toString());
+        // 只有 jar：退回 `<java.home>/bin/java -jar`。**必须绝对路径** —— 计划校验
+        // （UpdatePlan.validate）要求拉起命令绝对，裸 `java` 会让计划写不出来、自更新直接不可用
+        // （2026-10-16 审查 P1-6 修正；这条断言原来写的就是裸 `java`，正是那个矛盾的来源）。
+        List<String> fallback = layout.restartCommand();
+        assertThat(fallback).hasSize(3);
+        assertThat(Path.of(fallback.get(0))).isAbsolute();
+        assertThat(Path.of(fallback.get(0))).exists();
+        assertThat(fallback.get(0)).endsWith(InstallLayout.isWindows() ? "java.exe" : "java");
+        assertThat(fallback.get(1)).isEqualTo("-jar");
+        assertThat(fallback.get(2)).isEqualTo(tempDir.resolve("aha-desktop.jar").toString());
 
         // 有启动脚本：优先用它（脚本里带着正确的 JVM 参数）
         Path launcher = tempDir.resolve(InstallLayout.isWindows()
@@ -119,22 +125,4 @@ class InstallLayoutTest {
         Path entry = layout.jarBased() ? layout.jar() : layout.nativeExecutable();
         assertThat(entry.getParent()).isEqualTo(layout.root());
     }
-    @Test
-    void restartFallsBackToAnAbsoluteJavaPath() throws IOException {
-        // 只有单体 jar、没有启动脚本与原生单文件：兜底是 <java.home>/bin/java -jar
-        // （必须是绝对路径：计划校验会挡下裸 `java`，2026-10-16 审查 P1-6）
-        Path root = tempDir.resolve("bare");
-        Files.createDirectories(root);
-        Files.writeString(root.resolve("aha-desktop.jar"), "jar");
-
-        List<String> command = InstallLayout.of(root.resolve("aha-desktop.jar")).restartCommand();
-
-        assertThat(command).hasSize(3);
-        assertThat(Path.of(command.get(0))).isAbsolute();
-        assertThat(Path.of(command.get(0))).exists();
-        assertThat(command.get(0)).endsWith(InstallLayout.isWindows() ? "java.exe" : "java");
-        assertThat(command.get(1)).isEqualTo("-jar");
-        assertThat(command.get(2)).endsWith("aha-desktop.jar");
-    }
-
 }
