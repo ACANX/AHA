@@ -47,6 +47,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+      - name: 快照平铺自测（Windows：独占占用那条用例只在这里算数）
+        # 为什么不和 ubuntu 腿合并成一条：`[IO.File]::Open(..., 'None')` 的独占语义只在 Windows
+        # 成立（Linux 上第二次打开照样成功），所以「目标被占用 ⇒ 落地根一个字节都不改」这条
+        # 用例在 ubuntu 腿会跳过、只有这里真跑一遍（issue #244）。
+        if: matrix.maven == 'wrapper' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./Script/PowerShell/SnapshotInstallSelfTest.ps1
       - name: Test (Wrapper / Maven 4)
         if: matrix.maven == 'wrapper'
         uses: ./.github/actions/maven-run
@@ -185,6 +192,12 @@ jobs:
           # 带上 token：未认证时按 IP 限流 60 次/小时，CI 共享出口 IP 很容易撞上
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
+      - name: 快照取件的「平铺到落地根」自测（离线，不联网）
+        # 【它补的是哪一段】快照取件此前只把包解压到 `Dist\<资产名>\` 就结束了，`Dist\` 根下
+        # 什么都没有（真机：issue #244 —— 取完件还得手工进去搬 aha-desktop.jar 与启动脚本）。
+        # 这段逻辑会**动用户 Dist\ 里的文件**，所以放进自测：临时目录里真跑「平铺 / 备份 .bak /
+        # 连续两次 / 空包 / 被占用时一个字节都不改」。
+        run: pwsh -NoProfile -File Script/PowerShell/SnapshotInstallSelfTest.ps1
 
   static-guards:
     name: static-guards（文档 / 技能 / 脚本 / 主题：四道静态门禁）

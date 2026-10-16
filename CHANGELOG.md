@@ -176,6 +176,14 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **快照取件缺「平铺到 `Dist\` 根」这一步（issue #244，2026-10-16 真机）**：双击 `Dist\UpdateDesktopJvmSnapshot.cmd`
+  能下载、能解压，但 `aha-desktop.jar` 与启动脚本躺在 `Dist\<资产名>\` 子目录里，`Dist\` 根下什么都没有 ——
+  「取件」只完成一半，还得手工进去搬。而正式版取件（`UpdateJvm.ps1`）一直是「解压 → 平铺到落地根」，
+  同一个动作两种结果。修复：新增 `Dist/UpdateInstall.ps1`（平铺步骤，**先探测再动手**：目标被占用时落地根一个字节都不改），
+  `UpdateSnapshot.ps1` 对 JVM 线（桌面端 / CLI）平铺到 `-Out` 根并把被覆盖的既有文件备份为 `<名字>.bak`，
+  铺好后清理暂存目录（新增 `-KeepExtract`；`-NoInstall` 仍是「只取件」）。守卫：离线自测
+  `Script/PowerShell/SnapshotInstallSelfTest.ps1`（平铺 / 备份 / 连续两次 / 空包 / 被占用不改动；接进 CI 的
+  ubuntu 腿与 Windows 腿——独占语义只在 Windows 成立）。
 - **`/snapshot-assert` 永远找不到 tag + PR 留痕评论 403（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`。
   同一轮实测还查明**写 PR 评论的权限**：只给 `issues: write` 时 `POST /repos/{}/issues/{}/comments` 仍然 **403**（`Resource not accessible by integration`）—— GITHUB_TOKEN 对 **PR 对话**的写权限要 `pull-requests: write`。`SnapshotAssert.yml` 与新的 `PreDeployVerify.yml` 一并补齐（后者首次运行实测：status 成功、评论 403；补齐后正常）。
 - **CLI 原生镜像 `--help` 退出码非 0（issue #117，2026-10-16）**：三平台一致失败——`--help` 渲染 picocli 用法表格时经 `BreakIterator` 读 JDK 的 `sun/text/resources/LineBreakIteratorData`，而该资源**没有扩展名**，按扩展名的 `-H:IncludeResources` 正则匹不上，缺了就在运行期抛 `InternalError: Can't load sun/text/resources/LineBreakIteratorData`（**构建全绿、`--version` 正常**，故三平台一致而非平台差异）。照桌面端的既有做法，给两份 CLI 参数文件（JDK 25 基线 + JDK 27 变体）补上该资源与 `.*\.icu$`；结论登记进 `BuildSpec.md` §10.2 与 `CliNativeDesign.md` §4.3 / R3。
