@@ -367,4 +367,18 @@ class PackageDownloaderTest {
             return buffer.size() == 0 ? null : buffer.toString(StandardCharsets.ISO_8859_1).trim();
         }
     }
+    @Test
+    void refusesToDowngradeFromHttpsToPlainHttp() {
+        // https → http 等于把包交给中间人；http → http（本机 mock 服务器）不算降级
+        assertThat(PackageDownloader.downgradesScheme(
+                URI.create("https://github.com/a.zip"), URI.create("http://github.com/a.zip")))
+                .isTrue();
+        assertThat(PackageDownloader.downgradesScheme(
+                URI.create("https://github.com/a.zip"), URI.create("https://objects.github.com/a.zip")))
+                .isFalse();
+        assertThat(PackageDownloader.downgradesScheme(
+                URI.create("http://127.0.0.1:1/a.zip"), URI.create("http://127.0.0.1:2/a.zip")))
+                .isFalse();
+    }
+
 }

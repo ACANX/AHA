@@ -129,8 +129,8 @@ public record InstallLayout(Path root, boolean jarBased) {
      * 换装后拉起 App 的命令（供 {@link UpdatePlan#restart()} 用）。
      *
      * <p>顺序：启动脚本优先（它是包的一部分，会带上正确的 JVM 参数），其次原生单文件，
-     * 最后退回直接 {@code java -jar}（`JAVA_HOME` 未知时不猜路径，改用命令名 {@code java}，
-     * 由 helper 按 PATH 解析——它不是绝对路径，因此这种情况不会被写进计划）。</p>
+     * 最后退回直接 {@code <java.home>/bin/java -jar}（用**绝对路径**，否则计划校验会挡下它；
+     * 取不到 java 时返回空——helper 会把「请手动启动应用」写进回执）。</p>
      *
      * @return 命令列表；拿不出任何可用命令时为空
      */
@@ -149,11 +149,31 @@ public record InstallLayout(Path root, boolean jarBased) {
             }
         }
         if (Files.isRegularFile(jar())) {
-            command.add("java");
-            command.add("-jar");
-            command.add(jar().toAbsolutePath().toString());
+            // 必须用**绝对路径**的 java：计划校验（UpdatePlan.validate）要求拉起命令是绝对路径，
+            // 裸 `java` 会让计划写不出来 —— 情形虽少见（便携包总有启动脚本），但那时用户会看到
+            // 「换装计划的拉起命令不合法」这种莫名其妙的失败（2026-10-16 审查 P1-6）。
+            Path java = javaExecutable();
+            if (java != null) {
+                command.add(java.toString());
+                command.add("-jar");
+                command.add(jar().toAbsolutePath().toString());
+            }
         }
         return List.copyOf(command);
+    }
+
+    /**
+     * 从 {@code java.home} 推出当前 JVM 的 java 可执行文件（绝对路径）。
+     *
+     * @return {@code <java.home>/bin/java[.exe]}；不存在时 {@code null}
+     */
+    private static Path javaExecutable() {
+        String home = System.getProperty("java.home");
+        if (home == null || home.isBlank()) {
+            return null;
+        }
+        Path candidate = Path.of(home).resolve("bin").resolve(isWindows() ? "java.exe" : "java");
+        return Files.isRegularFile(candidate) ? candidate.toAbsolutePath() : null;
     }
 
     /**

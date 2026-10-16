@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.44.0
+**文档版本**：v1.45.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.45.0 | 2026-10-16 | §7.1 补两条：① 桌面端两条线的包都必须带换装 helper（否则自更新在「复制 helper」那步必败，见 `ReleaseProcess.md` §3.6）；② 新增守卫 `check_update_helper_packaging()` / `check_repo_script_steps_have_checkout()`，`Script/PowerShell/HelperSelfTest.ps1` 进 `Build.yml` 的 `native-update-script` 作业（换装 helper 首次有真实行为测试）| @ACANX / CNXNC |
 | v1.44.0 | 2026-10-16 | 新增 §7.1「包内清单与发布页校验和」：四条出包线在打包步骤末尾统一写 `AHA-PACKAGE.json` 与 `SHA256SUMS`，契约只有一处定义（`ReleaseProcess.md` §3.4），实现只有一份（`.github/Python/PackageManifest.py`）且自检进 `static-guards`（issue #51 §6）| @ACANX / CNXNC |
 | v1.43.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.42.0 | 2026-10-16 | §7「可选管线」新增**例外口径**：`PreDeployVerify.yml`（issue #166 的部署前验证）虽属独立可选工作流，但其失败本身就是结论 ⇒ 作业级红叉 + `failure` status + 留痕评论，不卡点只体现在**不进 required** | @ACANX / CNXNC |
@@ -343,6 +344,9 @@ POM 语法必须兼容 Maven 3.9.x：
 | `Release.yml` 的 `SHA256SUMS` 由单独收尾作业生成 | 两个并列作业各自写一份会互相覆盖，得到「只列了一半资产」的校验和（比没有更坏） |
 | 生成 / 校验实现**只有一份** | 各写一段 shell 必然漂移，而漂移的表现是「某个通道的包永远校验不过」，静默且难查 |
 | `.github/Python/PackageManifest.py --self-test` 进 `static-guards` | 与 `ProjectVersion.py --self-test` 同一口径：这类「放宽了也不会立刻暴露」的边界要在提 PR 时就暴露 |
+| 桌面端两条线的包都必须带换装 helper | 应用内升级靠随包的 `apply-update.cmd` + `AhaApplyUpdate.ps1`；缺了就在「复制 helper」那一步失败 —— 而 `maven-assembly` 对匹配不到的 `<include>` **静默跳过**，只写描述符不算数（`ReleaseProcess.md` §3.6） |
+| helper 的行为由 `Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑 | 它是整条升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查；现在在临时目录里跑失败路径与成功路径（`Build.yml` 的 `native-update-script` 作业） |
+| 调用仓库内脚本的作业必须先 `checkout` | `check_repo_script_steps_have_checkout()`：`native-publish` / `cli-native-publish` / `build-publish` 只下载制品、不检出仓库，直接调 `PackageManifest.py` 会报 `No such file or directory`（本地永远复现不出来） |
 
 > 通道 ↔ tag ↔ 资产名的契约由 `bin/CheckScripts.py` 的 `check_release_channel_contract()` 钉在
 > **PowerShell / Python / Java 三处逐字一致**（`check_native_update_parity()` 管前两处，该守卫补上 Java 这第三处）。

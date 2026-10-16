@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.update;
 
 import com.acanx.module.aha.common.exception.UpdateException;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -303,4 +305,158 @@ class UpdateServiceTest {
             return buffer.size() == 0 ? null : buffer.toString(StandardCharsets.ISO_8859_1).trim();
         }
     }
+    @Test
+    void startupConsumesTheResultAndCleansStagingAndOldBackups() throws IOException {
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        UpdateService service = service();
+        Files.createDirectories(paths.root());
+        // 上次换装的回执（helper 写的）
+        Files.writeString(paths.resultFile(), """
+                {"ok":true,"version":"0.1.3.00243","previousVersion":"0.1.3.00242","reason":"",
+                 "rolledBack":false,"at":"2026-10-16T03:30:00Z"}
+                """);
+        // 本次运行版本的暂存 + 一次**失败换装**留下的目标版本暂存（各占 50–110 MB）
+        Files.createDirectories(paths.versionDir(CURRENT));
+        Files.writeString(paths.packageZip(CURRENT), "running");
+        Files.createDirectories(paths.newPackageDir(TARGET));
+        Files.writeString(paths.packageZip(TARGET), "failed-attempt");
+        // 两份旧备份 + 一个人工目录
+        Files.createDirectories(paths.backupDir(AhaVersion.parse("0.1.3.00240")));
+        Files.writeString(paths.backupDir(AhaVersion.parse("0.1.3.00240")).resolve("x.jar"), "old");
+        Files.createDirectories(paths.backupDir(AhaVersion.parse("0.1.3.00242")));
+        Files.createDirectories(paths.root().resolve("手工目录"));
+
+        UpdateService.StartupReport report = service.onStartup(CURRENT, 1);
+
+        // 回执读到了、读完即消费
+        assertThat(report.result()).isPresent();
+        assertThat(report.result().orElseThrow().ok()).isTrue();
+        assertThat(paths.resultFile()).doesNotExist();
+        assertThat(report.helperNeverRan()).isFalse();
+        // 暂存：运行版本与失败目标版本都清掉；人工目录不动
+        assertThat(paths.versionDir(CURRENT)).doesNotExist();
+        assertThat(paths.versionDir(TARGET)).doesNotExist();
+        assertThat(paths.root().resolve("手工目录")).exists();
+        assertThat(report.stagingCleared()).isEqualTo(2);
+        // 备份只留最近 1 份（版本号大的先留）；清理过程无警告
+        assertThat(paths.backupDir(AhaVersion.parse("0.1.3.00242"))).exists();
+        assertThat(paths.backupDir(AhaVersion.parse("0.1.3.00240"))).doesNotExist();
+        assertThat(report.backupsRemoved()).isEqualTo(1);
+        assertThat(report.warning()).isNull();
+    }
+
+    @Test
+    void startupReportsAHelperThatNeverStarted() throws IOException {
+        // 上一轮写了计划、helper 却没自报启动（也没有回执）⇒ 以前是静默的「什么都没发生」
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.planFile(), "{}");
+
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
+
+        assertThat(report.result()).isEmpty();
+        assertThat(report.helperNeverRan()).isTrue();
+        // 计划文件只用来判断，报完即删
+        assertThat(paths.planFile()).doesNotExist();
+    }
+
+    @Test
+    void startupSaysNothingWhenThereIsNothingToSay() {
+        // 干净启动：没有回执、没有残留计划 ⇒ 不该打扰用户（文案层在 AhaDesktopSmokeTest 里验）
+        UpdateService.StartupReport report = service().onStartup(CURRENT, 2);
+
+        assertThat(report.result()).isEmpty();
+        assertThat(report.helperNeverRan()).isFalse();
+        assertThat(report.warning()).isNull();
+    }
+
+    @Test
+    void waitingForTheHelperStartMarkerTimesOutLoudly() {
+        UpdateService service = service();
+
+        assertThatThrownBy(() -> service.waitForHelperStarted(Duration.ZERO))
+                .isInstanceOf(UpdateException.class)
+                .hasMessageContaining("没有启动")
+                .satisfies(error -> assertThat(((UpdateException) error).code())
+                        .isEqualTo(UpdateException.CODE_HELPER_NOT_STARTED));
+    }
+
+    @Test
+    void waitingForTheHelperStartMarkerReturnsAsSoonAsItAppears() throws Exception {
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        Files.createDirectories(paths.root());
+        UpdateService service = service();
+
+        Thread writer = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(80);
+                Files.writeString(paths.helperStartedFile(), "started");
+            } catch (Exception ignored) {
+                // 测试线程，忽略
+            }
+        });
+        service.waitForHelperStarted(Duration.ofSeconds(5));
+        writer.join();
+
+        assertThat(paths.helperStartedFile()).exists();
+    }
+
+    @Test
+    void prepareSwapInstallsTheHelperBeforeWritingThePlan() throws IOException {
+        // 装不了 helper 时**不能**留下计划文件：否则下次启动会把它当成「上次换装没做完」报告，
+        // 而它其实永远不会被执行（2026-10-16 审查 P2-10）。
+        Path installRoot = tempDir.resolve("install");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve("aha-desktop.jar"), "jar");
+        Files.writeString(installRoot.resolve("AhaDesktop.bat"), "launcher");
+        Path packageRoot = tempDir.resolve("newpkg");
+        Files.createDirectories(packageRoot);
+        Files.writeString(packageRoot.resolve("aha-desktop.jar"), "jar");
+        PackageManifest manifest = PackageManifest.parse("""
+                {"kind":"desktop-jvm","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
+                 "files":[{"path":"aha-desktop.jar","sha256":"%s","size":3}]}
+                """.formatted("0".repeat(64)));
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        UpdateService service = service();
+        UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
+                paths.packageZip(TARGET), manifest, true);
+
+        // 安装根里没有换装 helper ⇒ 必须在写计划之前就失败
+        assertThatThrownBy(() -> service.prepareSwap(staged,
+                InstallLayout.of(installRoot.resolve("aha-desktop.jar")), CURRENT))
+                .isInstanceOf(UpdateException.class);
+        assertThat(paths.planFile()).doesNotExist();
+    }
+
+    @Test
+    void launchHelperClearsAStaleMarkerAndWaitsForTheRealOne() throws Exception {
+        // POSIX 的换装脚本尚未实现（Windows 走 apply-update.cmd），本用例只验「拉起 + 等标记」
+        // 这条握手：残留标记不能让它秒过，必须等 helper 自己写出来。
+        Assumptions.assumeFalse(InstallLayout.isWindows(),
+                "本用例用 POSIX 的 apply-update.sh 假装 helper");
+        Path installRoot = tempDir.resolve("install");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve("aha-desktop.jar"), "jar");
+        Files.writeString(installRoot.resolve("AhaDesktop.bat"), "launcher");
+        // 假 helper：把「已启动」标记写到计划文件所在目录（就是 <AHA_HOME>/update/）
+        Path fakeHelper = installRoot.resolve(UpdateLauncher.POSIX_ENTRY);
+        Files.writeString(fakeHelper, "#!/bin/sh\n"
+                + "root=$(dirname \"$1\")\n"
+                + "sleep 1\n"
+                + "echo started > \"$root/helper-started\"\n");
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        UpdateLauncher.installHelpers(installRoot, paths);
+        // 先摆一个残留标记：如果 launchHelper 不清它，等待会立刻通过（等于没等）
+        Files.createDirectories(paths.root());
+        Files.writeString(paths.helperStartedFile(), "stale");
+        Path plan = paths.root().resolve("update-plan.json");
+        Files.writeString(plan, "{}");
+
+        Process helper = service().launchHelper(plan, Duration.ofSeconds(15));
+
+        assertThat(paths.helperStartedFile()).exists();
+        assertThat(Files.readString(paths.helperStartedFile())).contains("started");
+        helper.waitFor(5, TimeUnit.SECONDS);
+    }
+
 }

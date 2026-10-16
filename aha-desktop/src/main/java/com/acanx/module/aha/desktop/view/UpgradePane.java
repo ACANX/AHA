@@ -11,6 +11,7 @@ import com.acanx.module.aha.core.update.PlatformTag;
 import com.acanx.module.aha.core.update.ReleaseChannel;
 import com.acanx.module.aha.core.update.ReleaseFilter;
 import com.acanx.module.aha.core.update.UpdateKind;
+import com.acanx.module.aha.core.update.UpdateLauncher;
 import com.acanx.module.aha.core.update.UpdatePaths;
 import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
@@ -108,6 +109,9 @@ public final class UpgradePane {
 
     private final AhaVersion current;
 
+    /** 本平台是否已实现应用内自更新；{@code null} 表示支持，否则是「为什么不支持」。 */
+    private final String unsupportedReason;
+
     private final ToggleGroup channels = new ToggleGroup();
 
     private final RadioButton stableButton = new RadioButton(ReleaseChannel.STABLE.label());
@@ -157,7 +161,8 @@ public final class UpgradePane {
         this.platform = PlatformTag.detect();
         InstallLayout layout = detectLayout();
         this.kind = layout.jarBased() ? UpdateKind.DESKTOP_JVM : UpdateKind.DESKTOP_NATIVE;
-        this.current = currentVersion();
+        this.current = UpdateService.runningVersion();
+        this.unsupportedReason = UpdateLauncher.unsupportedReason();
     }
 
     /**
@@ -190,6 +195,12 @@ public final class UpgradePane {
         actionButton.setId(ID_ACTION);
         actionButton.setDisable(true);
         actionButton.setOnAction(event -> startSwap());
+        if (unsupportedReason != null) {
+            // 门要挡在**下载之前**：Linux / macOS 暂时没有换装脚本（issue #51 §7 P4），
+            // 照实说不支持 + 给手动取件指引，比让用户下完 55 MB 再看到「该包不完整」好
+            // （2026-10-16 审查 P1-7）。
+            checkButton.setDisable(false);
+        }
         progress.setId(ID_PROGRESS);
         progress.setVisible(false);
         progress.setMaxWidth(Double.MAX_VALUE);
@@ -212,9 +223,13 @@ public final class UpgradePane {
         root = new VBox(8, channelRow, channelNote, currentLabel, checkRow, versionList, actionRow,
                 progress, statusLabel);
         root.setId(ID_TAB);
-        statusLine("点「检查更新」从 " + SOURCE + " 取可用版本。默认通道 " + ReleaseChannel.DEFAULT.label()
-                + "；Stable 目前还没有带资产的正式发版。"
-                + "下载与替换可能需要几十秒，期间请不要关闭程序。");
+        if (unsupportedReason != null) {
+            statusLine(unsupportedReason + "；可手动到发布页取件（「检查更新」仍可用，便于看有哪些版本）。");
+        } else {
+            statusLine("点「检查更新」从 " + SOURCE + " 取可用版本。默认通道 "
+                    + ReleaseChannel.DEFAULT.label() + "；Stable 目前还没有带资产的正式发版。"
+                    + "下载与替换可能需要几十秒，期间请不要关闭程序。");
+        }
         return root;
     }
 
@@ -376,6 +391,11 @@ public final class UpgradePane {
             statusLine(row.unavailableReason());
             return;
         }
+        if (unsupportedReason != null) {
+            actionButton.setDisable(true);
+            statusLine(unsupportedReason + "；可手动到发布页取件。");
+            return;
+        }
         actionButton.setDisable(busy);
         actionButton.setText((row.newer() ? "升级到 " : "降级到 ") + row.version().value());
         statusLine(row.newer()
@@ -388,6 +408,11 @@ public final class UpgradePane {
     private void startSwap() {
         Row row = versionList.getSelectionModel().getSelectedItem();
         if (row == null || !row.available() || busy) {
+            return;
+        }
+        if (unsupportedReason != null) {
+            // 兜底：界面已置灰，这里再挡一次（「不让用户点了才发现不行」）
+            statusLine(unsupportedReason + "；可手动到发布页取件。");
             return;
         }
         if (kind.hasPlatform() && !platform.hasPublishedPackages()) {
@@ -416,21 +441,35 @@ public final class UpgradePane {
                     }
                 }, PackageDownloader.CancelSignal.NEVER);
                 Path plan = service.prepareSwap(staged, InstallLayout.detect(), current);
+                // 拉起 helper 并**等它自报启动**：这条等待不能放在界面线程上（会卡界面），
+                // 更不能省——helper 没起来就退出，用户会面对「App 关了、什么都没发生」
+                // （2026-10-16 审查 P1-8）。
+                service.launchHelper(plan);
+                String checksumNote = staged.checksumVerified()
+                        ? ""
+                        : "；该版本未提供发布页校验和，已用包内清单逐项核对";
                 dispatcher.dispatch(() -> {
-                    statusLine("正在替换并重启…（换装计划：" + plan + "）");
-                    service.launchHelper(plan);
+                    statusLine("正在替换并重启…" + checksumNote + "（换装日志：~/.aha/update/update.log）");
                     onRequestExit.run();
                 });
             } catch (UpdateException e) {
-                dispatcher.dispatch(() -> {
-                    progress.setVisible(false);
-                    statusLine(failure(e));
-                    busy = false;
-                    checkButton.setDisable(false);
-                    actionButton.setDisable(false);
-                });
+                dispatcher.dispatch(() -> resetAfterFailure(failure(e)));
+            } catch (RuntimeException e) {
+                // 只 catch UpdateException 的话，其它异常会让按钮永远灰着、进度条一直转
+                // （2026-10-16 审查 P2-9）
+                LOG.warn("换装流程异常", e);
+                dispatcher.dispatch(() -> resetAfterFailure("失败：" + e));
             }
         });
+    }
+
+    /** 失败后把界面恢复成可重试（并如实说明）。 */
+    private void resetAfterFailure(String message) {
+        progress.setVisible(false);
+        statusLine(message);
+        busy = false;
+        checkButton.setDisable(false);
+        actionButton.setDisable(unsupportedReason != null);
     }
 
     /** 失败文案：分清「限流（稍后再试）」与其它失败，并给下一步。 */
@@ -443,6 +482,9 @@ public final class UpgradePane {
         }
         if (UpdateException.CODE_PLATFORM_UNPUBLISHED.equals(e.code())) {
             return "本平台暂不支持应用内升级：" + e.getMessage();
+        }
+        if (UpdateException.CODE_HELPER_NOT_STARTED.equals(e.code())) {
+            return "换装程序没有启动：" + e.getMessage();
         }
         return "失败：" + e.getMessage();
     }
@@ -486,14 +528,6 @@ public final class UpgradePane {
             // 推不出安装根（少见）：按 JVM 便携包处理，界面照旧可用；真正的动作会被服务层挡下
             LOG.warn("推不出安装根，按 JVM 便携包处理：{}", e.getMessage());
             return InstallLayout.of(Path.of("."));
-        }
-    }
-
-    private static AhaVersion currentVersion() {
-        try {
-            return AhaVersion.parse(AppVersion.buildVersion());
-        } catch (RuntimeException e) {
-            return AhaVersion.parse(AppVersion.version());
         }
     }
 

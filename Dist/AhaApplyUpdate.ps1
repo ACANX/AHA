@@ -41,6 +41,18 @@ $planFile = (Resolve-Path -LiteralPath $Plan).Path
 $root = Split-Path -Parent $planFile
 $logFile = Join-Path $root 'update.log'
 $resultFile = Join-Path $root 'update-result.json'
+# 名字必须与 Java 侧 UpdatePaths.HELPER_STARTED 一致（bin/CheckScripts.py 有守卫钉着）。
+$startedFile = Join-Path $root 'helper-started'
+
+# ── 先自报「我起来了」──────────────────────────────────────────────────────
+# App 拉起本脚本后会**等这个标记出现**才退出（见 UpdateService.launchHelper）。
+# 等不到就说明本脚本根本没跑起来（典型：机器级执行策略拦下 PowerShell）——那时 App
+# 留在前台报错，而不是「App 关了、什么都没发生」。
+try {
+    Set-Content -LiteralPath $startedFile -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding UTF8 -ErrorAction Stop
+} catch {
+    # 写不进标记不阻断换装：App 会等到超时并报错，这比静默好
+}
 
 function Write-UpdateLog {
     param([string]$Message)
@@ -82,9 +94,15 @@ $installRoot = [string]$p.installRoot
 $packageRoot = [string]$p.packageRoot
 $backupDir = [string]$p.backupDir
 $actions = @($p.actions)
+# 没有可用拉起命令时（例如布局里连启动脚本都没有），回执里要如实说，别让用户以为会自动重启
+$restartNote = if (@($p.restart).Count -eq 0) { '计划里没有可用的拉起命令，请手动启动应用' } else { '' }
 Write-UpdateLog ("开始换装：目标 {0}，安装根 {1}，动作 {2} 项" -f $Version, $installRoot, $actions.Count)
 
 function Invoke-Relaunch {
+    if (@($p.restart).Count -eq 0) {
+        Write-UpdateLog '计划里没有可用的拉起命令，请手动启动应用'
+        return
+    }
     foreach ($command in @($p.restart)) {
         if ([string]::IsNullOrWhiteSpace($command)) { continue }
         try {
@@ -194,13 +212,16 @@ try {
         Write-UpdateLog ("回滚也失败了：" + $_.Exception.Message)
     }
     Write-UpdateLog ("回滚结论：" + $(if ($rolled) { '成功' } else { '失败' }))
-    Write-Result -Ok $false -Reason $reason -RolledBack $rolled -PreviousVersion $previousVersion
+    Write-Result -Ok $false -Reason $(if ($restartNote) { $reason + '；' + $restartNote } else { $reason }) -RolledBack $rolled -PreviousVersion $previousVersion
     # 失败也要尽量把旧版本拉起来，而不是留一个起不来的目录
     Invoke-Relaunch
     exit 1
 }
 
 # ── 自证：落地的每个文件都必须与新包清单里的哈希一致 ─────────────────────────
+# 注意：本分支的回滚**必须**自己也包 try/catch。主流程的回滚包了（见上），这里是第二次
+# 机会——回滚里 Copy-Item 一旦抛（文件被占），脚本会整个崩掉：不写回执、不重启，
+# 用户面对一个起不来的目录。2026-10-16 审查发现并修正。
 try {
     $entries = @{}
     foreach ($entry in @($manifest.files)) { $entries[[string]$entry.path] = [string]$entry.sha256 }
@@ -219,23 +240,30 @@ try {
 } catch {
     $reason = $_.Exception.Message
     Write-UpdateLog ("自证失败：" + $reason + " —— 开始回滚")
-    foreach ($action in $actions) {
-        $relative = [string]$action.path
-        $target = Join-Path $installRoot $relative
-        $backup = Join-Path $backupDir $relative
-        if (Test-Path -LiteralPath $backup -PathType Leaf) {
-            Copy-Item -LiteralPath $backup -Destination $target -Force
-        } elseif ($copied.Contains($relative)) {
-            Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    $rolled = $true
+    try {
+        foreach ($action in $actions) {
+            $relative = [string]$action.path
+            $target = Join-Path $installRoot $relative
+            $backup = Join-Path $backupDir $relative
+            if (Test-Path -LiteralPath $backup -PathType Leaf) {
+                Copy-Item -LiteralPath $backup -Destination $target -Force
+            } elseif ($copied.Contains($relative)) {
+                Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            }
         }
+    } catch {
+        $rolled = $false
+        Write-UpdateLog ("回滚也失败了：" + $_.Exception.Message)
     }
-    Write-Result -Ok $false -Reason $reason -RolledBack $true -PreviousVersion $previousVersion
+    Write-UpdateLog ("回滚结论：" + $(if ($rolled) { '成功' } else { '失败' }))
+    Write-Result -Ok $false -Reason $reason -RolledBack $rolled -PreviousVersion $previousVersion
     Invoke-Relaunch
     exit 1
 }
 
 Write-UpdateLog ("换装成功：{0}" -f $Version)
-Write-Result -Ok $true -Reason '' -RolledBack $false -PreviousVersion $previousVersion
+Write-Result -Ok $true -Reason $restartNote -RolledBack $false -PreviousVersion $previousVersion
 Invoke-Relaunch
 
 # ── 自删（best-effort）──────────────────────────────────────────────────────

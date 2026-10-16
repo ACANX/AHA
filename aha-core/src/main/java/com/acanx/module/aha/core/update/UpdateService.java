@@ -1,10 +1,12 @@
 package com.acanx.module.aha.core.update;
 
+import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.exception.UpdateException;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -161,11 +163,14 @@ public final class UpdateService {
                     "新包与已装包的文件清单完全一致，没有可执行的动作（可能装的就是这一版）");
         }
         AhaVersion backupVersion = current == null ? staged.version() : current;
+        // 先把 helper 装到 <AHA_HOME>/update/，**再**写计划：反过来的话，helper 缺失
+        // （包没带 / 本平台没实现）会留下一个永远执行不到的计划文件，下次启动还会把它
+        // 当成「上次换装没做完」报告给用户（2026-10-16 审查 P2-10）。
+        UpdateLauncher.installHelpers(layout.root(), paths);
         UpdatePlan plan = UpdatePlan.create(staged.version(), layout.root(), staged.packageRoot(),
                 staging.backupDir(backupVersion), ProcessHandle.current().pid(),
                 layout.restartCommand(), actions);
         plan.write(paths.planFile());
-        UpdateLauncher.installHelpers(layout.root(), paths);
         log.append("plan", "换装计划已写好：" + paths.planFile() + "（动作 " + actions.size()
                 + " 项，备份 " + staging.backupDir(backupVersion) + "）");
         return paths.planFile();
@@ -179,9 +184,64 @@ public final class UpdateService {
      * @throws UpdateException 拉起失败
      */
     public Process launchHelper(Path planFile) {
+        return launchHelper(planFile, HELPER_START_TIMEOUT);
+    }
+
+    /**
+     * 拉起 helper，并**等它自报「已启动」**（等待上限可注入，便于测试）。
+     *
+     * <p>为什么必须等：App 一退出就没法再告诉用户任何事。helper 若被安全策略拦下、
+     * 或被启动器塞进随父进程退出的作业对象，用户看到的是「App 关了、什么都没发生」。
+     * 等不到标记就抛 {@link UpdateException#CODE_HELPER_NOT_STARTED}，App 留在前台报错
+     * （2026-10-16 审查 P1-8）。</p>
+     *
+     * @param planFile     计划文件
+     * @param startTimeout 等待「已启动」标记的上限
+     * @return 已启动的 helper 进程
+     * @throws UpdateException 拉起失败，或 helper 在超时内没有自报启动
+     */
+    public Process launchHelper(Path planFile, Duration startTimeout) {
+        try {
+            // 先清掉上一轮的标记：残留标记会让等待立刻通过，等于没等
+            Files.deleteIfExists(paths.helperStartedFile());
+        } catch (IOException e) {
+            log.append("launch", "清不掉旧的 helper 启动标记（无碍）：" + e.getMessage());
+        }
         Process helper = UpdateLauncher.launch(paths.root(), planFile);
-        log.append("launch", "已拉起换装 helper（pid " + helper.pid() + "），App 即将退出");
+        log.append("launch", "已拉起换装 helper（pid " + helper.pid() + "），等它自报「已启动」");
+        waitForHelperStarted(startTimeout);
+        log.append("launch", "helper 已自报启动，App 即将退出");
         return helper;
+    }
+
+    /** 等待 helper 自报启动的默认上限：够慢机器上 PowerShell 冷启动，又不至于让用户干等。 */
+    public static final Duration HELPER_START_TIMEOUT = Duration.ofSeconds(20);
+
+    /**
+     * 等 helper 写「已启动」标记（包内可见：单测直接调它，不必真起进程）。
+     *
+     * @param timeout 等待上限
+     * @throws UpdateException 超时或被中断
+     */
+    void waitForHelperStarted(Duration timeout) {
+        Path marker = paths.helperStartedFile();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (Files.isRegularFile(marker)) {
+                return;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new UpdateException(UpdateException.CODE_HELPER_NOT_STARTED,
+                        "等待换装 helper 启动时被中断", e);
+            }
+        }
+        throw new UpdateException(UpdateException.CODE_HELPER_NOT_STARTED,
+                "换装程序没有启动（等 " + timeout.toSeconds() + " 秒没等到它的启动标记）——"
+                        + "可能被安全策略拦下了。本次未做任何改动，App 继续运行；"
+                        + "可手动到发布页取件，或查看 " + paths.logFile());
     }
 
     /**
@@ -199,10 +259,76 @@ public final class UpdateService {
      * @param version 版本
      * @param keepBackups 备份保留份数
      */
-    public void cleanupAfterSwap(AhaVersion version, int keepBackups) {
+    public int cleanupAfterSwap(AhaVersion version, int keepBackups) {
         staging.clear(version);
         int removed = staging.pruneBackups(keepBackups);
         log.append("cleanup", "已清理暂存 " + version.value() + "，清理旧备份 " + removed + " 份");
+        return removed;
+    }
+
+    /**
+     * 启动时的自更新收尾：**读上次的回执** + 清理暂存与旧备份。**不抛异常**。
+     *
+     * <p>此前这两件事在生产代码里都没有调用点（2026-10-16 审查 P1-5）：回执从不展示，
+     * `pkg.zip` 与解包副本永不清理（每次升级/失败白占 50–110 MB），
+     * `Update.BackupKeep` 成了死配置。收尾失败不影响启动，只在日志里留痕。</p>
+     *
+     * @param runningVersion 本次运行的版本（它的暂存目录清掉，其它版本的也一并清）
+     * @param keepBackups    备份保留份数（来自设置 `Update.BackupKeep`）
+     * @return 报告（回执 / 上次换装是否根本没开始 / 清理计数 / 警告）
+     */
+    public StartupReport onStartup(AhaVersion runningVersion, int keepBackups) {
+        Optional<UpdateResult> result = consumeLastResult();
+        boolean planLeft = Files.isRegularFile(paths.planFile());
+        boolean markerLeft = Files.isRegularFile(paths.helperStartedFile());
+        String warning = null;
+        int stagingCleared = 0;
+        int backupsRemoved = 0;
+        try {
+            backupsRemoved = cleanupAfterSwap(runningVersion, keepBackups);
+            stagingCleared = staging.clearOthers(runningVersion) + 1;
+        } catch (UpdateException e) {
+            warning = e.getMessage();
+            log.append("cleanup", "启动清理失败（不影响使用）：" + e.getMessage());
+        }
+        // 计划文件只用来判断「上一轮到底有没有跑起来」，报完就删，免得下次再报一遍
+        try {
+            Files.deleteIfExists(paths.planFile());
+        } catch (IOException e) {
+            log.append("cleanup", "清不掉旧的换装计划（无碍）：" + e.getMessage());
+        }
+        boolean helperNeverRan = planLeft && !markerLeft && result.isEmpty();
+        return new StartupReport(result, helperNeverRan, stagingCleared, backupsRemoved, warning);
+    }
+
+    /**
+     * 当前运行版本。
+     *
+     * <p>{@code AppVersion.buildVersion()} 优先（带构建号，与发布资产同名），解析不了退回
+     * {@code version()}。</p>
+     *
+     * @return 版本
+     */
+    public static AhaVersion runningVersion() {
+        try {
+            return AhaVersion.parse(AppVersion.buildVersion());
+        } catch (RuntimeException e) {
+            return AhaVersion.parse(AppVersion.version());
+        }
+    }
+
+    /**
+     * 启动收尾报告。
+     *
+     * @param result         上次换装的回执（没有则为空）
+     * @param helperNeverRan 上一轮写了计划、helper 却没自报启动（**回执也不会存在**）——
+     *                       这一条以前是不可见的「静默什么都没发生」
+     * @param stagingCleared 清掉的暂存目录数
+     * @param backupsRemoved 清掉的旧备份份数
+     * @param warning        清理失败的原因；成功为 {@code null}
+     */
+    public record StartupReport(Optional<UpdateResult> result, boolean helperNeverRan,
+                                int stagingCleared, int backupsRemoved, String warning) {
     }
 
     /**

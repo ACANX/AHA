@@ -172,7 +172,7 @@ jobs:
   # 【权限】推 tag 需要 `contents: write`、派发工作流需要 `actions: write`。若仓库把 Actions
   #         默认权限设成了只读，这两步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
   native-update-script:
-    name: native-update-script（Windows 一键入口：PowerShell 语法 + 参数绑定 + 选包）
+    name: native-update-script（Windows 一键入口：PowerShell 语法 + 参数绑定 + 选包；换装 helper 自测）
     # 这条曾经只能靠肉眼：本仓库在它上面连踩两次——参数名与局部变量大小写冲突
     # （PowerShell 变量名不区分大小写）、批处理的括号转义——都是运行期才暴露的坑，
     # 静态检查看不见。这里用 runner 自带的 pwsh 真跑一遍 -List。
@@ -185,6 +185,11 @@ jobs:
           # 带上 token：未认证时按 IP 限流 60 次/小时，CI 共享出口 IP 很容易撞上
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
+      - name: 换装 helper 自测（失败路径 + 成功路径 + 启动标记 + 备份）
+        # 这是升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查。
+        # 自测在临时目录里真跑：拒绝不合格的包 / 替换+删除+自证+回执 / 备份可回滚。
+        # 平台行为（Windows 上被占用的 exe、cmd /c start 的生命周期）仍属真实机验证项。
+        run: pwsh -NoProfile -File Script/PowerShell/HelperSelfTest.ps1
 
   static-guards:
     name: static-guards（文档 / 技能 / 脚本 / 主题：四道静态门禁）

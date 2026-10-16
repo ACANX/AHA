@@ -474,6 +474,10 @@ jobs:
       && needs.build-version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
+      # 要跑仓库里的脚本（发布前生成 SHA256SUMS 用 .github/Python/PackageManifest.py），
+      # 必须先检出；下面的 download-artifact 只往 artifacts/ 里放产物，两者不是一回事，
+      # 且上传步骤只列 artifacts/*，不会把工作区文件当成发布资产。
+      - uses: actions/checkout@v7
       - name: 下载全部制品
         # 没有任何制品时下载可能报错——这属于「本次无可发布产物」的正常分支。
         continue-on-error: true

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -118,4 +119,22 @@ class InstallLayoutTest {
         Path entry = layout.jarBased() ? layout.jar() : layout.nativeExecutable();
         assertThat(entry.getParent()).isEqualTo(layout.root());
     }
+    @Test
+    void restartFallsBackToAnAbsoluteJavaPath() throws IOException {
+        // 只有单体 jar、没有启动脚本与原生单文件：兜底是 <java.home>/bin/java -jar
+        // （必须是绝对路径：计划校验会挡下裸 `java`，2026-10-16 审查 P1-6）
+        Path root = tempDir.resolve("bare");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("aha-desktop.jar"), "jar");
+
+        List<String> command = InstallLayout.of(root.resolve("aha-desktop.jar")).restartCommand();
+
+        assertThat(command).hasSize(3);
+        assertThat(Path.of(command.get(0))).isAbsolute();
+        assertThat(Path.of(command.get(0))).exists();
+        assertThat(command.get(0)).endsWith(InstallLayout.isWindows() ? "java.exe" : "java");
+        assertThat(command.get(1)).isEqualTo("-jar");
+        assertThat(command.get(2)).endsWith("aha-desktop.jar");
+    }
+
 }

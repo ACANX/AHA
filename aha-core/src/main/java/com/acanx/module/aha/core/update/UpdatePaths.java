@@ -50,6 +50,15 @@ public record UpdatePaths(Path root) {
     public static final String LOG_FILE = "update.log";
 
     /**
+     * 换装 helper 的「已启动」标记文件名。
+     *
+     * <p>helper 起来的**第一件事**就是写它；App 拉起 helper 后等它出现才退出 ——
+     * 等不到就说明 helper 根本没跑起来（例如被安全策略拦下），此时 App 留在前台报错，
+     * 而不是「App 关了但什么都没发生」。</p>
+     */
+    public static final String HELPER_STARTED = "helper-started";
+
+    /**
      * 默认布局：{@code <AHA_HOME>/update}。
      *
      * @return 路径布局
@@ -159,5 +168,14 @@ public record UpdatePaths(Path root) {
      */
     public Path logFile() {
         return root.resolve(LOG_FILE);
+    }
+
+    /**
+     * helper 的「已启动」标记文件。
+     *
+     * @return {@code <根>/helper-started}
+     */
+    public Path helperStartedFile() {
+        return root.resolve(HELPER_STARTED);
     }
 }

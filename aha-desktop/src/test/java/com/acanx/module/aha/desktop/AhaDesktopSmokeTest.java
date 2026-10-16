@@ -11,6 +11,8 @@ import com.acanx.module.aha.desktop.view.ApprovalDialog;
 import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.Theme;
+import com.acanx.module.aha.core.update.AhaVersion;
+import com.acanx.module.aha.core.update.InstallLayout;
 import com.acanx.module.aha.core.update.UpdatePaths;
 import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.desktop.view.ThemePaint;
@@ -19,6 +21,8 @@ import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
 import com.acanx.module.aha.desktop.view.UpgradePane;
 import com.acanx.module.aha.desktop.view.ShellLayout;
+import org.junit.jupiter.api.Assumptions;
+
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -48,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -656,6 +661,38 @@ class AhaDesktopSmokeTest {
                 .count();
     }
 
+    /** 等消息流里出现某段文字（启动收尾在虚拟线程上跑，结果回界面线程显示）。 */
+    private static String awaitMessagesText(Stage stage, String needle) throws Exception {
+        String text = "";
+        for (int round = 0; round < POLL_ROUNDS; round++) {
+            text = uiGet(() -> messagesText((VBox) byId(stage.getScene(), DesktopShell.MESSAGES_ID)));
+            if (text.contains(needle)) {
+                return text;
+            }
+            Thread.sleep(100);
+        }
+        return text;
+    }
+
+    /** 把消息流里的所有 Label 文本拼起来（断言「界面到底说了什么」）。 */
+    private static String messagesText(VBox messages) {
+        StringBuilder builder = new StringBuilder();
+        if (messages != null) {
+            collectText(messages, builder);
+        }
+        return builder.toString();
+    }
+
+    private static void collectText(Parent parent, StringBuilder builder) {
+        for (Node node : parent.getChildrenUnmodifiable()) {
+            if (node instanceof Label label) {
+                builder.append(label.getText()).append('\n');
+            } else if (node instanceof Parent child) {
+                collectText(child, builder);
+            }
+        }
+    }
+
     private static void startToolkit() throws InterruptedException {
         CountDownLatch ready = new CountDownLatch(1);
         try {
@@ -702,4 +739,82 @@ class AhaDesktopSmokeTest {
         }
         return ref.get();
     }
+    /**
+     * 启动收尾必须真的接线（issue #51 审查 P1-5）：回执要出现在消息流里，暂存要被清掉。
+     *
+     * <p>为什么用整台 App 来测：这两件事以前在**生产代码里没有调用点**，单元测试各自都是绿的，
+     * 用户却什么都看不到、磁盘也一直在涨。所以这里注入 {@code AHA_HOME}，把回执与残留暂存
+     * 摆好，再启动真实 App，断言「消息流里那句话」与「暂存目录消失」。</p>
+     *
+     * @param tempDir 临时目录（充当 AHA_HOME，不碰真实家目录）
+     */
+    @Test
+    void startupShowsTheLastSwapResultAndCleansStaging(@TempDir Path tempDir) throws Exception {
+        startToolkit();
+        Path home = tempDir.resolve("aha-home");
+        Path updateRoot = home.resolve("update");
+        AhaVersion leftover = AhaVersion.parse("0.1.3.00241");
+        Files.createDirectories(updateRoot.resolve(leftover.value()));
+        Files.writeString(updateRoot.resolve(leftover.value()).resolve("pkg.zip"), "leftover");
+        Files.writeString(updateRoot.resolve("update-result.json"), """
+                {"ok":true,"version":"0.1.3.00242","previousVersion":"0.1.3.00241","reason":"",
+                 "rolledBack":false,"at":"2026-10-16T03:30:00Z"}
+                """);
+        String previousHome = System.getProperty("AHA_HOME");
+        System.setProperty("AHA_HOME", home.toString());
+        try {
+            AtomicReference<Stage> stageRef = new AtomicReference<>();
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            onUi(() -> {
+                try {
+                    AhaDesktopApp app = new AhaDesktopApp();
+                    app.init();
+                    Stage stage = new Stage();
+                    app.start(stage);
+                    stageRef.set(stage);
+                } catch (Throwable t) {
+                    failure.set(t);
+                }
+            });
+            assertThat(failure.get()).isNull();
+            Stage stage = stageRef.get();
+            assertThat(stage).isNotNull();
+
+            String text = awaitMessagesText(stage, "上次换装结果");
+            assertThat(text).as("启动时必须把上次换装结果告诉用户")
+                    .contains("上次换装结果").contains("0.1.3.00242");
+            assertThat(updateRoot.resolve("update-result.json")).as("回执读完即消费").doesNotExist();
+            assertThat(updateRoot.resolve(leftover.value())).as("残留暂存必须被清掉").doesNotExist();
+        } finally {
+            if (previousHome == null) {
+                System.clearProperty("AHA_HOME");
+            } else {
+                System.setProperty("AHA_HOME", previousHome);
+            }
+        }
+    }
+
+    /**
+     * 本平台没实现换装脚本时，动作按钮必须**提前**置灰并说明原因（issue #51 审查 P1-7）。
+     *
+     * <p>以前是「下完 55 MB 才报该包不完整」——把锅甩给包，还白等一场。</p>
+     *
+     * @param tempDir 临时目录（设置文件与暂存都放这里）
+     */
+    @Test
+    void upgradeTabGatesInAppUpdateWhereNoHelperExists(@TempDir Path tempDir) throws Exception {
+        Assumptions.assumeFalse(InstallLayout.isWindows(),
+                "Windows 上换装 helper 是齐的，本用例只针对没有 helper 的平台");
+        DesktopSettings settings = DesktopSettings.load(tempDir.resolve(DesktopSettings.FILE_NAME));
+        UpgradePane pane = uiGet(() -> new UpgradePane(settings, new PlatformFxDispatcher(),
+                () -> { }, new UpdateService(UpdatePaths.at(tempDir.resolve("update")))));
+        VBox root = uiGet(pane::build);
+
+        Button action = (Button) byId(root, UpgradePane.ID_ACTION);
+        Label status = (Label) byId(root, UpgradePane.ID_STATUS);
+        assertThat(action.isDisabled()).as("没有换装 helper 的平台，动作按钮必须置灰").isTrue();
+        assertThat(status.getText()).as("置灰的同时要说清为什么、以及怎么办")
+                .contains("Windows").contains("发布页");
+    }
+
 }

@@ -100,8 +100,9 @@ public final class SwapPlan {
             backup(target, backupDir, relative);
             try {
                 Files.createDirectories(target.getParent());
-                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.COPY_ATTRIBUTES);
+                // 刻意**不带** COPY_ATTRIBUTES：把旧文件的只读属性带到落地文件上，会让
+                // **下一次**升级同一文件在 Windows 上失败（2026-10-16 审查 P2-12）。
+                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
                 throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
                         "写入文件失败：" + target + "（" + e.getMessage() + "）", e);
@@ -125,8 +126,7 @@ public final class SwapPlan {
             try {
                 if (Files.isRegularFile(backup)) {
                     Files.createDirectories(target.getParent());
-                    Files.copy(backup, target, StandardCopyOption.REPLACE_EXISTING,
-                            StandardCopyOption.COPY_ATTRIBUTES);
+                    Files.copy(backup, target, StandardCopyOption.REPLACE_EXISTING);
                 } else {
                     // 备份里没有 ⇒ 这个文件是本次新增的，回滚就等于把它删掉
                     Files.deleteIfExists(target);
@@ -162,8 +162,7 @@ public final class SwapPlan {
         Path backup = backupDir.resolve(relative);
         try {
             Files.createDirectories(backup.getParent());
-            Files.copy(target, backup, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.COPY_ATTRIBUTES);
+            Files.copy(target, backup, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
                     "备份旧文件失败：" + target + " → " + backup + "（" + e.getMessage() + "）", e);

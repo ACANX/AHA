@@ -300,6 +300,12 @@ public final class PackageDownloader {
                             "下载地址返回 " + status + " 但没有 Location 头");
                 }
                 URI next = current.resolve(location);
+                // 不许 https → http 降级：跳转目标换成明文，等于把包交给中间人
+                // （有 SHA256SUMS 时还能兜住，没有校验和的版本就兜不住了，2026-10-16 审查 P2-11）
+                if (downgradesScheme(current, next)) {
+                    return fatal(UpdateException.CODE_UNTRUSTED_SOURCE,
+                            "跳转把 https 降级成了 " + next.getScheme() + "，拒绝继续：" + next);
+                }
                 if (!allowedHosts.contains(host(next))) {
                     return fatal(UpdateException.CODE_UNTRUSTED_SOURCE,
                             "跳转目标的主机不在白名单：" + host(next) + "（允许：" + allowedHosts + "）");
@@ -399,7 +405,21 @@ public final class PackageDownloader {
 
     private static UpdateException cancelled() {
         return new UpdateException(UpdateException.CODE_CANCELLED,
-                "下载已取消（已保留未完成的 .part 文件，可稍后续传）");
+                "下载已取消（未完成的 .part 已保留，重试会从头下载）");
+    }
+
+    /**
+     * 是否属于协议降级（{@code https} → 非 {@code https}）。
+     *
+     * <p>抽成方法是为了能单测：跳转目标换成明文就等于把包交给中间人，而反过来
+     * {@code http → http} 不算「降级」（测试用的本机 mock 服务器就是 http）。</p>
+     *
+     * @param from 当前地址
+     * @param to   跳转目标
+     * @return 是降级返回 {@code true}
+     */
+    static boolean downgradesScheme(URI from, URI to) {
+        return "https".equalsIgnoreCase(from.getScheme()) && !"https".equalsIgnoreCase(to.getScheme());
     }
 
     private static String host(URI uri) {

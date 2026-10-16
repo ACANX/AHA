@@ -163,6 +163,23 @@ FATJAR_POMS = {
 }
 #: 单体 jar 的落地名：**去版本号**，启动脚本与用户命令都写死这个名字（换版本不用改）
 FLAT_JAR_NAME = {"cli": "aha-cli.jar", "desktop": "aha-desktop.jar"}
+
+#: 换装 helper（issue #51 §4.5）的 Java 侧常量位置：文件名与「已启动」标记的**唯一来源**
+JAVA_UPDATE_LAUNCHER = JAVA_UPDATE_DIR / "UpdateLauncher.java"
+JAVA_UPDATE_PATHS = JAVA_UPDATE_DIR / "UpdatePaths.java"
+PS_APPLY_UPDATE = ROOT / "Dist" / "AhaApplyUpdate.ps1"
+#: 必须把换装 helper 打进**包根**的两条发行线（缺一个，那条线的自更新就是死的）
+HELPER_PACKAGES = {
+    "桌面端 JVM（jar 便携包）": ASSEMBLY_DESCRIPTORS["desktop"],
+    "桌面端原生（单文件）": ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
+}
+#: 「作业里调用仓库脚本 ⇒ 该作业必须先 checkout」要认的解释器/入口
+REPO_SCRIPT_CALL_RE = re.compile(
+    r"\b(?:python3?|bash|sh|pwsh|powershell)\s+(?:-\S+\s+)*[\"']?(\.github/|bin/|Script/|Dist/)[\w./-]+"
+)
+JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+#: 「被忽略却被引用」的判定只看这几类**本该手写**的扩展名（产物不在其列）
+IGNORED_REF_SUFFIXES = {".cmd", ".bat", ".ps1", ".psm1", ".sh", ".py", ".md", ".txt"}
 #: 启动脚本：包根平铺形态下它们是 `java -jar <去版本号的 jar>`，不再有模块路径
 FLAT_LAUNCHERS = {
     "cli": (ROOT / "bin" / "AhaCli.sh", ROOT / "bin" / "AhaCli.bat"),
@@ -345,9 +362,39 @@ def check_ignored_sources() -> list[str]:
         if not entry:
             continue
         if "/src/" in entry or entry.endswith(".java"):
-            offenders.append(entry)
-    return [f"源码文件被 .gitignore 忽略了（git 不会报错，只有 CI 会发现）：{path}"
-            for path in offenders]
+            offenders.append(f"源码文件被 .gitignore 忽略了（git 不会报错，只有 CI 会发现）：{entry}")
+            continue
+        # 非源码：如果它被装配描述符或工作流**按名字引用**，同样是致命组合 ——
+        # 本地的文件掩盖了「CI 上根本没有这个文件」这件事（`Dist/apply-update.cmd` 实测踩过）。
+        # 只看「本该手写」的那几类文件，且排除 __pycache__ 之类的运行时垃圾；
+        # 产物（target/classes/module-info.class 这种）不在其列。
+        if not entry.startswith(("Dist/", "Script/", "bin/")) or "__pycache__" in entry:
+            continue
+        if Path(entry).suffix.lower() not in IGNORED_REF_SUFFIXES:
+            continue
+        base = Path(entry).name
+        for referenced_by, text in _referencing_texts():
+            if re.search(r"(?<![\w.-])" + re.escape(base) + r"(?![\w.-])", text):
+                offenders.append(
+                    f"{entry} 被 .gitignore 忽略，却被 {referenced_by} 引用 —— "
+                    "本地看得见、CI 上不存在，打出来的包里会缺东西"
+                )
+                break
+    return offenders
+
+
+def _referencing_texts() -> list[tuple[str, str]]:
+    """会「按名字引用仓库文件」的文本：装配描述符 + 工作流 + Dist 下的手写脚本。"""
+    candidates = list(ASSEMBLY_DESCRIPTORS.values()) + [
+        ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
+    ]
+    candidates += sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    candidates += sorted((ROOT / "Dist").glob("*.ps1"))
+    texts: list[tuple[str, str]] = []
+    for path in candidates:
+        if path.exists():
+            texts.append((str(path.relative_to(ROOT)), path.read_text(encoding="utf-8", errors="replace")))
+    return texts
 
 
 XML_COMMENT = re.compile(r"<!--(.*?)-->", re.S)
@@ -1272,6 +1319,135 @@ def check_yaml_input_bool_compare(path: Path) -> list[str]:
     return problems
 
 
+def check_update_helper_packaging() -> list[str]:
+    """换装 helper 必须**真的在包里、也真的在仓库里**（issue #51 §4.5，2026-10-16 审查 P0）。
+
+    来历：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉，`git add -A` 静默跳过、
+    `git status` 干净 —— 于是打出来的包里没有它，应用内升级在「复制 helper」这一步必然失败，
+    而每一道门禁都是绿的：
+
+      * `maven-assembly` 对匹配不到的 `<include>` **静默跳过**，不报错；
+      * 单测在 `@TempDir` 里自己造 helper，测不到「真包里有不有」；
+      * 文件级守卫只扫 git 跟踪的文件，被忽略的文件对它**不存在**。
+
+    因此这里把三件事钉死：① 两条发行线的装配描述符都必须收 helper；
+    ② helper 必须存在**且被 git 跟踪**；③ helper 写「已启动」标记的名字与 Java 侧逐字一致
+    （App 拉起 helper 后要等这个标记才敢退出，名字漂移就会永远等不到）。
+    """
+    problems: list[str] = []
+    if not JAVA_UPDATE_LAUNCHER.exists():
+        return [f"缺 {JAVA_UPDATE_LAUNCHER.relative_to(ROOT)}（换装 helper 的常量来源）"]
+
+    java = JAVA_UPDATE_LAUNCHER.read_text(encoding="utf-8")
+    names: dict[str, str] = {}
+    for const in ("WINDOWS_ENTRY", "WINDOWS_SCRIPT", "POSIX_ENTRY"):
+        match = re.search(rf'public static final String {const}\s*=\s*"([^"]+)"', java)
+        if not match:
+            problems.append(f"{JAVA_UPDATE_LAUNCHER.relative_to(ROOT)}：找不到常量 {const}")
+        else:
+            names[const] = match.group(1)
+    if problems:
+        return problems
+
+    # ① 两条发行线都要把它们铺到包根
+    for label, descriptor in HELPER_PACKAGES.items():
+        rel = descriptor.relative_to(ROOT)
+        if not descriptor.exists():
+            problems.append(f"缺装配描述符 {rel}（{label}）")
+            continue
+        try:
+            tree = ElementTree.parse(descriptor)
+        except ElementTree.ParseError as exc:
+            problems.append(f"{rel}：XML 解析失败（{exc}）")
+            continue
+        included: set[str] = set()
+        for file_set in tree.findall(".//a:fileSet", ASSEMBLY_NS):
+            directory = (file_set.findtext("a:directory", default="", namespaces=ASSEMBLY_NS) or "")
+            if not directory.rstrip("/").endswith("Dist"):
+                continue
+            included.update((node.text or "").strip()
+                            for node in file_set.findall("a:includes/a:include", ASSEMBLY_NS))
+        for helper in (names["WINDOWS_ENTRY"], names["WINDOWS_SCRIPT"]):
+            if helper not in included:
+                problems.append(
+                    f"{rel}：没有把换装 helper {helper!r} 打进包（{label} 的自更新会在"
+                    f"「复制 helper」那一步失败）。现状：Dist 文件集里只有 {sorted(included) or '无'}"
+                )
+
+    # ② helper 必须存在且被 git 跟踪（被忽略时，① 照样能过 —— 它只看配置）
+    for helper in (names["WINDOWS_ENTRY"], names["WINDOWS_SCRIPT"]):
+        path = ROOT / "Dist" / helper
+        rel = path.relative_to(ROOT)
+        if not path.exists():
+            problems.append(f"缺换装 helper {rel}（装配描述符引用了它，磁盘上却没有）")
+            continue
+        tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "--", str(rel)],
+                                 cwd=ROOT, capture_output=True, text=True, check=False)
+        if tracked.returncode != 0:
+            problems.append(
+                f"{rel} 没有被 git 跟踪（多半被 .gitignore 的 `Dist/*` 吃掉了）——"
+                "CI 上不存在这个文件，打出来的包里也没有它，而本地每道门禁都是绿的"
+            )
+
+    # ③ 换装「已启动」标记名：Java 侧与 PowerShell 侧必须逐字一致
+    if JAVA_UPDATE_PATHS.exists() and PS_APPLY_UPDATE.exists():
+        paths_java = JAVA_UPDATE_PATHS.read_text(encoding="utf-8")
+        match = re.search(r'String\s+\w*(?:STARTED|MARKER)\w*\s*=\s*"([^"]+)"', paths_java)
+        if not match:
+            problems.append(
+                f"{JAVA_UPDATE_PATHS.relative_to(ROOT)}：找不到换装「已启动」标记常量"
+                "（App 拉起 helper 后要靠它判断 helper 是否真的起来了）"
+            )
+        elif match.group(1) not in PS_APPLY_UPDATE.read_text(encoding="utf-8"):
+            problems.append(
+                f"换装「已启动」标记名不一致：Java 侧 {match.group(1)!r} 没有出现在 "
+                f"{PS_APPLY_UPDATE.relative_to(ROOT)}（App 会永远等不到标记而不敢退出）"
+            )
+    return problems
+
+
+def check_repo_script_steps_have_checkout() -> list[str]:
+    """作业里调用**仓库内**脚本 ⇒ 该作业必须先 checkout（2026-10-16 CI 实测）。
+
+    来历：给 `native-publish` / `cli-native-publish` / `build-publish` 加「生成 SHA256SUMS」
+    步骤（调用 `.github/Python/PackageManifest.py`），但这三个作业只下载制品、**不检出仓库**，
+    于是 CI 报 `can't open file '.../PackageManifest.py': [Errno 2] No such file or directory`。
+    本地复现不出来（本地永远有工作区），所以钉成守卫。
+    """
+    problems: list[str] = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        rel = path.relative_to(ROOT)
+        blocks: list[tuple[str, list[str]]] = []
+        current_name: str | None = None
+        current: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = JOB_HEADER_RE.match(line)
+            if match:
+                if current_name is not None:
+                    blocks.append((current_name, current))
+                current_name, current = match.group(1), [line]
+            elif current_name is not None:
+                current.append(line)
+        if current_name is not None:
+            blocks.append((current_name, current))
+
+        for name, block in blocks:
+            body = "\n".join(block)
+            if "actions/checkout" in body:
+                continue
+            for line in block:
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("run:") or "\n" in line:
+                    continue
+                if REPO_SCRIPT_CALL_RE.search(stripped):
+                    problems.append(
+                        f"{rel}：作业 {name} 调用了仓库内脚本但**没有 `actions/checkout`**"
+                        f"（{stripped[:60]}）—— CI 上找不到脚本，本地却永远正常"
+                    )
+                    break
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 脚本文件规约检查")
     parser.add_argument("--verbose", action="store_true", help="输出每个文件的检查结果")
@@ -1320,6 +1496,10 @@ def main() -> int:
     for path in groups["yml"]:
         input_compare.extend(check_yaml_input_bool_compare(path))
     problems.extend(input_compare)
+    helper_pkg = check_update_helper_packaging()
+    problems.extend(helper_pkg)
+    checkout = check_repo_script_steps_have_checkout()
+    problems.extend(checkout)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
@@ -1333,6 +1513,8 @@ def main() -> int:
     print(f"检查通道契约三处（PowerShell / Python / Java）一致：{'❌' if channel else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
+    print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
     if problems:
         print("\n[问题]")

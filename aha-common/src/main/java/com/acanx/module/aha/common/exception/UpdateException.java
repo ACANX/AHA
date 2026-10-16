@@ -44,6 +44,16 @@ public class UpdateException extends AhaException {
     public static final String CODE_CANCELLED = "UPDATE_CANCELLED";
 
     /**
+     * 换装 helper 拉起后**没有自报「已启动」**：它根本没跑起来（典型：安全策略拦下 PowerShell、
+     * 启动器把子进程放进随父进程退出的作业对象）。
+     *
+     * <p>有这一条才能避免「App 关了、什么都没发生」：App 等不到标记就不退出，留在前台报错。</p>
+     *
+     * @since 0.2.0
+     */
+    public static final String CODE_HELPER_NOT_STARTED = "UPDATE_HELPER_NOT_STARTED";
+
+    /**
      * 构造异常。
      *
      * @param code    错误码（见本类的常量）

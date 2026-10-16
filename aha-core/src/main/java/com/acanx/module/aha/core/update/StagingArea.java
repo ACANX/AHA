@@ -103,6 +103,44 @@ public final class StagingArea {
     }
 
     /**
+     * 清掉**不是** {@code keep} 的其它版本暂存目录（幂等）。
+     *
+     * <p>为什么需要它：换装失败（已回滚或未回滚）时，留下的是**目标版本**的暂存目录
+     * （`pkg.zip` + 解包副本，一个包 25–55 MB，合计约 50–110 MB），而 {@link #clear} 清的是
+     * 「本次运行的版本」——两者在失败路径上不是同一个，于是每次失败都白占一份磁盘。
+     * 启动时顺手清掉，重试时会重新下载。</p>
+     *
+     * <p>不认得的目录名（人工放进来的东西）一律不动；{@code backup} 也解析不成版本号，因此安全。</p>
+     *
+     * @param keep 保留哪个版本（通常是本次运行的版本）
+     * @return 实际清掉的目录数
+     * @throws UpdateException 清理失败
+     */
+    public int clearOthers(AhaVersion keep) {
+        Path parent = paths.root();
+        if (!Files.isDirectory(parent)) {
+            return 0;
+        }
+        List<Path> entries;
+        try (Stream<Path> listing = Files.list(parent)) {
+            entries = listing.filter(Files::isDirectory).toList();
+        } catch (IOException e) {
+            throw new UpdateException(UpdateException.CODE_DOWNLOAD_FAILED,
+                    "列出暂存目录失败：" + parent + "（" + e.getMessage() + "）", e);
+        }
+        int removed = 0;
+        for (Path entry : entries) {
+            AhaVersion version = parseOrNull(entry.getFileName().toString());
+            if (version == null || version.equals(keep)) {
+                continue;
+            }
+            deleteRecursively(entry);
+            removed++;
+        }
+        return removed;
+    }
+
+    /**
      * 只保留最近 {@code keep} 份备份，其余删除（按版本号从新到旧）。
      *
      * <p>对应配置键 {@code Update.BackupKeep}（默认 2）：留着是为了能「再切回去」，

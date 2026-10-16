@@ -12,6 +12,9 @@ import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
+import com.acanx.module.aha.core.update.UpdatePaths;
+import com.acanx.module.aha.core.update.UpdateResult;
+import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
 import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
@@ -130,6 +133,31 @@ public final class AhaDesktopApp extends Application {
      * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
      * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
      */
+    /**
+     * 上次换装收尾结果 → 一句话（没有可说的返回 {@code null}）。
+     *
+     * <p>结论文案交给 {@link UpdateResult#summary()}（界面不自己拼），这里只补两件它不知道的事：
+     * ① 成功但计划里没有可用拉起命令时，helper 会把「请手动启动」写进 {@code reason}；
+     * ② 写了计划、helper 却没自报启动（回执也不存在）—— 这一条以前是**静默**的
+     * 「App 关了、什么都没发生」。</p>
+     *
+     * @param report 启动收尾报告
+     * @return 给用户看的一句话；无需提示时为 {@code null}
+     */
+    static String startupNotice(UpdateService.StartupReport report) {
+        if (report.result().isPresent()) {
+            UpdateResult result = report.result().get();
+            String extra = result.ok() && result.reason() != null && !result.reason().isBlank()
+                    ? "（" + result.reason() + "）" : "";
+            return "上次换装结果：" + result.summary() + extra + "（日志：~/.aha/update/update.log）";
+        }
+        if (report.helperNeverRan()) {
+            return "上次升级没有完成：换装程序没有启动（可能被安全策略拦下），安装目录未改动；"
+                    + "可手动到发布页取件。";
+        }
+        return null;
+    }
+
     private static void logRenderingDiagnostics() {
         LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
                 property("prism.order"), property("prism.lcdtext"), property("prism.text"),
@@ -232,6 +260,20 @@ public final class AhaDesktopApp extends Application {
         // 骨架：菜单栏 + 三栏 + 底部状态栏（形态见 GUIDesign.md 第 2 节）
         DesktopShell shell = new DesktopShell(dispatcher, stage::close, this::configSummary);
         shell.setConfigSummary(configSummary());
+
+        // 上次换装的收尾（2026-10-16 审查 P1-5）：**读回执** + 清理暂存与旧备份。
+        // 为什么必须有这段：这两件事此前在生产代码里没有任何调用点 —— 回执从不展示
+        // （升级成功/失败/已回滚用户都不知道）、`pkg.zip` 与解包副本永不清理（每次升级或
+        // 失败白占 50–110 MB）、`Update.BackupKeep` 成了死配置。
+        // 放虚拟线程上做（可能要删上百 MB），结果回界面线程显示。
+        Thread.ofVirtual().name("aha-update-startup").start(() -> {
+            UpdateService.StartupReport report = new UpdateService(UpdatePaths.defaultPaths())
+                    .onStartup(UpdateService.runningVersion(), settings.backupKeep());
+            String notice = startupNotice(report);
+            if (notice != null) {
+                dispatcher.dispatch(() -> shell.appendNotice(notice));
+            }
+        });
 
         // Agent 服务：与 CLI 用同一个工厂、同一份配置；工具授权走桌面端弹窗
         DesktopToolApprover approver = new DesktopToolApprover(

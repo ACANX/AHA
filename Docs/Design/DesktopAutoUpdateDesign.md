@@ -1,6 +1,6 @@
 # 桌面端应用内升级设计
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.1.0
 > **状态**：生效（Windows 侧已实现；Linux / macOS 的应用内升级**后置**，见 §1 边界）
 > **生效日期**：2026-10-16
 > **最后更新**：2026-10-16
@@ -12,6 +12,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.1.0 | 2026-10-16 | 按代码审查结论补三处契约与三处接线：① **helper「已启动」握手**（helper 第一件事写 `helper-started`，App 等它出现才退出，等不到就留在前台报错 —— 原来「helper 没起来」是静默的）；② **启动收尾**（读回执 + 清理暂存与旧备份 —— 原来这两件事在生产代码里没有调用点）；③ **能力门**（按「本平台有没有换装脚本」置灰，而不是下完 55 MB 才报「该包不完整」）；§8.1 补齐新增证据、§8.2 增第 10/11 项 | @ACANX / CNXNC |
 | v1.0.0 | 2026-10-16 | 初版：需求映射、通道与契约、服务层职责、换装协议（计划文件 / helper）、界面与配置键、安全模型、**验证记录**（哪些已验、哪些待真人验） | @ACANX / CNXNC |
 
 ---
@@ -80,9 +81,11 @@
 | 1 | App | 备好暂存、算动作、写 `update-plan.json`、把 helper 复制到 `~/.aha/update/` |
 | 2 | App | **脱离式**拉起 helper（Windows `cmd /c start "" /b …`；POSIX `sh -c 'nohup … &'`） |
 | 3 | App | 界面显示「正在替换并重启…」后**主动退出** |
+| 2.5 | helper | 起来的**第一件事**：写 `~/.aha/update/helper-started`（「已启动」标记）—— App 等它出现才退出 |
+| 3.5 | App | 等到标记（默认 20s）才真正退出；**等不到** ⇒ 留在前台报错（`UPDATE_HELPER_NOT_STARTED`），安装目录未被改动 |
 | 4 | helper | 等 App 退出（轮询 pid，超时 60s）→ **备份 → 替换 → 逐文件按清单哈希自证** → 重新拉起 → 写回执 → 自删（best-effort） |
-| 5 | helper | 任一步失败 ⇒ 用备份**回滚**，写 `ok:false` 回执，**仍然尝试拉起旧版本** |
-| 6 | 下次启动的 App | 读回执（**读完即消费**）：成功静默，失败弹窗并指向 `update.log` |
+| 5 | helper | 任一步失败 ⇒ 用备份**回滚**，写 `ok:false` 回执，**仍然尝试拉起旧版本**（回滚本身也包了兜底：脚本不会因为回滚抛异常而崩掉） |
+| 6 | 下次启动的 App | **启动收尾**：读回执（**读完即消费**）+ 清理暂存（本次运行版本与失败残留）+ 按 `Update.BackupKeep` 裁剪旧备份，然后把结果告诉用户（成功 / 失败 / 已回滚 / helper 没起来） |
 
 ### 4.2 `update-plan.json` 字段（App 与 helper 之间唯一的接口）
 
@@ -99,6 +102,17 @@
 
 写计划前会校验：安装根 / 新包目录 / 备份目录 / 拉起命令必须绝对；动作路径必须落在安装根内
 （`PathSafety`，与包内清单共用同一套底线）。
+
+### 4.4 「已启动」握手与启动收尾（2026-10-16 审查补）
+
+这两条都是为了让**失败不静默**、**磁盘不无限涨**：
+
+| 契约 | 内容 | 为什么必须 |
+|---|---|---|
+| 「已启动」标记 | helper 第一件事写 `~/.aha/update/helper-started`；App 拉起 helper 后**等它出现**（默认 20s，`UpdateService.HELPER_START_TIMEOUT`）才退出；超时抛 `UPDATE_HELPER_NOT_STARTED`，App 继续运行并如实说明 | 以前 App 先退出、helper 后干活：helper 若被机器级执行策略拦下、或被启动器塞进随父进程退出的作业对象，用户看到的是「App 关了、什么都没发生」。名字由 `bin/CheckScripts.py` 的守卫钉住 Java 与 PowerShell 两侧逐字一致 |
+| 拉起前清标记 | `launchHelper` 先删旧标记，再拉起，再等 | 残留标记会让等待「秒过」，等于没有握手 |
+| 启动收尾 | `UpdateService.onStartup(运行版本, 保留份数)`：消费回执 + 清本次运行版本与**其它版本**的暂存 + 裁剪旧备份；失败只记日志不抛 | 这两件事以前在**生产代码里没有调用点**：回执从不展示；`pkg.zip` 与解包副本（每份 50–110 MB）永不清理；`Update.BackupKeep` 成了死配置 |
+| 计划与 helper 的先后 | 先 `installHelpers` 成功，**再**写 `update-plan.json` | 反过来的话，helper 缺失时会留下一个永远不会执行的计划文件，下次启动还会把它当成「上次换装没做完」报告 |
 
 ### 4.3 只动清单里的文件
 
@@ -146,6 +160,11 @@ IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
 
 原则：**不让用户点了才发现不行**；置灰必须配「怎么办」的替代动作。
 
+判定依据是「**本平台有没有换装脚本**」（`UpdateLauncher.unsupportedReason()`），不是把平台名写死：
+POSIX 的换装脚本一落地，这条门自动就开了（现在返回「只在 Windows 上实现（POSIX 版本尚未实现，
+issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 的实现让用户走完
+「检查 → 下载 → 解包」才报「该包不完整」，那是把锅甩给包（2026-10-16 审查 P1-7 已修）。
+
 ## 6. 配置键（`~/.aha/desktop.properties`）
 
 | 键 | 取值 | 默认 | 说明 |
@@ -153,7 +172,7 @@ IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
 | `Update.Channel` | `stable` / `beta` / `alpha` | `beta`（**暂定**） | 缺键取默认、**不主动写盘** ⇒ 将来改回 `stable` 会惠及「从没选过该键」的安装 |
 | `Update.CheckOnStartup` | `true` / `false` | `false` | 启动只**检查**，不自动下载 |
 | `Update.AlphaAcknowledged` | `true` / `false` | `false` | 首次切到 Alpha 的一次性确认 |
-| `Update.BackupKeep` | 整数 | `2` | 保留备份份数（0–10） |
+| `Update.BackupKeep` | 整数 | `2` | 保留备份份数（0–10）；**启动收尾时生效**（v1.1.0 起真的会被读，此前是死配置） |
 | `Update.LastCheckAt` | ISO 时间 | — | 上次检查时间，**仅展示用，不参与决策** |
 
 实现要点（`DesktopSettings`）：只有**用户显式设过**的 `Update.*` 键才落盘；值写坏了不算「设过」。
@@ -192,6 +211,15 @@ IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
 | 界面契约（控件 id / 两个 tab） | `AhaDesktopSmokeTest#settingsDialogHasBothTabsAndTheUpgradeControls`（`-Daha.ui.tests=true`） |
 | 配置键与「缺键不写盘」 | `DesktopSettingsTest` |
 | 出包契约（清单 / 校验和 / 三处一致） | `.github/Python/PackageManifest.py --self-test`（正 5 反 11）、`check_release_channel_contract()` |
+| **换装 helper 真的在包里、也在仓库里** | `check_update_helper_packaging()`：两条发行线的装配描述符都要收 helper，且 helper 必须存在**且被 git 跟踪** —— v1.0.0 时 `Dist/apply-update.cmd` 被 `.gitignore` 吃掉，包里没有它，功能全废而门禁全绿 |
+| **helper 逻辑真跑过**（不只是「写没写」） | `Script/PowerShell/HelperSelfTest.ps1`（在 `Build.yml` 的 `native-update-script` 作业里跑）：临时目录里跑失败路径（缺清单 ⇒ 拒绝换装 + 写回执 + 写「已启动」标记 + 退出码 1）与成功路径（替换 + 删除 + 自证 + 回执 + 备份可还原） |
+| **调用仓库脚本的作业必须先 checkout** | `check_repo_script_steps_have_checkout()`（CI 实测：`native-publish` 没有 checkout 却调 `PackageManifest.py`，报 `No such file or directory`） |
+| **启动收尾与握手** | `UpdateServiceTest`：回执消费 + 暂存/备份清理 + `helperNeverRan` 判定 + 标记超时/出现 + 真拉起假 helper 的握手 |
+| **「被忽略却被引用」的文件** | `check_ignored_sources()` 扩展：`Dist/`、`Script/`、`bin/` 下本该手写的文件被 `.gitignore` 忽略、却被装配描述符或工作流按名字引用 ⇒ 直接红 |
+| 启动收尾在界面上真的接线 | `AhaDesktopSmokeTest#startupShowsTheLastSwapResultAndCleansStaging` |
+| 能力门在界面上提前生效 | `AhaDesktopSmokeTest#upgradeTabGatesInAppUpdateWhereNoHelperExists` |
+| 兜底拉起命令是绝对路径 | `InstallLayoutTest#restartFallsBackToAnAbsoluteJavaPath` |
+| 拒绝协议降级 | `PackageDownloaderTest#refusesToDowngradeFromHttpsToPlainHttp` |
 
 ### 8.2 ACANX 侧（**待真人真机验**，逐条填结论）
 
@@ -205,7 +233,9 @@ IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
 | 6 | 重启后用户看到什么 | 升级成功与失败各看一次 | 成功静默（只写日志）；失败弹窗并指向 `update.log` | ⏳ |
 | 7 | 用户数据未被触碰 | 升级前后比对 `~/.aha/` 下非 `update/` 目录的 mtime | 无变化 | ⏳ |
 | 8 | 备份与回滚可用 | 升级后看 `~/.aha/update/backup/<旧版本>/`，再按 §4.1 手工回滚一次 | 备份含旧文件（含被新包删掉的文件），回滚后旧版本能起来 | ⏳ |
-| 9 | Windows 原生形态自更新 | 用 `AHA-Desktop-Native-…` 包走同一条路径 | 替换后能起来、版本正确、备份可回滚 | ⏳ |
+| 9 | Windows 原生形态自更新 | 用 `AHA-Desktop-Native-…` 包走同一条路径 | 替换后能起来、版本正确、备份可回滚（v1.1.0 起原生包也带 helper，之前这条路**注定失败**） | ⏳ |
+| 10 | helper 起不来时不许「静默退出」 | 把安装根里的 `AhaApplyUpdate.ps1` 换成「什么都不做」的空脚本，再点升级 | App 等 20 秒后**留在前台**报「换装程序没有启动」，安装目录未改动，`update.log` 有留痕 | ⏳ |
+| 11 | 启动时清理真的生效 | 升级（或制造一次失败换装）后正常关闭再启动 | `~/.aha/update/<版本>/` 消失（不再白占 50–110 MB）；`backup/` 只留 `Update.BackupKeep` 份 | ⏳ |
 
 采集方式（把结论与原始输出贴进 PR 评论）：
 

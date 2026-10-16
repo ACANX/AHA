@@ -66,8 +66,11 @@ public final class UpdateLauncher {
         for (String name : names) {
             Path source = installRoot.resolve(name);
             if (!Files.isRegularFile(source)) {
+                String reason = unsupportedReason();
                 throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                        "安装根里没有换装 helper（该包不完整，无法自更新）：" + source);
+                        reason == null
+                                ? "安装根里没有换装 helper（该包不完整，无法自更新）：" + source
+                                : "本平台暂不支持应用内自更新：" + reason);
             }
             Path target = paths.root().resolve(name);
             try {
@@ -79,6 +82,22 @@ public final class UpdateLauncher {
             }
         }
         return paths.root();
+    }
+
+    /**
+     * 本平台的应用内自更新是否已经实现。
+     *
+     * <p>Windows 有实现（`apply-update.cmd` + `AhaApplyUpdate.ps1`）；POSIX 的换装脚本
+     * 尚未实现（issue #51 §7 P4），因此现在**明确返回原因**，由界面提前拦住，
+     * 而不是让用户下完包才看到「该包不完整」（那会把锅甩给包，2026-10-16 审查 P1-7）。</p>
+     *
+     * @return 不支持的原因；支持则返回 {@code null}
+     */
+    public static String unsupportedReason() {
+        if (InstallLayout.isWindows()) {
+            return null;
+        }
+        return "应用内自更新目前只在 Windows 上实现（换装脚本的 POSIX 版本尚未实现，issue #51 §7 P4）";
     }
 
     /**

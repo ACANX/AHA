@@ -190,6 +190,19 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **桌面端应用内升级：代码审查后的 P0/P1 修复（issue #51，2026-10-16）**：对 PR #243 做了一次全量自查，发现**功能实际不可用而门禁全绿**，逐条修复：
+  - **P0 换装入口根本没进仓库**：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉（`git add -A` 静默跳过、`git status` 干净），因此打出来的包里没有它，应用内升级在「复制 helper」这一步**必然失败**。修复：`.gitignore` 放行该文件、文件本体改为**纯 ASCII + CRLF**（中文注释移出）、`maven-assembly` 的静默跳过由**新守卫**接住；
+  - **P0 原生包不带 helper**：`dist-native.xml` 只打「exe + README + 参数 + 许可证」，于是「Windows 原生形态自更新」这条路**注定失败**（它正是 §8.2 第 9 项待验内容）。修复：原生包也把两个 helper 铺到包根；
+  - **P0 守卫缺口（会再犯）**：新增 `check_update_helper_packaging()`（两条发行线都要收 helper、helper 必须存在**且被 git 跟踪**、Java 与 PowerShell 的「已启动」标记名逐字一致）、`check_repo_script_steps_have_checkout()`（作业调仓库脚本必须先 checkout）、并扩展 `check_ignored_sources()` 识别「**被 .gitignore 忽略却被装配描述符 / 工作流按名字引用**」的文件；每条都做了**正向 + 反向注入**验证；
+  - **P1 失败静默**：① helper 自证失败分支的回滚没包 `try/catch` —— 回滚一抛异常整个脚本就崩，不写回执也不重启；② App 拉起 helper 后**不等它起来**就退出，helper 被安全策略拦下时用户看到的是「App 关了、什么都没发生」。修复：helper 第一件事写 `~/.aha/update/helper-started`，App 等它出现（默认 20s）才退出，等不到就留在前台报错（新错误码 `UPDATE_HELPER_NOT_STARTED`）；
+  - **P1 回执与清理没有调用点**：`consumeLastResult()` / `cleanupAfterSwap()` 在生产代码里从未被调用 —— 回执从不展示、`pkg.zip` 与解包副本（每份 50–110 MB）永不清理、`Update.BackupKeep` 是死配置。修复：新增 `UpdateService.onStartup()`，桌面端启动时在虚拟线程里收尾并把结果告诉用户（新增 `AhaDesktopSmokeTest#startupShowsTheLastSwapResultAndCleansStaging` 真验证）；
+  - **P1 能力门挡得太晚**：Linux / macOS（POSIX 换装脚本尚未实现，见 TD-00020）与原生形态，界面允许走完「检查 → 下载 → 解包」才报「该包不完整」，把锅甩给包。修复：`UpdateLauncher.unsupportedReason()` + 界面**下载前**置灰并说明；
+  - **P1 计划校验自相矛盾**：`UpdatePlan` 要求拉起命令是绝对路径，而 `InstallLayout` 的兜底是裸 `java` ⇒ 在「只有 jar」的布局上自更新直接不可用。修复：兜底改用 `<java.home>/bin/java[.exe]`；
+  - **P2**：`startSwap` 只 catch `UpdateException`（其它异常会让界面永久 busy）、`prepareSwap` 先写计划再装 helper（失败留残计划）、重定向允许 `https → http` 降级、`COPY_ATTRIBUTES` 可能把只读属性带到落地文件、「未提供校验和」没有照实告知；
+  - **CI 修复**：`native-publish` / `cli-native-publish` / `build-publish` 三个发布作业**没有 checkout** 却调用 `PackageManifest.py`，CI 报 `No such file or directory`；
+  - **新增真实行为测试**：`Script/PowerShell/HelperSelfTest.ps1` 在临时目录里真跑换装 helper 的失败路径与成功路径（此前只有「写没写出来」的静态检查）；
+  - 契约与验证记录同步：[DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md) v1.1.0（§4.4 握手与收尾、§5.4 能力门、§8.1/§8.2）、[ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) v1.30.0 §3.6、[BuildSpec.md](Docs/DevSpec/BuildSpec.md) v1.45.0。
+
 - **`/snapshot-assert` 永远找不到 tag + PR 留痕评论 403（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`。
   同一轮实测还查明**写 PR 评论的权限**：只给 `issues: write` 时 `POST /repos/{}/issues/{}/comments` 仍然 **403**（`Resource not accessible by integration`）—— GITHUB_TOKEN 对 **PR 对话**的写权限要 `pull-requests: write`。`SnapshotAssert.yml` 与新的 `PreDeployVerify.yml` 一并补齐（后者首次运行实测：status 成功、评论 403；补齐后正常）。
 - **CLI 原生镜像 `--help` 退出码非 0（issue #117，2026-10-16）**：三平台一致失败——`--help` 渲染 picocli 用法表格时经 `BreakIterator` 读 JDK 的 `sun/text/resources/LineBreakIteratorData`，而该资源**没有扩展名**，按扩展名的 `-H:IncludeResources` 正则匹不上，缺了就在运行期抛 `InternalError: Can't load sun/text/resources/LineBreakIteratorData`（**构建全绿、`--version` 正常**，故三平台一致而非平台差异）。照桌面端的既有做法，给两份 CLI 参数文件（JDK 25 基线 + JDK 27 变体）补上该资源与 `.*\.icu$`；结论登记进 `BuildSpec.md` §10.2 与 `CliNativeDesign.md` §4.3 / R3。

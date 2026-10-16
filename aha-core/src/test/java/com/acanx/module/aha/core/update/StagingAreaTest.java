@@ -76,6 +76,30 @@ class StagingAreaTest {
     }
 
     @Test
+    void clearOthersRemovesEveryOtherVersionButKeepsTheGivenOneAndStrayDirs() throws IOException {
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        StagingArea staging = new StagingArea(paths);
+        AhaVersion running = AhaVersion.parse("0.1.3.00243");
+        AhaVersion failedTarget = AhaVersion.parse("0.1.3.00244");
+        Files.createDirectories(paths.versionDir(running));
+        Files.writeString(paths.packageZip(running), "running");
+        // 换装失败留下的目标版本暂存（pkg.zip + 解包副本，一个包 25–55 MB）
+        Files.createDirectories(paths.newPackageDir(failedTarget));
+        Files.writeString(paths.packageZip(failedTarget), "failed");
+        // 人工放进来的目录、以及 backup/ 都不该被当成「版本目录」
+        Files.createDirectories(paths.root().resolve("手工目录"));
+        Files.createDirectories(paths.backupRoot().resolve(running.value()));
+
+        int removed = staging.clearOthers(running);
+
+        assertThat(removed).isEqualTo(1);
+        assertThat(paths.versionDir(running)).exists();
+        assertThat(paths.versionDir(failedTarget)).doesNotExist();
+        assertThat(paths.root().resolve("手工目录")).exists();
+        assertThat(paths.backupRoot().resolve(running.value())).exists();
+    }
+
+    @Test
     void pruneBackupsKeepsTheNewestOnesAndIgnoresForeignDirectories() throws IOException {
         StagingArea area = staging();
         for (String version : new String[] {"0.1.3.00238", "0.1.3.00241", "0.1.3.00242"}) {
