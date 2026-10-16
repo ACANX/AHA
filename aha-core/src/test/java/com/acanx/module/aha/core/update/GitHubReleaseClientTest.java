@@ -117,7 +117,8 @@ class GitHubReleaseClientTest {
 
         List<ReleaseInfo> releases = client(3).listReleases();
 
-        assertThat(releases).hasSize(2 * GitHubReleaseClient.MAX_PAGES);
+        // 每页 3 条且页页都是满的 ⇒ 收满 MAX_PAGES 页即停：3 × 2 = 6 条。
+        assertThat(releases).hasSize(3 * GitHubReleaseClient.MAX_PAGES);
         assertThat(server.callCount()).isEqualTo(GitHubReleaseClient.MAX_PAGES);
     }
 
