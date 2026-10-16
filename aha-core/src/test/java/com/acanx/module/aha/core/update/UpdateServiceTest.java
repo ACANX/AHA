@@ -591,38 +591,37 @@ class UpdateServiceTest {
     }
 
     @Test
-    void prepareSwapRefusesWhileRunningInsideANativeImage() throws IOException {
-        // 兜底那一道（界面 / CLI 已经会提前置灰）：原生镜像形态不许换装 —— 换装脚本什么文件都能
-        // 替换，真换就会「下的是 JVM 包、exe 自己没变」（2026-10-16 真机 bug）。
+    void prepareSwapPlansToReplaceTheNativeExecutable() throws IOException {
+        // 原生形态走的是**同一条链路**：包内清单 + helper（随包分发）+ 换装替换文件，重启命令就是
+        // 那个 exe。这条路径此前没有任何覆盖（界面被门拦住，从没走到这里），而它是「原生包也能
+        // 应用内升级」的关键一步 —— 钉住：计划里要出现 exe 的替换动作、restart 要指向它。
         Path installRoot = tempDir.resolve("native-install");
         Files.createDirectories(installRoot);
-        Files.writeString(installRoot.resolve(InstallLayout.NATIVE_EXE_BASE
-                + (InstallLayout.isWindows() ? ".exe" : "")), "MZ");
+        String exeName = InstallLayout.NATIVE_EXE_BASE
+                + (InstallLayout.isWindows() ? ".exe" : "");
+        Files.writeString(installRoot.resolve(exeName), "old-exe");
         Path packageRoot = tempDir.resolve("pkg");
         Files.createDirectories(packageRoot);
-        Files.writeString(packageRoot.resolve("AhaDesktop.bat"), "launcher");
+        Files.writeString(packageRoot.resolve(exeName), "new-exe");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.WINDOWS_SCRIPT), "ps1-helper");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.WINDOWS_ENTRY), "cmd-helper");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.POSIX_ENTRY), "sh-helper");
         PackageManifest manifest = PackageManifest.parse("""
-                {"kind":"desktop-jvm","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
-                 "files":[{"path":"AhaDesktop.bat","sha256":"%s","size":8}]}
-                """.formatted("0".repeat(64)));
+                {"kind":"desktop-native","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
+                 "files":[{"path":"%s","sha256":"%s","size":7}]}
+                """.formatted(exeName, "0".repeat(64)));
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
         UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
                 paths.packageZip(TARGET), manifest, true);
 
-        String previous = System.getProperty(InstallLayout.NATIVE_IMAGE_PROPERTY);
-        System.setProperty(InstallLayout.NATIVE_IMAGE_PROPERTY, "runtime");
-        try {
-            assertThatThrownBy(() -> service().prepareSwap(staged,
-                    InstallLayout.of(installRoot), CURRENT))
-                    .isInstanceOf(UpdateException.class)
-                    .hasMessageContaining("原生镜像");
-        } finally {
-            if (previous == null) {
-                System.clearProperty(InstallLayout.NATIVE_IMAGE_PROPERTY);
-            } else {
-                System.setProperty(InstallLayout.NATIVE_IMAGE_PROPERTY, previous);
-            }
-        }
+        Path planFile = service().prepareSwap(staged,
+                InstallLayout.of(installRoot), CURRENT);
+
+        UpdatePlan plan = UpdatePlan.read(planFile);
+        assertThat(plan.actions()).as("原生换装就是把 exe 换成新包里的那个")
+                .anySatisfy(action -> assertThat(action.path()).isEqualTo(exeName));
+        assertThat(plan.restart()).as("换装后拉起的是安装根里的 exe")
+                .containsExactly(installRoot.resolve(exeName).toAbsolutePath().toString());
     }
 
     @Test

@@ -83,25 +83,29 @@ class UpdateLauncherTest {
     }
 
     @Test
-    void unsupportedReasonBlocksNativeImagesOutright() throws IOException {
-        // 原生形态的应用内自更新尚未实现（原生包不在升级通道里、也不做形态切换），
-        // 必须在下载之前拦住：否则用户下的是 JVM 包、exe 自己没变（2026-10-16 真机 bug）。
+    void unsupportedReasonDoesNotBlockTheNativeShape() throws IOException {
+        // 【曾经在这里拦过原生形态，2026-10-16 撤掉】当初的理由是「原生包不在升级通道里」——
+        // 实测发现那条不成立：原生线有自己的 tag（`V<版本>-aha-desktop-native`）与资产
+        // （`AHA-Desktop-Native-…`），资产选择器也支持（平台 + 默认 jdk25）；换装与重启机制与
+        // JVM 同构（包内清单 + helper 随包分发 + `restartCommand()` 返回 exe）。
+        // 多拦一层的代价就是用户看到「升级按钮永远是灰的」（真机反馈）。
         Path root = tempDir.resolve("native-install");
         Files.createDirectories(root);
-        Files.writeString(root.resolve(InstallLayout.NATIVE_EXE_BASE
-                + (InstallLayout.isWindows() ? ".exe" : "")), "MZ");
+        Path exe = root.resolve(InstallLayout.NATIVE_EXE_BASE
+                + (InstallLayout.isWindows() ? ".exe" : ""));
+        Files.writeString(exe, "MZ");
         InstallLayout layout = InstallLayout.of(root);
 
-        String reason = UpdateLauncher.unsupportedReason(layout, true);
+        String reason = UpdateLauncher.unsupportedReason(layout);
 
-        // 原生这条比平台那条先判（它更具体）：所以三平台上文案一致
-        assertThat(reason).as("原生镜像要被拦住并说清怎么办")
-                .contains("原生镜像").contains("手动覆盖");
-        assertThat(UpdateLauncher.unsupportedReason(layout, false))
-                .as("同一布局在 JVM 模式下不该因「原生」被拦")
-                .satisfiesAnyOf(
-                        value -> assertThat(value).isNull(),
-                        value -> assertThat(value).doesNotContain("原生镜像"));
+        if (InstallLayout.isWindows()) {
+            assertThat(reason).as("Windows 上原生形态可以应用内自更新").isNull();
+            assertThat(layout.restartCommand()).as("换装后拉起的就是这个 exe")
+                    .containsExactly(exe.toAbsolutePath().toString());
+        } else {
+            assertThat(reason).as("POSIX 仍被平台那条拦住（换装脚本未实现）")
+                    .contains("只在 Windows");
+        }
     }
 
     @Test

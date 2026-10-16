@@ -1,49 +1,46 @@
 # TD-00022 原生镜像（AhaDesktopNative）的应用内自更新
 
 > 待办编号：TD-00022
-> 标题：让原生镜像形态也能在应用内升级（原生包进升级通道 + 替换 exe + 回滚 + 真机验）
-> 状态：⏳ 待做（**触发条件**：ACANX 决定排期；或出现「原生包用户明显增多、手动覆盖成本变高」）
+> 标题：原生形态的应用内升级：机制已打通，剩**真机验收**与边界收尾
+> 状态：◐ 进行中（**触发条件**：ACANX 在真机上跑一次「原生包换装」）
 > 跟踪 Issue 状态：**OPEN**
 > 跟踪 Issue：[#247](https://github.com/ACANX/AHA/issues/247)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-16（同日**重新定级**：从「未实现」改为「机制已在，缺真机验收」）
 
 ---
 
-## 来源
+## 来源与更正
 
-- 2026-10-16 真机自测（ACANX）：原生 exe 被**认成 JVM 便携包**，点升级去下了 JVM 包、exe 没变。
-  该缺陷本身已在 PR #243 内修掉（形态判定 + 能力门 + `prepareSwap` 兜底，见
-  [`TS-2610-047`](../Troubleshooting/TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md)）；
-- 但**功能空缺仍在**：原生形态现在被如实拦住并提示「到发布页取原生包手动覆盖」——
-  拦住不是解决，故立此单。
+- 2026-10-16 真机：原生 exe 被**认成 JVM 便携包** ⇒ 点升级去下 JVM 包、exe 没变。
+  该缺陷已修（形态判定 + 排障档案 [`TS-2610-047`](../Troubleshooting/TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md)）；
+- **同日更正**：我当时据此又加了一层「原生形态不支持自更新」的门 —— **这是误判**。
+  逐条实测后确认原生线**本来就具备**升级所需的全部机制（见下表），那层门拦掉的是用户本来就能用的功能，
+  表现是「升级按钮永远是灰的」。门已撤，正向用例已补（`prepareSwapPlansToReplaceTheNativeExecutable`）。
 
-## 现状（已实现的部分，别再重做）
+## 现状（逐层核对过）
 
 | 层 | 状态 |
 |---|---|
-| 服务层（发现 / 挑资产 / 下载 / 校验 / 解包 / 计划 / 回执 / 启动收尾） | ✅ 与形态、平台无关 |
-| 形态判定 | ✅ `InstallLayout` 已能正确区分「JVM 便携包」与「原生镜像」（GraalVM 属性 + `.jar` 要求） |
-| 重启命令 | ✅ `restartCommand()` 在非 jar 形态下返回 `aha-desktop-native[.exe]`（绝对路径，过计划校验） |
-| 换装 helper | ✅ 随原生包分发（`dist-native.xml` 已铺到包根）；helper 能替换任意文件并等 App 退出 |
-| 能力门 | ✅ 已拦住原生形态并给出路（PR #243） |
-| **原生包进升级通道** | ❌ 未定：通道过滤只认 `V<版本>` 形态 tag，而原生线是 `V<版本>-AHA-Desktop-Native-Image` |
-| **替换正在使用的 exe** | ❌ 未验：Windows 上「正在运行的 exe 被替换 + 杀软介入 + 重启后回到新版本」全无实测 |
-| **原生包的自证与回滚** | ❌ 未定：manifest（`AHA-PACKAGE.json`）里 exe 的 sha256、失败回滚到旧 exe 的路径 |
+| 通道契约 | ✅ 原生线 tag `V<版本>-aha-desktop-native`、资产 `AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip` 都在 `ChannelContract`；`supports()` 仅排除「原生包 + **Stable** 通道」（原生线还没发正式版）|
+| 资产选择 | ✅ `AssetSelector` 按「形态 + 平台」选，原生走 jdk25 默认变体 |
+| 形态判定 | ✅ `InstallLayout` 双保险（GraalVM 运行期属性 + code source 必须是 `.jar`）|
+| 包内容 | ✅ `dist-native.xml` 收 exe / README / 参数 / LICENSE / **两个 helper**；`DesktopNative.yml` 已生成 `AHA-PACKAGE.json` 与 `SHA256SUMS`（#243）|
+| 换装计划 | ✅ `SwapPlan.actions` 对新清单每个路径发 REPLACE；装清单缺失（旧安装）按「只新增」处理 |
+| 重启命令 | ✅ `restartCommand()` 非 jar 形态返回 `aha-desktop-native[.exe]`（绝对路径，过计划校验）|
+| 能力门 | ✅ 只剩「平台」与「安装形态」两层（原生不再被拦）|
+| **真机验收** | ❌ **未做**：换装替换的是**正在运行的 exe** —— helper 等 App 退出后动手、再拉起新 exe，这条链路只有真机能验 |
+| Stable 通道 | ❌ 原生线尚未发正式版 ⇒ `Stable` 通道里没有原生资产（此时界面给的是「该通道目前没有 X 的包」，属数据形态，不是 bug）|
 
 ## 要做的事
 
-- [ ] **发布流程**：决定原生包如何进入升级通道（新 tag 形态？独立通道？还是「原生线专用通道」），
-      并把契约写进 `ChannelContract` / `ReleaseProcess.md`（同时保证 **JVM 形态看不到原生资产、反之亦然**）；
-- [ ] **包内容**：原生包里需要哪些文件（exe / dll / README / 参数 / `AHA-PACKAGE.json`），
-      生成侧（`.github/Python/PackageManifest.py`）与消费侧（`PackageManifest`）对齐；
-- [ ] **换装与自证**：exe 的 sha256 校验、替换后回读版本号确认「真的跑起来了」；
-- [ ] **回滚**：替换 exe 失败时回到旧 exe（`Update.BackupKeep` 语义、`SwapPlan.rollback` 复用）；
-- [ ] **真机矩阵**：Windows（含杀软 / 文件占用）、Linux / macOS（与 TD-00020 的 POSIX helper 一起排）；
-- [ ] **解除拦截**：能力门那条原生说明改为「已支持」，`AppUpdateGuide` / 设计文档同步。
+- [ ] **真机验收（ACANX）**：原生包上走一次「检查更新 → 选中版本 → 升级 → 自动重启」，确认重启后的 `version` 是新版本、`Dist\` 里的 exe 已被替换、旧 exe 有备份；顺带看被占用 / 杀软介入时的表现；
+- [ ] 若验收通过：把这层结论写回 `DesktopAutoUpdateDesign.md` §5.4 / `DesktopNativeDesign.md` R14，并把本单收口；
+- [ ] 若验收失败：按现象定位（helper 等待时机 / exe 替换失败 / 重启命令），修完再验；
+- [ ] 排期决定：**原生线何时进 Stable 通道**（决定原生包用户在默认通道能否升到正式版）。
 
 ## 关联
 
-- 上游边界：`DesktopAutoUpdateDesign.md` §1（**不做形态切换**）、§2.3（形态判定）、§5.4（能力门）
+- 上游边界：`DesktopAutoUpdateDesign.md` §1（不做形态切换）、§5.4（能力门与通道限制）、§2.3（形态判定）
+- 排障：`TS-2610-047`（含同日「更正」一节）
 - 同族待办：TD-00020（POSIX 换装 helper）、TD-00021（回滚入口）
-- 原生线设计：`DesktopNativeDesign.md`（R13 反射登记 / R14 原生形态的更新现状）

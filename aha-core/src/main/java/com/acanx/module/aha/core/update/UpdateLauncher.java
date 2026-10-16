@@ -138,31 +138,16 @@ public final class UpdateLauncher {
      * @return 不支持的原因；支持则返回 {@code null}
      */
     public static String unsupportedReason(InstallLayout layout) {
-        return unsupportedReason(layout, InstallLayout.isNativeImage());
-    }
-
-    /**
-     * 同上，但「在不在原生镜像里」显式传入（便于两端都测）。
-     *
-     * @param layout      当前安装布局
-     * @param nativeImage 是否运行在原生镜像里
-     * @return 不支持的原因；支持则返回 {@code null}
-     */
-    static String unsupportedReason(InstallLayout layout, boolean nativeImage) {
-        // 顺序有讲究：**原生镜像这条比平台那条更具体**，先判它 —— 否则在 Linux/macOS 上，
-        // 原生镜像只会被告知「应用内自更新只在 Windows 上实现」，而真正的原因是
-        // 「原生形态的自更新（哪个平台都一样）尚未实现，得去发布页手动覆盖」。
-        // 原生镜像形态单独挡一道：换装脚本能替换任何文件，但**原生包不在升级通道里**
-        // （发布线是「JVM 便携包」与「原生包」两条，且明确不做形态切换），
-        // 而且「替换正在使用的 exe」从未在真机上验过 —— 与其把用户带进「下完 JVM 包、
-        // 换了一半、exe 自己没变」的坑，不如在这里说清。
-        // 来由：2026-10-16 真机 bug —— 在 `Dist\` 里双击原生 exe（同目录恰有取来的
-        // `aha-desktop.jar`），形态被判成 JVM 便携包，点升级去下了 JVM 包，exe 一个字节没变。
-        if (nativeImage) {
-            return "当前运行的是**原生镜像**（AhaDesktopNative），它的应用内自更新尚未实现"
-                    + "（原生包与 JVM 便携包是两条发布线，不做形态切换）；"
-                    + "升级请到发布页取对应平台的原生包，手动覆盖";
-        }
+        // 【曾经在这里拦过「原生镜像」一层，2026-10-16 撤掉】
+        // 当时的理由是「原生包不在升级通道里、形态切换不做」——实测发现**第一条是错的**：
+        // 原生线本来就有自己的 tag（`V<版本>-aha-desktop-native`）与资产
+        // （`AHA-Desktop-Native-<版本>-<平台>-jdk<JKV>.zip`），都在 `ChannelContract` 里，
+        // 资产选择器也支持（平台 + 默认 jdk25）；而 `supports()` 只把「原生包 + Stable 通道」
+        // 这一种组合排除在外（原生线还没发正式版）。换装与重启机制与 JVM 同构：
+        // 包内清单 + helper 随包分发（`dist-native.xml`）+ `restartCommand()` 返回 exe。
+        // ⇒ 真正缺的只是**形态判定**（原生 exe 曾被判成 JVM 形态，那是真 bug，已修），
+        //   而不是「整条链路没实现」。多拦一层的代价就是用户看到「升级按钮永远是灰的」。
+        // 唯一**确实**做不到的组合仍由平台那条挡住（POSIX 换装脚本未实现）。
         String platform = unsupportedReason();
         if (platform != null) {
             return platform;

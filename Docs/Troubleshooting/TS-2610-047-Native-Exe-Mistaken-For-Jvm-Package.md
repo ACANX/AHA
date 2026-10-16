@@ -36,9 +36,32 @@
 | 层 | 改动 |
 |---|---|
 | 形态判定 | `InstallLayout`：① 先看 GraalVM 运行期属性 `org.graalvm.nativeimage.imagecode`（非空 = 在原生镜像里，直接按「进程自身的可执行文件」判）；② `of(Path)` 只把 **`.jar`** 文件认成 JVM 便携包 |
-| 能力门 | `UpdateLauncher.unsupportedReason(layout, nativeImage)` 新增**原生镜像**一条，且**排在平台那条之前**（原生这条更具体：在 Linux/macOS 上不该只被告知「只在 Windows 上实现」）—— 界面 / CLI 在**下载前**置灰并说明「原生形态的应用内自更新尚未实现，请到发布页取原生包手动覆盖」 |
-| 兜底 | `UpdateService.prepareSwap` 加同一道门（只挡原生：POSIX 的平台能力不在这里判，`prepareSwap` 在非 Windows 上仍有单测在跑） |
+| ~~能力门（原生一层）~~ | **已撤销（同日）**：当时加了「原生形态不支持自更新」一条 —— **这是误判**，见下「更正」。现在只有「平台」与「安装形态」两层门 |
 | 顺带 | 修掉 `restartCommand()` 里过时的注释（`java -jar` 兜底早已删除，注释还留着） |
+
+## 4.1 更正：撤掉「原生形态不支持自更新」那一层门（2026-10-16 同日）
+
+**错在哪**：修完形态判定后，我顺手又加了一层门把原生形态整体拦住，理由是「原生包不在升级通道里」。
+ACANX 追问「为何不行？也不做修复？」后逐条实测，发现该理由**不成立**：
+
+| 我当时的判断 | 实测 |
+|---|---|
+| 原生包不在升级通道里 | ❌ 原生线的 tag 就是 `V<版本>-aha-desktop-native`、资产是 `AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`，两者都在 `ChannelContract` 里；`supports()` 只排除「原生包 + **Stable** 通道」（原生线还没发正式版），Beta/Alpha 通道照常提供 |
+| 原生形态的换装没实现 | ❌ 换装与重启机制**与 JVM 同构**：包内清单（`DesktopNative.yml` 已生成 `AHA-PACKAGE.json`）、helper 随包分发（`dist-native.xml` 已收两个脚本）、`restartCommand()` 对非 jar 形态返回 exe、`SwapPlan.actions` 对新清单每个路径都发 REPLACE（装清单缺失时也照样换，见 `readInstalledManifest` 的「只新增」处理） |
+
+**真正缺的只有形态判定**（本文 §2/§3）—— 而那一层门拦掉的是**用户本来就能用的功能**，
+代价是「升级按钮永远是灰的」（真机反馈两轮）。处理：
+
+- 撤掉该层门（`UpdateLauncher` / `UpdateService` / 界面的原生特判一并收掉）；
+- 新增**正向**用例覆盖这条此前零覆盖的路径：`UpdateServiceTest#prepareSwapPlansToReplaceTheNativeExecutable`
+  （计划里要出现 exe 的替换动作、`restart` 指向安装根里的 exe）、
+  `UpdateLauncherTest#unsupportedReasonDoesNotBlockTheNativeShape`；
+- 结论同步更正：本档 §1/§3/§4、`DesktopAutoUpdateDesign.md` v1.3.3、`DesktopNativeDesign.md` R14、
+  `AppUpdateGuide.md`、`TD-00022`、[#247](https://github.com/ACANX/AHA/issues/247)。
+
+**唯一仍需真机验的点**（原生形态与 JVM 唯一的差别）：换装时替换的是**正在运行的 exe** ——
+helper 等 App 退出后动手，重启命令就是新 exe；「Windows 上被占用 / 杀软介入 / 重启后是否真的跑到新版」
+只能由 ACANX 在真机走一次。
 
 ## 5. 验证
 
@@ -91,7 +114,9 @@
 - **本机无该环境**：没有 GraalVM 原生 exe 可运行取证，§1 里「code source 指向 exe 自己」是**推断**
   （依据是 GraalVM 的公开行为），不是本机实测值；
 - **未被真机复验**：修复后的界面表现（置灰 + 文案）需 ACANX 在原生包上复验（见 §5）；
-- **原生自更新本身未实现**（功能空缺，不是 bug）：见 [#247](https://github.com/ACANX/AHA/issues/247) / TD-00022。
+- ~~**原生自更新本身未实现**~~ → **更正**：机制本就在（见 §4.1），当时是我误判并多拦了一层；
+- **原生形态下「替换正在运行的 exe」未在真机验过**：本机（WSL、无原生 exe）无法复现，
+  属真机验收项（见 §4.1 末段）。
 
 ## 观测数据
 

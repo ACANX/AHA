@@ -298,14 +298,11 @@ public final class UpgradePane {
             // 门要挡在**下载之前**：Linux / macOS 暂时没有换装脚本（issue #51 §7 P4），
             // 照实说不支持 + 给手动取件指引，比让用户下完 55 MB 再看到「该包不完整」好
             // （2026-10-16 审查 P1-7）。
-            //
-            // 「检查更新」是否也可用，要按门的**性质**分（2026-10-16 真机反馈第二轮）：
-            //   · **原生镜像形态**：升级通道里只有 JVM 线的资产（原生包是另一条发布线、tag 形态
-            //     都不在通道过滤范围内）⇒ 列出来也**装不了**，而且会引导用户去点「升级」——
-            //     真机上「按钮一直是灰的」就是这么被当成 bug 的。索性连列表一起禁用，只留说明。
-            //   · 其它门（POSIX 未实现 / 只剩单体 jar）：列表仍有价值（据此到发布页手动取件）⇒ 保留。
-            checkButton.setDisable(nativeShape());
-            channelRow.setDisable(nativeShape());
+            // 「检查更新」保持可用：列表仍有价值（据此到发布页手动取件）。
+            // 注意**不要**顺手按形态去禁用列表：曾经试过「原生形态下连列表一起禁用」，
+            // 那条的前提（「通道里只有另一条线的资产」）是错的 —— 原生线有自己的 tag 与资产，
+            // 所以原生形态现在根本不走这道门（见 UpdateLauncher#unsupportedReason）。
+            checkButton.setDisable(false);
         }
         notice.setId(ID_NOTICE);
         notice.setWrapText(true);
@@ -317,11 +314,8 @@ public final class UpgradePane {
             notice.setVisible(false);
             notice.setManaged(false);
         } else {
-            notice.setText(nativeShape()
-                    ? "⚠ 本机形态不支持应用内升级：" + unsupportedReason
-                            + "。本形态下版本列表也不可用（通道里只有另一条发布线的包）。"
-                    : "⚠ 本机形态不支持应用内升级：" + unsupportedReason
-                            + "。版本列表只是让你看看有哪些版本 —— 升级手段见上面那句。");
+            notice.setText("⚠ 本机形态不支持应用内升级：" + unsupportedReason
+                    + "。版本列表只是让你看看有哪些版本 —— 升级手段见上面那句。");
         }
         progress.setId(ID_PROGRESS);
         progress.setVisible(false);
@@ -360,9 +354,7 @@ public final class UpgradePane {
         versionList.setPrefHeight(200);
         versionList.setPlaceholder(new Label(unsupportedReason == null
                 ? "还没有列出可用版本，点上面的「检查更新」。"
-                : (nativeShape()
-                        ? "本机是原生镜像形态，不支持应用内升级（原因与升级办法见上方提示）。"
-                        : "列表只用于查看有哪些版本；本机形态暂不支持应用内升级（原因见上方提示）。")));
+                : "列表只用于查看有哪些版本；本机形态暂不支持应用内升级（原因见上方提示）。"));
         versionList.setCellFactory(view -> new RowCell());
         versionList.getSelectionModel().selectedItemProperty()
                 .addListener((observable, old, now) -> onSelectionChanged(now));
@@ -680,11 +672,6 @@ public final class UpgradePane {
         busy = false;
         checkButton.setDisable(false);
         actionButton.setDisable(unsupportedReason != null);
-    }
-
-    /** 是否运行在原生镜像里（只在门生效时要看，抽一处免得判断散落）。 */
-    private static boolean nativeShape() {
-        return InstallLayout.isNativeImage();
     }
 
     /** 失败文案：分清「限流（稍后再试）」与其它失败，并给下一步。 */

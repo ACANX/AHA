@@ -1082,11 +1082,11 @@ class AhaDesktopSmokeTest {
         assertThat(notice.isManaged()).as("可见的提示要占位（不是藏起来还留着空隙）").isTrue();
         assertThat(notice.getText()).as("提示要说清为什么 + 列表只是看看")
                 .contains("不支持应用内升级").contains("只是让你看看有哪些版本");
-        // 「检查更新」在**非原生形态**的门下仍然可用（便于看有哪些版本，据此去发布页手动取）——
-        // 这条是既有决定，别被顺手改掉。（原生镜像那条分支会连列表一起禁用，见 UpgradePane；
-        // 它只能在原生包里验，属真机验收项。）
+        // 「检查更新」在门生效时仍然可用（便于看有哪些版本，据此去发布页手动取）—— 这是既有决定，
+        // 别被顺手改掉。（曾经试过「按形态禁用列表」，那条前提是错的：原生线有自己的 tag 与资产，
+        // 原生形态现在根本不走这道门，见 UpdateLauncher#unsupportedReason。）
         assertThat(((Button) byId(root, UpgradePane.ID_CHECK)).isDisabled())
-                .as("非原生形态的门生效时，「检查更新」仍可用").isFalse();
+                .as("门生效时「检查更新」仍可用").isFalse();
     }
 
 }

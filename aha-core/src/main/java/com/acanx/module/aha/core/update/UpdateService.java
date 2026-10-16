@@ -173,15 +173,6 @@ public final class UpdateService {
      * @throws UpdateException 计划不合法或 helper 缺失
      */
     public Path prepareSwap(Staged staged, InstallLayout layout, AhaVersion current) {
-        // 形态门（与界面 / CLI 同一道，这里是最后一道）：**只挡原生镜像形态** —— 它的应用内
-        // 自更新尚未实现，原生包也不在升级通道里，换装脚本却什么文件都能替换，真让它换就会
-        // 「换了一半、用户手里的 exe 还没变」。界面会提前置灰，这里再挡一次，免得将来多一个入口就漏。
-        // 注意**不要**把平台门（POSIX）也搬进来：换装本身的平台能力由 helper 侧决定，
-        // 而 prepareSwap 在非 Windows 上仍有单测在跑。
-        if (InstallLayout.isNativeImage()) {
-            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                    UpdateLauncher.unsupportedReason(layout, true));
-        }
         layout.requireEntryPoints();
         PackageManifest installed = readInstalledManifest(layout);
         List<UpdatePlan.Action> actions = SwapPlan.actions(staged.manifest(), installed);
