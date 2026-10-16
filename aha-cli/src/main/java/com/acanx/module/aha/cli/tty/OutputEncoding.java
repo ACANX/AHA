@@ -24,7 +24,7 @@ import java.nio.charset.UnsupportedCharsetException;
  * {@link WindowsConsole}）尝试把 Windows 控制台切成 UTF-8——但<b>只在标准输出真的连着
  * 控制台</b>时进行，管道 / 重定向 / CI 一律不碰，退出时还会恢复原代码页。因此
  * “宿主 Shell 缓存旧编码”那个坑不会波及非交互场景；协商失败则回到本文的
- * “探测 + 提示 + 降级”，两者互为兑底。</p>
+ * “探测 + 提示 + 降级”，两者互为兜底。</p>
  *
  * <p>协商成功后，控制台已经能表示 CJK 与装饰符号，{@link #detect()} 直接给出 UTF-8 结论
  * （见下方的 {@link WindowsConsole#isUtf8Console()} 分支）——不再依赖
