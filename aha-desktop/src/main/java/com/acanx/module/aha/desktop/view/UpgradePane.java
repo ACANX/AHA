@@ -30,10 +30,14 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,7 +154,16 @@ public final class UpgradePane {
 
     private final ListView<Row> versionList = new ListView<>();
 
-    private final Label statusLabel = new Label();
+    /**
+     * 升级结果 / 日志消息。
+     *
+     * <p>【为什么是**只读 `TextArea`**，不是 `Label`（2026-10-16 真机反馈两次）】
+     * 失败信息就显示在这一行，而 `Label` **既不能选中**、右键也没有菜单 —— 用户想把报错粘进
+     * 反馈里只能手打。第一次的改法是「给 Label 加右键菜单」，真机反馈**还是选不中、也复制不出来**
+     * （右键菜单这一层不够直觉：大家第一反应就是拖选），所以直接换成**能选中的控件**：
+     * 只读 `TextArea` 天生支持拖选 + Ctrl/Cmd+C，右键菜单保留作为次要入口。</p>
+     */
+    private final TextArea statusArea = new TextArea();
 
     private final Button actionButton = new Button("升级");
 
@@ -239,19 +252,35 @@ public final class UpgradePane {
         progress.setId(ID_PROGRESS);
         progress.setVisible(false);
         progress.setMaxWidth(Double.MAX_VALUE);
-        statusLabel.setId(ID_STATUS);
-        statusLabel.setWrapText(true);
-        ThemePaint.themedForever(statusLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-        // 【为什么要能复制（2026-10-16 真机反馈）】失败信息就显示在这一行，而 Label 既不能选中、
-        // 也没有右键菜单 —— 用户想把它粘到反馈里只能手打。这里给两个入口：只复制这条、
-        // 或把「版本 / 形态 / 平台 / 通道 / 状态」一次复制齐（排查最需要这几行）。
-        MenuItem copyStatus = new MenuItem("复制这条信息");
-        copyStatus.setId(ID_STATUS_COPY);
-        copyStatus.setOnAction(event -> Clipboards.copy(statusLabel.getText()));
-        MenuItem copyContext = new MenuItem("复制升级信息（版本 / 形态 / 通道 / 状态）");
+        statusArea.setId(ID_STATUS);
+        statusArea.setEditable(false);
+        statusArea.setWrapText(true);
+        statusArea.setPrefRowCount(2);
+        statusArea.setMaxWidth(Double.MAX_VALUE);
+        statusArea.setMaxHeight(Region.USE_PREF_SIZE);
+        // 看着仍像一行说明文字而不是新的输入框：底色透明、去掉内边距（拖选的高亮照旧可见）
+        ThemePaint.themedForever(statusArea, () -> "-fx-text-fill: " + Palette.MUTED + ";"
+                + " -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0;");
+        // 右键菜单保留（次要入口）：规则与日志区一致 —— 有选中就复制选中，否则复制全部；
+        // 另有「复制升级信息」把「版本 / 形态 / 平台 / 通道 / 状态」一次复制齐（排查最需要这几行）。
+        MenuItem copySelection = new MenuItem("复制选中（没有选中则复制全部）");
+        copySelection.setId(ID_STATUS_COPY);
+        copySelection.setOnAction(event -> copyStatusText());
+        MenuItem copyContext = new MenuItem("复制升级信息（版本 / 形态 / 平台 / 通道 / 状态）");
         copyContext.setId(ID_STATUS_COPY + ".all");
         copyContext.setOnAction(event -> Clipboards.copy(upgradeInfoForCopy()));
-        statusLabel.setContextMenu(new ContextMenu(copyStatus, copyContext));
+        MenuItem selectAllItem = new MenuItem("全选");
+        selectAllItem.setId(ID_STATUS_COPY + ".select");
+        selectAllItem.setOnAction(event -> statusArea.selectAll());
+        statusArea.setContextMenu(new ContextMenu(copySelection, copyContext,
+                new SeparatorMenuItem(), selectAllItem));
+        // 只读控件同样不理会 Ctrl/Cmd+C，这里自己接一下（复制选中，没选中则整条）
+        statusArea.setOnKeyPressed(event -> {
+            if (event.isShortcutDown() && event.getCode() == KeyCode.C) {
+                copyStatusText();
+                event.consume();
+            }
+        });
 
         versionList.setId(ID_LIST);
         versionList.setPrefHeight(200);
@@ -268,7 +297,7 @@ public final class UpgradePane {
         // 内边距不是装饰：TabPane 的内容区默认**没有**留白，通道那一行会紧贴着 tab 标题，
         // 看着挤、点击也容易落在 tab 头上（2026-10-16 真机反馈）。
         root = new VBox(10, channelTitle, channelRow, channelNote, currentLabel, checkRow,
-                versionList, actionRow, progress, statusLabel);
+                versionList, actionRow, progress, statusArea);
         root.setPadding(new Insets(12, 14, 12, 14));
         root.setId(ID_TAB);
         if (unsupportedReason != null) {
@@ -422,7 +451,7 @@ public final class UpgradePane {
         return "AHA " + AppVersion.buildVersion()
                 + "\n形态 / 平台：" + kind.targetWord() + " / " + platform.value()
                 + "\n通道：" + selectedChannel().label()
-                + "\n状态：" + statusLabel.getText()
+                + "\n状态：" + statusArea.getText()
                 + "\n日志：~/.aha/update/update.log（升级）/ 右侧日志面板（程序本身）";
     }
 
@@ -619,7 +648,14 @@ public final class UpgradePane {
     }
 
     private void statusLine(String text) {
-        statusLabel.setText("状态：" + text);
+        statusArea.setText("状态：" + text);
+    }
+
+    /** 复制状态行：**有选中就复制选中**，否则整条（与日志区同一套规则）。 */
+    private void copyStatusText() {
+        String selected = statusArea.getSelectedText();
+        Clipboards.copy(selected == null || selected.isEmpty()
+                ? statusArea.getText() : selected);
     }
 
     private static InstallLayout detectLayout() {

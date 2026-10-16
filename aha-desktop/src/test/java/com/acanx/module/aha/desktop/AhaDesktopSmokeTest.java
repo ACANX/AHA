@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Assumptions;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.RadioButton;
@@ -525,11 +524,18 @@ class AhaDesktopSmokeTest {
         assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(Label.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
-        assertThat(byId(upgradeRoot, UpgradePane.ID_STATUS)).isInstanceOf(Label.class);
-        // 失败信息就显示在状态行上，而 Label 不能选中 ⇒ 必须有右键复制（真机反馈：只能手打）
-        Label upgradeStatus = (Label) byId(upgradeRoot, UpgradePane.ID_STATUS);
+        // 失败信息就显示在状态行上：**必须能选中**（真机反馈两轮：Label 既选不中也复制不出来），
+        // 所以这里断言的是「只读 TextArea」这个类型 + 选中行为，而不是「有没有右键菜单」
+        assertThat(byId(upgradeRoot, UpgradePane.ID_STATUS)).isInstanceOf(TextArea.class);
+        TextArea upgradeStatus = (TextArea) byId(upgradeRoot, UpgradePane.ID_STATUS);
+        assertThat(upgradeStatus.isEditable()).as("只读，但可选中").isFalse();
+        assertThat(uiGet(() -> {
+            upgradeStatus.setText("状态：失败示例");
+            upgradeStatus.selectAll();
+            return upgradeStatus.getSelectedText();
+        })).as("状态行必须能选中（选中就能 Ctrl+C）").isEqualTo("状态：失败示例");
         assertThat(hasMenuItem(upgradeStatus.getContextMenu(), UpgradePane.ID_STATUS_COPY))
-                .as("状态行要有「复制这条信息」").isTrue();
+                .as("状态行右键也要能复制（次要入口）").isTrue();
         assertThat(pane.upgradeInfoForCopy()).as("一键复制上下文里的关键几行")
                 .contains("形态").contains("通道").contains("状态");
         assertThat(byId(upgradeRoot, UpgradePane.ID_ACTION)).isInstanceOf(Button.class);
@@ -937,7 +943,7 @@ class AhaDesktopSmokeTest {
             VBox root = uiGet(pane::build);
             Button check = (Button) byId(root, UpgradePane.ID_CHECK);
             Button action = (Button) byId(root, UpgradePane.ID_ACTION);
-            Label status = (Label) byId(root, UpgradePane.ID_STATUS);
+            TextArea status = (TextArea) byId(root, UpgradePane.ID_STATUS);
             RadioButton stable = (RadioButton) byId(root, UpgradePane.ID_CHANNEL_STABLE);
 
             uiGet(() -> {
@@ -953,7 +959,7 @@ class AhaDesktopSmokeTest {
 
             assertThat(uiGet(check::isDisabled))
                     .as("切了通道就该能立刻重新点「检查更新」，不必等旧检查跑完").isFalse();
-            assertThat(uiGet(status::getText)).contains("已切到");
+            assertThat(uiGet(() -> status.getText())).contains("已切到");
             assertThat(uiGet(action::isDisabled)).isTrue();
 
             holder.interrupt();
@@ -1039,7 +1045,7 @@ class AhaDesktopSmokeTest {
         VBox root = uiGet(pane::build);
 
         Button action = (Button) byId(root, UpgradePane.ID_ACTION);
-        Label status = (Label) byId(root, UpgradePane.ID_STATUS);
+        TextArea status = (TextArea) byId(root, UpgradePane.ID_STATUS);
         assertThat(action.isDisabled()).as("没有换装 helper 的平台，动作按钮必须置灰").isTrue();
         assertThat(status.getText()).as("置灰的同时要说清为什么、以及怎么办")
                 .contains("Windows").contains("发布页");
