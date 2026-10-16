@@ -83,6 +83,28 @@ class UpdateLauncherTest {
     }
 
     @Test
+    void unsupportedReasonBlocksNativeImagesOutright() throws IOException {
+        // 原生形态的应用内自更新尚未实现（原生包不在升级通道里、也不做形态切换），
+        // 必须在下载之前拦住：否则用户下的是 JVM 包、exe 自己没变（2026-10-16 真机 bug）。
+        Path root = tempDir.resolve("native-install");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve(InstallLayout.NATIVE_EXE_BASE
+                + (InstallLayout.isWindows() ? ".exe" : "")), "MZ");
+        InstallLayout layout = InstallLayout.of(root);
+
+        String reason = UpdateLauncher.unsupportedReason(layout, true);
+
+        // 原生这条比平台那条先判（它更具体）：所以三平台上文案一致
+        assertThat(reason).as("原生镜像要被拦住并说清怎么办")
+                .contains("原生镜像").contains("手动覆盖");
+        assertThat(UpdateLauncher.unsupportedReason(layout, false))
+                .as("同一布局在 JVM 模式下不该因「原生」被拦")
+                .satisfiesAnyOf(
+                        value -> assertThat(value).isNull(),
+                        value -> assertThat(value).doesNotContain("原生镜像"));
+    }
+
+    @Test
     void unsupportedReasonExplainsWhicheverLayerBlocks() throws IOException {
         // 两层门：平台（POSIX 脚本还没实现）+ 安装形态（只剩单体 jar ⇒ 换装后回不来）
         Path root = tempDir.resolve("only-jar");

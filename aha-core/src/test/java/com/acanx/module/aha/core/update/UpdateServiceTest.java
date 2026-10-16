@@ -591,6 +591,41 @@ class UpdateServiceTest {
     }
 
     @Test
+    void prepareSwapRefusesWhileRunningInsideANativeImage() throws IOException {
+        // 兜底那一道（界面 / CLI 已经会提前置灰）：原生镜像形态不许换装 —— 换装脚本什么文件都能
+        // 替换，真换就会「下的是 JVM 包、exe 自己没变」（2026-10-16 真机 bug）。
+        Path installRoot = tempDir.resolve("native-install");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve(InstallLayout.NATIVE_EXE_BASE
+                + (InstallLayout.isWindows() ? ".exe" : "")), "MZ");
+        Path packageRoot = tempDir.resolve("pkg");
+        Files.createDirectories(packageRoot);
+        Files.writeString(packageRoot.resolve("AhaDesktop.bat"), "launcher");
+        PackageManifest manifest = PackageManifest.parse("""
+                {"kind":"desktop-jvm","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
+                 "files":[{"path":"AhaDesktop.bat","sha256":"%s","size":8}]}
+                """.formatted("0".repeat(64)));
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
+                paths.packageZip(TARGET), manifest, true);
+
+        String previous = System.getProperty(InstallLayout.NATIVE_IMAGE_PROPERTY);
+        System.setProperty(InstallLayout.NATIVE_IMAGE_PROPERTY, "runtime");
+        try {
+            assertThatThrownBy(() -> service().prepareSwap(staged,
+                    InstallLayout.of(installRoot), CURRENT))
+                    .isInstanceOf(UpdateException.class)
+                    .hasMessageContaining("原生镜像");
+        } finally {
+            if (previous == null) {
+                System.clearProperty(InstallLayout.NATIVE_IMAGE_PROPERTY);
+            } else {
+                System.setProperty(InstallLayout.NATIVE_IMAGE_PROPERTY, previous);
+            }
+        }
+    }
+
+    @Test
     void prepareSwapTakesTheHelperFromTheNewPackageWhenTheInstallRootHasNone() throws IOException {
         // 真机实测（2026-10-16）：正在运行的安装是「helper 还没随包分发」之前的包 ⇒ 安装根里没有；
         // 只认安装根就会报「该包不完整、无法自更新」而卡住升级（新包其实是完整的）。

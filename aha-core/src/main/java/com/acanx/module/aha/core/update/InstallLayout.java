@@ -23,8 +23,15 @@ import java.util.Optional;
  * </ul>
  *
  * <p>形态判定是<b>硬约束</b>（§2.3）：JVM 包不能升到原生包、原生包不能升到 JVM 包。
- * 判定依据是「当前 code source 是不是 jar」，而不是「目录里有没有 jar」—— 后者在两者并存
+ * 判定依据是「当前 code source 是不是 **jar**」，而不是「目录里有没有 jar」—— 后者在两者并存
  * （用户手边既有便携包又有 exe）的目录里会判错。</p>
+ *
+ * <p>【为什么必须是「jar」而不只是「普通文件」（2026-10-16 真机 bug）】原生镜像里 code source
+ * **不是 null**，它指向**exe 自己**（`file:/…/AhaDesktopNative.exe`）。原先只判
+ * `Files.isRegularFile`，于是「在 `Dist\` 里双击原生 exe（同目录恰好还有上次取来的
+ * `aha-desktop.jar`）」就被判成 JVM 便携包 ⇒ 点「检查更新」去下 JVM 包，换完 exe 自己
+ * 一个字节没变。现在两道保险：① GraalVM 的运行期属性 {@value #NATIVE_IMAGE_PROPERTY}
+ * 说明「我在原生镜像里」；② code source 必须是 `.jar` 文件才算 JVM 形态。</p>
  *
  * @param root     安装根（绝对路径）
  * @param jarBased 是否 JVM 便携包形态（code source 是 jar）
@@ -45,6 +52,14 @@ public record InstallLayout(Path root, boolean jarBased) {
     public static final String NATIVE_EXE_BASE = "aha-desktop-native";
 
     /**
+     * GraalVM 原生镜像在运行期会设这个属性（值 {@code runtime}；构建期是 {@code buildtime}）。
+     *
+     * <p>用它判断「我在不在原生镜像里」是 GraalVM 的官方做法，且不依赖任何 SVM API
+     * （JVM 构建里照样能编译）。</p>
+     */
+    public static final String NATIVE_IMAGE_PROPERTY = "org.graalvm.nativeimage.imagecode";
+
+    /**
      * 探测当前运行的安装布局。
      *
      * <p>先看 code source（JVM 便携包会指向那个 jar）；拿不到（native-image 下为 {@code null}）
@@ -55,16 +70,31 @@ public record InstallLayout(Path root, boolean jarBased) {
      * @throws UpdateException 推不出安装根
      */
     public static InstallLayout detect() {
-        CodeSource source = InstallLayout.class.getProtectionDomain().getCodeSource();
-        URL location = source == null ? null : source.getLocation();
-        if (location != null) {
-            try {
-                Path path = Path.of(location.toURI());
-                if (Files.isRegularFile(path)) {
-                    return new InstallLayout(path.toAbsolutePath().getParent(), true);
+        return detect(isNativeImage());
+    }
+
+    /**
+     * 探测安装布局（「在不在原生镜像里」可注入，便于两端都测）。
+     *
+     * @param nativeImage 是否运行在原生镜像里
+     * @return 安装布局
+     * @throws UpdateException 推不出安装根
+     */
+    static InstallLayout detect(boolean nativeImage) {
+        if (!nativeImage) {
+            CodeSource source = InstallLayout.class.getProtectionDomain().getCodeSource();
+            URL location = source == null ? null : source.getLocation();
+            if (location != null) {
+                try {
+                    // `of` 只把 **.jar** 文件认成 JVM 便携包：原生镜像里 code source 指向 exe 自己，
+                    // 判成 jar 形态就会去下 JVM 包（见类注释里的真机 bug）。
+                    InstallLayout fromSource = of(Path.of(location.toURI()));
+                    if (fromSource.jarBased()) {
+                        return fromSource;
+                    }
+                } catch (Exception ignored) {
+                    // 拿不到就继续走进程自身那条路
                 }
-            } catch (Exception ignored) {
-                // 拿不到就继续走原生那条路
             }
         }
         return ProcessHandle.current().info().command()
@@ -76,6 +106,15 @@ public record InstallLayout(Path root, boolean jarBased) {
     }
 
     /**
+     * 是否运行在 GraalVM 原生镜像里（{@value #NATIVE_IMAGE_PROPERTY} 非空）。
+     *
+     * @return 原生镜像返回 {@code true}
+     */
+    public static boolean isNativeImage() {
+        return !System.getProperty(NATIVE_IMAGE_PROPERTY, "").isEmpty();
+    }
+
+    /**
      * 注入构造（测试）。
      *
      * @param codeSource 运行期 code source（jar 文件或目录）
@@ -83,7 +122,10 @@ public record InstallLayout(Path root, boolean jarBased) {
      */
     public static InstallLayout of(Path codeSource) {
         Path absolute = codeSource.toAbsolutePath();
-        if (Files.isRegularFile(absolute)) {
+        // 只有 **.jar** 文件才算 JVM 便携包：原生镜像的 code source 指向 exe 自己，
+        // 只判「是普通文件」会把 exe 认成 JVM 形态（2026-10-16 真机 bug）。
+        if (Files.isRegularFile(absolute)
+                && absolute.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar")) {
             return new InstallLayout(absolute.getParent(), true);
         }
         return new InstallLayout(absolute, false);
@@ -128,9 +170,9 @@ public record InstallLayout(Path root, boolean jarBased) {
     /**
      * 换装后拉起 App 的命令（供 {@link UpdatePlan#restart()} 用）。
      *
-     * <p>顺序：启动脚本优先（它是包的一部分，会带上正确的 JVM 参数），其次原生单文件，
-     * 最后退回直接 {@code <java.home>/bin/java -jar}（用**绝对路径**，否则计划校验会挡下它；
-     * 取不到 java 时返回空——helper 会把「请手动启动应用」写进回执）。</p>
+     * <p>顺序：启动脚本优先（它是包的一部分，会带上正确的 JVM 参数），其次原生单文件；
+     * 两者都没有（只剩一个单体 jar 的布局）时返回空 —— helper 会把「请手动启动应用」写进回执，
+     * 界面则用 {@link UpdateLauncher#unsupportedReason(InstallLayout)} 提前拦住这种形态。</p>
      *
      * @return 命令列表；拿不出任何可用命令时为空
      */

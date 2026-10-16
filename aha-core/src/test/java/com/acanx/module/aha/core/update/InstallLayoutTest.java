@@ -39,6 +39,28 @@ class InstallLayoutTest {
     }
 
     @Test
+    void executableCodeSourceIsNotJarBased() throws IOException {
+        // 真机 bug（2026-10-16）：原生镜像里 code source **不是 null**，它指向 exe 自己。
+        // 原先只判「是普通文件」⇒ exe 被判成 JVM 便携包 ⇒ 点升级去下 JVM 包，exe 一个字节没变。
+        Path exe = tempDir.resolve(InstallLayout.NATIVE_EXE_BASE + (InstallLayout.isWindows() ? ".exe" : ""));
+        Files.writeString(exe, "MZ");
+
+        InstallLayout layout = InstallLayout.of(exe);
+
+        assertThat(layout.jarBased()).as("exe 不是 jar，不能算 JVM 便携包形态").isFalse();
+    }
+
+    @Test
+    void detectTreatsANativeImageAsTheExeForm() {
+        // 在原生镜像里，连 code source 都不看（那里指向 exe 自己），直接按「进程自身的可执行文件」判
+        InstallLayout layout = InstallLayout.detect(true);
+
+        assertThat(layout.jarBased()).as("原生镜像必须是 exe 形态").isFalse();
+        assertThat(InstallLayout.isNativeImage()).as("本测试进程不在原生镜像里")
+                .isEqualTo(!System.getProperty(InstallLayout.NATIVE_IMAGE_PROPERTY, "").isEmpty());
+    }
+
+    @Test
     void directoryCodeSourceIsNotJarBased() {
         InstallLayout layout = InstallLayout.of(tempDir);
 
