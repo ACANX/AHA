@@ -119,6 +119,9 @@ PRE_DEPLOY_VERIFY_WORKFLOW = ROOT / ".github" / "workflows" / "PreDeployVerify.y
 PRE_DEPLOY_VERIFY_SCRIPT = ROOT / "bin" / "PreDeployVerify.py"
 PRE_DEPLOY_VERIFY_CONTEXT = "predeploy-verify"
 PRE_DEPLOY_VERIFY_MARKER = "<!-- predeploy-verify -->"
+
+#: 工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/YamlFieldSpec.md` §4）。
+WORKFLOW_NAME_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 #: 清单行的形状（两处都用同一张表）：`| A1 | 启动 | … | 0 |`
 CHECKLIST_ROW_RE = re.compile(r"^\s*\|\s*([ABC][0-9]+)\s*\|.*\|\s*([^|]*?)\s*\|\s*$", re.M)
 
@@ -748,6 +751,36 @@ def _step_with_always(text: str, needle: str) -> bool:
     return False
 
 
+def check_workflow_names() -> list[str]:
+    """工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/YamlFieldSpec.md` §4）。
+
+    这个字符串到处都是：Actions 页面、运行列表、PR 上的检查分组、`gh run list` 的输出列。
+    写成 `Snapshot Assert` 这类带空格的写法时，「文件名」与「显示名」成为**两套写法**，
+    检索、对照、贴给别人看都要在脑子里换算一次——而且这种漂移**不会报错**，只会一直错下去。
+
+    注意：改 `name:` **不影响**分支保护（契约是**作业名**，见 `BuildSpec.md` §8.1）。
+    """
+    problems: list[str] = []
+
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        rel = wf.relative_to(ROOT)
+        text = wf.read_text(encoding="utf-8")
+        # 顶层才是 "name:" 从行首开始；`jobs.<id>.name` 有缩进，不会被误取
+        match = re.search(r"^name:[ \t]*(\S.*?)[ \t]*$", text, re.M)
+        if not match:
+            problems.append(f"{rel}：找不到顶层 `name:`（工作流必须有显示名）")
+            continue
+        value = match.group(1).strip().strip("'\"")
+        if not WORKFLOW_NAME_RE.match(value):
+            problems.append(
+                f"{rel}：`name: {value}` 不是大驼峰单数——工作流显示名一律 PascalCase"
+                "（不带空格 / 连字符；如 `snapshot-cleanup.yml` → `SnapshotCleanup`），"
+                "见 `Docs/DevSpec/YamlFieldSpec.md` §4"
+            )
+
+    return problems
+
+
 def check_pre_deploy_verify_contract() -> list[str]:
     """部署前验证（非阻塞质量验证工作流，issue #166）：触发 / 留痕 / 非阻塞 / 可升级。
 
@@ -1133,6 +1166,8 @@ def main() -> int:
     problems.extend(snap_assert)
     pre_deploy = check_pre_deploy_verify_contract()
     problems.extend(pre_deploy)
+    wf_names = check_workflow_names()
+    problems.extend(wf_names)
     layout = check_package_layout()
     problems.extend(layout)
     shade = check_shade_attached()
@@ -1155,6 +1190,7 @@ def main() -> int:
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_assert else '✅'}")
     print(f"检查部署前验证契约（触发/权限/留痕非静默/升级路径）：{'❌' if pre_deploy else '✅'}")
+    print(f"检查工作流显示名（大驼峰单数，YamlFieldSpec §4）：{'❌' if wf_names else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
