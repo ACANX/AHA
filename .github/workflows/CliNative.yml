@@ -692,6 +692,17 @@ jobs:
           ls -lh "$target"
           echo "发布资产：${target}"
 
+      - name: 打包内清单（AHA-PACKAGE.json，issue #51 §6）
+        # 另起一步、**不**沿用上一步的 continue-on-error：清单是升级器替换文件与逐项校验的依据，
+        # 缺了它这个包对升级器就是不合格的 —— 宁可这条腿红，也不要静默出一个不合格的包。
+        if: steps.verify.outputs.produced == 'true'
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/AHA-Cli-Native-${{ env.AHA_VERSION }}-${{ matrix.label }}-jdk${{ matrix.jdk }}.zip" \
+            --kind cli-native --version "${{ env.AHA_VERSION }}" \
+            --platform "${{ matrix.label }}" --jdk "${{ matrix.jdk }}"
+
       - name: 上传制品
         if: steps.verify.outputs.produced == 'true'
         continue-on-error: true
@@ -789,6 +800,13 @@ jobs:
             echo "name=${name}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: 生成发布页校验和（SHA256SUMS）
+        if: steps.collect.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          # 每个 zip 一行（含报告包）：升级器只用得上镜像包，但用户拿到任一资产都该能自己核一遍。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts
+
       - name: PreRelease-AHA-Cli-Native-VPR
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
@@ -798,7 +816,9 @@ jobs:
           tag_name: ${{ steps.carrier.outputs.tag }}
           name: ${{ steps.carrier.outputs.name }}
           prerelease: true
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            artifacts/SHA256SUMS
           body: |
             ## 这是什么
 

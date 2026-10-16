@@ -48,6 +48,14 @@
     且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
     ——静默且难查。把它们钉在一起，漂移立刻可见。
 
+  通道契约：三处实现的一致性（issue #51 §8.3）
+    - 「通道 ↔ tag ↔ 资产名」的规则在本仓库已行三处实现：两套 PowerShell 脚本
+      （`UpdateJvm.ps1` / `UpdateNative.ps1`）、一套 Python 脚本、
+      以及 Java 侧的 `ChannelContract.java` + `UpdateKind.java`。
+      Java 这一处是新增的（issue #51 的服务层），不加守卫必然漂移。
+    - 钉的是**契约片段本身**（如 `NATIVE_TAG_INFIX + kind.tagSuffix()`），
+      而不是拼接后的整串：把中缀换到别处再拼出同样的结果也应该被看出来。
+
   发行包形态：两条线都必须是「包根平铺」（issue #218 / #217）
     - 装配描述符里**不许**再有 `dependencySet`（依赖全在单体 jar 里）、
       `fileSet` 的输出目录**不许**是 `bin/` 或 `lib/`、单体 jar 的 `destName`
@@ -100,6 +108,21 @@ TRACKED_SCRIPT_DIRS = ("Dist",)
 #: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
 NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+
+#: 通道契约的第三处实现（Java，issue #51 §2.1）：一个覆盖四条出包线的统一表。
+JVM_PS1 = ROOT / "Dist" / "UpdateJvm.ps1"
+JAVA_UPDATE_DIR = ROOT / "aha-core" / "src" / "main" / "java" / "com" / "acanx" / "module" / "aha" / "core" / "update"
+JAVA_KINDS = JAVA_UPDATE_DIR / "UpdateKind.java"
+JAVA_CHANNEL_CONTRACT = JAVA_UPDATE_DIR / "ChannelContract.java"
+
+#: Java 枚举常量：`DESKTOP_JVM("Desktop-JVM", "aha-desktop-", true, false),`
+JAVA_KIND_RE = re.compile(
+    r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*(true|false),\s*(true|false)\)', re.M)
+JAVA_CONST_RE = re.compile(r'\b([A-Z_]{3,})\s*=\s*"([^"]+)"')
+
+#: `Dist/UpdateJvm.ps1`：`$TagSuffix = '-aha-jvm'` 与 `Prefix = 'aha-desktop-'`。
+PS_JVM_TAG_RE = re.compile(r"\$TagSuffix\s*=\s*'([^']+)'")
+PS_JVM_PREFIX_RE = re.compile(r"Prefix\s*=\s*'([^']+)'")
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
 SNAPSHOT_ASSERT_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotAssert.yml"
@@ -505,6 +528,99 @@ def check_native_update_parity() -> list[str]:
 
 
 SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def check_release_channel_contract() -> list[str]:
+    """通道 ↔ tag ↔ 资产名的契约在 PowerShell / Python / Java 三处必须逐字一致（issue #51 §8.3）。
+
+    这是本仓库第三次（也是头一次用 Java）实现「从发布页挑包」的规则：
+    `Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`（PowerShell）、
+    `Script/Python/NativeVersionUpdate.py`（Python）、`ChannelContract.java` + `UpdateKind.java`（Java）。
+    规则一旦漂移，表现是「某个通道 / 平台上永远取不到包」—— 静默且难查，所以钉在这里。
+
+    钉的是**契约片段本身**，不是拼接后的整串：Java 把原生 tag 拼成
+    `NATIVE_TAG_INFIX + kind.tagSuffix()`，所以这里比的是「中缀 + 目标词」与另外两处的字面量相等，
+    这样改任一侧都会被拦下（只钉拼接结果的话，把中缀拆到别处就检不出来了）。
+    """
+    needed = (NATIVE_PS1, NATIVE_PY, JVM_PS1, JAVA_KINDS, JAVA_CHANNEL_CONTRACT)
+    if not all(path.exists() for path in needed):
+        # 与 check_native_update_parity 同口径：文件还没到位（例如在老分支上跑）时不误报。
+        return []
+    problems: list[str] = []
+
+    py = {m.group(1).lower(): m.groups()[1:]
+          for m in PY_KIND_RE.finditer(NATIVE_PY.read_text(encoding="utf-8"))}
+    ps = {m.group(1).lower(): m.groups()[1:]
+          for m in PS_KIND_RE.finditer(NATIVE_PS1.read_text(encoding="utf-8-sig"))}
+    java_kinds = {m.group(1): m.groups()[1:]
+                  for m in JAVA_KIND_RE.finditer(JAVA_KINDS.read_text(encoding="utf-8"))}
+    java_consts = dict(JAVA_CONST_RE.findall(JAVA_CHANNEL_CONTRACT.read_text(encoding="utf-8")))
+    if not py or not ps or not java_kinds or "JVM_TAG_SUFFIX" not in java_consts:
+        return [
+            "通道契约的三处一致性检查没能解析出契约："
+            f"Python 侧 {sorted(py)} / PowerShell 侧 {sorted(ps)} / Java 侧 {sorted(java_kinds)}；"
+            "请确认三处仍是可识别的写法（KINDS 表 / $kinds 表 / UpdateKind 枚举常量）"
+        ]
+
+    # ── ① 原生线：tag 后缀、资产前缀三处逐字一致 ──────────────────────────────
+    native_infix = java_consts.get("NATIVE_TAG_INFIX")
+    for key in sorted(set(py) | set(ps)):
+        if key not in py or key not in ps:
+            problems.append(f"通道契约：原生种类 {key!r} 在 Python / PowerShell 中不是两边都有")
+            continue
+        py_tag, py_prefix = py[key][0], py[key][1]
+        ps_tag, ps_prefix = ps[key][0], ps[key][1]
+        if py_tag != ps_tag or py_prefix != ps_prefix:
+            problems.append(
+                f"通道契约：原生种类 {key!r} 的 Python 与 PowerShell 不一致——"
+                f"tag {py_tag!r} vs {ps_tag!r}，前缀 {py_prefix!r} vs {ps_prefix!r}")
+        java_kind = next(((name, value) for name, value in java_kinds.items()
+                          if value[1] == py_prefix and value[3] == "true"), None)
+        if java_kind is None:
+            problems.append(
+                f"通道契约：原生资产前缀 {py_prefix!r} 在 Java 的 UpdateKind 里找不到对应的原生常量"
+                "（挑的是 nativeImage=true 且 assetPrefix 相同的那一个）")
+            continue
+        java_name, java_kind_value = java_kind
+        if native_infix is None or f"{native_infix}{java_kind_value[0].lower()}" != py_tag:
+            problems.append(
+                f"通道契约：原生 tag 在 Java（{java_name}）拼成 "
+                f"{native_infix!r}+{java_kind_value[0].lower()!r}，"
+                f"而 Python / PowerShell 写的是 {py_tag!r}；这会让原生取件永远找不到包")
+
+    # ── ② JVM 线：tag 后缀与两个资产前缀 ────────────────────────────────────
+    jvm_ps1_text = JVM_PS1.read_text(encoding="utf-8-sig")
+    ps_native_text = NATIVE_PY.read_text(encoding="utf-8")
+    jvm_tag = PS_JVM_TAG_RE.search(jvm_ps1_text)
+    if jvm_tag is None:
+        problems.append("通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffix`，无法与 Java 对齐")
+    elif jvm_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+        problems.append(
+            f"通道契约：dev 线 JVM tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {jvm_tag.group(1)!r}，"
+            f"Java 侧 JVM_TAG_SUFFIX 是 {java_consts.get('JVM_TAG_SUFFIX')!r}")
+    ps_prefixes = set(PS_JVM_PREFIX_RE.findall(jvm_ps1_text))
+    for name in ("DESKTOP_JVM", "CLI_JVM"):
+        if name not in java_kinds:
+            problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {name}")
+            continue
+        java_prefix = java_kinds[name][1]
+        if java_prefix not in ps_prefixes:
+            problems.append(
+                f"通道契约：JVM 线资产前缀 {java_prefix!r}（Java 侧 {name}）"
+                f"没出现在 `Dist/UpdateJvm.ps1` 的前缀表里（实际：{sorted(ps_prefixes)}）")
+
+    # ── ③ JDK 段与扩展名：三处一致 ────────────────────────────────────────
+    jdk_infix = java_consts.get("JDK_INFIX")
+    zip_suffix = java_consts.get("ZIP_SUFFIX")
+    if jdk_infix != "-jdk":
+        problems.append(f"通道契约：Java 侧 JDK 段应是 '-jdk'，实际 {jdk_infix!r}")
+    if zip_suffix != ".zip":
+        problems.append(f"通道契约：Java 侧扩展名应是 '.zip'，实际 {zip_suffix!r}")
+    if jdk_infix and f"{jdk_infix}{{jdk}}" not in ps_native_text:
+        problems.append(
+            f"通道契约：Python 侧资产名里应能看到 `{jdk_infix}{{jdk}}`（JDK 段），"
+            "否则原生包的 JDK 段只剩 Java 一处约定")
+    return problems
 
 
 def maybe_scannable_files():
@@ -1194,6 +1310,8 @@ def main() -> int:
     problems.extend(ignored)
     parity = check_native_update_parity()
     problems.extend(parity)
+    channel = check_release_channel_contract()
+    problems.extend(channel)
     snap_parity = check_snapshot_fetch_parity()
     problems.extend(snap_parity)
     snapshot = check_snapshot_manifest()
@@ -1212,6 +1330,7 @@ def main() -> int:
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
+    print(f"检查通道契约三处（PowerShell / Python / Java）一致：{'❌' if channel else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")

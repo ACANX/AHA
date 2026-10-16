@@ -11,6 +11,12 @@
 ## [Unreleased]
 
 ### 新增
+- **发布资产的两份契约文件（issue #51 §6，2026-10-16）**：四种包形态的每个 zip 现在都在**包根**带一份 [`AHA-PACKAGE.json`](Docs/DevSpec/ReleaseProcess.md)（`kind` / `version` / `platform` / `jdk` + 每个文件的 `path` / `sha256` / `size`），每个 release 都带 `SHA256SUMS`（每个 zip 一行）。
+  - **为什么**：应用内升级要靠它知道「哪些文件属于这个包」「新包删掉了哪些旧文件」，并在解压后**逐文件**核对大小与哈希；发布页校验和则覆盖「下载是否被截断 / 传输是否被篡改」。
+  - **只有一份实现**：`.github/Python/PackageManifest.py`（四条出包线都调它，避免各写一段 shell 后漂移 —— 漂移的表现是「某个通道的包永远校验不过」，静默且难查）；
+  - **硬闸口**：打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）一律失败，不写进清单；缺清单的包在原生线上**不让发布**；
+  - `Release.yml` 的校验和由**单独的收尾作业**生成：两个并列作业各自直传资产，各写一份会互相覆盖，得到「只列了一半资产」的校验和；
+  - **守卫**：`bin/CheckScripts.py` 新增 `check_release_channel_contract()`，把「通道 ↔ tag ↔ 资产名」的契约钉在 **PowerShell / Python / Java 三处逐字一致**（正向 + 两次反向注入验证）。
 - **部署前验证：非阻塞质量验证工作流（issue #166，2026-10-16）**：把「**部署前应当自测、但还不宜直接进合并卡点**」的
   通用验证 / 断言集中到一个独立工作流 [`.github/workflows/PreDeployVerify.yml`](.github/workflows/PreDeployVerify.yml)，
   **每次 PR 推送自动跑**（`opened` / `synchronize` / `reopened`），也可手动触发（`workflow_dispatch`）。

@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.27.0
+**文档版本**：v1.28.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.28.0 | 2026-10-16 | 新增 §3.4「发布资产里的两份契约文件」：四种包形态的 zip 带包内清单 `AHA-PACKAGE.json`、每个 release 带 `SHA256SUMS`；生成/校验只有一份实现（`.github/Python/PackageManifest.py`），四条出包线都调它；`Release.yml` 新增收尾作业统一出完整校验和（issue #51 §6）| @ACANX / CNXNC |
 | v1.27.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
 | v1.25.0 | 2026-10-16 | **自动打的 tag 现在会自动触发发布**（issue #238）：`Release.yml` 新增 `workflow_dispatch`（防递归规则的**官方例外**，由 `Build.yml` 的 tag 作业用 `gh workflow run --ref main` 派发）；两条出包线显式 `checkout` 发布 tag，`action-gh-release` 显式 `tag_name`；§2 第 5 步、§2.1 与 §4.2 按新口径重写（手工重建 tag 降为兜底） | @ACANX / CNXNC |
@@ -381,6 +382,37 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 
 > 备注：`jlink` 与 `jpackage` 的**技术限制**（不接受自动模块、不能交叉编译）仍保留在设计文档里——
 > 它们是「桌面端产物为何必须分平台构建」的依据，不因本决策而删除。
+
+### 3.4 发布资产里的两份契约文件（`AHA-PACKAGE.json` / `SHA256SUMS`）
+
+自 0.2 起，**四种包形态的每个 zip 都带包内清单**，**每个 release 都带校验和**（issue #51 §6）：
+
+| 文件 | 位置 | 内容 | 产出方 |
+|---|---|---|---|
+| `AHA-PACKAGE.json` | **包根** | `{"kind":"desktop-jvm\|desktop-native\|cli-jvm\|cli-native","version":"…","platform":"windows-amd64","jdk":25,"files":[{"path":"aha-desktop.jar","sha256":"…","size":123},…]}` | 四条出包线（`BuildJVMArtifacts.yml` / `CliNative.yml` / `DesktopNative.yml` / `Release.yml`）的打包步骤 |
+| `SHA256SUMS` | release 的**资产** | 每个 zip 一行：`<sha256>  <文件名>`（`sha256sum` 文本格式） | `Release.yml` 的收尾作业；三条 dev / 快照线在各自的发布作业里 |
+
+口径（改这里就等于改契约，必须同步 `bin/CheckScripts.py` 的守卫与 Java 侧的解析）：
+
+1. 清单里的 `path` 是**包根相对路径**，`sha256` 与 `size` 指的是**解压后**的文件 —— 升级器就是这么逐项核对的；
+2. `AHA-PACKAGE.json` **自身不进** `files`（否则校验和自指）；`kind` 取值与 `UpdateKind.of()` 一致；
+3. `cli-jvm` 平台无关，清单里 `platform` 为 `null`；其余三种必须带平台标签；
+4. 打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）**一律失败**，不写进清单；
+5. 生成与校验**只有一份实现**：`.github/Python/PackageManifest.py`（四条线都调它）。各写一段 shell
+   必然漂移，而漂移的表现是「某个通道的包永远校验不过」，静默且难查；
+6. 清单在**所有包内自证之后**才写入：那些自证看的是「构建产出的包」，判据不该被清单文件干扰；
+7. 原生线这一步**不**沿用「改名」步骤的 `continue-on-error`：缺清单的包对升级器就是不合格的，
+   宁可这条腿红，也不要静默出一个不合格的包；
+8. `Release.yml` 的校验和由**单独一个收尾作业**生成：CLI 与桌面端是并列的两个作业、各自直传资产，
+   若各自写一份 `SHA256SUMS`，后写的那份会覆盖先写的，得到「只列了一半资产」的校验和 —— 比没有更坏。
+
+本地复核（不需要联网，用发布页上下来的包就能核）：
+
+```bash
+unzip -p Dist/aha-desktop-0.1.3.00242-windows-amd64.zip AHA-PACKAGE.json | head -20
+python3 .github/Python/PackageManifest.py verify --zip Dist/aha-desktop-0.1.3.00242-windows-amd64.zip
+python3 .github/Python/PackageManifest.py --self-test     # 正向 5 项 + 反向 11 项
+```
 
 ---
 

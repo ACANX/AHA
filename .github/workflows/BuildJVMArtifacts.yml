@@ -368,6 +368,11 @@ jobs:
             exit 1
           fi
           echo "桌面端包：${target}（${size}；平铺形态，单体 jar 含 JavaFX 类与本平台原生库 ${same_ext} 个）"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 放在所有包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
+          # 清单是升级器替换文件与逐项校验的依据，缺了它这个包对升级器就是不合格的。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "$target" --kind desktop-jvm --version "${VERSION}" --platform "${LABEL}" --jdk "${JDK}"
 
       - name: 打 CLI 便携包（平台无关，只在一个腿产出）
         # 既有条件（CLI 包平台无关，只在 Ubuntu 腿产出）与「本次要不要这条腿」叠加
@@ -438,6 +443,9 @@ jobs:
           fi
           echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2 与原生库 ${natives} 项）"
           echo "单体 jar 冒烟输出：$(head -1 <<<"$out")"
+          # ── 包内清单（issue #51 §6）：CLI JVM 包平台无关，不带 --platform ────────
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "$target" --kind cli-jvm --version "${VERSION}" --jdk "${JDK}"
 
       - name: 上传制品（Actions 制品仓库）
         if: needs.build-version.outputs.selected == '' || contains(needs.build-version.outputs.selected, format('{0}/jdk{1}', matrix.label, matrix.jdk))
@@ -504,6 +512,14 @@ jobs:
             echo "> 解压即可运行：桌面端需 JDK 25（包内含本平台 OpenJFX）；CLI 包平台无关。"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: 生成发布页校验和（SHA256SUMS）
+        if: steps.collect.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          # 每个 zip 一行：用户拿到任一资产都能自己核一遍。
+          # 「没有校验和」是有代价的（升级器要退到包内清单 + 落地前自证），所以宁可多写一行。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts
+
       - name: PreRelease-AHA-JVM
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
@@ -512,7 +528,9 @@ jobs:
           tag_name: V${{ needs.build-version.outputs.version }}-aha-jvm
           name: V${{ needs.build-version.outputs.version }}-AHA-JVM
           prerelease: true
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.zip
+            artifacts/SHA256SUMS
           body: |
             ## 这是什么
 
