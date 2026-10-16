@@ -70,6 +70,11 @@ function New-Scenario {
     $backupDir = Join-Path $base 'backup'
     $updateRoot = Join-Path $base 'update'
     New-Item -ItemType Directory -Path $installRoot, $packageRoot, $updateRoot -Force | Out-Null
+    # 每个场景用**自己的一份 helper 副本**：helper 成功后会自删自己（`$MyInvocation.MyCommand.Path`），
+    # 直接用仓库里那份就会把**被 git 跟踪的源文件**删掉 —— 后面的用例再也找不到脚本
+    # （2026-10-16 CI 实测：用例 2 之后全部报 "not recognized as the name of a script file"）。
+    $helperCopy = Join-Path $base 'AhaApplyUpdate.ps1'
+    Copy-Item -LiteralPath $Helper -Destination $helperCopy -Force
 
     # 已装：一个 exe + 一个将被删除的旧文件
     Set-Content -LiteralPath (Join-Path $installRoot 'aha-desktop-native') -Value 'OLD-EXE' -NoNewline
@@ -117,6 +122,7 @@ function New-Scenario {
         BackupDir   = $backupDir
         PlanFile    = $planFile
         UpdateRoot  = $updateRoot
+        HelperPath  = $helperCopy
         ExeHash     = $exeHash
     }
 }
@@ -128,13 +134,17 @@ if (-not (Test-Path -LiteralPath $pwshExe)) { $pwshExe = Join-Path $PSHOME 'pwsh
 if (-not (Test-Path -LiteralPath $pwshExe)) { $pwshExe = '' }
 
 function Invoke-Helper {
-    param([string]$PlanFile)
+    param([string]$PlanFile, [string]$HelperPath)
     if (-not $pwshExe) {
         throw "找不到 pwsh 可执行文件（PSHOME=$PSHOME），无法在子进程里跑换装 helper"
     }
-    # 子进程的输出**不能吞掉**：helper 拒绍或崩掉时，那几行就是唯一的线索
-    # （2026-10-16：用例 3 在 CI 上只看到「退出码 64」，因为输出被 *> $null 吞了）。
-    $output = & $pwshExe -NoProfile -NonInteractive -File $Helper -Plan $PlanFile 2>&1
+    if (-not $HelperPath) {
+        $HelperPath = $Helper
+    }
+    # 子进程的输出**不能吞掉**：helper 拒绝换装或崩掉时，那几行就是唯一的线索
+    # （2026-10-16 实测：用例 3 在 CI 上只看到「退出码 64」。补上打印后一眼看到真因 ——
+    #   仓库里那份 helper 已被上一个用例的「自删」删掉了。）
+    $output = & $pwshExe -NoProfile -NonInteractive -File $HelperPath -Plan $PlanFile 2>&1
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         Write-Host "  [helper 输出] 退出码 $exitCode"
@@ -151,7 +161,7 @@ Write-Host "换装 helper 自测：$Helper"
 Write-Host ''
 Write-Host '用例 1：新包缺 AHA-PACKAGE.json ⇒ 拒绝换装、留回执、写「已启动」标记'
 $bad = New-Scenario -Name 'bad' -WithManifest $false
-$code = Invoke-Helper -PlanFile $bad.PlanFile
+$code = Invoke-Helper -PlanFile $bad.PlanFile -HelperPath $bad.HelperPath
 Assert-True ($code -eq 1) "退出码为 1（实际 $code）"
 # 标记是「我还活着」用的：有了回执就不需要它了（否则 App 下次启动会以为换装还在跑）。
 # 「标记是在做任何慢活之前写的」这条握手契约由用例 5 专门验。
@@ -172,7 +182,7 @@ Remove-Item -LiteralPath $bad.Base -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host '用例 2：清单齐、哈希对 ⇒ 替换 + 删除 + 自证 + 回执'
 $good = New-Scenario -Name 'good' -WithManifest $true
-$code = Invoke-Helper -PlanFile $good.PlanFile
+$code = Invoke-Helper -PlanFile $good.PlanFile -HelperPath $good.HelperPath
 Assert-True ($code -eq 0) "退出码为 0（实际 $code）"
 $resultPath = Join-Path $good.UpdateRoot 'update-result.json'
 Assert-True (Test-Path -LiteralPath $resultPath) '写了回执 update-result.json'
@@ -203,7 +213,7 @@ $escapePlan = Get-Content -LiteralPath $escape.PlanFile -Raw -Encoding UTF8 | Co
 $escapePlan.actions[0].path = '../escape.txt'
 $escapePlan.actions[1].path = '../escape2.txt'
 ($escapePlan | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $escape.PlanFile -Encoding UTF8
-$code = Invoke-Helper -PlanFile $escape.PlanFile
+$code = Invoke-Helper -PlanFile $escape.PlanFile -HelperPath $escape.HelperPath
 Assert-True ($code -eq 1) "退出码为 1（实际 $code）"
 $resultPath = Join-Path $escape.UpdateRoot 'update-result.json'
 Assert-True (Test-Path -LiteralPath $resultPath) '写了回执 update-result.json'
@@ -225,10 +235,13 @@ Remove-Item -LiteralPath $escape.Base -Recurse -Force -ErrorAction SilentlyConti
 if ($env:OS -eq 'Windows_NT') {
     Write-Host ''
     Write-Host '用例 4：经 Dist/apply-update.cmd（一键入口）换装'
-    $entry = Join-Path $repoRoot 'Dist/apply-update.cmd'
     $viaCmd = New-Scenario -Name 'entry' -WithManifest $true
+    # 入口也要用**副本**（它靠 `%~dp0` 找同目录的 AhaApplyUpdate.ps1，而那份会被 helper 自删）：
+    # 直接在仓库的 Dist/ 里跑，就会把被 git 跟踪的源文件删掉。
+    $entry = Join-Path $viaCmd.Base 'apply-update.cmd'
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'Dist/apply-update.cmd') -Destination $entry -Force
     $entryCommand = '"' + $entry + '" "' + $viaCmd.PlanFile + '"'
-    cmd.exe /c $entryCommand | Out-Null
+    cmd.exe /c $entryCommand 2>&1 | Out-Null
     $code = $LASTEXITCODE
     Assert-True ($code -eq 0) "一键入口退出码为 0（实际 $code）"
     $resultPath = Join-Path $viaCmd.UpdateRoot 'update-result.json'
@@ -256,13 +269,22 @@ Write-Host ''
 Write-Host '用例 5：计划不是合法 JSON ⇒ 标记已写、无回执、退出码非 0'
 $broken = New-Scenario -Name 'broken' -WithManifest $true
 Set-Content -LiteralPath $broken.PlanFile -Value '{ 这不是 JSON' -Encoding UTF8
-$code = Invoke-Helper -PlanFile $broken.PlanFile
+$code = Invoke-Helper -PlanFile $broken.PlanFile -HelperPath $broken.HelperPath
 Assert-True ($code -ne 0) "退出码非 0（实际 $code）"
 Assert-True (Test-Path -LiteralPath (Join-Path $broken.UpdateRoot 'helper-started')) `
     '标记是在解析计划**之前**写的（App 靠它判断 helper 是否真的起来了）'
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $broken.UpdateRoot 'update-result.json'))) `
     '计划坏掉时写不出回执（这正是「启动时按残留清理」那条分支的来由）'
 Remove-Item -LiteralPath $broken.Base -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host ''
+
+# ── 收尾自检：仓库里的 helper 源文件必须**还在** ─────────────────────────────
+# 【为什么单列一条（2026-10-16 CI 实测）】helper 成功后会自删自己，而自测最早直接用
+# 的是仓库里的 `Dist/AhaApplyUpdate.ps1` —— 用例 2 一过，被 git 跟踪的源文件就没了，
+# 后面的用例全部报 `not recognized as the name of a script file`。这条断言把这个坑钉死。
+Assert-True (Test-Path -LiteralPath $Helper) `
+    '仓库里的换装 helper 源文件还在（自测只能用副本，不能删源文件）'
 
 Write-Host ''
 if ($failures -gt 0) {
