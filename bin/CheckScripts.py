@@ -120,7 +120,7 @@ PRE_DEPLOY_VERIFY_SCRIPT = ROOT / "bin" / "PreDeployVerify.py"
 PRE_DEPLOY_VERIFY_CONTEXT = "predeploy-verify"
 PRE_DEPLOY_VERIFY_MARKER = "<!-- predeploy-verify -->"
 
-#: 工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/YamlFieldSpec.md` §4）。
+#: 工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/GitHubActionsSpec.md` §2.1）。
 WORKFLOW_NAME_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 #: 清单行的形状（两处都用同一张表）：`| A1 | 启动 | … | 0 |`
 CHECKLIST_ROW_RE = re.compile(r"^\s*\|\s*([ABC][0-9]+)\s*\|.*\|\s*([^|]*?)\s*\|\s*$", re.M)
@@ -752,7 +752,7 @@ def _step_with_always(text: str, needle: str) -> bool:
 
 
 def check_workflow_names() -> list[str]:
-    """工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/YamlFieldSpec.md` §4）。
+    """工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/GitHubActionsSpec.md` §2.1）。
 
     这个字符串到处都是：Actions 页面、运行列表、PR 上的检查分组、`gh run list` 的输出列。
     写成 `Snapshot Assert` 这类带空格的写法时，「文件名」与「显示名」成为**两套写法**，
@@ -775,7 +775,7 @@ def check_workflow_names() -> list[str]:
             problems.append(
                 f"{rel}：`name: {value}` 不是大驼峰单数——工作流显示名一律 PascalCase"
                 "（不带空格 / 连字符；如 `snapshot-cleanup.yml` → `SnapshotCleanup`），"
-                "见 `Docs/DevSpec/YamlFieldSpec.md` §4"
+                "见 `Docs/DevSpec/GitHubActionsSpec.md` §2.1"
             )
 
     return problems
@@ -1190,7 +1190,7 @@ def main() -> int:
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_assert else '✅'}")
     print(f"检查部署前验证契约（触发/权限/留痕非静默/升级路径）：{'❌' if pre_deploy else '✅'}")
-    print(f"检查工作流显示名（大驼峰单数，YamlFieldSpec §4）：{'❌' if wf_names else '✅'}")
+    print(f"检查工作流显示名（大驼峰单数，GitHubActionsSpec §2.1）：{'❌' if wf_names else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")

@@ -216,6 +216,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [ModuleConvention.md](Docs/DevSpec/ModuleConvention.md) - 模块约定
 - [DocumentationSpec.md](Docs/DevSpec/DocumentationSpec.md) - 文档规范
 - [BuildSpec.md](Docs/DevSpec/BuildSpec.md) - 构建规范
+- [GitHubActionsSpec.md](Docs/DevSpec/GitHubActionsSpec.md) - GitHub Actions 规范（工作流命名 / 触发 / 权限 / 留痕）
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范
 - [YamlFieldSpec.md](Docs/DevSpec/YamlFieldSpec.md) - YAML 字段规范
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
