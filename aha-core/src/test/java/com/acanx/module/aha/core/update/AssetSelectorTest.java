@@ -266,6 +266,25 @@ class AssetSelectorTest {
                 .hasMessageContaining("jdk25");
     }
 
+    /**
+     * 取「该形态在本通道不支持」那条消息（**测试辅助**，不是产品代码）。
+     *
+     * <p>供 {@link ChannelContractTest} 复用：这条消息是用户碰到「默认通道发不了本形态的包」时
+     * 唯一的指引，所以要在它自己该在的地方断言（issue #252 的排期边界）。</p>
+     *
+     * @param kind 形态
+     * @return 异常消息
+     */
+    static String unsupportedMessage(UpdateKind kind) {
+        try {
+            // supports() 在触碰 release 之前就拦下了 ⇒ 这里传 null 也能拿到消息
+            AssetSelector.select(null, ReleaseChannel.STABLE, kind, WINDOWS);
+            throw new AssertionError("不支持的组合应当抛异常");
+        } catch (UpdateException e) {
+            return e.getMessage();
+        }
+    }
+
     @Test
     void availableKeepsNewestFirstAndSkipsVersionsWithoutThisPlatformsLeg() {
         assertThat(AssetSelector.available(BETA_DESKTOP_JVM, ReleaseChannel.BETA,

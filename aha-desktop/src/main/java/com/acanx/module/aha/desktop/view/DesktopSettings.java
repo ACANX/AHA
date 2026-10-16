@@ -55,7 +55,7 @@ public final class DesktopSettings {
     /** 上次检查时间（**仅展示用，不参与决策**）。 */
     public static final String KEY_UPDATE_LAST_CHECK_AT = "Update.LastCheckAt";
 
-    /** 默认升级通道：{@link ReleaseChannel#DEFAULT}（暂定 Beta —— Stable 目前没有可下包）。 */
+    /** 默认升级通道：{@link ReleaseChannel#DEFAULT}（Stable；2026-10-16 由临时值 Beta 改回）。 */
     public static final ReleaseChannel DEFAULT_UPDATE_CHANNEL = ReleaseChannel.DEFAULT;
 
     /** 默认：启动时不检查更新（先按需）。 */
@@ -101,10 +101,11 @@ public final class DesktopSettings {
     /**
      * 「用户显式设过」的键。
      *
-     * <p>为什么需要它：升级通道的默认值是**暂定**的（Beta，见 issue #51 §10 D9）——将来首个带资产的
-     * 正式发版落地后会把代码默认值改回 Stable，那时「从没改过这个键」的安装应当跟着切过去。
+     * <p>为什么需要它：升级通道的默认值会随版本调整（2026-10-16 就从临时值 Beta 改回了 Stable，
+     * 见 issue #252 / TD-00019），「从没改过这个键」的安装应当跟着默认值切过去。
      * 若每次保存都把当前值写盘，默认值就被冻在磁盘上了，之后改代码默认值也没用。
-     * 所以 {@link #save()} 只写用户显式设过的 {@code Update.*} 键。</p>
+     * 所以 {@link #save()} 只写用户显式设过的 {@code Update.*} 键 ——
+     * 上面那次切换正是靠这条机制才惠及老安装的。</p>
      */
     private final Set<String> explicitKeys = new LinkedHashSet<>();
 

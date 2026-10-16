@@ -43,7 +43,7 @@ class DesktopSettingsTest {
         DesktopSettings settings = DesktopSettings.load(file());
 
         assertThat(settings.updateChannel()).isEqualTo(ReleaseChannel.DEFAULT);
-        assertThat(settings.updateChannel()).isEqualTo(ReleaseChannel.BETA);
+        assertThat(settings.updateChannel()).isEqualTo(ReleaseChannel.STABLE);
         assertThat(settings.updateChannelExplicit()).isFalse();
         assertThat(settings.checkOnStartup()).isFalse();
         assertThat(settings.alphaAcknowledged()).isFalse();
@@ -63,6 +63,35 @@ class DesktopSettingsTest {
         assertThat(written.getProperty(DesktopSettings.KEY_THEME)).isEqualTo(Theme.DARK.name());
         assertThat(written).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHANNEL);
         assertThat(written).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHECK_ON_STARTUP);
+    }
+
+    @Test
+    void installThatNeverPickedAChannelFollowsTheCodeDefault() throws IOException {
+        // issue #252 验收：盘上没有 Update.Channel 的安装（老安装 / 从没选过）跟着代码默认值走。
+        // 先保存一个**别的**设置，确认通道键仍不会被写盘 —— 这正是默认值能改回 Stable 的前提
+        DesktopSettings settings = DesktopSettings.load(file());
+        settings.theme(Theme.DARK);
+        settings.save();
+        assertThat(read()).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHANNEL);
+
+        DesktopSettings reloaded = DesktopSettings.load(file());
+
+        assertThat(reloaded.updateChannel()).isEqualTo(ReleaseChannel.DEFAULT);
+        assertThat(reloaded.updateChannel()).isEqualTo(ReleaseChannel.STABLE);
+        assertThat(reloaded.updateChannelExplicit()).isFalse();
+    }
+
+    @Test
+    void installThatPickedBetaExplicitlyKeepsIt() throws IOException {
+        // issue #252 验收的另一半：显式选过 Beta 的安装**不受**默认值改动影响
+        DesktopSettings settings = DesktopSettings.load(file());
+        settings.updateChannel(ReleaseChannel.BETA);
+        settings.save();
+
+        DesktopSettings reloaded = DesktopSettings.load(file());
+
+        assertThat(reloaded.updateChannel()).isEqualTo(ReleaseChannel.BETA);
+        assertThat(reloaded.updateChannelExplicit()).isTrue();
     }
 
     @Test
