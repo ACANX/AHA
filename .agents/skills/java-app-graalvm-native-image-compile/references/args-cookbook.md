@@ -89,6 +89,8 @@
 | `-O2` | 总是 | 构建慢一点，产物快一点；原生镜像里产物质量比构建时长重要 |
 | `-H:IncludeResources=<正则>` | 有资源 | 见下方「资源清单」 |
 | `-H:IncludeResources=META-INF/services/.*` | 用 `ServiceLoader` | 服务文件必须进镜像，否则「实现类找不到」 |
+| `-H:IncludeResources=sun/text/resources/LineBreakIteratorData`<br>`-H:IncludeResources=.*\.icu$` | 用到文本断行 / 格式化（`BreakIterator`、`--help` 里的用法表格） | **JDK 自带的资源**，**无扩展名**，按扩展名的正则匹不上；漏了会抛 `InternalError`（issue #117） |
+| 平台专属参数单独成文件（Windows 的链接器参数等） | 只对某个平台有效的参数 | 直接写进共享参数文件会让**其它平台**的链接失败；用一份「空档」文件 + profile/矩阵改指（见 `isolation-and-ci` §2 与 SKILL.md 的「平台适配」一节） |
 
 ## 三、四类清单的种子
 
@@ -119,6 +121,20 @@ AHA 就跣过这个坑——桌面端正则里有 `properties|txt|json`，却漏
 
 - 资源清单里至少要有 `properties`、`yaml`、`yml`、`json`、`xml`、`txt`、`svg`；
 - 最好用一个「启动即读全部内置资源」的自检开关，让缺项在启动时就暴露。
+
+**还有一类资源不在你的源码里**：JDK 自己的资源。它们常常**没有扩展名**，
+按扩展名写的正则一条也匹不上。AHA 实测（issue #117）：CLI 原生镜像 `--help`
+在三平台一致退出码非 0 —— picocli 渲染用法表格时经 `BreakIterator` 读
+`sun/text/resources/LineBreakIteratorData`（无扩展名），运行期抛 `InternalError`，
+而构建全绿、`--version` 正常。两条一起加最省事：
+
+```
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
+```
+
+**判据**：`--version` 正常、`--help`（或任何带表格排版的功能）崩，且**各平台表现一致**
+⇒ 优先怀疑资源 / 逻辑，而不是平台差异。
 
 ### 3.2 运行期初始化清单（`--initialize-at-run-time`）
 

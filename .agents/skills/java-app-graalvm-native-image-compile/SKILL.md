@@ -1,13 +1,13 @@
 ---
 name: java-app-graalvm-native-image-compile
-description: 把已能跑的 Java jar 模式程序编译成多操作系统、多架构的 GraalVM Native Image 原生可执行文件。覆盖隔离式落地（profile + 独立工作流 + 独立 tag 命名空间）、依赖与 classpath 准备、反射/资源/JNI/初始化四类清单、JPMS 与 classpath 的取舍、平台分类器与空壳 jar 陷阱、产物自证、按 PR 号的可追溯版本号，以及启动速度与内存占用的对比实验方法。当需要为含 GUI、JPMS、JNI、反射的复杂项目引入原生镜像构建，或排查 native-image 构建与运行期失败时使用。
+description: 把已能跑的 Java jar 模式程序编译成多操作系统、多架构的 GraalVM Native Image 原生可执行文件。覆盖隔离式落地（profile + 独立工作流 + 独立 tag 命名空间）、依赖与 classpath 准备、反射/资源/JNI/初始化四类清单、JPMS 与 classpath 的取舍、平台分类器与空壳 jar 陷阱、平台适配（Windows exe 兼容清单与链接器参数）、产物自证与「在 CI 里真跑一次产物」、构建系统层与 CI 的静默跳过家族、按 PR 号的可追溯版本号、启动速度与内存占用的对比实验方法，以及「不崩但表现退化」这类只会在原生包里出现的差异。当需要为含 GUI、JPMS、JNI、反射的复杂项目引入原生镜像构建，或排查 native-image 构建与运行期失败时使用。
 license: GPL-3.0-or-later
 compatibility: 需要 GraalVM（含 native-image）；构建必须在目标平台上执行（native-image 不能交叉编译）；JavaFX 等带原生库的 GUI 框架需要对应平台的分类器工件；若项目启用 JPMS，classpath 模式可绕开模块约束。
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   owner: ACANX
   source-project: AHA（复杂场景试验场：JavaFX + JPMS + JNI + 反射 + 多平台分类器）
-  maturity: 试验中（含「推断待验证」条目；达标判据见「用法：开工前就建，边做边改」一节）
+  maturity: 可用（两个原生目标在真机跑过并持续出包；含明确标注的「不可达标」条目——LCD 次像素渲染、触摸手感，见「验证状态」）
 ---
 
 # 把 Java 应用编成多平台原生镜像（jar 模式 → GraalVM Native Image）
@@ -145,6 +145,67 @@ metadata:
    另：这类失败会被写进本地仓库的**负缓存**（`*.lastUpdated`），
    修好后仍可能继续失败 —— 清掉缓存再跑。
 
+## 平台适配：Windows exe 与兼容清单
+
+**症状**：原生 exe 里读到的系统版本是 `Windows 8.0 build 9200`，而机器明明是 Windows 10/11；
+JVM 模式却打印真实版本。**这不是读错了字段** ——
+`GetVersionEx` / `GetVersion` 家族在**没有 Windows 10 兼容清单**的可执行文件里一律返回
+`6.2.9200`（= 8.0），是 Windows 的兼容性 shim 主动「说谎」；`java.exe` 自带清单，所以 JVM 模式看不到。
+
+**做法**：写一份声明支持 Win10 的清单，交给 MSVC 链接器嵌入：
+
+```xml
+<!-- src/native/app.manifest -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>   <!-- Windows 10 / 11 -->
+    </application>
+  </compatibility>
+</assembly>
+```
+
+```text
+# src/native/native-image-args-windows.txt（**只对 Windows 腿生效**）
+-H:NativeLinkerOption=/MANIFEST:EMBED
+```
+
+```xml
+<!-- POM：路径必须用 ${project.basedir} 展开成绝对路径 -->
+<profile>
+  <id>native-windows-manifest</id>
+  <activation><os><family>windows</family></os></activation>
+  <properties>
+    <native.image.extra.argsfile>src/native/native-image-args-windows.txt</native.image.extra.argsfile>
+    <native.manifest.input>-H:NativeLinkerOption=/MANIFESTINPUT:${project.basedir}/src/native/app.manifest</native.manifest.input>
+  </properties>
+</profile>
+```
+
+**五个必须记住的点**（都踩过）：
+
+1. **清单路径必须是绝对路径**：`native-image` 以自己的构建临时目录（`%TEMP%\SVM-…`）为工作目录
+   调链接器 —— 写相对路径会被解析到那里，`mt.exe` 报
+   `c1010070: Failed to load and parse the manifest. The system cannot find the file specified.`
+2. **参数位置在主类之前**：`native-image` 只把**主类之后**的参数当应用参数，写在后面会被静默当成程序参数。
+3. **平台专属参数要单独成文件**：`NativeLinkerOption` 这类 MSVC 参数在 Linux / macOS 上会让链接直接失败 ⇒
+   非 Windows 时让 `native.image.extra.argsfile` 指向一个**只有注释**的「空档」文件（等于不加参数）。
+4. **只给 `/MANIFESTINPUT` 不够**：必须同时给 `/MANIFEST:EMBED`，否则合并后的清单会落到**单独的**
+   `.manifest` 文件，而不是嵌进 exe。
+5. **清单语义是「声明兼容哪些系统」，不是「能跑的最低版本」**：声明后 `GetVersionEx` 返回真实版本
+   （我们要的），同时**不再有 shim 兜底** —— 低于声明版本的机器本就不在目标平台内。
+
+**两条工程纪律**（同一批踩出来的）：
+
+- **给旧式 MS 工具（`mt.exe`）的文件用纯 ASCII 字节**：编码赌注不值得下（`.ps1` 要 UTF-8 BOM 是同一类）；
+- **有 `continue-on-error` 的步骤要看 `outcome`，不是 `conclusion`**：
+  本技能刻意容忍原生构建失败（它是数据点、不是交付物），于是「加了参数但没生效」与「构建成功」
+  在作业层面**长得一模一样** —— 这正是「产物自证」存在的理由（清单是否嵌进 exe，要在产物的字节里查）。
+- **Windows 上往管道打中文 / emoji 要显式设编码**：CI 里 stdout 是**管道**（不是控制台），
+  默认按本地代码页（cp1252）编码，`print("✅ …")` 会抛 `UnicodeEncodeError` ——
+  断言其实通过了，是那一行字把步骤弄挂的。写法：`stream.reconfigure(encoding="utf-8", errors="replace")`
+  （外加 `PYTHONIOENCODING=utf-8` 双保险）。
+
 ## 四类清单（原生镜像的全部难点都在这四类）
 
 > **本节只给入口。** 元数据的**发现 → 登记 → 验证 → 守卫**这条纵向链路已单独抽成技能：
@@ -164,6 +225,25 @@ metadata:
 元数据的发现 / 登记 / 验证与常见框架经验库，见
 [graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)。
 
+## 「不崩但表现退化」：第三类失败
+
+除了「构建失败」与「运行期崩」，还有第三类：**程序一切正常，只是表现和 JVM 模式不一样**。
+它既不会让构建红，也不会让任何守卫出声 —— 判据只能是**原生包的真机观感**。
+
+AHA 实测（JavaFX 原生包）三例，可以用来校准预期：
+
+| 例子 | 现象 | 机制 | 处置 |
+|---|---|---|---|
+| **字体渲染**（#44 / #48） | 文字发虚、偏细 | 原生下 LCD **次像素**抗锯齿退化为**灰度**（真机像素对照：彩色边缘像素相差 18.4 倍）；成因指向 DirectWrite 渲染参数在 closed-world 下读不到 | **缓解、未根治**：原生内默认写 `prism.lcdtext=false`；提供 `-Dprism.lcdtext=…` 与显式开关回退；把「这一版是灰度还是次像素、是谁决定的」**打印出来**，真机日志可读 |
+| **CSS 函数失效**（#49 / `TS-2610-029`） | 控件背景发黑（看起来像「设了黑色」，其实是「没有背景」） | 原生下 modena 的 `derive` / `linear-gradient` 失效；JavaFX CSS 是**整条声明**粒度——一个值无效 ⇒ 整条 `-fx-*` 被丢弃 | 用一份**纯字面量**的补丁样式表；**能用属性 / 字面量表达的，就不要用 CSS 函数** |
+| **边框丢失**（#229 / `TS-2610-046`） | 输入框「看不见」（与页底同色又没边） | 属性 API 的兜底只覆盖了背景与文字，**漏了边框** | 按「这个控件靠哪几样东西被看见」逐项清点：底色 / 文字 / 边框 / 焦点环 |
+
+**三条通用做法**：
+
+1. **判据只能是原生包真机观感**：「JVM 正常」推不出「原生也正常」（两侧机制不同）；
+2. **缓解必须可回退、可解释**：给系统属性开关，并把决策写进日志/注释（不然下次改动要重新推理）；
+3. **能静态拦住的别留给真机**：CSS 里禁用的函数、FXML 的 import / 构造器登记，都是毫秒级对账能查的。
+
 ## 产物自证（不要只看「构建成功」）
 
 构建成功与「能跑」是两件事。CI 里至少自证四项：
@@ -173,7 +253,19 @@ metadata:
 3. **平台魔法数**（PE `4d5a` / ELF `7f454c46` / Mach-O `cffaedfe`）——
    确认拿到的确实是本平台的二进制，而不是错平台的产物；
 4. **关键依赖数量**（例如「恰好 3 个带分类器的 GUI 框架 jar」），
-   用来把「空壳混进来 / 依赖漏了」这两类问题挡在发布之前。
+   用来把「空壳混进来 / 依赖漏了」这两类问题挡在发布之前；
+5. **在 CI 里真跑一次产物**：**命令行形态**三平台都跑得起 —— 断言退出码与输出内容
+   （AHA 的 CLI 线：`--version` 退出码 0 且含本次版本号、`--help` 退出码 0；issue #117 就是这么发现的）；
+   **GUI 形态**需要显示环境，只在能跑的平台上跑（AHA：Windows 腿），并断言**正面标记**
+   （「进了 `main`」「界面骨架装载成功」），而不是「进程还活着 / 退出码为 0」，
+   顺带断言一条**改前必然出现、改后必然消失**的指纹（`Windows version 0.0 build 0`，见 `TS-2610-034`）。
+   跑不了的用静态对账补，并**如实写明盲区**（哪个平台的哪一层没有自动化覆盖）。
+
+**还要防一类「产物少文件但构建全绿」**：打包描述符（assembly）里**匹配不到的 `<include>` 会被静默跳过**，
+不报错。所以产物里应当有一个**清单**（AHA 用包内 `AHA-PACKAGE.json`：每个文件的 sha256 + 体积），
+并让守卫断言「**描述符引用的每个手写产物都存在、且被 git 跟踪**」——
+`Dist/` 这类「脚本 + 产物混居」的目录尤其危险（`.gitignore` 一条规则就能让入口脚本静默消失，
+详见 [code-review](../code-review/references/ci-blind-spots.md) 的逃逸链清单）。
 
 ## 版本与可追溯
 
@@ -217,7 +309,20 @@ metadata:
 | 2026-10-08 | 同一仓库要编第二个原生目标（CLI，`aha-cli-native`） | `isolation-and-ci` §6：**逐项复制并改名**（模块 / profile / 参数 / 工作流 / tag / 产物），不要合并成一个工作流；**元数据来源会变**——picocli 用 `picocli-codegen` 注解处理器生成（比手写可靠）、JLine 自带但 `Signals` 的 `sun.misc.Signal` 要补 | 实测（AHA：CLI 管线跑通 `native.skip=true`，picocli 生成 30 个类型，单测守卫生成结果） |
 | 2026-10-08 | 建第二个目标时反查发现第一个目标漏了资源（yaml/yml） | `args-cookbook` §3.1：资源正则要**逐项对源码里的 `getResourceAsStream` 路径**，别只凭扩展名直觉；桌面端漏了 `yaml`/`yml` → 启动即 `CONFIG_NOT_FOUND` | 实测（AHA：`AhaDefault.yaml` / `ModelDefault.yml`；两份桌面参数已修） |
 | ⚠️ 过程反思 | 这次**顺序反了**：先改代码、后补技能 | 违反「踩坑三步：先写技能 → 再改代码 → 记来源」。下一轮起先落条目（哪怕是先写「症状」一行） | 自述（据 `references/skill-lifecycle.md`） |
-| 待补 | 三平台首次真机运行（双击可开窗 / 能对话） | 运行期清单（`--initialize-at-run-time`、JavaFX 原生库、SQLite） | 待做（`N-05`/`N-06`） |
+| 2026-10-09 | 原生桌面包一串「界面不对」：背景发黑、主题不跟随、文字发虚、输入框没轮廓（#48/#49/#153/#229） | 新增「**不崩但表现退化**」一节：判据只能是原生包真机观感；缓解要可回退、决策要能打印 | 实测（`TS-2610-029` / `TS-2610-030` / `TS-2610-046`） |
+| 2026-10-13 | FXML 化之后原生包启动即崩，而构建 / 原生构建 / GUI 冒烟**三方全绿**（#133） | 产物自证升级：**在 CI 里真跑一次产物 + 断言正面标记**；并立两条纪律：「守卫必须能证明自己会执行」「能用静态手段拦的不要留给真机」 | 实测（`TS-2610-032`） |
+| 2026-10-13 | 原生包 OS / 驱动信息全零（#60） | 产物自证加 `require_jni` 与**可判别指纹**（改前必然出现、改后必须消失）；元数据类问题指向姊妹技能 | 实测（`TS-2610-034`） |
+| 2026-10-13 / 10-14 | 两个原生目标都要编，第二个怎么复用 | [isolation-and-ci](references/isolation-and-ci.md) §6 已有「逐项复制并改名」；本条补：**快照线**（谁在什么时候出包）也要按线独立，别共用触发与并发组 | 实测（#183 / #190：tag 词序、目标词与资产前缀同序） |
+| 2026-10-14 | 原生 exe 报「Windows 8.0 build 9200」（#151） | 新增「**平台适配：Windows exe 与兼容清单**」一节：清单路径必须绝对（`mt.exe` c1010070）、参数必须在主类之前、平台专属参数单独成文件、`/MANIFEST:EMBED` 不能省 | 实测（`TS-2610-037`） |
+| 2026-10-14 | 「加了清单参数但没生效」，CI 仍绿 | 纪律：**有 `continue-on-error` 的步骤要看 `outcome` 而不是 `conclusion`**；「加了参数没生效」与「构建成功」在作业层面长得一样 | 实测（`TS-2610-037`） |
+| 2026-10-15 | 打了快照标签却**零运行**（#204 / #165） | 触发层 `on.pull_request.paths` 会把「只改文档 + 新打标签」的显式请求滤掉 ⇒ 门控**下沉到作业层**（并加守卫） | 实测（`TS-2610-040`） |
+| 2026-10-15 | 显式请求被自动运行**取消**（#204 复验） | 并发组要**按事件类别分层**：`labeled` 与 `synchronize` 同组时后者会用 `cancel-in-progress` 把前者吞掉 | 实测（`TS-2610-041`） |
+| 2026-10-15 | dev 的 JVM 预发行包**停发 4 天**，而每次 run 都报 success（#213） | **静默跳过家族**（`null != false` 恒为假）：门控条件要显式判 `inputs` 是否存在；同类问题一律用「产物存在性」自证兜住 | 实测（`TS-2610-044`） |
+| 2026-10-15 | 快照评论跨线陈旧、两条除 marker 外逐字相同（#205） | 评论回写要有**线身份**与可见标题；跨线时写交接说明；回写实现**抽成单一来源** | 实测（`TS-2610-042` / `TS-2610-043`） |
+| 2026-10-15 | 想用 Actions 制品做对外载体，匿名下载 401（#165） | 制品不作为对外载体（匿名下载受限、网页链接会失效）⇒ 改用发布页 pre-release 资产 | 实测（`TS-2610-039`） |
+| 2026-10-16 | CLI 原生镜像 `--help` 三平台一致失败（#117） | 元数据技能 §5 规则 4：JDK 自带资源**无扩展名**，按扩展名的正则匹不上 | 实测（#233） |
+| 2026-10-16 | 原生包在用户机器上「换装失败」：包里没有 helper（PR #243） | 打包描述符的 `<include>` **匹配不到会静默跳过** ⇒ 产物要自带清单（每文件 sha256），并加「描述符引用的手写产物必须存在且被 git 跟踪」的守卫 | 实测（PR #243） |
+| 2026-10-16 | 我为一个「一次确认就够」的事加了每次构建都跑的自测门禁 | **纪律**：一次性验证做成真机/一次性确认；只有「**必然复发且复发时静默**」的缺陷才留毫秒级静态守卫 | ACANX 判定（PR #245；已在 PR 中整套撤掉） |
 
 ## 验证状态（用这份技能前先看这里）
 
@@ -228,11 +333,15 @@ metadata:
 | 空壳 jar 排除、拷贝不删旧文件、POM 命名空间解析为空 | **已在 AHA 实测** |
 | 版本号 `<基线>.<PR 补零>` 推导 | **已在 AHA 实测** |
 | 依赖拷贝 → classpath 抽取 → 参数文件 → 打包的整条管线 | **已在 AHA 实测**（`-Dnative.skip=true`） |
-| **native-image 能编出二进制**（编译期） | **已踩坑→已验证（部分平台）**：2026-10-08 在 AHA 首次真跑，**linux-x64 与 macos-arm64 编译成功**（win-x64 卡在工具链/`.cmd`，见 `references/troubleshooting.md`）。 |
-| Windows 腿的工具链自证（`native-image.cmd`） | **已踩坑**：bash 不能直接执行 `.cmd`，要 `cmd //c`。修法已合入，**待下一次运行确认** |
+| **native-image 能编出二进制**（编译期） | **已验证**：2026-10-08 首次真跑（linux-x64 / macos-arm64 成功），此后 Windows 腿也跑通并常态化出包 |
+| Windows 腿的工具链自证（`native-image.cmd`） | **已验证**：bash 不能直接执行 `.cmd`（要 `cmd //c`）；修法已合入并在后续运行中确认 |
 | 容器/依赖清单的「真不变式」 | **已踩坑**：`恰好 N 个` 会随传递依赖漂移（不代表坏）；真正的不变式是「三件套齐全 + 无 0 KB 空壳」 |
-| **运行期行为**（能开窗、能对话、GUI 原生库是否完整进镜像、体积与启动表现） | **尚未验证**：还需在真机上下载二进制跑一遍。把这部分当成**起点**，不要当成结论；已知启动链路的反射 / JNI 清单已按静态分析补齐（issue #26/#35），但**未真机确认** |
-| 首次真编 → 三平台真机可运行 → 在别的项目复用一次 | **部分完成**：首次真编已在 Linux/macOS 达成；剩「三平台真机可运行」与「在别的项目复用一次」（见 metadata.maturity） |
+| **运行期行为**（能开窗、能启动、元数据是否齐） | **已验证（真机 + CI）**：原生包在真机被反复使用（#46/#48/#49/#60/#133/#151/#153/#227/#229 都是真机反馈）；`DesktopNative.yml` 的 Windows 腿另在 CI 里**真跑一次产物**并断言正面标记 |
+| **运行期行为 · 真跑覆盖到哪一层** | **已在 CI**：CLI 线**三平台**都执行产物（`--version` / `--help`）；桌面线**Windows 腿**启动 GUI exe 并断言正面标记 |
+| **运行期行为 · 仍缺自动化的部分** | **明细**：① 原生包里的**交互**仍无自动化覆盖（`ui-smoke` 跑的是 JVM 模式，且是**非必需检查**）；② 桌面线的 Linux / macOS 原生包只做产物自证，**没有真跑**（GUI 需要显示环境）；③ 触摸 / 笔手势的「手感」在本环境**不可达**；④ LCD 次像素渲染**不可达标**（原生退化为灰度是既定差异） |
+| 平台适配（Windows 兼容清单） | **已验证**：#151 修好后，exe 的 `GetVersionEx` 返回真实版本，CI 的 Windows 原生冒烟有可判别断言（`Windows version 10.` 必须命中、`8.0 build 9200` 不得出现） |
+| 「不崩但表现退化」这一类 | **已知且部分缓解**：字体渲染（灰度兜底，未根治）、CSS 函数失效（字面量补丁表）、边框丢失（属性 API 补兜底）——见「不崩但表现退化」一节 |
+| 首次真编 → 真机可运行 → 在别的项目复用一次 | **前两项完成**（真编 + 本仓库真机长期在用）；「**在别的项目复用一次**」仍未做 ⇒ 这决定它能否算「标杆参考」（见 metadata.maturity） |
 
 这条「验证状态」是技能的一部分，不是免责声明：原生镜像的参数清单与平台行为随
 GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上重新验证一次**。
@@ -262,6 +371,15 @@ GraalVM 版本变化很快，**每一份参数清单都应当在你的项目上�
 - [measurement-and-experiments](references/measurement-and-experiments.md)：启动速度与内存的测量口径与实验设计
 - [skill-lifecycle](references/skill-lifecycle.md)：这份技能自身的迭代方法、状态标记与迁移清单
 - [GraalVMInActionsGuide.md](../../../Docs/Guide/GraalVMInActionsGuide.md)：**本仓库的「GraalVM + GitHub Actions」参考**——Action 输入速查（抄自 `action.yml`）、权威查询入口与本地自证命令（`native-image --help-extra` 等）、症状→参数对照表
+- 本仓库的排障档案（读症状比读参数快）：
+  [Windows exe 兼容清单](../../../Docs/Troubleshooting/TS-2610-037-Windows-Exe-Manifest-For-OS-Version.md)、
+  [原生下 CSS 函数失效](../../../Docs/Troubleshooting/TS-2610-029-Modena-CSS-Function-Failure.md)、
+  [字体渲染差异](../../../Docs/Troubleshooting/TS-2610-030-Native-Font-Rendering-Diff.md)、
+  [边框丢失](../../../Docs/Troubleshooting/TS-2610-046-Input-Outline-Lost-In-Native.md)、
+  [FXML 漏 import 而三方全绿](../../../Docs/Troubleshooting/TS-2610-032-FXML-Missing-Import-And-Smoke-Blind-Spot.md)、
+  [D3D 驱动信息全零](../../../Docs/Troubleshooting/TS-2610-034-Prism-D3d-Driver-Info-Zero-Values.md)、
+  [快照标签零运行](../../../Docs/Troubleshooting/TS-2610-040-Trigger-Level-Paths-Filter-Blocks-Explicit-Requests.md)、
+  [发布被静默跳过](../../../Docs/Troubleshooting/TS-2610-044-Publish-Skipped-By-Null-Bool-Compare.md)
 - **[graalvm-reachability-metadata](../graalvm-reachability-metadata/SKILL.md)**（姊妹技能）：
   元数据的**发现 / 登记 / 验证 / 守卫**专精（反射 / JNI / 资源 / 初始化），
   含三路发现法、来源优先级与常见框架经验库 —— 本技能只管「从 jar 到原生二进制」的工程化
