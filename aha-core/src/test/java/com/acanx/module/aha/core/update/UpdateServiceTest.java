@@ -591,6 +591,39 @@ class UpdateServiceTest {
     }
 
     @Test
+    void prepareSwapTakesTheHelperFromTheNewPackageWhenTheInstallRootHasNone() throws IOException {
+        // 真机实测（2026-10-16）：正在运行的安装是「helper 还没随包分发」之前的包 ⇒ 安装根里没有；
+        // 只认安装根就会报「该包不完整、无法自更新」而卡住升级（新包其实是完整的）。
+        Path installRoot = tempDir.resolve("old-install");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve("aha-desktop.jar"), "jar");
+        Files.writeString(installRoot.resolve(InstallLayout.isWindows()
+                ? InstallLayout.WINDOWS_LAUNCHER : InstallLayout.POSIX_LAUNCHER), "launcher");
+        Path packageRoot = tempDir.resolve("new-pkg");
+        Files.createDirectories(packageRoot);
+        Files.writeString(packageRoot.resolve("aha-desktop.jar"), "jar");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.WINDOWS_ENTRY), "cmd-helper");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.WINDOWS_SCRIPT), "ps1-helper");
+        Files.writeString(packageRoot.resolve(UpdateLauncher.POSIX_ENTRY), "sh-helper");
+        PackageManifest manifest = PackageManifest.parse("""
+                {"kind":"desktop-jvm","version":"0.1.3.00243","platform":"windows-amd64","jdk":25,
+                 "files":[{"path":"aha-desktop.jar","sha256":"%s","size":3}]}
+                """.formatted("0".repeat(64)));
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+        UpdateService.Staged staged = new UpdateService.Staged(TARGET, packageRoot,
+                paths.packageZip(TARGET), manifest, true);
+
+        Path plan = service().prepareSwap(staged,
+                InstallLayout.of(installRoot.resolve("aha-desktop.jar")), CURRENT);
+
+        assertThat(plan).exists();
+        String name = InstallLayout.isWindows()
+                ? UpdateLauncher.WINDOWS_SCRIPT : UpdateLauncher.POSIX_ENTRY;
+        assertThat(paths.root().resolve(name)).as("helper 从新包里取").hasContent(
+                InstallLayout.isWindows() ? "ps1-helper" : "sh-helper");
+    }
+
+    @Test
     void launchHelperClearsAStaleMarkerAndWaitsForTheRealOne() throws Exception {
         // POSIX 的换装脚本尚未实现（Windows 走 apply-update.cmd），本用例只验「拉起 + 等标记」
         // 这条握手：残留标记不能让它秒过，必须等 helper 自己写出来。

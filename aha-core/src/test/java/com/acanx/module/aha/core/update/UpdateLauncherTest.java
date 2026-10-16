@@ -110,16 +110,38 @@ class UpdateLauncherTest {
     }
 
     @Test
+    void installHelpersPrefersTheNewPackageOverTheInstallRoot() throws IOException {
+        // 2026-10-16 真机实测：正在运行的安装是「helper 还没随包分发」之前打的包（安装根里没有），
+        // 而新包里带着 —— 只认安装根就会报「该包不完整、无法自更新」，把升级卡死。
+        Path installRoot = tempDir.resolve("old-install");
+        Files.createDirectories(installRoot);
+        Path newPackage = tempDir.resolve("new-package");
+        Files.createDirectories(newPackage);
+        Files.writeString(newPackage.resolve(UpdateLauncher.WINDOWS_SCRIPT), "from-new-package");
+        Files.writeString(newPackage.resolve(UpdateLauncher.WINDOWS_ENTRY), "from-new-package");
+        Files.writeString(newPackage.resolve(UpdateLauncher.POSIX_ENTRY), "from-new-package");
+        UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
+
+        Path helperDir = UpdateLauncher.installHelpers(installRoot, newPackage, paths);
+
+        assertThat(helperDir).isEqualTo(paths.root());
+        String expected = "from-new-package";
+        String name = InstallLayout.isWindows() ? UpdateLauncher.WINDOWS_SCRIPT : UpdateLauncher.POSIX_ENTRY;
+        assertThat(paths.root().resolve(name)).hasContent(expected);
+    }
+
+    @Test
     void installHelpersFailsLoudlyWhenThePackageShipsNoHelper() throws IOException {
         Path installRoot = tempDir.resolve("install");
         Files.createDirectories(installRoot);
         UpdatePaths paths = UpdatePaths.at(tempDir.resolve("update"));
 
-        // 文案分两种：Windows 上是「包不完整（缺文件）」，POSIX 上是「本平台尚未实现」——
-        // 后者的锅不在包，界面也会提前置灰（2026-10-16 审查 P1-7）
+        // 文案分两种：Windows 上是「新包与这台机器的安装都没有换装脚本」（**不再**说成
+        // 「该包不完整」—— 真机实测过：新包是完整的，缺的是更早那个安装，锅不能扣在包上），
+        // POSIX 上是「本平台尚未实现」（界面会提前置灰，见审查 P1-7）
         assertThatThrownBy(() -> UpdateLauncher.installHelpers(installRoot, paths))
                 .isInstanceOf(UpdateException.class)
-                .hasMessageContaining(InstallLayout.isWindows() ? "没有换装 helper" : "暂不支持应用内自更新")
+                .hasMessageContaining(InstallLayout.isWindows() ? "换装脚本缺失" : "暂不支持应用内自更新")
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_PACKAGE_INVALID));
     }

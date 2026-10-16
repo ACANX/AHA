@@ -191,7 +191,10 @@ public final class UpdateService {
         // 先把 helper 装到 <AHA_HOME>/update/，**再**写计划：反过来的话，helper 缺失
         // （包没带 / 本平台没实现）会留下一个永远执行不到的计划文件，下次启动还会把它
         // 当成「上次换装没做完」报告给用户（2026-10-16 审查 P2-10）。
-        UpdateLauncher.installHelpers(layout.root(), paths);
+        // helper 首选**新包**（它随包分发，见 ReleaseProcess §3.6），安装根只作兜底：
+        // 只认安装根时，「从 helper 还没随包分发的旧安装升级」会报「该包不完整」而卡住
+        // —— 新包其实完整，锅却扣在它头上（2026-10-16 真机实测）。
+        UpdateLauncher.installHelpers(layout.root(), staged.packageRoot(), paths);
         UpdatePlan plan = UpdatePlan.create(staged.version(), layout.root(), staged.packageRoot(),
                 staging.backupDir(backupVersion), ProcessHandle.current().pid(),
                 layout.restartCommand(), actions);

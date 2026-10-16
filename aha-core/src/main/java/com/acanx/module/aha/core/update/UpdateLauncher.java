@@ -52,6 +52,25 @@ public final class UpdateLauncher {
      * @throws UpdateException 模板缺失或复制失败
      */
     public static Path installHelpers(Path installRoot, UpdatePaths paths) {
+        return installHelpers(installRoot, installRoot, paths);
+    }
+
+    /**
+     * 把 helper 装到 {@code <AHA_HOME>/update/}：**先看新包，再看安装根**。
+     *
+     * <p>【为什么要看新包（2026-10-16 真机实测）】helper 是**随包分发**的，所以新包里一定有；
+     * 而「安装根」是**正在运行的那一版**，如果它是更早的安装（helper 还没随包分发之前打的包，
+     * 或者手工摆的布局），安装根里就什么都没有 —— 只认安装根时，用户会看到「安装根里没有换装
+     * helper（该包不完整，无法自更新）」，**把锅甩给一个其实完整的新包**，而且升级就此卡住。
+     * 新包优先，正好让「从任意旧安装升级」都能走通。</p>
+     *
+     * @param installRoot    安装根（兜底来源）
+     * @param newPackageRoot 新包解压后的根目录（首选来源）
+     * @param paths          路径布局
+     * @return helper 所在目录（即 {@code <根>}）
+     * @throws UpdateException 两处都没有 helper，或复制失败
+     */
+    public static Path installHelpers(Path installRoot, Path newPackageRoot, UpdatePaths paths) {
         List<String> names = new ArrayList<>();
         if (InstallLayout.isWindows()) {
             names.add(WINDOWS_ENTRY);
@@ -66,12 +85,18 @@ public final class UpdateLauncher {
                     "创建 helper 目录失败：" + paths.root() + "（" + e.getMessage() + "）", e);
         }
         for (String name : names) {
-            Path source = installRoot.resolve(name);
-            if (!Files.isRegularFile(source)) {
+            Path fromPackage = newPackageRoot.resolve(name);
+            Path fromInstall = installRoot.resolve(name);
+            Path source = Files.isRegularFile(fromPackage) ? fromPackage
+                    : (Files.isRegularFile(fromInstall) ? fromInstall : null);
+            if (source == null) {
                 String reason = unsupportedReason();
                 throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
                         reason == null
-                                ? "安装根里没有换装 helper（该包不完整，无法自更新）：" + source
+                                ? "换装脚本缺失：新包里没有 " + name + "（" + fromPackage
+                                        + "），这台机器上的安装里也没有（" + fromInstall
+                                        + "）—— 请到发布页下载完整包，手动覆盖安装一次；"
+                                        + "之后的升级就能在应用内完成"
                                 : "本平台暂不支持应用内自更新：" + reason);
             }
             Path target = paths.root().resolve(name);
