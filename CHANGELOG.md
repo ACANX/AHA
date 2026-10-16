@@ -11,6 +11,7 @@
 ## [Unreleased]
 
 ### 新增
+- **CLI 控制台编码自动协商（issue #235，2026-10-16）**：Windows 控制台按代码页解释字节，`1252` / `936` 下中文会变成 `?`、像素风启动标志退化为纯 ASCII 线框。现改为：程序启动时（任何输出之前）经 FFM 调 `SetConsoleOutputCP(65001)` / `SetConsoleCP(65001)`，并重建 `System.out` / `System.err` 为 UTF-8。**仅当标准输出真的连着控制台**（`GetConsoleMode` + `System.console()`）才改，**管道 / 重定向 / CI 一律不动**，退出时恢复原代码页；失败静默回退到原有的「探测 + 提示 + 降级」。新增 `tty/WindowsConsole.java`、`tty/ConsoleEncoding.java`，`tty/OutputEncoding.java` 与 `AhaCli` 接入。
 - **PR 快照包（pre-release 试包）全线上线（2026-10-15）**：给**未合并**的 PR 出可下载的试包，把自测提前到合并之前。
   - **出包**：4 个触发标签 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli`（**粘性**：标签在则每次 push 重出，移除即停）+ `/snapshot <目标> [平台…]` 评论命令（一次性、大小写不敏感、仅写权限账号生效）+ `workflow_dispatch`；`OS:Win` / `OS:MacOS` / `OS:Ubuntu` 收窄到单平台（不能单独使用）；只改 `Docs/**` 的 PR 不出包，除非**新打**触发标签（显式请求）。
   - **载体与命名**：**每个目标一条** pre-release，tag = `V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT`；目标词 `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**）；`Release.yml` 增加负向过滤 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`，避免快照触发正式发版。
