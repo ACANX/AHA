@@ -45,6 +45,19 @@ class UpdateCommandTest {
     }
 
     @Test
+    void channelMustBeOneOfTheThreeKnownKeys() {
+        // 拼错一个字母必须报错，而不是静默变成默认通道（ReleaseChannel.of 对不认识的值返回默认值）
+        assertThatThrownBy(() -> UpdateCommand.parse(List.of("--update-to", "0.1.3", "--channel", "stabel")))
+                .isInstanceOf(UpdateException.class)
+                .hasMessageContaining("不认识的通道");
+        for (ReleaseChannel channel : ReleaseChannel.values()) {
+            assertThat(UpdateCommand.parse(
+                    List.of("--update-to", "0.1.3", "--channel", channel.key())).orElseThrow().channel())
+                    .isEqualTo(channel);
+        }
+    }
+
+    @Test
     void returnsEmptyWhenNotAnUpdateInvocation() {
         assertThat(UpdateCommand.parse(List.of("--some-other-flag"))).isEmpty();
         assertThat(UpdateCommand.isUpdateInvocation(List.of("--some-other-flag"))).isFalse();

@@ -162,7 +162,10 @@ public final class UpdateCommand {
 
     private static ReleaseChannel channelOf(String text) {
         ReleaseChannel channel = ReleaseChannel.of(text);
-        if (channel == null) {
+        // `ReleaseChannel.of` 对不认识的值返回**默认通道**而不是 null：只判 null 会让
+        // `--channel stabel` 静默变成 Beta —— 脚本里拼错一个字母就换了个通道，这种错最难查。
+        // 所以回头比一次 key（唯一权威是通道自己的 key）。
+        if (text == null || !channel.key().equals(text.strip().toLowerCase(Locale.ROOT))) {
             throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
                     "不认识的通道：" + text + "（可选 stable / beta / alpha）");
         }
