@@ -2,10 +2,11 @@
 
 > 待办编号：TD-00014
 > 标题：人工与外部环境事项：分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布与真机走查
-> 状态：☐ 未开始
-> 跟踪 Issue：[85](https://github.com/ACANX/AHA/issues/85)
+> 状态：✅ 已完成（2026-10-16，结果性关闭；「tag 不触发 `Release.yml`」转 [#238](https://github.com/ACANX/AHA/issues/238)）
+> 跟踪 Issue 状态：**已关闭**（`completed`，2026-10-16）
+> 跟踪 Issue：[#85](https://github.com/ACANX/AHA/issues/85)
 > 创建日期：2026-10-09
-> 最后更新：2026-10-09
+> 最后更新：2026-10-16
 
 ---
 
@@ -34,18 +35,26 @@
 
 ~~**验收**：五项必需检查齐全；预期失败的 PR 合不进去、正常 PR 单人能合进去。~~
 
-### G-03 确认每周定期扫描真的在跑 ☐
+### G-03 确认每周定期扫描真的在跑 ✅（2026-10-16 收口）
 
-`Gate.yml` 的 `schedule`（每周一 03:00 UTC）只在默认分支生效。**验收**：合入后先 `workflow_dispatch` 手动跑通一次，随后 Actions 出现 `schedule` 触发的运行记录。
+`Gate.yml` 的 `schedule`（每周一 03:00 UTC）只在默认分支生效。
+
+- 手动侧：run [`37937465188`](https://github.com/ACANX/AHA/actions/runs/37937465188)（`workflow_dispatch`，2026-10-09，success）；
+- **自动侧**：run [`38234080962`](https://github.com/ACANX/AHA/actions/runs/38234080962)（`event=schedule`，**2026-10-12**，`success`，`head_branch=dev`）。
+
+> 观察：该次实际触发于 `10:05:11Z`，比计划的 `03:00Z` **晚约 7 小时**（同仓库 `SnapshotCleanup` 的每日 cron 亦晚约 3 小时）。
+> 属平台侧定时排队延迟，**cron 本身生效**。含义：`schedule` 只保证「每周会跑」，不保证「在某个时间窗内跑」。
 
 ### ~~G-05 关闭 squash 与 rebase 合并~~ ✗ **不做**（2026-10-10 决定）
 
 ~~**现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。~~
 ~~`dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。~~
 
-### G-06 处置 0.1.0 的裸 tag ☐
+### G-06 处置 0.1.0 的裸 tag ✅（2026-10-09 完成）
 
-**现状（本次实查）**：`git ls-remote --tags origin` 只有裸 `0.1.0`，无 `V0.1.0`。**验收**：补 `V0.1.0` 指向同一提交（`9138847`），或在规范中写明兼容策略。
+原状：`git ls-remote --tags origin` 只有裸 `0.1.0`，无 `V0.1.0`。
+
+已完成：补了指向**同一提交**（`9138847`）的别名 tag `V0.1.0`（annotated）。文档收口见 PR [#123](https://github.com/ACANX/AHA/pull/123)（`ReleaseProcess.md` §4.1、`VersionBumpGuide.md` §5 第 4 条 / §6.5）。
 
 ## 二、发布链路
 
@@ -78,7 +87,15 @@ PR #15（`dev → main`，`Release:V0.1.1`）已于 2026-10-08 merged。
 
 **当前进度（2026-10-10）**：7 项**全部通过**。
 
+## 四、转跟踪（2026-10-16）
+
+| 项 | 承接 | 说明 |
+| --- | --- | --- |
+| 「tag 不触发 `Release.yml`」（原复核评论 §6） | [#238](https://github.com/ACANX/AHA/issues/238)（`TD-00018`） | `Build.yml` 用 `GITHUB_TOKEN` 推 tag → 不触发下游工作流（GitHub 防递归）⇒ 正式 Release 页无发行包。原按「发行包不强制」未阻塞本条；ACANX 接受另开 #238 承接，方案 A ~ E 待拍板 |
+
 ## 关联
 
 - `Docs/TODO.md` 第 11 节、`Docs/PLAN.md` §5 / §6.3 / §8.2
+- 转跟踪：[#238](https://github.com/ACANX/AHA/issues/238)（`TD-00018`）
+- 收口 PR：[#123](https://github.com/ACANX/AHA/pull/123)（G-06 文档）、[#124](https://github.com/ACANX/AHA/pull/124)（G-02 / G-05 标记「不做」+ 0.1.1 结项）
 
