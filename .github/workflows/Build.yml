@@ -185,6 +185,7 @@ jobs:
           # 带上 token：未认证时按 IP 限流 60 次/小时，CI 共享出口 IP 很容易撞上
           GITHUB_TOKEN: ${{ github.token }}
         run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
+
   static-guards:
     name: static-guards（文档 / 技能 / 脚本 / 主题：四道静态门禁）
     # 这四道门禁原本只在 Gate 里跑，而 Gate 不覆盖「对 dev 的 PR」⇒ 面向 dev 的改动
