@@ -1,6 +1,6 @@
 # 桌面端应用内升级设计
 
-> **文档版本**：v1.2.5
+> **文档版本**：v1.2.6
 > **状态**：生效（Windows 侧已实现；Linux / macOS 的应用内升级**后置**，见 §1 边界）
 > **生效日期**：2026-10-16
 > **最后更新**：2026-10-16
@@ -12,6 +12,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.2.6 | 2026-10-16 | 真机反馈「报错复制不出来」：给四个地方加右键复制（升级页状态行 / 日志面板文本区 / 消息流每条 / 滚动区复制全部）。根因是 JavaFX 里**非可编辑**的 `TextArea` 没有默认右键菜单，而 `Label` 也不能选中 ⇒ 只能靠「复制」按钮或手打；消息流的读法顺手收敛成 `DesktopShell#collectText` 一份实现（界面复制与冒烟断言共用） | @ACANX / CNXNC |
 | v1.2.5 | 2026-10-16 | 真机实测：GitHub 把发布资产换到 `release-assets.githubusercontent.com`，白名单只有 `objects.githubusercontent.com` ⇒ 点升级直接失败在「跳转目标的主机不在白名单」。改成「显式主机 + `*.githubusercontent.com` 子域」两条规则（域名归 GitHub 所有），错误信息也更可行动（写明允许范围 + 建议手动下载） | @ACANX / CNXNC |
 | v1.2.4 | 2026-10-16 | 真机反馈的两处修复：① **切通道后「检查更新」点不动** —— 打开 tab 会自动检查一次，检查期间按钮置灰，用户切通道后要等那次检查跑完（网络慢时最多 30 秒）才能点，看起来就是「卡住了」；现在切通道（或开始换装）会作废在飞的检查并**立刻解禁**按钮，旧结果由 `checkGeneration` 丢弃；同时把收尾放进 `finally`（`busy` 不许卡住）、检查期间显示进度条并明说「最多等 30 秒」。② **通道区没有标题、紧贴 tab 标题** —— 加标题 `aha.upgrade.channel.title`、给三个单选项加 id，内容区加内边距与行距 | @ACANX / CNXNC |
 | v1.2.3 | 2026-10-16 | 清理的判据从「拿标记文件猜时间」升级为「进程号 + 文件年龄」两道：helper 把 `$PID` 写进 `helper-started`（主判据：那个进程还活着吗）；`StagingArea` 加年龄下限 10 分钟（第二道保险：刚出炉的文件一律不删，残留下次启动再清）。老格式标记（只有时间戳）按新鲜度兜底；进程号复用由 6 小时硬顶挡 | @ACANX / CNXNC |
@@ -140,6 +141,12 @@
 行为不变。「升级」tab 由 `UpgradePane` 程序化构建。
 
 ### 5.2 控件 id（冒烟测试按它断言）
+
+**能复制**（2026-10-16 真机反馈「报错只能手打」）：升级页状态行有右键菜单
+（`aha.upgrade.status.copy` 复制这条信息 / `.all` 复制「版本 / 形态 / 平台 / 通道 / 状态 / 日志位置」）；
+日志面板的文本区（JavaFX 里非可编辑 `TextArea` **没有**默认右键菜单，所以是显式加的：
+`aha.log.menu.copy.selected` / `aha.log.menu.copy.all`，另加 Ctrl/Cmd+C）；
+消息流每条消息一个「复制这条」，滚动区上「复制全部消息」（`aha.messages.copy.one` / `.all`）。
 
 `aha.settings.tab.interface` / `aha.settings.tab.upgrade` / `aha.upgrade.channel` /
 `aha.upgrade.current` / `aha.upgrade.check` / `aha.upgrade.list` / `aha.upgrade.status`，

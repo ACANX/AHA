@@ -19,6 +19,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
@@ -97,6 +99,9 @@ public final class UpgradePane {
 
     /** 进度条的 id（契约之外，界面需要）。 */
     public static final String ID_PROGRESS = "aha.upgrade.progress";
+
+    /** 状态行右键菜单「复制这条信息」的 id（失败信息就显示在这一行）。 */
+    public static final String ID_STATUS_COPY = "aha.upgrade.status.copy";
 
     /** 数据来源说明：状态行里带上，让用户知道「这是从哪来的」。 */
     private static final String SOURCE = "GitHub 发布页";
@@ -237,6 +242,16 @@ public final class UpgradePane {
         statusLabel.setId(ID_STATUS);
         statusLabel.setWrapText(true);
         ThemePaint.themedForever(statusLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+        // 【为什么要能复制（2026-10-16 真机反馈）】失败信息就显示在这一行，而 Label 既不能选中、
+        // 也没有右键菜单 —— 用户想把它粘到反馈里只能手打。这里给两个入口：只复制这条、
+        // 或把「版本 / 形态 / 平台 / 通道 / 状态」一次复制齐（排查最需要这几行）。
+        MenuItem copyStatus = new MenuItem("复制这条信息");
+        copyStatus.setId(ID_STATUS_COPY);
+        copyStatus.setOnAction(event -> Clipboards.copy(statusLabel.getText()));
+        MenuItem copyContext = new MenuItem("复制升级信息（版本 / 形态 / 通道 / 状态）");
+        copyContext.setId(ID_STATUS_COPY + ".all");
+        copyContext.setOnAction(event -> Clipboards.copy(upgradeInfoForCopy()));
+        statusLabel.setContextMenu(new ContextMenu(copyStatus, copyContext));
 
         versionList.setId(ID_LIST);
         versionList.setPrefHeight(200);
@@ -396,6 +411,19 @@ public final class UpgradePane {
             actionButton.setDisable(true);
             statusLine("已切到「" + channel.label() + "」通道，点「检查更新」刷新列表。");
         });
+    }
+
+    /**
+     * 反馈问题时要粘的那几行（版本 / 形态 / 平台 / 通道 / 状态 / 日志位置）。
+     *
+     * @return 多行文本
+     */
+    public String upgradeInfoForCopy() {
+        return "AHA " + AppVersion.buildVersion()
+                + "\n形态 / 平台：" + kind.targetWord() + " / " + platform.value()
+                + "\n通道：" + selectedChannel().label()
+                + "\n状态：" + statusLabel.getText()
+                + "\n日志：~/.aha/update/update.log（升级）/ 右侧日志面板（程序本身）";
     }
 
     /** 通道说明：写清这个通道是什么、有多稳。 */

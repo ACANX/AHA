@@ -32,11 +32,13 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -346,14 +348,23 @@ class AhaDesktopSmokeTest {
         // 日志面板：级别过滤 + 渲染
         LogPanel panel = new LogPanel("DEBUG");
         LogBuffer buffer = com.acanx.module.aha.desktop.log.LogCapture.buffer();
+        AtomicReference<Dialog<ButtonType>> logDialog = new AtomicReference<>();
         onUi(() -> {
-            panel.build();
+            logDialog.set(panel.build());
             buffer.clear();
             buffer.add(new LogLine(LogLevel.DEBUG, "com.acanx.module.aha.X", "调试行", null, 0));
             buffer.add(new LogLine(LogLevel.ERROR, "com.acanx.module.aha.Y", "错误行", null, 0));
             panel.setFilter(LogLevel.ERROR);
         });
         assertThat(uiGet(panel::text)).contains("错误行").doesNotContain("调试行");
+        // 非可编辑 TextArea 在 JavaFX 里**没有**默认右键菜单 ⇒ 真机反馈「日志复制不出来」：
+        // 钉住我们自己加的那个（复制选中 / 复制全部）
+        assertThat(uiGet(() -> {
+            TextArea logArea = (TextArea) byId(
+                    (Parent) logDialog.get().getDialogPane().getContent(), LogPanel.AREA_ID);
+            return hasMenuItem(logArea.getContextMenu(), LogPanel.COPY_SELECTED_MENU_ID)
+                    && hasMenuItem(logArea.getContextMenu(), LogPanel.COPY_ALL_MENU_ID);
+        })).as("日志区要有右键复制菜单").isTrue();
         onUi(panel::close);
 
         // 授权弹窗：三个按钮 + 权限名写进按钮 + 默认拒绝
@@ -515,6 +526,12 @@ class AhaDesktopSmokeTest {
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_STATUS)).isInstanceOf(Label.class);
+        // 失败信息就显示在状态行上，而 Label 不能选中 ⇒ 必须有右键复制（真机反馈：只能手打）
+        Label upgradeStatus = (Label) byId(upgradeRoot, UpgradePane.ID_STATUS);
+        assertThat(hasMenuItem(upgradeStatus.getContextMenu(), UpgradePane.ID_STATUS_COPY))
+                .as("状态行要有「复制这条信息」").isTrue();
+        assertThat(pane.upgradeInfoForCopy()).as("一键复制上下文里的关键几行")
+                .contains("形态").contains("通道").contains("状态");
         assertThat(byId(upgradeRoot, UpgradePane.ID_ACTION)).isInstanceOf(Button.class);
     }
 
@@ -698,21 +715,33 @@ class AhaDesktopSmokeTest {
 
     /** 把消息流里的所有 Label 文本拼起来（断言「界面到底说了什么」）。 */
     private static String messagesText(VBox messages) {
-        StringBuilder builder = new StringBuilder();
-        if (messages != null) {
-            collectText(messages, builder);
-        }
-        return builder.toString();
+        return messages == null ? "" : DesktopShell.collectText(messages);
     }
 
-    private static void collectText(Parent parent, StringBuilder builder) {
+    /** 子树里有没有带右键菜单的控件（消息流里每条消息都该有「复制这条」）。 */
+    private static boolean anyControlHasContextMenu(Parent parent) {
         for (Node node : parent.getChildrenUnmodifiable()) {
-            if (node instanceof Label label) {
-                builder.append(label.getText()).append('\n');
-            } else if (node instanceof Parent child) {
-                collectText(child, builder);
+            if (node instanceof javafx.scene.control.Control control && control.getContextMenu() != null) {
+                return true;
+            }
+            if (node instanceof Parent child && anyControlHasContextMenu(child)) {
+                return true;
             }
         }
+        return false;
+    }
+
+    /** 菜单里有没有指定 id 的那一项。 */
+    private static boolean hasMenuItem(ContextMenu menu, String id) {
+        if (menu == null) {
+            return false;
+        }
+        for (MenuItem item : menu.getItems()) {
+            if (id.equals(item.getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void startToolkit() throws InterruptedException {
@@ -808,6 +837,10 @@ class AhaDesktopSmokeTest {
             String text = awaitMessagesText(stage, "上次换装结果");
             assertThat(text).as("启动时必须把上次换装结果告诉用户")
                     .contains("上次换装结果").contains("0.1.3.00242");
+            // 真机反馈「报错只能手打」：消息流里每条消息都要能右键复制（这里正好有一条）
+            assertThat(uiGet(() -> anyControlHasContextMenu(
+                    (VBox) byId(stage.getScene(), DesktopShell.MESSAGES_ID))))
+                    .as("消息流里的每条消息都要能右键复制").isTrue();
             assertThat(updateRoot.resolve("update-result.json")).as("回执读完即消费").doesNotExist();
             assertThat(updateRoot.resolve(leftover.value())).as("残留暂存必须被清掉").doesNotExist();
         } finally {
