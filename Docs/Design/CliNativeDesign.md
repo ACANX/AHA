@@ -140,6 +140,16 @@ Class.forName("sun.misc.Signal").getMethod("handle", Signal.class, SignalHandler
 桌面端早期那份参数文件的正则里**没有 `yaml|yml`** —— 建立 CLI 这份时同批发现，
 已一并修正两份桌面参数文件。这是一个「不查资源清单就必踩」的坑。
 
+同类漏项还有一个：**picocli `--help` 的 JDK 文本断行数据**（issue #117）。
+`--help` 渲染表格走 `CommandLine$Help$TextTable` → `BreakIterator`，会读 JDK 的
+`sun/text/resources/LineBreakIteratorData`；它**没有扩展名**，上面那条按扩展名的正则
+匹不上，必须显式 `-H:IncludeResources=sun/text/resources/LineBreakIteratorData`。
+缺它的症状同样是**运行期 `InternalError` 崩溃、构建却全绿**（三平台 `aha-cli-native --help`
+一致退出码非 0；`--version` 不渲染表格，所以正常，容易误判「程序本身没问题」）。
+`.*\.icu$`（`ubidi.icu` 等双向文本数据）是同批从桌面端对齐补的——同一盲区，
+只在渲染 RTL / 双向文本时才可能触发，置信度略低。两份 CLI 参数文件（JDK 25 基线 +
+JDK 27 变体）均已补齐，结论同时登记进 `BuildSpec.md` §10.2。
+
 ## 5. 工作流
 
 与 `DesktopNative.yml` 同构，差异只在命名与自证内容。要点：
@@ -167,7 +177,7 @@ Class.forName("sun.misc.Signal").getMethod("handle", Signal.class, SignalHandler
 |---|---|---|---|
 | R1 | 终端能力探测依赖原生后端（FFM / JNI），首次跑可能在某个 provider 上失败 | JLine 自带元数据，但**未真机验证** | 按失败信息补 `--initialize-at-run-time` 或元数据；只改参数文件 / 元数据 |
 | R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | picocli 走注解处理器、JLine 与 Jackson 已补；但**未真机验证** | 真机逐命令走查（`N-19`）；`NativeImageMetadataTest` 在 Build 阶段先守一层 |
-| R3 | 资源清单漏项（yaml / yml 就是实例） | 已修正，含桌面端 | 新增资源读取点时必须同步更新参数文件 |
+| R3 | 资源清单漏项（yaml / yml、JDK 文本断行数据都是实例） | yaml/yml 已修正；文本断行数据已补（issue #117） | 新增资源读取点时必须同步更新参数文件 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 与桌面端相同 | 该腿失败即是答案（隔离，不影响其余） |
 | R5 | 交互式终端（JLine）在原生镜像下行为与 JVM 版不一致 | 未验证 | 先用非交互子命令（`--version` / `run`）验收，再验收交互式 |
 | R6 | 未签名 → macOS Gatekeeper 拦截 | 已知 | `README.txt` 写明放行方式 |
