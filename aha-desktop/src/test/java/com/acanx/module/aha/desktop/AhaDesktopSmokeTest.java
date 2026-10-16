@@ -496,8 +496,11 @@ class AhaDesktopSmokeTest {
         // byId 的签名是 (Parent, String)：对话框内容根是 fxml 里的 VBox，这里显式转成 Parent
         Parent content = (Parent) dialog.getDialogPane().getContent();
 
+        assertThat(dialog.isResizable()).as("设置面板的宽高要能调节（真机反馈）").isTrue();
         TabPane tabs = (TabPane) byId(content, SettingsDialog.TABS_ID);
         assertThat(tabs).as("设置面板必须是 TabPane").isNotNull();
+        assertThat(tabs.getMaxHeight()).as("拉大窗口时 tab 内容要跟着长，而不是留白")
+                .isEqualTo(Double.MAX_VALUE);
         // 关闭按钮策略必须在 **Java 里**设：FXML 写枚举属性在原生镜像里会 Unable to coerce
         // （2026-10-16 真机自测发现；这条断言同时钉住「改了哪一边」）
         assertThat(tabs.getTabClosingPolicy())

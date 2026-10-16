@@ -16,6 +16,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
@@ -175,7 +176,19 @@ public final class SettingsDialog {
                 new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE));
         ThemePaint.dialog(dialog.getDialogPane());
         dialog.getDialogPane().setPrefWidth(620);
-        dialog.getDialogPane().setContent(loadView());
+        dialog.getDialogPane().setMinWidth(480);
+        dialog.getDialogPane().setMinHeight(360);
+        // 宽高可调（2026-10-16 真机反馈）：`Dialog` 默认**不可缩放** —— 版本列表一长，就只能
+        // 在那个固定的小块里滚动，看不全也拖不动。放开缩放还不够：默认的 max 跟着 pref 走
+        // （窗户拉大了内容不变），所以同时把根 VBox 与 TabPane 的 max 放开、让 TabPane 在根里
+        // 吃掉多余高度；Tab 内容（`UpgradePane` 的 VBox）本来就把版本列表 vgrow 到 ALWAYS，
+        // 于是「拉大窗口 ⇒ 版本列表跟着长」。
+        dialog.setResizable(true);
+        Region content = (Region) loadView();
+        content.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        tabs.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(content);
         return dialog;
     }
 
