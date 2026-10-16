@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.26.0
+**文档版本**：v1.27.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.27.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
 | v1.25.0 | 2026-10-16 | **自动打的 tag 现在会自动触发发布**（issue #238）：`Release.yml` 新增 `workflow_dispatch`（防递归规则的**官方例外**，由 `Build.yml` 的 tag 作业用 `gh workflow run --ref main` 派发）；两条出包线显式 `checkout` 发布 tag，`action-gh-release` 显式 `tag_name`；§2 第 5 步、§2.1 与 §4.2 按新口径重写（手工重建 tag 降为兜底） | @ACANX / CNXNC |
 | v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-assert`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
@@ -130,7 +131,7 @@
    少了这一条，每次出快照都会触发一遍完整正式发版流程。判定依据：改动前后
    `gh run list --workflow Release.yml` 里**由 tag push 触发**（`event=push`）的 run 数不变——
    截至 2026-10-16 为 **0 次**（正式发版此前一直靠手工重建 tag，见 §4.2）。
-2. 清理由 `snapshot-cleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
+2. 清理由 `SnapshotCleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
    `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
 
 ### 2.2 快照自测留痕（`snapshot-assert`）：默认启用、默认不卡点

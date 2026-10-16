@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.42.0
+**文档版本**：v1.43.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.43.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.42.0 | 2026-10-16 | §7「可选管线」新增**例外口径**：`PreDeployVerify.yml`（issue #166 的部署前验证）虽属独立可选工作流，但其失败本身就是结论 ⇒ 作业级红叉 + `failure` status + 留痕评论，不卡点只体现在**不进 required** | @ACANX / CNXNC |
 | v1.41.0 | 2026-10-16 | §8「main 上的构建成功后自动打 tag」按 issue #238 更新：该作业不再止于「打 tag」，在**新建出 tag** 后用 `workflow_dispatch`（防递归规则的**官方例外**）以 `gh workflow run Release.yml --ref main -f tag=<TAG>` 主动派发发布流程，无需 PAT；权限补 `actions: write`，并注明幂等跳过时**不派发** | @ACANX / CNXNC |
 | v1.40.0 | 2026-10-16 | §10.2 新增 `#117` 结论行：picocli `--help` 渲染依赖的 JDK 文本断行资源（`sun/text/resources/LineBreakIteratorData`，**无扩展名**）必须显式登记；两份 CLI 参数文件同步补齐（issue #117）| @ACANX / CNXNC |
@@ -662,7 +663,7 @@ run 在 `03:07:47` 建立、被 `03:08:04` 的 `synchronize` 取消）。
 ### 11.3 生命周期与清理
 
 - 同一 PR 的同一目标**保留最近 3 条**、有效期 **7 天**（按发布页 `created_at` 计算，**不是** tag 时间戳）；
-- PR 关闭 / 合并后由 `snapshot-cleanup.yml` **异步**回收（`pull_request: closed` + 每日兜底 + 手动触发）；
+- PR 关闭 / 合并后由 `SnapshotCleanup.yml` **异步**回收（`pull_request: closed` + 每日兜底 + 手动触发）；
 - **安全阀**：清理只处理严格匹配 `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag
   （兼容历史拼写），正式发版 tag、dev 线 tag 与非快照 release 一律不碰；
 - 单条删除失败只记 `::warning::`，脚本**恒以 0 退出**（失败留给下一次补删，不让清理把流水线染红）。

@@ -49,9 +49,9 @@
 | `PreDeployVerify.yml` | `PreDeployVerify` |
 | `Release.yml` | `Release` |
 | `SnapshotAssert.yml` | `SnapshotAssert` |
+| `SnapshotCleanup.yml` | `SnapshotCleanup` |
 | `SnapshotJVM.yml` | `SnapshotJVM` |
 | `VersionBump.yml` | `VersionBump` |
-| `snapshot-cleanup.yml` | `SnapshotCleanup` |
 
 **为什么**：这个字符串到处都是 —— Actions 页面、运行列表、PR 上的检查分组、`gh run list` 的输出列。
 写成 `Snapshot Assert` 这类带空格的写法时，「文件名」与「显示名」就成了**两套写法**，检索、对照、
@@ -60,17 +60,17 @@
 **它不影响分支保护**：必需检查的契约是**作业名**（见 [`BuildSpec.md`](BuildSpec.md) §8.1），
 不是工作流显示名 —— 改 `name:` 不动必需检查；反过来，也**不要**把显示名当卡点标识写进分支保护。
 
-**机械校验**：`bin/CheckScripts.py::check_workflow_names()` 逐个工作流断言本规则，不满足即红。
+**机械校验**：`bin/CheckScripts.py::check_workflow_names()` 逐个工作流断言本规则（文件名 + `name:` + 两者一一对应），
+不满足即红。
 
 ### 2.2 文件名
 
-工作流文件名与本仓库其余 Markdown 一致，采用**大驼峰**，并与 `name:` 一一对应
-（`SnapshotAssert.yml` ↔ `name: SnapshotAssert`）。
+工作流文件名与本仓库其余 Markdown 一致，采用**大驼峰**，并**与 `name:` 一一对应**
+（`SnapshotCleanup.yml` ↔ `name: SnapshotCleanup`）——两者一旦分开写，
+在 Actions 列表、运行日志、`grep` 结果之间对照就要在脑子里换算一次。
 
-> **现存唯一例外**：`snapshot-cleanup.yml`（其 `name:` 已是 `SnapshotCleanup`）。
-> 它已被 [`BuildSpec.md`](BuildSpec.md) / [`ReleaseProcess.md`](ReleaseProcess.md) /
-> [`BuildGuide.md`](../Guide/BuildGuide.md) 等处**按文件名**引用，改名是一次独立变更，尚未收口。
-> 新增工作流**不得**再引入 kebab-case 文件名。
+**不允许 kebab-case / snake_case 文件名**（`snapshot-cleanup.yml` 已在 2026-10-16 更名为
+`SnapshotCleanup.yml`，本条不再有例外）。
 
 ## 3. 触发
 
