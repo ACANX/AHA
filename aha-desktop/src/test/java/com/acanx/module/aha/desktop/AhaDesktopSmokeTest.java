@@ -1074,6 +1074,19 @@ class AhaDesktopSmokeTest {
         assertThat(action.isDisabled()).as("没有换装 helper 的平台，动作按钮必须置灰").isTrue();
         assertThat(status.getText()).as("置灰的同时要说清为什么、以及怎么办")
                 .contains("Windows").contains("发布页");
+
+        // 置灰要有**看得见**的原因：真机反馈过一次「按钮坏了」——门生效时选中任何版本也不会
+        // 变可点（设计如此），而原因只写在底部灰色状态行里，容易被忽略。
+        Label notice = (Label) byId(root, UpgradePane.ID_NOTICE);
+        assertThat(notice.isVisible()).as("门生效时提示必须可见").isTrue();
+        assertThat(notice.isManaged()).as("可见的提示要占位（不是藏起来还留着空隙）").isTrue();
+        assertThat(notice.getText()).as("提示要说清为什么 + 列表只是看看")
+                .contains("不支持应用内升级").contains("只是让你看看有哪些版本");
+        // 「检查更新」在**非原生形态**的门下仍然可用（便于看有哪些版本，据此去发布页手动取）——
+        // 这条是既有决定，别被顺手改掉。（原生镜像那条分支会连列表一起禁用，见 UpgradePane；
+        // 它只能在原生包里验，属真机验收项。）
+        assertThat(((Button) byId(root, UpgradePane.ID_CHECK)).isDisabled())
+                .as("非原生形态的门生效时，「检查更新」仍可用").isFalse();
     }
 
 }

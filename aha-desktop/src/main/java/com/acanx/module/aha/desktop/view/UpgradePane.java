@@ -92,6 +92,9 @@ public final class UpgradePane {
     /** 「复制版本号」入口的 id（版本号必须能一键复制出来，2026-10-16 真机反馈）。 */
     public static final String ID_CURRENT_COPY = "aha.upgrade.current.copy";
 
+    /** 「本机形态不支持应用内升级」那条**看得见**的提示的 id（真机反馈：置灰要有原因）。 */
+    public static final String ID_NOTICE = "aha.upgrade.notice";
+
     /** 「检查更新」按钮的 id。 */
     public static final String ID_CHECK = "aha.upgrade.check";
 
@@ -176,6 +179,16 @@ public final class UpgradePane {
     private final TextArea statusArea = new TextArea();
 
     private final Button actionButton = new Button("升级");
+
+    /**
+     * 「本机形态不支持应用内升级」的提示（能力门生效时显示，加粗、常显）。
+     *
+     * <p>【为什么单独一条（2026-10-16 真机反馈）】门生效时「升级」按钮**一直是灰的**，
+     * 而且**选中版本列表里的任何一行也不会变**（设计如此：换装回不来的形态宁可不换）——
+     * 但用户看到的是「按钮坏了」。原来只有底部那行**灰色**状态文字说原因，太容易被忽略，
+     * 于是被当成 bug 报回来。这条提示放在内容区上方、加粗，并明确「列表只是让你看看有哪些版本」。</p>
+     */
+    private final Label notice = new Label();
 
     private final ProgressBar progress = new ProgressBar();
 
@@ -285,7 +298,30 @@ public final class UpgradePane {
             // 门要挡在**下载之前**：Linux / macOS 暂时没有换装脚本（issue #51 §7 P4），
             // 照实说不支持 + 给手动取件指引，比让用户下完 55 MB 再看到「该包不完整」好
             // （2026-10-16 审查 P1-7）。
-            checkButton.setDisable(false);
+            //
+            // 「检查更新」是否也可用，要按门的**性质**分（2026-10-16 真机反馈第二轮）：
+            //   · **原生镜像形态**：升级通道里只有 JVM 线的资产（原生包是另一条发布线、tag 形态
+            //     都不在通道过滤范围内）⇒ 列出来也**装不了**，而且会引导用户去点「升级」——
+            //     真机上「按钮一直是灰的」就是这么被当成 bug 的。索性连列表一起禁用，只留说明。
+            //   · 其它门（POSIX 未实现 / 只剩单体 jar）：列表仍有价值（据此到发布页手动取件）⇒ 保留。
+            checkButton.setDisable(nativeShape());
+            channelRow.setDisable(nativeShape());
+        }
+        notice.setId(ID_NOTICE);
+        notice.setWrapText(true);
+        notice.setMaxWidth(Double.MAX_VALUE);
+        ThemePaint.themedForever(notice, () -> "-fx-text-fill: " + Palette.FOREGROUND
+                + "; -fx-font-weight: bold;");
+        if (unsupportedReason == null) {
+            // 不用 visible=false 藏着了事：managed=false 一起设，否则仍会占一行的高度
+            notice.setVisible(false);
+            notice.setManaged(false);
+        } else {
+            notice.setText(nativeShape()
+                    ? "⚠ 本机形态不支持应用内升级：" + unsupportedReason
+                            + "。本形态下版本列表也不可用（通道里只有另一条发布线的包）。"
+                    : "⚠ 本机形态不支持应用内升级：" + unsupportedReason
+                            + "。版本列表只是让你看看有哪些版本 —— 升级手段见上面那句。");
         }
         progress.setId(ID_PROGRESS);
         progress.setVisible(false);
@@ -322,7 +358,11 @@ public final class UpgradePane {
 
         versionList.setId(ID_LIST);
         versionList.setPrefHeight(200);
-        versionList.setPlaceholder(new Label("还没有列出可用版本，点上面的「检查更新」。"));
+        versionList.setPlaceholder(new Label(unsupportedReason == null
+                ? "还没有列出可用版本，点上面的「检查更新」。"
+                : (nativeShape()
+                        ? "本机是原生镜像形态，不支持应用内升级（原因与升级办法见上方提示）。"
+                        : "列表只用于查看有哪些版本；本机形态暂不支持应用内升级（原因见上方提示）。")));
         versionList.setCellFactory(view -> new RowCell());
         versionList.getSelectionModel().selectedItemProperty()
                 .addListener((observable, old, now) -> onSelectionChanged(now));
@@ -336,7 +376,7 @@ public final class UpgradePane {
         // 看着挤、点击也容易落在 tab 头上（2026-10-16 真机反馈）。
         HBox channelHeader = new HBox(8, channelTitle, channelRow);
         channelHeader.setAlignment(Pos.CENTER_LEFT);
-        root = new VBox(10, channelHeader, channelNote, currentArea, checkRow,
+        root = new VBox(10, channelHeader, channelNote, currentArea, notice, checkRow,
                 versionList, actionRow, progress, statusArea);
         root.setPadding(new Insets(12, 14, 12, 14));
         root.setId(ID_TAB);
@@ -640,6 +680,11 @@ public final class UpgradePane {
         busy = false;
         checkButton.setDisable(false);
         actionButton.setDisable(unsupportedReason != null);
+    }
+
+    /** 是否运行在原生镜像里（只在门生效时要看，抽一处免得判断散落）。 */
+    private static boolean nativeShape() {
+        return InstallLayout.isNativeImage();
     }
 
     /** 失败文案：分清「限流（稍后再试）」与其它失败，并给下一步。 */
