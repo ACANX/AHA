@@ -465,7 +465,8 @@ class AhaDesktopSmokeTest {
                 () -> { }, new UpdateService(UpdatePaths.at(tempDir.resolve("update")))));
         Dialog<ButtonType> dialog = uiGet(() -> new SettingsDialog(settings, () -> "配置：测试",
                 () -> { }, theme -> { }, size -> { }, pane).build());
-        Node content = dialog.getDialogPane().getContent();
+        // byId 的签名是 (Parent, String)：对话框内容根是 fxml 里的 VBox，这里显式转成 Parent
+        Parent content = (Parent) dialog.getDialogPane().getContent();
 
         TabPane tabs = (TabPane) byId(content, SettingsDialog.TABS_ID);
         assertThat(tabs).as("设置面板必须是 TabPane").isNotNull();

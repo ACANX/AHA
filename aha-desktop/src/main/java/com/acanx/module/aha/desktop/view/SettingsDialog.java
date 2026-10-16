@@ -243,7 +243,6 @@ public final class SettingsDialog {
         }
         dialog.showAndWait();
     }
-    }
 
     /** 把注入的节点接起来：样式、选项、监听与文案。 */
     private void wireView() {

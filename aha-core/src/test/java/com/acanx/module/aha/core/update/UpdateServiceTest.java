@@ -106,7 +106,8 @@ class UpdateServiceTest {
                      {"name":"aha-desktop-0.1.3.00242-windows-amd64.zip","size":1,
                       "browser_download_url":"%s/assets/old.zip","state":"uploaded"}]}
                 ]
-                """.formatted(ASSET_NAME, zipSize, server.base(), ASSET_NAME, server.base(), server.base())
+                """.formatted(ASSET_NAME, zipSize, server.base(), ASSET_NAME, sumsSize, server.base(),
+                        server.base())
                 .getBytes(StandardCharsets.UTF_8);
     }
 
