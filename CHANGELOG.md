@@ -190,6 +190,13 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **快照取件缺「平铺到 `Dist\` 根」这一步（issue #244，2026-10-16 真机）**：双击 `Dist\UpdateDesktopJvmSnapshot.cmd`
+  能下载、能解压，但 `aha-desktop.jar` 与启动脚本躺在 `Dist\<资产名>\` 子目录里，`Dist\` 根下什么都没有 ——
+  「取件」只完成一半，还得手工进去搬。而正式版取件（`UpdateJvm.ps1`）一直是「解压 → 平铺到落地根」，
+  同一个动作两种结果。修复：新增 `Dist/UpdateInstall.ps1`（平铺步骤，**先探测再动手**：目标被占用时落地根一个字节都不改），
+  `UpdateSnapshot.ps1` 对 JVM 线（桌面端 / CLI）平铺到 `-Out` 根并把被覆盖的既有文件备份为 `<名字>.bak`，
+  铺好后清理暂存目录（新增 `-KeepExtract`；`-NoInstall` 仍是「只取件」）。
+  验证方式：**取一次件即可确认**（真机，见 issue #244 的验收清单）—— 不为此在每次构建里加自测步骤。
 - **设置面板观感与可用性三处（issue #51，2026-10-16 真机反馈）**：① **通道区收成一行** —— 标题文案改为「版本发布通道」（原「（决定从哪条发布线取版本）」多余），并与三个单选项同一行：标题在左、选项在右；② **「当前版本」行支持复制版本号** —— 该行由 `Label` 换成只读 `TextArea`（可拖选 + Ctrl/Cmd+C），右键另有直达入口「复制版本号」（只复制版本号本身）与「复制选中 / 全选」；③ **设置面板宽高可调** —— `Dialog` 默认不可缩放，版本列表一长只能在固定小块里滚动；现在放开缩放，并让根 VBox 与 `TabPane` 的 max 一并放开、`TabPane` 在根里 `vgrow`，做到「拉大窗口 ⇒ 版本列表跟着长」（最小 480 × 360，窗口大小暂不记忆）。冒烟断言分别钉住：标题文案与「同处一行」、当前版本行是只读 `TextArea` 且能整行选中 + 有「复制版本号」入口、对话框 `isResizable()` 与 `tabs.getMaxHeight() == Double.MAX_VALUE`。
 - **原生包（`AhaDesktopNative.exe`）点「检查更新」抛 `UnsupportedFeatureError: Record components not available for record class ReleaseInfo`（issue #51，2026-10-16 真机）**：Jackson 反序列化 record 时要读它的 **record components**（`Class.getRecordComponents()`），而原生镜像（closed-world）要求**构建期**就把该 record 的访问器登记好 —— `core.update` 下的 DTO 一条都没登记，于是「检查更新」在原生包里必崩；而 **JVM 版、单测、CI 冒烟全都跑在 JVM 上**（反射可用），三方全绿，藏住了这个依赖。修复：把 `core.update` 下**全部 21 个 record / enum** 逐条登记进两个原生包的 `reachability-metadata.json`（桌面端与 CLI 共用 `aha-core`，两边都要）；新增守卫 `NativeImageMetadataTest#everyUpdateRecordAndEnumIsRegisteredForReflection`（同时扫源码与两份元数据，新增 record 忘了登记就在 Build/Gate 阶段变红，已做反向注入验证）。
 - **升级结果那行文字选不中也复制不出来（issue #51，2026-10-16 真机复测）**：上一轮的做法是「给 `Label` 加右键菜单」，真机反馈**还是选不中、也复制不出来** —— 菜单这一层不符合「想选中一段文字」的直觉。修复：升级页「升级」按钮下方那行状态信息由 `Label` 换成**只读 `TextArea`**，可以直接拖选，选中按 Ctrl/Cmd+C 即复制；右键菜单保留但降为次要入口，规则改为「有选中就复制选中，没选中则整条」，并新增「全选」。教训写进设计文档：**要能选中就换控件，给不可选中的控件加菜单解决不了问题**。

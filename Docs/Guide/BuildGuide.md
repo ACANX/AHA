@@ -1,6 +1,6 @@
 # 构建指南
 
-**文档版本**：v1.17.0
+**文档版本**：v1.18.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.18.0 | 2026-10-16 | §3.3 快照取件的落地行为更正：JVM 便携包（桌面端 / CLI）改为**平铺到 `Dist\` 根**（原先只解压到 `Dist\<资产名>\`，取完还要手工搬），与正式版取件同一口径；补 `-NoInstall` / `-KeepExtract`（issue #244）| @ACANX / CNXNC |
 | v1.17.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
@@ -254,11 +255,12 @@ B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因
 ```bat
 Dist\UpdateDesktopNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生桌面端
 Dist\UpdateCliNativeSnapshot.cmd     [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生 CLI
-Dist\UpdateSnapshot.ps1 -Kind jvm    [-List] [-Pr <N>] [-Out <目录>] [-Force] [-DryRun]  :: JVM 便携包（两种目标共用）
+Dist\UpdateSnapshot.ps1 -Kind jvm    [-List] [-Pr <N>] [-Out <目录>] [-Force] [-DryRun] [-NoInstall] [-KeepExtract]  :: JVM 便携包（两种目标共用）
 ```
 
 行为差异（**别弄混**）：**原生桌面端**目标会把包里的 exe 替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，
-下载前先探测占用），加 `-NoInstall` 可只取件、不安装；JVM 与原生 CLI 目标解压到 `Dist\<资产名>\` 的**独立目录**。
+下载前先探测占用）；**JVM 便携包**目标把包根内容**平铺到 `-Out`**（默认 `Dist\`，被覆盖的既有文件先备份为 `<名字>.bak`），
+取完件就能就地启动（issue #244）；加 `-NoInstall` 则两者都只取件、只解压到 `Dist\<资产名>\`，不动任何既有文件。
 状态一律记在 `Dist\.aha-snapshot.json`，与原生取件的 `.aha-desktop-native.json` / `.aha-cli-native.json` 互不干扰。
 
 ## 4. 单模块构建

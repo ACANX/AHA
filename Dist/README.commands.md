@@ -297,6 +297,7 @@ Dist/
 ├── UpdateDesktopJvm.cmd               一键取件桌面端 JVM 便携包（dev 线；调同目录的 UpdateJvm.ps1）
 ├── UpdateCliJvm.cmd                   一键取件 CLI JVM 便携包（dev 线；同上）
 ├── UpdateJvm.ps1                     上述两个入口的 PowerShell 实现（UTF-8 with BOM）
+├── UpdateInstall.ps1                 「把包铺到落地根」的安装步骤（由 UpdateSnapshot.ps1 点源；可离线自测）
 ├── UpdateDesktopJvmSnapshot.cmd       一键取件桌面端 JVM **快照**（= UpdateSnapshot.ps1 -Kind desktop-jvm）
 ├── UpdateCliJvmSnapshot.cmd           一键取件 CLI JVM **快照**（= -Kind cli-jvm）
 ├── README.md               项目 README（由 CLI assembly 复制）
@@ -338,14 +339,20 @@ Dist\UpdateDesktopNativeSnapshot.cmd -Force    :: 已取过同一版也重新下
 Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装（原生桌面端默认会替换 exe）
 Dist\UpdateDesktopJvmSnapshot.cmd           :: JVM 桌面包快照：取最近一次（= -Kind desktop-jvm）
 Dist\UpdateCliJvmSnapshot.cmd               :: JVM CLI 包快照：取最近一次（= -Kind cli-jvm）
+Dist\UpdateDesktopJvmSnapshot.cmd -NoInstall :: 只取件：只解压到 Dist\<资产名>\，不平铺到 Dist\ 根
+Dist\UpdateDesktopJvmSnapshot.cmd -KeepExtract :: 平铺后保留解压目录（默认会清掉；zip 始终保留）
 Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，引擎直调）
 ```
 
 特点：
 
 - **零配置**：不需要 `GH_TOKEN`、不需要 `gh`、不需要 Python（全程 PowerShell / .NET）；
-- **只碰自己的包**：JVM 与「原生 CLI」目标解压到 `Dist\<资产名>\` 的**独立目录**；**原生桌面端**目标会把包里的 exe
-  替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，下载前先探测占用），`-NoInstall` 可只取件——与 `UpdateNative.ps1` 语义一致；
+- **取完就能就地启动**（issue #244）：JVM 便携包（桌面端 / CLI）解压后把**包根内容平铺到 `Dist\`** ——
+  `Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`（CLI 是 `Dist\aha-cli.jar`、`Dist\AhaCli.bat`）直接双击就能跑，
+  与 `Dist\UpdateDesktopJvm.cmd`（正式版取件）同一口径；**本机平台的原生包**则把包里的 exe
+  替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，下载前先探测占用）。
+  两种都**先备份被覆盖的既有文件**为 `<名字>.bak`，铺好之后解压目录会被清掉（`-KeepExtract` 可保留）；
+  `-NoInstall` = 只取件：只解压到 `Dist\<资产名>\`，不平铺、不动任何既有文件；
 - **独立状态**：记在 `Dist\.aha-snapshot.json`，不读写 `.aha-desktop-native.json` / `.aha-cli-native.json`；
 - 平台自动识别：两条线**共用一套平台词**，取 `windows-amd64`（ARM64 机器取 `windows-arm64`）。
 

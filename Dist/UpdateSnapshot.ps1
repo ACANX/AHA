@@ -12,17 +12,22 @@
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
       2. 挑出**本机平台**该取哪个资产（JVM 线与原生线自 2026-10-15 起**共用同一套**：`windows-amd64` / `ubuntu-amd64`）；
       3. 下载 zip 到 `Dist\`（已有同尺寸的包则复用；带 sha256 则校验）；
-      4. 解压到**按资产命名的目录**里；若是**本机平台的原生包**，再把 exe
-         **安装（替换）到 `-Out`（默认 = 启动器所在目录）**，旧版留 `.bak`（`-NoInstall` 可只取件）；
-         装好之后**把那份解压目录清掉**（exe 已在落地根、zip 留着、旧版有 `.bak`，留着只是又一份副本）。
-         JVM 快照没有可安装的 exe，解压目录本身就是「要跑的东西」，**保留**。
+      4. 解压到**按资产命名的目录**里，再按种类**落成「取完就能就地启动」的形态**（issue #244）：
+         · JVM 便携包：把包根的一级内容**平铺到 `-Out`**（默认 = 启动器所在目录，即 `Dist\`）——
+           JVM 包自 issue #218 起就是包根平铺，解压目录本身就是一个能直接启动的包；
+           只解压到子目录的话「取件」只完成一半（与 `UpdateJvm.ps1` 同一口径）；
+         · 本机平台的原生包：只把 exe（含同目录的 dll）**替换到 `-Out`**，旧版留 `<名字>.exe.bak`；
+         两种都**先把被覆盖的既有文件备份成 `<名字>.bak`**，铺好之后**把那份解压目录清掉**
+         （东西已在落地根、zip 留着、旧版有 `.bak`，留着只是又一份副本；`-KeepExtract` 可保留）。
+         `-NoInstall` 维持「只取件」：只解压到 `Dist\<资产名>\`，不平铺、不动任何既有文件。
 
     为什么和 `UpdateNative.ps1` 分开、且不复用它：
 
       * 语义不同：`UpdateNative.ps1` 走 dev 线、按「最新一版」替换；
-        快照是**并排试包**——总是先落成独立目录，再对本机平台的原生包**顺手替换** exe
-        （这样「取件后双击 `Dist\aha-desktop-native.exe` 就是刚取的那版」）。
-        除了这个 exe（与它的 `.bak`）之外不碰任何既有文件；
+        快照是**并排试包**——总是先落成独立目录，再按种类落地：JVM 包**平铺到落地根**、
+        本机平台的原生包**替换 exe**（这样「取件后双击 `Dist\AhaDesktop.bat` /
+        `Dist\aha-desktop-native.exe` 就是刚取的那版」，issue #244）。
+        除了平铺 / 替换会覆盖到的那些名字（与它们的 `.bak`）之外不碰任何既有文件；
       * 状态不同：它用 `.aha-desktop-native.json` / `.aha-cli-native.json`（「已装哪一版」），
         本脚本用 `.aha-snapshot.json`（「取过哪一次快照」）。两者互不读写，
         因此**不会**把「已装版本」记错（issue #173 的隔离性要求）。
@@ -44,7 +49,8 @@
       -Out <dir>          落地目录（默认本脚本所在目录，即 `Dist\`）
       -DryRun             只预览：会下载哪个包、解压到哪里
       -Force              即使本地已取过同一版，也重新下载
-      -NoInstall          只取件：不替换任何既有可执行文件（纯并排试包）
+      -NoInstall          只取件：只解压到 `-Out\<资产名>\`，不平铺、不替换任何既有文件（纯并排试包）
+      -KeepExtract        平铺 / 安装成功后**保留**解压目录（默认会清掉，见上方第 4 件事）
       -Repo <owner/repo>  仓库（默认 ACANX/AHA）
 
     退出码：0 成功；1 失败。
@@ -59,6 +65,7 @@ param(
     [string]$Out = '',
     [switch]$Force,
     [switch]$NoInstall,
+    [switch]$KeepExtract,
     [switch]$DryRun,
     [string]$Repo = 'ACANX/AHA'
 )
@@ -94,6 +101,9 @@ $installExeBase = @{
     'Cli-Native'     = 'aha-cli-native'
     'NativeCli'      = 'aha-cli-native'
 }
+
+# 平铺逻辑放在单独文件里，好让自测脚本**离线**直接驱动它（见该文件头部的理由）
+. (Join-Path $PSScriptRoot 'UpdateInstall.ps1')
 
 function Install-NativeBinary {
     # 与 `UpdateNative.ps1` 同一套规则：只装可执行文件本体（外加同目录的 *.dll，若有），
@@ -379,13 +389,13 @@ try {
     if ($files.Count -gt 6) { Write-Host ("    …（另有 {0} 个文件）" -f ($files.Count - 6)) }
     Write-Host ("  zip 保留在：{0}（便于离线重装；不需要可删）" -f $zip)
 
-    # ── 4. 安装（替换）本机平台的原生可执行文件 ────────────────────────────────
+    # ── 4. 落地：JVM 包平铺到落地根；本机平台的原生包替换 exe（issue #244）──────────
+    $flat = @()        # 本次铺 / 装到落地根的名字（也写进状态文件，便于事后对账）
+    $cleanNote = ''
     if ($NoInstall) {
-        Write-Host '  （-NoInstall：只取件，不替换任何既有文件）'
-    } elseif (-not $targetExe) {
-        Write-Host ("  （{0} 没有单一可执行文件，只取件不安装）" -f $pick.Target)
-        # JVM 便携包自 issue #218 起是**包根平铺**：解压目录本身就是一个能直接启动的包，
-        # 所以这里指出「跑哪个文件」，比只说一句「不安装」有用得多。
+        Write-Host '  （-NoInstall：只取件，不平铺、不替换任何既有文件）'
+        # 指出「跑哪个文件」：JVM 便携包自 issue #218 起是**包根平铺**，解压目录本身就是能启动的包，
+        # 比只说一句「没落地」有用得多。
         $flatLauncher = $null
         foreach ($name in @('AhaDesktop.bat', 'AhaCli.bat', 'AhaDesktop.sh', 'AhaCli.sh')) {
             $cand = Join-Path $extractDir $name
@@ -396,7 +406,7 @@ try {
         } elseif (Test-Path -LiteralPath (Join-Path $extractDir 'bin')) {
             Write-Host '        （这是旧形态（bin/ + lib/）的包，从 bin\ 下启动）'
         }
-    } else {
+    } elseif ($targetExe) {
         $res = Install-NativeBinary -ExtractDir $extractDir -TargetExe $targetExe
         if (-not $res.ok) {
             Write-Host ("  [警告] 没能替换 {0}：{1}" -f $targetExe, $res.reason) -ForegroundColor Yellow
@@ -412,17 +422,48 @@ try {
                 Write-Host ("   旧版备份：{0}.bak" -f $targetExe)
             }
             Write-Host ("   双击运行：{0}" -f $targetExe)
-            # 装好之后解压目录就只是又一份副本（与 UpdateJvm.ps1 同一口径）：
-            # 删掉，别让 Dist\ 里为同一个包占两份地方。zip 仍留着，要再解一份随时可解。
-            $cleanNote = ''
-            try {
-                Remove-Item -LiteralPath $extractDir -Recurse -Force
-                $cleanNote = '已清理解压目录（zip 仍留着，需要可再解）'
-            } catch {
-                $cleanNote = "解压目录没删掉：$($_.Exception.Message)"
-            }
-            Write-Host ("   {0}" -f $cleanNote)
+            $flat = @([IO.Path]::GetFileName($targetExe))
         }
+    } else {
+        # JVM 便携包**没有单一 exe**（是一整包）：平铺到落地根，取完件就能就地双击启动
+        # （与 `UpdateJvm.ps1` 同一口径，issue #244 —— 以前只解压到 `Dist\<资产名>\` 就结束了）。
+        $res = Install-JvmPackage -ExtractDir $extractDir -OutDir $OutDir
+        if (-not $res.ok) {
+            Write-Host ''
+            Write-Host ("  [警告] 没能平铺到 {0}：" -f $OutDir) -ForegroundColor Yellow
+            foreach ($why in $res.failed) { Write-Host ("        - {0}" -f $why) }
+            Write-Host '        落地根里**没有改动任何文件**（这一步先探测再动手）。常见原因两条：'
+            Write-Host '          1) 有实例正跑在这份包上（jar 被占用）⇒ 关掉它再重试；'
+            Write-Host '          2) 被杀毒软件 / 索引服务短暂锁住 ⇒ 稍等一会儿重试。'
+            Write-Host ("        包已经解压在：{0}（也可以直接跑里面的启动器）" -f $extractDir)
+        } else {
+            Write-Host ''
+            Write-Host ("✅ 已平铺到：{0}" -f $OutDir) -ForegroundColor Green
+            Write-Host ("   本次铺过去 {0} 项：{1}" -f $res.installed.Count, ($res.installed -join '、'))
+            if ($res.backedUp.Count -gt 0) {
+                Write-Host ("   覆盖前已备份为 *.bak：{0}" -f ($res.backedUp -join '、'))
+            }
+            $flat = $res.installed
+            foreach ($name in @('AhaDesktop.bat', 'AhaCli.bat')) {
+                if ($res.installed -contains $name) {
+                    Write-Host ("   双击运行：{0}" -f (Join-Path $OutDir $name))
+                    break
+                }
+            }
+        }
+    }
+
+    # 铺好 / 装好之后解压目录就只是又一份副本（与 `UpdateJvm.ps1` 同一口径）：删掉，
+    # 别让 `Dist\` 为同一个包占两份地方。zip 仍留着，要再解一份随时可解。
+    # 判据带上 `$flat`：**平铺失败时绝不清理解压目录** —— 否则用户连包都没了。
+    if (-not $NoInstall -and -not $KeepExtract -and $flat.Count -gt 0 -and (Test-Path -LiteralPath $extractDir)) {
+        try {
+            Remove-Item -LiteralPath $extractDir -Recurse -Force
+            $cleanNote = '已清理解压目录（zip 仍留着，需要可再解；加 -KeepExtract 可保留）'
+        } catch {
+            $cleanNote = "解压目录没删掉：$($_.Exception.Message)"
+        }
+        Write-Host ("   {0}" -f $cleanNote)
     }
 } catch {
     Write-Host ''
@@ -435,14 +476,20 @@ try {
 
 # 状态文件与原生取件**不共用**（不读也不写 .aha-desktop-native.json / .aha-cli-native.json）：
 # 本文件只回答「我取过哪一次快照」。用 [IO.File]::WriteAllText 避免 5.1 的 Set-Content 写 BOM。
+# 落地结果：原生包 = 换了哪个 exe；JVM 包 = 平铺到了哪个目录；-NoInstall / 失败 = 没落地
+$installedTo = '(未落地：-NoInstall 或落地失败)'
+if ($flat.Count -gt 0) {
+    $installedTo = $(if ($targetExe) { $targetExe } else { $OutDir })
+}
 $state = @{
     tag         = $pick.Tag
     version     = $pick.Version
     target      = $pick.Target
     pr          = $pick.Pr
     asset       = $pick.Asset.name
-    extractedTo = $(if (Test-Path -LiteralPath $extractDir) { $extractDir } else { '(装好后已清理)' })
-    installedTo = $targetExe
+    extractedTo = $(if (Test-Path -LiteralPath $extractDir) { $extractDir } else { '(铺好后已清理)' })
+    installedTo = $installedTo
+    flat        = $flat
     fetchedAt   = (Get-Date).ToString('s')
 } | ConvertTo-Json
 [IO.File]::WriteAllText($StateFile, $state)
