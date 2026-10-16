@@ -141,6 +141,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) | 常见问题排查 |
 | [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) | 原生渲染诊断（真机取证步骤与判定表，issue #48） |
 | [PlanWritingGuide.md](Docs/Guide/PlanWritingGuide.md) | 方案文档编写参考（方案类文档的体例、写法要点、最小骨架） |
+| [WindowsTerminalAndShellGuide.md](Docs/Guide/WindowsTerminalAndShellGuide.md) | Windows 终端 / Shell / 编码与脚本选型（含真机判定命令与 AHA 约定） |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
 其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、
