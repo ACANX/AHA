@@ -1,6 +1,7 @@
 package com.acanx.module.aha.core.update;
 
 import com.acanx.module.aha.common.exception.UpdateException;
+import com.acanx.module.aha.core.update.ReleaseFilter.ChannelRelease;
 
 import java.util.ArrayList;
 import java.util.List;
