@@ -141,7 +141,7 @@ public final class DesktopSettings {
             return settings;
         }
         settings.theme = Theme.of(properties.getProperty(KEY_THEME));
-        settings.fontSize = clamp(parse(properties.getProperty(KEY_FONT_SIZE)));
+        settings.fontSize = clamp(fontSizeOf(properties.getProperty(KEY_FONT_SIZE)));
         if (properties.containsKey(KEY_UPDATE_CHANNEL)) {
             String raw = properties.getProperty(KEY_UPDATE_CHANNEL);
             ReleaseChannel channel = ReleaseChannel.of(raw);
@@ -154,19 +154,28 @@ public final class DesktopSettings {
                 LOG.warn("设置里的升级通道不认识，按默认处理：{}", raw);
             }
         }
+        // 与通道同一条口径：**只有值真的合法才算「用户设过」**。写坏的值若被当成显式设置，
+        // 将来改默认值时这条安装就不会跟着走 —— 那正是「默认值改了也没生效」这类怪事。
         if (properties.containsKey(KEY_UPDATE_CHECK_ON_STARTUP)) {
-            settings.checkOnStartup = parseBoolean(properties.getProperty(KEY_UPDATE_CHECK_ON_STARTUP),
-                    DEFAULT_CHECK_ON_STARTUP);
-            settings.explicitKeys.add(KEY_UPDATE_CHECK_ON_STARTUP);
+            Boolean parsed = parseBoolean(properties.getProperty(KEY_UPDATE_CHECK_ON_STARTUP));
+            if (parsed != null) {
+                settings.checkOnStartup = parsed;
+                settings.explicitKeys.add(KEY_UPDATE_CHECK_ON_STARTUP);
+            }
         }
         if (properties.containsKey(KEY_UPDATE_ALPHA_ACK)) {
-            settings.alphaAcknowledged = parseBoolean(properties.getProperty(KEY_UPDATE_ALPHA_ACK), false);
-            settings.explicitKeys.add(KEY_UPDATE_ALPHA_ACK);
+            Boolean parsed = parseBoolean(properties.getProperty(KEY_UPDATE_ALPHA_ACK));
+            if (parsed != null) {
+                settings.alphaAcknowledged = parsed;
+                settings.explicitKeys.add(KEY_UPDATE_ALPHA_ACK);
+            }
         }
         if (properties.containsKey(KEY_UPDATE_BACKUP_KEEP)) {
-            settings.backupKeep = clampBackupKeep(parse(properties.getProperty(KEY_UPDATE_BACKUP_KEEP),
-                    DEFAULT_BACKUP_KEEP));
-            settings.explicitKeys.add(KEY_UPDATE_BACKUP_KEEP);
+            Integer parsed = parse(properties.getProperty(KEY_UPDATE_BACKUP_KEEP));
+            if (parsed != null) {
+                settings.backupKeep = clampBackupKeep(parsed);
+                settings.explicitKeys.add(KEY_UPDATE_BACKUP_KEEP);
+            }
         }
         if (properties.containsKey(KEY_UPDATE_LAST_CHECK_AT)) {
             settings.lastCheckAt = properties.getProperty(KEY_UPDATE_LAST_CHECK_AT);
@@ -382,32 +391,36 @@ public final class DesktopSettings {
         return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, value));
     }
 
-    private static int parse(String text) {
-        return parse(text, DEFAULT_FONT_SIZE);
-    }
-
-    private static int parse(String text, int fallback) {
+    /** 解析整数；空或非法返回 {@code null}（调用方据此区分「没写」与「写坏了」）。 */
+    private static Integer parse(String text) {
         if (text == null || text.isBlank()) {
-            return fallback;
+            return null;
         }
         try {
             return Integer.parseInt(text.strip());
         } catch (NumberFormatException e) {
-            return fallback;
+            return null;
         }
     }
 
-    private static boolean parseBoolean(String text, boolean fallback) {
+    /** 解析布尔；空或非法返回 {@code null}（同上）。 */
+    private static Boolean parseBoolean(String text) {
         if (text == null || text.isBlank()) {
-            return fallback;
+            return null;
         }
         String value = text.strip().toLowerCase(java.util.Locale.ROOT);
         if ("true".equals(value)) {
-            return true;
+            return Boolean.TRUE;
         }
         if ("false".equals(value)) {
-            return false;
+            return Boolean.FALSE;
         }
-        return fallback;
+        return null;
+    }
+
+    /** 字号：缺键或写坏都用默认（字号是界面偏好，不需要「是否显式设过」这层区分）。 */
+    private static int fontSizeOf(String text) {
+        Integer value = parse(text);
+        return value == null ? DEFAULT_FONT_SIZE : value;
     }
 }

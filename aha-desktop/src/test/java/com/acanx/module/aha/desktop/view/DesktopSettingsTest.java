@@ -104,7 +104,7 @@ class DesktopSettingsTest {
                 Ui.FontSize=abc
                 %s=nightly
                 %s=maybe
-                %s=999
+                %s=many
                 """.formatted(DesktopSettings.KEY_UPDATE_CHANNEL,
                 DesktopSettings.KEY_UPDATE_CHECK_ON_STARTUP,
                 DesktopSettings.KEY_UPDATE_BACKUP_KEEP));
@@ -117,7 +117,15 @@ class DesktopSettingsTest {
         // 值不合法 ⇒ 不算「用户设过」：默认值将来改动时，这条安装应当跟着走
         assertThat(settings.updateChannelExplicit()).isFalse();
         assertThat(settings.checkOnStartup()).isFalse();
-        assertThat(settings.backupKeep()).isEqualTo(DesktopSettings.MAX_BACKUP_KEEP);
+        assertThat(settings.backupKeep()).isEqualTo(DesktopSettings.DEFAULT_BACKUP_KEEP);
+
+        // 写坏的值也不算「设过」：再保存一次不会把这几个键写死
+        settings.theme(Theme.DARK);
+        settings.save();
+        Properties written = read();
+        assertThat(written).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHANNEL);
+        assertThat(written).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHECK_ON_STARTUP);
+        assertThat(written).doesNotContainKey(DesktopSettings.KEY_UPDATE_BACKUP_KEEP);
     }
 
     @Test
