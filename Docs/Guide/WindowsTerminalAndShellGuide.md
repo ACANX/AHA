@@ -1,6 +1,6 @@
 # Windows 终端与 Shell 指南
 
-**文档版本**：v1.0.0
+**文档版本**：v1.1.0
 **状态**：冻结
 **生效日期**：2026-10-16
 **最后更新**：2026-10-16
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-16 | 初版（issue #117 真机排查的沉淀）：三层模型、代码页与 UTF-8、环境判定命令、WT 会话还原、脚本选型，以及与 AHA 既有实践的对应 | @ACANX / CNXNC |
+| v1.1.0 | 2026-10-16 | §5.5 路径 D 与 §9 更新：控制台编码协商**已实现**（issue #235 / PR #236）——程序侧自动切 UTF-8 + 退出恢复；补实现位置与真机验证项 | @ACANX / CNXNC |
 
 ---
 
@@ -163,7 +164,7 @@ Windows 控制台（conhost）**按代码页解释字节**：中文系统默认 
 | **A. 用户临时** | `chcp 65001` 后再启动程序 | 只影响本会话；对 cmd 有效 |
 | **B. 用户持久** | PowerShell profile 里设 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`（以及 `$OutputEncoding`） | 一劳永逸；需两边 profile（5.1 / 7） |
 | **C. 系统级** | 区域设置的 "Beta: Use Unicode UTF-8…" | 全系统生效；**有兼容风险**，微软仍标 Beta |
-| **D. 程序侧** | 程序检测到自己是控制台且代码页非 UTF-8 时，调 `SetConsoleOutputCP(65001)` / `SetConsoleCP(65001)`，退出时恢复 | 对用户零配置；**注意"非控制台时绝不改"**，否则污染管道 / CI 会话 |
+| **D. 程序侧**（**已实现**，issue #235 / PR #236） | 程序检测到自己是控制台且代码页非 UTF-8 时，经 FFM 调 `SetConsoleOutputCP(65001)` / `SetConsoleCP(65001)`，退出时恢复，并重建 `System.out` / `System.err` | 对用户零配置；**非控制台（管道 / 重定向 / CI）一律不动** |
 
 > **AHA 现状**：采用「探测 + 提示 + 降级」——`OutputEncoding` 探测到无法表示 CJK 时打印
 > `[warn]`（并给出 CMD / PowerShell 两条切换命令），同时把装饰符号降级、启动标志回退纯 ASCII。
@@ -285,11 +286,17 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 | 脚本规约 | `bin/CheckScripts.py`：`.bat`/`.cmd` 纯 ASCII + CRLF + 无 BOM；`.ps1` 含非 ASCII 必须带 UTF-8 BOM |
 | 双击入口 | `Dist/*.cmd` 包一层同名的 `Dist/*.ps1`（`.ps1` 不能双击，`.cmd` 能） |
 | 原生包参数清单 | `aha-cli-native/src/native/native-image-args*.txt`，结论登记在 [BuildSpec.md](../DevSpec/BuildSpec.md) §10 |
+| **控制台编码自动协商**（issue #235） | `tty/WindowsConsole.java`（FFM 调 `kernel32`：仅当 stdout 真的是控制台且 CP≠65001 时切 UTF-8、记录原值、退出恢复）、`tty/ConsoleEncoding.java`（协商成功后重建 `System.out` / `System.err` 为 UTF-8）；`AhaCli.main` 在**任何输出之前**调用 `prepare()`。失败静默回退到上面的「探测 + 提示 + 降级」 |
 
-**为什么不自动 `chcp 65001`**：见 `OutputEncoding` 的 Javadoc——启动脚本里自动 `chcp` 时，
-宿主 Shell 已缓存解码器，子进程改代码页后宿主仍按旧编码解释，反而更乱。
-因此只做「探测 + 提示 + 降级」。若要进一步改善，第 5.5 节的**路径 D**（程序侧设 CP + 退出恢复）
-是后续可选项，需先在真机上用 cmd / PS 5.1 / PS 7 / WT 四种组合验证。
+**关于自动改代码页**：**在启动脚本里**自动 `chcp` 的方案被否决——宿主 Shell 已缓存解码器，
+子进程改代码页后宿主仍按旧编码解释，反而更乱（见 `OutputEncoding` 早期 Javadoc）。
+自 **issue #235** 起改为**在程序侧协商**（第 5.5 节**路径 D**，已实现）：仅当
+`System.console() != null` 且 `GetConsoleMode(STD_OUTPUT_HANDLE)` 成功、且 CP≠65001 时，
+切到 UTF-8 并重建标准输出流；**管道 / 重定向 / CI 一律不动**；退出时恢复原代码页；
+任一步失败则回退到「探测 + 提示 + 降级」。
+
+真机验证项（cmd / PS 5.1 / PS 7 / Windows Terminal 四种宿主）：`aha chat` 中文正常且
+**像素风 Logo 显示**；`aha … > file` 输出无 ANSI 且代码页未被改动；退出后代码页恢复。
 
 脚本编写与提交前检查见 [CommandCheatsheet.md](CommandCheatsheet.md)、
 [GraalVMInActionsGuide.md](GraalVMInActionsGuide.md)。
