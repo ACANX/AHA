@@ -83,6 +83,14 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **自动打的 `V*` tag 现在会自动触发发布（issue #238，2026-10-16）**：此前 `Build.yml` 用
+  `GITHUB_TOKEN` 推 tag，因 GitHub 防递归**不会**触发下游工作流，于是 Release 页只有 tag、
+  没有发行包，只能由人删 tag 重推。现改用该规则的**官方例外** `workflow_dispatch`：`Build.yml`
+  的 tag 作业在**新建**出 tag 后用 `gh workflow run Release.yml --ref main -f tag=<TAG>` 派发发布
+  流程（权限补 `actions: write`），**不配置 PAT**。`Release.yml` 侧新增 `workflow_dispatch` 入参、
+  两条出包线显式 `checkout` 发布 tag、`action-gh-release` 显式 `tag_name`；`--ref main` 保证
+  `GITHUB_SHA` = `main` head = tag 指向的提交，`gate` / `compat` 与两条出包线都落在同一提交上。
+  幂等口径不变：tag 已存在时**跳过且不派发**；手工重建 tag 降为兜底。
 - **快照自测留痕：`snapshot-assert`（默认启用、默认不卡点；issue #166）**：PR 里发一条评论即可把
   「这一版快照我按清单跑过了」记成 commit status，留痕（版本 / 平台 / JDK / 验证人 / 时间 / 对应 sha）落在 PR 评论里。
   - 命令：`/snapshot-assert <版本> <平台> [jdk27] [+model]`（打 `success`）、

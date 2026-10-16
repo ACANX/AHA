@@ -1,9 +1,9 @@
 # 版本切换指南
 
-**文档版本**：v1.5.0
+**文档版本**：v1.6.0
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-09
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -19,6 +19,7 @@
 | v1.3.0 | 2026-10-09 | §5 新增第 10 条：版本切换 PR 上为什么没有 `Gate` / `Compat` 的 checks（触发范围只覆盖 `main`，而 PR base 是 `dev`）与处置 | @ACANX / CNXNC |
 | v1.4.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更）：§2.2 补「验证时机」（PR 上不跑 checks，验证归口到合并后的 `dev` 流水线）；§5 第 6 条的处置去掉 PAT、改为「手工重建 tag」；第 10 条按「不配 PAT」口径重写 | @ACANX / CNXNC |
 | v1.5.0 | 2026-10-09 | `G-06` 收口：§5 第 4 条与 §6.5 的「0.1.0 裸 tag」示例更新为**已处置**（已补指向同一提交 `9138847` 的别名 tag `V0.1.0`，`CHANGELOG` 链接不再 404） | @ACANX / CNXNC |
+| v1.6.0 | 2026-10-16 | §5 第 6 条：自动打的 `V*` tag **已能自动触发发布**（issue #238）——`Build.yml` 用 `workflow_dispatch`（防递归规则的**官方例外**）派发 `Release.yml`，无需 PAT；手工重建 tag 降为兜底，新增「直接手工派发」做法 | @ACANX / CNXNC |
 
 ---
 
@@ -155,7 +156,7 @@ python3 .github/Python/ProjectVersion.py --verify
 | 3 | 文档里还能搜到旧版本 | 声明行未更新；或它本来就是**历史标注** | 先按 §4.2 判断：历史叙述里的旧版本号是合法内容；确属声明行未更新时，补跑分发脚本 |
 | 4 | `CHANGELOG` 的版本链接 404 | tag 实际写法与文档约定不符 | 用 `git ls-remote --tags origin` 核实真实 tag 再改链接。**历史例外已处置**：0.1.0 已补指向同一提交（`9138847`）的别名 tag `V0.1.0`，两种写法都可用（见 §6.5） |
 | 5 | 推送 tag 时提示已存在 | 同版本 tag 已打过 | `Build.yml` 的 tag 作业**幂等跳过**，属正常；需重打见 `ReleaseProcess.md` §4.1 |
-| 6 | 自动打的 `V*` tag 没触发发布 | `GITHUB_TOKEN` 推送的 tag 不触发下游工作流（GitHub 防递归） | **手工重建该 tag**（删除后由人重推，`ReleaseProcess.md` §4.2）。`Release.yml` 没有 `workflow_dispatch`，只能这样产生一次真实的 tag 事件；本仓库不配置 PAT |
+| 6 | 自动打的 `V*` tag 没触发发布 | `GITHUB_TOKEN` 推送的 tag 不触发下游工作流（GitHub 防递归） | **已自动化（issue #238）**：`Build.yml` 的 tag 作业在**新建出 tag** 后用 `workflow_dispatch`（该规则的**官方例外**）派发 `Release.yml`（`gh workflow run Release.yml --ref main -f tag=V<版本>`），无需 PAT。**派发失败才需兜底**：优选直接手工派发（**ref 必须选 `main`**），或手工重建 tag（删除后由人重推）；两者详见 `ReleaseProcess.md` §4.2 |
 | 7 | 发版 PR 卡在必需检查 / 审批 | 分支规则集要求（审批数、`Gate`/`Compat` 必需检查、`last_push_approval`） | 见 `ReleaseProcess.md` §4.2 与 Issue #85 |
 | 8 | 两个原生模块版本没跟上 | 历史问题：旧清单漏了后加模块 | 已消除——子模块统一写 `${revision}`，分发脚本**动态扫描 POM** 并断言数量 ≥ 9（新增模块自动覆盖） |
 | 9 | 构建号没注入（GUI 只显示基线版本） | 工作流的 `command: >-` 折叠块里写了 `#` 注释，把参数吞掉 | 注释移出折叠块（`ReleaseProcess.md` 第 2 节「构建版本」） |

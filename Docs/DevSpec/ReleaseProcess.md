@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.25.0
+**文档版本**：v1.26.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,7 +13,8 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
-| v1.25.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
+| v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
+| v1.25.0 | 2026-10-16 | **自动打的 tag 现在会自动触发发布**（issue #238）：`Release.yml` 新增 `workflow_dispatch`（防递归规则的**官方例外**，由 `Build.yml` 的 tag 作业用 `gh workflow run --ref main` 派发）；两条出包线显式 `checkout` 发布 tag，`action-gh-release` 显式 `tag_name`；§2 第 5 步、§2.1 与 §4.2 按新口径重写（手工重建 tag 降为兜底） | @ACANX / CNXNC |
 | v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-assert`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
 | v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 初始版本 | @ACANX |
@@ -105,7 +106,10 @@
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
    按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
-5. 触发 `Release.yml`（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）——注意 4.2 的限制
+5. `Release.yml` **由 CI 自动开跑**（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）：
+   `Build.yml` 的 `tag` 作业在**新建**出 tag 之后，用 `GITHUB_TOKEN` 经 `workflow_dispatch`
+   派发它（GitHub 防递归的**官方例外**，issue #238），派发 ref 固定为 `main` —— 见 4.2。
+   手工补触发的方法（派发失败 / 资产重来）同样见 4.2
 6. 合回 `dev`，删除 `release/*` 分支
 
 ### 2.1 快照包（pre-release）：与正式发布彻底隔离
@@ -117,14 +121,15 @@
 |---|---|---|
 | tag | `V<版本>`（`main` 构建成功后由 CI 自动打） | `V<快照版本>-AHA-<目标>-SNAPSHOT` |
 | 载体 | `Release.yml` 产出的正式 release | **pre-release**（`prerelease: true`，不进 `releases/latest`） |
-| 触发 | `Release.yml`（`workflow_dispatch`） | `SNAPSHOT:*` 标签 / `/snapshot` 评论 / `workflow_dispatch` |
+| 触发 | `Release.yml` —— 由 `Build.yml` 自动派发 `workflow_dispatch`（issue #238），也可手工触发 | `SNAPSHOT:*` 标签 / `/snapshot` 评论 / `workflow_dispatch` |
 | 生命周期 | 长期保留 | **同 PR 同目标最近 3 条 / 有效期 7 天**；PR 关闭或合并后自动删除 |
 
 **两条硬约束**：
 
 1. `Release.yml` 的 tag 过滤**必须**保留负向模式 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——快照 tag 属 `V*` 家族，
    少了这一条，每次出快照都会触发一遍完整正式发版流程。判定依据：改动前后
-   `gh run list --workflow Release.yml` 的 run 数不变（至今 **0 次**运行）。
+   `gh run list --workflow Release.yml` 里**由 tag push 触发**（`event=push`）的 run 数不变——
+   截至 2026-10-16 为 **0 次**（正式发版此前一直靠手工重建 tag，见 §4.2）。
 2. 清理由 `snapshot-cleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
    `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
 
@@ -242,23 +247,49 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
   git tag -a V0.1.1 -m "AHA V0.1.1" && git push origin V0.1.1
   ```
 
-### 4.2 自动打 tag 不触发发布（务必知晓）
+### 4.2 自动打的 tag 如何触发发布（issue #238 起已自动化）
 
 **用 `GITHUB_TOKEN` 推送的 tag 不会触发下游工作流**——这是 GitHub 防递归的既定行为，
-不是配置错误。因此自动打出的 `V*` tag **不会**自动开跑 `Release.yml`。
+不是配置错误。因此自动打出的 `V*` tag **不会**触发 `Release.yml` 的 `push: tags`。
 
-`Release.yml` 只由 `push: tags: ['V*', 'v*']` 触发、**没有 `workflow_dispatch`**，所以唯一的
-处置是**手工重建这个 tag**，让 tag 事件真实发生一次（人推的 tag 不受防递归限制）：
+**但这条规则有官方例外**（[GitHub Docs · Triggering a workflow](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)）：
+
+> events triggered by the `GITHUB_TOKEN` will not create a new workflow run, **with the following
+exceptions: `workflow_dispatch` and `repository_dispatch` events always create workflow runs.**
+
+本仓库据此**不配置 PAT**：`Release.yml` 增加 `workflow_dispatch`，`Build.yml` 的 `tag` 作业在
+**真的新建出 tag** 之后，用 `GITHUB_TOKEN` 派发它：
 
 ```
-git push origin --delete V0.1.2                                # 删掉自动打的 tag（指向同一提交，不动提交历史）
-git tag -a V0.1.2 -m "AHA V0.1.2" <发布提交>                    # 重新打同一个 tag
-git push origin V0.1.2                                         # 这次由人推送 → 触发 Release.yml
+gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 ```
 
-> **本仓库不为此配置 PAT**。备选做法是建一个细粒度 token（仅 `contents: write`）存为
-> 仓库机密、让 `Build.yml` 的 tag 作业用它推送，tag 事件便会自动触发发布——**未采用**，
-> 统一走上面的手工重建。
+两条口径必须同时成立，缺一个就会把「验过的构建」换成「别的提交」：
+
+1. **`--ref main` 不能省**。`workflow_dispatch` 的 `GITHUB_SHA` 是**所派发 ref 的最新提交**；
+   用默认分支 `dev` 派发会让整个 run 落在 dev 上（`gate` / `compat` 与两条出包线都会取到 dev）。
+   带 `main` 时 `GITHUB_SHA` = `main` head = tag 指向的提交（tag 由同一作业按 `${GITHUB_SHA}` 创建）。
+2. **tag 由入参传入**（`-f tag=…`）：两条出包线按它显式 `checkout`，并作为 `action-gh-release`
+   的 `tag_name`。`workflow_dispatch` 下 `github.ref` 是分支，不能靠默认值取 tag。
+
+**幂等**：tag 已存在（同一版本被重复合入 `main`，例如只改文档）时 `Build.yml` **跳过且不派发**，
+不会重复发版。
+
+**兜底（派发失败、或 tag / 资产需要重来）**——两种做法：
+
+- **直接手工派发**（首选）：Actions 页面的 **Run workflow**，或
+  `gh workflow run Release.yml --ref main -f "tag=V0.1.2"`——**ref 必须选 `main`**，理由同上第 1 条。
+- **手工重建 tag**（让 tag 事件真实发生一次；人推的 tag 不受防递归限制）：
+
+  ```
+  git push origin --delete V0.1.2                                # 删掉 tag（指向同一提交，不动提交历史）
+  git tag -a V0.1.2 -m "AHA V0.1.2" <发布提交>                    # 重新打同一个 tag
+  git push origin V0.1.2                                         # 这次由人推送 → 触发 Release.yml
+  ```
+
+> **不采用 PAT**：备选做法是建一个细粒度 token（仅 `contents: write`）存为仓库机密、
+> 让 `Build.yml` 的 tag 作业用它推送，tag 事件便会自动触发发布——**未采用**，
+> 统一走上面的 `workflow_dispatch` 派发。
 
 ## 3. 制品
 

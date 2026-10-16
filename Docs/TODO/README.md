@@ -1,9 +1,9 @@
 # 待办事项清单（TODO）
 
-**文档版本**：v1.1.0
+**文档版本**：v1.3.0
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-13
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -77,8 +77,8 @@ TD-00014-ManualAndExternalActions.md
 
 ## 3. 当前编号
 
-- 已用：`TD-00001` ~ `TD-00017`
-- **下一个可用编号：`TD-00018`**
+- 已用：`TD-00001` ~ `TD-00018`
+- **下一个可用编号：`TD-00019`**
 
 > 订正（2026-10-13）：本行此前停在 `TD-00017`（已用区间与之矛盾）。
 
@@ -122,9 +122,10 @@ TD-00014-ManualAndExternalActions.md
 | TD | 标题 | 状态 | Issue | 备注 |
 |---|---|---|---|---|
 | [TD-00013](TD-00013-EngineeringAndDocHygiene.md) | CI 日志噪音、工作流与文档检查、脚本目录、暂存区文档去留 | ☐ 未开始 | [#84](https://github.com/ACANX/AHA/issues/84) | |
-| [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ⏸ 阻塞 | [#85](https://github.com/ACANX/AHA/issues/85) | 需仓库 / 平台权限或外部环境 |
+| [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ✅ 已完成（2026-10-16） | [#85](https://github.com/ACANX/AHA/issues/85)（**已关闭**） | 六项均有结论（G-02 / G-05 不做、G-03 已验、G-06 完成、0.1.1 结项、真机 7 项通过）；「tag 不触发 `Release.yml`」转 [#238](https://github.com/ACANX/AHA/issues/238)（TD-00018） |
 | [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | [#92](https://github.com/ACANX/AHA/issues/92)（父；子 [#93](https://github.com/ACANX/AHA/issues/93)~[#97](https://github.com/ACANX/AHA/issues/97)） | 含根因反思；分 5 阶段（P1 校验 → P2 读取收敛 → P3 `${revision}` → P4 分发器 → P5 文档） |
 | [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 排查档案正文对齐 TroubleShootingDocSpec 的**四节必备项** | ✅ 已完成（2026-10-13） | [#128](https://github.com/ACANX/AHA/issues/128)（**已关闭**） | 取**选项 C**：32 篇 + 模板补齐四节；规范新增 §5（+ §4 入口）；`CheckDocs.py` 新增机器检查 |
+| [TD-00018](TD-00018-ReleaseTagAutoTrigger.md) | 自动打的 `V*` tag 不触发 `Release.yml`：不配 PAT 打通自动出包 | ◐ 进行中 | [#238](https://github.com/ACANX/AHA/issues/238) | **方案 B 已实现**（`workflow_dispatch` + `--ref main`）：`Build.yml` 新建出 tag 后 `gh workflow run Release.yml --ref main` 派发；代码与文档见 PR [#240](https://github.com/ACANX/AHA/pull/240)，闭环验收需一次真实发版 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）
 
