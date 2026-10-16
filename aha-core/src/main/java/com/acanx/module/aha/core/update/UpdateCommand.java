@@ -101,8 +101,36 @@ public final class UpdateCommand {
      * @return 退出码：0 = 成功（或只检查）；1 = 失败
      */
     public static int run(Options options, InstallLayout layout, UpdatePaths paths, PrintStream out) {
+        // 版本号解析失败要变成**可读的失败**，而不是把 IllegalArgumentException 抛给脚本
+        // （2026-10-16 第三轮审查：本地跑测试时版本资源缺失，看到的是一行英文异常）。
+        AhaVersion current;
+        try {
+            current = AhaVersion.parse(AppVersion.buildVersion());
+        } catch (RuntimeException e) {
+            out.println("升级失败：读不出当前版本号（" + AppVersion.buildVersion() + "）——"
+                    + "这个构建产物的版本资源有问题，请重新下载发行包。");
+            return 1;
+        }
+        return run(options, current, layout, paths, out);
+    }
+
+    /**
+     * 真跑升级（当前版本由调用方给）。
+     *
+     * <p>为什么单独一层：当前版本来自 Maven 过滤出来的版本资源，单测里拿不到真值
+     * （本地的 {@code AppVersion.buildVersion()} 是 {@code dev}）—— 让测试注入固定版本，
+     * 才能把「能力门 / 参数解析失败」这类逻辑**在本地就验掉**（2026-10-16 第三轮审查）。</p>
+     *
+     * @param options 选项
+     * @param current 当前版本
+     * @param layout  安装布局
+     * @param paths   路径布局
+     * @param out     输出
+     * @return 进程退出码（0 成功 / 1 失败）
+     */
+    static int run(Options options, AhaVersion current, InstallLayout layout, UpdatePaths paths,
+                   PrintStream out) {
         UpdateService service = new UpdateService(paths);
-        AhaVersion current = AhaVersion.parse(AppVersion.buildVersion());
         UpdateKind kind = options.kind() == null
                 ? (layout.jarBased() ? UpdateKind.DESKTOP_JVM : UpdateKind.DESKTOP_NATIVE)
                 : options.kind();
@@ -110,6 +138,20 @@ public final class UpdateCommand {
         try {
             out.println("当前版本：" + current.value() + "；通道 " + options.channel().key()
                     + "；形态 " + kind.targetWord() + "；平台 " + platform.value());
+            // 【能力门也要接在 CLI 上（2026-10-16 第三轮审查）】界面早就按「平台 + 安装形态」
+            // 置灰了，这条路径却直接往下走 —— 在「只剩单体 jar」的布局上，计划里的 `restart`
+            // 是空的，于是：换装会成功、**没有人把程序拉回来**（用户的应用就没了）。
+            // 挡在 `list` / `stage` 之前：失败要快、不要白下 55 MB。
+            // `--check` 不挡：看不出版本列表对谁都没好处（与界面「检查更新仍可用」一致）。
+            if (!options.checkOnly()) {
+                String unsupported = UpdateLauncher.unsupportedReason(layout);
+                if (unsupported != null) {
+                    out.println("本平台 / 本安装形态暂不支持应用内自更新：" + unsupported + "；"
+                            + "可手动到发布页取件（`--check` 仍可用，便于看有哪些版本）。");
+                    service.log().append("check", "CLI 被能力门拦下：" + unsupported);
+                    return 1;
+                }
+            }
             List<ReleaseFilter.ChannelRelease> candidates = service.list(options.channel(), kind);
             out.println("该通道可用版本：" + candidates.size() + " 个");
             UpdateService.Check check = service.check(options.channel(), kind, platform, current);

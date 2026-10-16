@@ -2,7 +2,14 @@ package com.acanx.module.aha.core.update;
 
 import com.acanx.module.aha.common.exception.UpdateException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,6 +62,30 @@ class UpdateCommandTest {
                     List.of("--update-to", "0.1.3", "--channel", channel.key())).orElseThrow().channel())
                     .isEqualTo(channel);
         }
+    }
+
+    @Test
+    void refusesToStageWhereThePlatformOrFormHasNoHelper(@TempDir Path tempDir) throws IOException {
+        // 能力门必须**也**接在 CLI 上：否则「只剩单体 jar」的布局会照旧写计划，而计划里的
+        // `restart` 是空的 —— 换装成功、却没有人把程序拉回来（用户的应用就没了）。
+        // 界面上这条早就拦住了，CLI 之前是漏的（2026-10-16 第三轮审查）。
+        // 门挡在 `list`/`stage` 之前，所以本用例**不需要网络**。
+        Path installRoot = tempDir.resolve("only-jar");
+        Files.createDirectories(installRoot);
+        Files.writeString(installRoot.resolve("aha-desktop.jar"), "jar");
+        UpdateCommand.Options options = new UpdateCommand.Options(AhaVersion.parse("0.1.3.00243"),
+                ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, true, false);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+        int code = UpdateCommand.run(options, AhaVersion.parse("0.1.3.00242"),
+                InstallLayout.of(installRoot.resolve("aha-desktop.jar")),
+                UpdatePaths.at(tempDir.resolve("update")),
+                new PrintStream(buffer, true, StandardCharsets.UTF_8));
+
+        String text = buffer.toString(StandardCharsets.UTF_8);
+        assertThat(code).as("不该假装能做").isEqualTo(1);
+        assertThat(text).contains(InstallLayout.isWindows() ? "没有可用的启动脚本" : "只在 Windows");
+        assertThat(text).as("门要挡在下载之前").doesNotContain("已暂存");
     }
 
     @Test

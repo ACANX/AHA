@@ -164,7 +164,7 @@ public final class UpdateService {
                     "新包与已装包的文件清单完全一致，没有可执行的动作（可能装的就是这一版）");
         }
         AhaVersion backupVersion = current == null ? staged.version() : current;
-        // 上一次换装还在跑（计划在、启动标记是刚写的、还没回执）⇒ 拒绍再写一份计划：
+        // 上一次换装还在跑（计划在、启动标记是刚写的、还没回执）⇒ 拒绝再写一份计划：
         // 两个 helper 同时换装会把安装目录搅成两半（2026-10-16 第二轮审查 P3）。
         if (swapMayBeInFlight(Files.isRegularFile(paths.planFile()),
                 Files.isRegularFile(paths.helperStartedFile()),
