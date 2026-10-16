@@ -52,8 +52,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,6 +65,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -759,8 +764,11 @@ class AhaDesktopSmokeTest {
         Path home = tempDir.resolve("aha-home");
         Path updateRoot = home.resolve("update");
         AhaVersion leftover = AhaVersion.parse("0.1.3.00241");
-        Files.createDirectories(updateRoot.resolve(leftover.value()));
-        Files.writeString(updateRoot.resolve(leftover.value()).resolve("pkg.zip"), "leftover");
+        Path leftoverDir = updateRoot.resolve(leftover.value());
+        Files.createDirectories(leftoverDir);
+        Files.writeString(leftoverDir.resolve("pkg.zip"), "leftover");
+        // 清理有**年龄下限**（10 分钟内动过的一律不删），所以这里把残留做成「20 分钟前」的
+        ageEverything(leftoverDir, Duration.ofMinutes(20));
         Files.writeString(updateRoot.resolve("update-result.json"), """
                 {"ok":true,"version":"0.1.3.00242","previousVersion":"0.1.3.00241","reason":"",
                  "rolledBack":false,"at":"2026-10-16T03:30:00Z"}
@@ -848,6 +856,65 @@ class AhaDesktopSmokeTest {
                 System.clearProperty("AHA_HOME");
             } else {
                 System.setProperty("AHA_HOME", previousHome);
+            }
+        }
+    }
+
+    /**
+     * 刚出炉的残留**刻意不删**，并如实告诉用户（清理判据的第二道保险）。
+     *
+     * <p>为什么：换装真正在用的 `pkg.zip` / `new/` / 备份都是刚创建的，而「换装还在不在跑」
+     * 只能靠进程号判断（还可能判断失误）。按文件年龄兜一层最硬 —— 代价只是残留多留十几分钟。
+     * 这条在界面上必须说出来，否则用户会以为东西丢了。</p>
+     *
+     * @param tempDir 临时目录（不碰真实家目录）
+     */
+    @Test
+    void startupKeepsRecentLeftoversAndSaysSo(@TempDir Path tempDir) throws Exception {
+        startToolkit();
+        Path home = tempDir.resolve("aha-home");
+        Path updateRoot = home.resolve("update");
+        AhaVersion recent = AhaVersion.parse("0.1.3.00243");
+        Files.createDirectories(updateRoot.resolve(recent.value()));
+        Files.writeString(updateRoot.resolve(recent.value()).resolve("pkg.zip"), "just-downloaded");
+        String previousHome = System.getProperty("AHA_HOME");
+        System.setProperty("AHA_HOME", home.toString());
+        try {
+            AtomicReference<Stage> stageRef = new AtomicReference<>();
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            onUi(() -> {
+                try {
+                    AhaDesktopApp app = new AhaDesktopApp();
+                    app.init();
+                    Stage stage = new Stage();
+                    app.start(stage);
+                    stageRef.set(stage);
+                } catch (Throwable t) {
+                    failure.set(t);
+                }
+            });
+            assertThat(failure.get()).isNull();
+            Stage stage = stageRef.get();
+            assertThat(stage).isNotNull();
+
+            String text = awaitMessagesText(stage, "没动");
+            assertThat(text).as("跳过太新的残留必须说出来").contains("没动");
+            assertThat(updateRoot.resolve(recent.value())).as("刚出炉的残留刻意不删").exists();
+        } finally {
+            if (previousHome == null) {
+                System.clearProperty("AHA_HOME");
+            } else {
+                System.setProperty("AHA_HOME", previousHome);
+            }
+        }
+    }
+
+    /** 把一棵子树里所有条目的修改时间都设成「now - age」（测试年龄下限用）。 */
+    private static void ageEverything(Path root, Duration age) throws IOException {
+        Instant when = Instant.now().minus(age);
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path each : walk.toList()) {
+                Files.setLastModifiedTime(each, FileTime.from(when));
             }
         }
     }
