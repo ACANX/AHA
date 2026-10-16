@@ -209,6 +209,16 @@ public final class UpgradePane {
     private long checkGeneration;
 
     /**
+     * 正在把配置里的通道**渲染**成选项（不是用户改通道）。
+     *
+     * <p>为什么需要它：渲染初始选中会触发 {@code selectedToggleProperty} 监听器，而监听器里会
+     * 调 {@link DesktopSettings#updateChannel(ReleaseChannel)} 并保存 —— 那会把「只是打开过一次
+     * 升级面板」记成「用户显式选过通道」，于是这个安装**再也不会跟随代码默认值**
+     * （issue #252 的验收前提：从没选过通道的安装要跟着默认值走）。</p>
+     */
+    private boolean applyingInitialChannel;
+
+    /**
      * 构造。
      *
      * @param settings      设置（通道、备份份数等都从这里读）
@@ -361,7 +371,12 @@ public final class UpgradePane {
         VBox.setVgrow(versionList, Priority.ALWAYS);
 
         wireChannelButtons();
-        selectChannelInUi(settings.updateChannel());
+        applyingInitialChannel = true;
+        try {
+            selectChannelInUi(settings.updateChannel());
+        } finally {
+            applyingInitialChannel = false;
+        }
         updateChannelNote();
 
         // 内边距不是装饰：TabPane 的内容区默认**没有**留白，通道那一行会紧贴着 tab 标题，
@@ -491,6 +506,10 @@ public final class UpgradePane {
         }
         channels.selectedToggleProperty().addListener((observable, old, now) -> {
             if (now == null) {
+                return;
+            }
+            if (applyingInitialChannel) {
+                // 渲染初始选中而已：既不算用户改通道，也不该写盘（见字段注释）
                 return;
             }
             ReleaseChannel channel = selectedChannel();

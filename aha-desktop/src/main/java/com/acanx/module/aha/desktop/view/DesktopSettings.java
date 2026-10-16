@@ -283,7 +283,14 @@ public final class DesktopSettings {
      * @param value 通道
      */
     public void updateChannel(ReleaseChannel value) {
-        this.updateChannel = value == null ? DEFAULT_UPDATE_CHANNEL : value;
+        ReleaseChannel next = value == null ? DEFAULT_UPDATE_CHANNEL : value;
+        if (next == updateChannel && !explicitKeys.contains(KEY_UPDATE_CHANNEL)) {
+            // 设成「当前有效值」不算用户显式选择：值没变，没什么可记的。
+            // 这条很要紧 —— 面板渲染初始选中、或用户点的就是默认通道时必须保持「没选过」，
+            // 否则这个安装就被冻在当前默认值上，将来改默认值它不会再跟随（issue #252）。
+            return;
+        }
+        this.updateChannel = next;
         explicitKeys.add(KEY_UPDATE_CHANNEL);
     }
 

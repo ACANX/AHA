@@ -82,6 +82,28 @@ class DesktopSettingsTest {
     }
 
     @Test
+    void pickingTheDefaultValueDoesNotCountAsAnExplicitChoice() throws IOException {
+        // 「设成当前有效值」不算用户显式选择：否则只要界面渲染一次初始选中（或用户点的就是默认通道），
+        // 这个安装就被冻在当前默认值上、将来改默认值不再跟随（issue #252 的验收前提）
+        DesktopSettings settings = DesktopSettings.load(file());
+
+        settings.updateChannel(ReleaseChannel.DEFAULT);
+
+        assertThat(settings.updateChannelExplicit()).isFalse();
+        settings.save();
+        assertThat(read()).doesNotContainKey(DesktopSettings.KEY_UPDATE_CHANNEL);
+
+        // 选了**别的**通道才算，而且一旦显式选过就一直算（切回默认值也不再回落成「没选过」）
+        settings.updateChannel(ReleaseChannel.BETA);
+        assertThat(settings.updateChannelExplicit()).isTrue();
+        settings.updateChannel(ReleaseChannel.STABLE);
+        assertThat(settings.updateChannelExplicit()).isTrue();
+        settings.save();
+        assertThat(read().getProperty(DesktopSettings.KEY_UPDATE_CHANNEL))
+                .isEqualTo(ReleaseChannel.STABLE.key());
+    }
+
+    @Test
     void installThatPickedBetaExplicitlyKeepsIt() throws IOException {
         // issue #252 验收的另一半：显式选过 Beta 的安装**不受**默认值改动影响
         DesktopSettings settings = DesktopSettings.load(file());
@@ -117,13 +139,15 @@ class DesktopSettingsTest {
     @Test
     void explicitChannelSurvivesLaterSavesOfOtherSettings() throws IOException {
         DesktopSettings settings = DesktopSettings.load(file());
-        settings.updateChannel(ReleaseChannel.STABLE);
+        // 用**非默认**的通道：设成默认值不算显式选择（见 pickingTheDefaultValueDoesNotCount…），
+        // 那样根本不会写盘，这条用例就测不到「显式选择能扛住后续保存」这件事
+        settings.updateChannel(ReleaseChannel.BETA);
         settings.save();
         settings.theme(Theme.LIGHT);
         settings.save();
 
         assertThat(read().getProperty(DesktopSettings.KEY_UPDATE_CHANNEL))
-                .isEqualTo(ReleaseChannel.STABLE.key());
+                .isEqualTo(ReleaseChannel.BETA.key());
     }
 
     @Test
