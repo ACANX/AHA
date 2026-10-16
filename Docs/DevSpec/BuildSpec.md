@@ -487,7 +487,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   | ---- | ---- | ---- |
   | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
   | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
-  | `Conversion from JSON failed with error: Invalid character after parsing property name` + `FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/<版本>/apache-maven-<版本>-bin.zip` | **Maven Wrapper 拉不到发行包**：Central 那次返回的不是元数据（被挡 / 挑战页），wrapper 解析失败 | 属于瞬时类，已进重试判据（2026-10-16 实测：旧判据不认它，一次都没重试就红；同提交的另一次运行同腿是绿的）|
+  | `Exception in thread "main" java.io.FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/<版本>/apache-maven-<版本>-bin.zip`（可能伴随 `Conversion from JSON failed with error: …`）| **Maven Wrapper 拉不到发行包**：Central 那次没把发行包给出来（被挡 / 挑战页）⇒ wrapper 解析或下载失败 | 属于瞬时类，已进重试判据（2026-10-16 实测：旧判据一条都不命中 ⇒ 一次都没重试就红；同提交的另一次运行同腿是绿的）。⚠️ 写判据时注意两点：① **版本号可能带后缀**（`4.0.0-rc-7`），别写成「纯数字点」；② 验证要**逐条**对着日志里那一行验 —— 拿多行样本一起 `grep` 时，一条命中会掩盖另一条写错（第一版就是这么漏的）|
 
 - 完整复盘见 [TS-2610-004-Artifact-Not-Found-In-Central.md](../Troubleshooting/TS-2610-004-Artifact-Not-Found-In-Central.md)。
 
