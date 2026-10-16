@@ -172,7 +172,7 @@ class UpdateServiceTest {
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_CHECKSUM_MISMATCH));
 
-        // 不落地：没有正式 zip（只有 .part），解包目录是空的（prepare 会先建目录）
+        // 不落地：暂存目录里只有未完成的 pkg.zip.part，没有 pkg.zip；解包目录为空（prepare 先建了它）
         assertThat(service.staging().packageZip(TARGET)).doesNotExist();
         assertThat(service.staging().packageZip(TARGET).resolveSibling("pkg.zip.part")).exists();
         try (var files = Files.list(service.staging().newPackageDir(TARGET))) {

@@ -127,8 +127,9 @@ public final class UpdateService {
         AhaVersion version = check.release().version();
         staging.prepare(version);
         String expected = expectedChecksum(check.release(), check.asset());
-        PackageDownloader.Downloaded downloaded = downloader.download(check.asset(),
-                staging.packageZip(version).getParent(), expected, progress, cancel);
+        // 落到 <版本>/pkg.zip（不是发布页上的资产名）：暂存目录的布局是契约的一部分（§4.2）
+        PackageDownloader.Downloaded downloaded = downloader.downloadTo(check.asset(),
+                staging.packageZip(version), expected, progress, cancel);
         log.append("download", check.asset().name() + " → " + downloaded.file()
                 + "（校验" + (downloaded.checksumVerified() ? "通过" : "未提供") + "）");
 
@@ -138,7 +139,8 @@ public final class UpdateService {
         manifest.verify(packageRoot, check.kind(), version, check.platform());
         log.append("unpack", "解出 " + files + " 个文件，包内清单核对通过（"
                 + manifest.fileList().size() + " 项）");
-        return new Staged(version, packageRoot, downloaded.file(), manifest);
+        return new Staged(version, packageRoot, downloaded.file(), manifest,
+                downloaded.checksumVerified());
     }
 
     /**
@@ -288,8 +290,10 @@ public final class UpdateService {
      * @param packageRoot 解压后的新包根目录
      * @param packageZip  下载到的包
      * @param manifest    包内清单
+     * @param checksumVerified 是否验过发布页校验和。{@code false} 表示该版本未提供
+     *        {@code SHA256SUMS}（界面要**照实说**「该版本未提供发布页校验和」，不能假装验过）
      */
     public record Staged(AhaVersion version, Path packageRoot, Path packageZip,
-                         PackageManifest manifest) {
+                         PackageManifest manifest, boolean checksumVerified) {
     }
 }

@@ -143,8 +143,28 @@ public final class PackageDownloader {
         if (asset == null || asset.name() == null || asset.name().isBlank()) {
             throw new UpdateException(UpdateException.CODE_DOWNLOAD_FAILED, "资产名为空，无法下载");
         }
+        return downloadTo(asset, targetDir.resolve(asset.name()), expectedSha256, progress, cancel);
+    }
+
+    /**
+     * 下载到**指定的目标文件**（文件名叫什么由调用方定）。
+     *
+     * <p>为什么要这个重载：暂存目录里的落地名是契约的一部分
+     * （`&lt;AHA_HOME&gt;/update/&lt;版本&gt;/pkg.zip`，issue #51 §4.2），不是发布页上的资产名。
+     * 复用判定与 {@code .part} 命名都以目标文件为准，所以不能只按「目录 + 资产名」拼。</p>
+     *
+     * @param asset          资产（只用来取下载地址与期望大小）
+     * @param target         目标文件
+     * @param expectedSha256 期望摘要；{@code null} 表示未提供
+     * @param progress       进度回调
+     * @param cancel         取消信号
+     * @return 结果
+     * @throws UpdateException 地址不在白名单 / 下载失败 / 校验和不符 / 用户取消
+     */
+    public Downloaded downloadTo(AssetInfo asset, Path target, String expectedSha256,
+                                 ProgressListener progress, CancelSignal cancel) {
         URI uri = parseAndCheckSource(asset);
-        Path target = targetDir.resolve(asset.name());
+        Path targetDir = target.toAbsolutePath().getParent();
         try {
             Files.createDirectories(targetDir);
         } catch (IOException e) {
