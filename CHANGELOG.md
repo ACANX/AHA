@@ -28,7 +28,7 @@
   - **出包**：4 个触发标签 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli`（**粘性**：标签在则每次 push 重出，移除即停）+ `/snapshot <目标> [平台…]` 评论命令（一次性、大小写不敏感、仅写权限账号生效）+ `workflow_dispatch`；`OS:Win` / `OS:MacOS` / `OS:Ubuntu` 收窄到单平台（不能单独使用）；只改 `Docs/**` 的 PR 不出包，除非**新打**触发标签（显式请求）。
   - **载体与命名**：**每个目标一条** pre-release，tag = `V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT`；目标词 `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**）；`Release.yml` 增加负向过滤 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`，避免快照触发正式发版。
   - **本地取件**：`Dist/UpdateDesktopNativeSnapshot.cmd` / `Dist/UpdateCliNativeSnapshot.cmd`（原生）与 `Dist/UpdateSnapshot.ps1 -Kind jvm`（JVM）——零配置（不需要 token / `gh` / Python）、无参数 = 最近一次、状态独立记在 `Dist/.aha-snapshot.json`；原生桌面端取件会把 exe **替换**到启动器同目录（旧版留 `.bak`、下载前探占用），`-NoInstall` 可只取件。
-  - **自动清理**：`snapshot-cleanup.yml` 在 PR 关闭 / 合并后**异步**回收（另有每日兜底与手动触发）；同一 PR 同一目标保留最近 3 条、有效期 7 天（按发布页 `created_at`）；安全阀只删严格匹配的快照 tag，正式发版与 dev 线 tag 不碰。
+  - **自动清理**：`SnapshotCleanup.yml` 在 PR 关闭 / 合并后**异步**回收（另有每日兜底与手动触发）；同一 PR 同一目标保留最近 3 条、有效期 7 天（按发布页 `created_at`）；安全阀只删严格匹配的快照 tag，正式发版与 dev 线 tag 不碰。
   - **守卫**：`.github/snapshot-paths.yml` 是触发标签与 A/B/C 路径清单的**单一来源**；`SnapshotPlan.py` / `SnapshotCleanup.py` / `SnapshotComment.py` 均可本地 `--self-test`；`SnapshotComment.py` 只对瞬时 API 错误做有界重试。
 - **一键更新原生包（2026-10-13，issue #156 / TD-00015）**：
   ① `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`——Windows 双击即把最新原生包
@@ -55,6 +55,7 @@
   整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
 
 ### 文档
+- **新增《GitHub Actions 规范》（2026-10-16）**：新增 [`Docs/DevSpec/GitHubActionsSpec.md`](Docs/DevSpec/GitHubActionsSpec.md)——约束工作流文件的**写法**（命名 / 触发 / 权限 / 结论与留痕 / 守卫），与 `BuildSpec.md`（门禁分层）/ `ReleaseProcess.md`（发布链路）分工；同时把工作流**命名**统一为**大驼峰**（`Snapshot Assert` → `SnapshotAssert`、`PreDeploy Verify` → `PreDeployVerify`；文件名 `snapshot-cleanup.yml` → `SnapshotCleanup.yml`），并接入 `bin/CheckScripts.py::check_workflow_names()`（文件名 / `name:` / 两者一一对应三条一起断言）。
 - **GraalVM / GitHub Actions 参考文档（2026-10-15，issue #28）**：新增 [`Docs/Guide/GraalVMInActionsGuide.md`](Docs/Guide/GraalVMInActionsGuide.md)——六层可配置面、Action 输入速查（**逐项抄自 `action.yml`**）、发行版与版本语法、native-image 参数定法与「四类清单」闭环、【**权威查询入口**】含 `native-image --help-extra` 等本地自证命令与逐个实测过的官方链接、症状→参数对照表、本仓库落地位置索引；`BuildGuide.md` / 两条原生设计文档 / 原生技能 `SKILL.md` / `AGENTS.md` 同步交叉引用。
 - **快照包文档补齐（2026-10-15）**：`BuildSpec.md` 新增 §11「快照产物（PR 试包）」（载体与命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系）；`BuildGuide.md` §3.3 补全原生线并更正取件口径；`ReleaseProcess.md` 新增 §2.1（快照与正式发布的隔离）；`CommandCheatsheet.md` §7 同步更正；新增 TS 记录 `[TS-2610-039](Docs/Troubleshooting/TS-2610-039-Artifact-Anonymous-Download-401.md)`。
 - **原生镜像取件工具：实现方案定稿与文档对齐（2026-10-14，issue #156）**：

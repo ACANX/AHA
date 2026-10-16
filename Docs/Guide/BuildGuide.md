@@ -1,6 +1,6 @@
 # 构建指南
 
-**文档版本**：v1.16.0
+**文档版本**：v1.17.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-15
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.17.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增构建发行包（`Dist/`）说明 | @ACANX |
@@ -246,7 +247,7 @@ B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因
 判定逻辑在 `.github/Python/SnapshotPlan.py`，可本地跑 `--self-test`。
 
 **清理**：同一 PR 的快照保留最近 3 条、有效期 7 天；PR 关闭或合并后自动删除
-（`snapshot-cleanup.yml`，见 #174）。
+（`SnapshotCleanup.yml`，见 #174）。
 
 **本地取件**（零配置：不需要 token / `gh` / Python）：
 

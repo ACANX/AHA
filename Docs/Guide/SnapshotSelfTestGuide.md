@@ -1,9 +1,9 @@
 # 快照自测留痕使用指南
 
-**文档版本**：v1.0.0
+**文档版本**：v1.0.1
 **状态**：冻结
 **生效日期**：2026-10-15
-**最后更新**：2026-10-15
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-15 | 初版：`/snapshot-assert` 的完整用法与端到端示例（issue #166）| @ACANX / CNXNC |
+| v1.0.1 | 2026-10-16 | §7 里工作流的显示名改为 **`SnapshotAssert`**（与文件名一致；原写作 `Snapshot Assert`）| @ACANX / CNXNC |
 
 ---
 
@@ -307,7 +308,7 @@ gh api repos/ACANX/AHA/branches/dev/protection --jq .required_status_checks.cont
 | 一次命令能验多个平台吗？ | 不能；一条命令一个平台（见 §8 的已知边界）|
 | 能不能逐项打标（`/snapshot-assert A1 A2 …`）？ | 不做 —— 逐项打 status 会把分支保护页刷满；逐项结论写进留痕评论即可 |
 | 纯自动化的检查呢？ | 那是 CI（`build (…)` / `Gate`）的职责，与本机制无关；本机制只补「机器验不了」的部分 |
-| 命令不生效/没人理？ | 确认评论**挂在 PR 上**、且以 `/snapshot-assert` 开头；查 Actions 里的 **Snapshot Assert** 工作流运行记录 |
+| 命令不生效/没人理？ | 确认评论**挂在 PR 上**、且以 `/snapshot-assert` 开头；查 Actions 里的 **SnapshotAssert** 工作流运行记录 |
 
 ## 11 相关文件与文档
 

@@ -1,4 +1,4 @@
-name: PreDeploy Verify
+name: PreDeployVerify
 
 # 非阻塞的质量验证工作流（issue #166；2026-10-16 需求校准后重新实现）。
 #

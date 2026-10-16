@@ -74,7 +74,7 @@ HTTP 404  https://github.com/ACANX/AHA/suites/104605104794/artifacts/11915470096
 tag    ：V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT
 取件   ：Dist\UpdateDesktopNativeSnapshot.cmd / Dist\UpdateCliNativeSnapshot.cmd / Dist\UpdateSnapshot.ps1 -Kind jvm
          （零配置：不需要 token / gh / Python；解压到独立目录；原生桌面端替换 exe，旧版留 .bak）
-生命周期：同一 PR 同目标保留最近 3 条、有效期 7 天；PR 关闭 / 合并后由 snapshot-cleanup.yml 异步回收
+生命周期：同一 PR 同目标保留最近 3 条、有效期 7 天；PR 关闭 / 合并后由 SnapshotCleanup.yml 异步回收
 ```
 
 **被否的替代方案**：① 给取件脚本发 token —— 等于把「零配置」作废，且要处理密钥分发；② 把制品改成
