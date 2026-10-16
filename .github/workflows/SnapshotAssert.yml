@@ -177,7 +177,10 @@ jobs:
           fi
 
           # ── 版本归属：tag 必须存在；快照 tag 还必须是本 PR 的 ────────────────────
-          tags=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[].tagName' 2>/dev/null || true)
+          # 字段名是 GitHub 的 `tag_name`（**下划线**，归平台所有，不是本地命名的驼峰）：
+          # 写成 `tagName` 时 jq 返回空 ⇒ 任何命令都被当成「发布页上没有对应 tag」拒绝。
+          # （PR #233 实测：`--jq '.[].tagName'` 取出 0 条，`--jq '.[].tag_name'` 正常。）
+          tags=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[].tag_name' 2>/dev/null || true)
           tag=$(grep -E "^V${version}-" <<< "${tags}" | head -n1 || true)
           if [ -z "${tag}" ]; then
             echo "发布页上没有与 V${version} 对应的 tag"

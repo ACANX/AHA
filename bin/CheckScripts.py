@@ -111,6 +111,14 @@ SNAPSHOT_VERIFY_PEERS = (
     ROOT / ".github" / "workflows" / "SnapshotJVM.yml",
 )
 SNAPSHOT_VERIFIED_DOC = ROOT / "Docs" / "DevSpec" / "ReleaseProcess.md"
+
+#: 部署前验证（非阻塞质量验证工作流，issue #166）的落点。
+#: 「触发 / 留痕 / 非阻塞 / 可升级」四条都是「改坏了也照样跑、只在真需要它那天才发现」的情形，
+#: 因此与快照自测留痕一样在这里钉成断言。
+PRE_DEPLOY_VERIFY_WORKFLOW = ROOT / ".github" / "workflows" / "PreDeployVerify.yml"
+PRE_DEPLOY_VERIFY_SCRIPT = ROOT / "bin" / "PreDeployVerify.py"
+PRE_DEPLOY_VERIFY_CONTEXT = "predeploy-verify"
+PRE_DEPLOY_VERIFY_MARKER = "<!-- predeploy-verify -->"
 #: 清单行的形状（两处都用同一张表）：`| A1 | 启动 | … | 0 |`
 CHECKLIST_ROW_RE = re.compile(r"^\s*\|\s*([ABC][0-9]+)\s*\|.*\|\s*([^|]*?)\s*\|\s*$", re.M)
 
@@ -728,6 +736,113 @@ def check_snapshot_assert_contract() -> list[str]:
     return problems
 
 
+def _step_with_always(text: str, needle: str) -> bool:
+    """带 `if: always()` 的步骤里有没有出现 `needle`。
+
+    「失败也必须留痕」是这条工作流的核心不变式：如果打标 / 回写评论那一步没写 `if: always()`，
+    验证未过时它就被跳过 —— 现象是「任务红了但 PR 上什么都不留」，正是要防的**静默失败**。
+    """
+    for block in re.split(r"^      - ", text, flags=re.M)[1:]:
+        if needle in block:
+            return bool(re.search(r"^        if: always\(\)", block, re.M))
+    return False
+
+
+def check_pre_deploy_verify_contract() -> list[str]:
+    """部署前验证（非阻塞质量验证工作流，issue #166）：触发 / 留痕 / 非阻塞 / 可升级。
+
+    这四条对应「改坏了也照样跑、只在真需要它那天才发现」的情形：
+
+      * 触发少了某个类型 ⇒ 「每次 PR 推送都会自动跑」静默变成「有时候跑」；
+      * 触发层加 `paths:` ⇒ 事件在**触发层**就被丢掉（2026-10-15 实测 PR #203）；
+      * 打标 / 留痕没写 `if: always()` ⇒ 验证未过时任务红了，PR 上一个字都没有；
+      * 权限缺一项 ⇒ 打标 403 或回写评论 403（两种都只在真跑时暴露）；
+      * status 名与文档不一致 ⇒ 「加进 required 即可卡点」这条升级路径失效。
+    """
+    problems: list[str] = []
+
+    wf = PRE_DEPLOY_VERIFY_WORKFLOW
+    rel = wf.relative_to(ROOT)
+    if not wf.exists():
+        problems.append(f"缺部署前验证工作流 {rel}（issue #166）")
+        return problems
+    wf_text = wf.read_text(encoding="utf-8")
+
+    # ① 触发：每次 PR 推送（opened / synchronize / reopened）+ 手动（workflow_dispatch）
+    if not re.search(r"^  pull_request:\s*$", wf_text, re.M):
+        problems.append(f"{rel}：没有 `pull_request` 触发 —— 「PR 推送后自动触发」不成立")
+    types_match = re.search(r"^    types: \[([^\]]*)\]", wf_text, re.M)
+    declared = {item.strip() for item in types_match.group(1).split(",")} if types_match else set()
+    for want in ("opened", "synchronize", "reopened"):
+        if want not in declared:
+            problems.append(
+                f"{rel}：`pull_request.types` 缺 `{want}` —— "
+                "「每次 PR 推送都会自动跑」会静默变成「有时候跑」"
+            )
+    if not re.search(r"^  workflow_dispatch:", wf_text, re.M):
+        problems.append(f"{rel}：缺 `workflow_dispatch` —— 需求要求「同时支持手动触发」")
+
+    # ② 触发层不得过滤事件（丢事件是静默的）
+    for number, key in pull_request_paths_filters(wf_text):
+        problems.append(
+            f"{rel}:{number} 的 `pull_request.{key}` 在**触发层**过滤事件 —— "
+            "需求要求「每次 PR 推送都会自动跑」，而触发层丢事件没有任何提示（2026-10-15 实测 PR #203）"
+        )
+
+    # ③ 顶层 permissions：漏 statuses 打标 403；漏 issues 回写评论 403
+    for perm in ("statuses: write", "issues: write"):
+        if not re.search(rf"^  {re.escape(perm)}\b", wf_text, re.M):
+            problems.append(f"{rel}：顶层 permissions 缺 `{perm}`（真跑时会 403）")
+
+    # ④ status 的 context：升级成卡点时分支保护里填的就是这个字符串
+    if not re.search(rf"-f context={re.escape(PRE_DEPLOY_VERIFY_CONTEXT)}(\s|$)", wf_text, re.M):
+        problems.append(
+            f"{rel}：找不到 `-f context={PRE_DEPLOY_VERIFY_CONTEXT}` —— "
+            "打出来的标不会指向分支保护里要填的那个名字"
+        )
+
+    # ⑤ 失败也必须留痕：打标与回写评论两步都要 `if: always()`
+    if not _step_with_always(wf_text, f"-f context={PRE_DEPLOY_VERIFY_CONTEXT}"):
+        problems.append(
+            f"{rel}：打 status 的步骤没有 `if: always()` —— "
+            "验证未过时它被跳过，PR 上不会出现失败状态（静默失败）"
+        )
+    if not _step_with_always(wf_text, "SnapshotComment.py"):
+        problems.append(
+            f"{rel}：留痕评论的步骤没有 `if: always()` —— "
+            "验证未过时 PR 上不留一个字，失败理由无从复核"
+        )
+
+    # ⑥ 留痕标记：工作流与脚本两处必须逐字一致（不一致 = 每次都新建一条评论）
+    if PRE_DEPLOY_VERIFY_MARKER not in wf_text:
+        problems.append(f"{rel}：缺留痕标记 `{PRE_DEPLOY_VERIFY_MARKER}`（幂等回写靠它定位自己的评论）")
+    script = PRE_DEPLOY_VERIFY_SCRIPT
+    if not script.exists():
+        problems.append(f"缺验证入口 {script.relative_to(ROOT)}（验证项定义在那里）")
+    elif f'MARKER = "{PRE_DEPLOY_VERIFY_MARKER}"' not in script.read_text(encoding="utf-8"):
+        problems.append(
+            f"{script.relative_to(ROOT)}：`MARKER` 与 {rel} 里的 `{PRE_DEPLOY_VERIFY_MARKER}` 不一致 —— "
+            "标记不同 ⇒ 每次运行都新建一条评论，幂等失效"
+        )
+
+    # ⑦ 自检接线：报告渲染 / 编号唯一性这类改动只能靠脚本自带断言拦住
+    if "PreDeployVerify.py --self-test" not in wf_text:
+        problems.append(
+            f"{rel}：没有跑验证脚本的自检（`PreDeployVerify.py --self-test`）—— "
+            "与 static-guards 里 `ProjectVersion.py --self-test` 同一口径，不该漏"
+        )
+
+    # ⑧ 升级路径写进规范：status 名必须能在规范里查到（否则「加进 required」无从下手）
+    doc = SNAPSHOT_VERIFIED_DOC
+    if doc.exists() and PRE_DEPLOY_VERIFY_CONTEXT not in doc.read_text(encoding="utf-8"):
+        problems.append(
+            f"{doc.relative_to(ROOT)}：没有写部署前验证的 status 名 `{PRE_DEPLOY_VERIFY_CONTEXT}` —— "
+            "升级路径（把它加进 required checks）是这条机制的验收标准之一，必须落在规范里"
+        )
+
+    return problems
+
+
 def check_package_layout() -> list[str]:
     """发行包必须仍是「包根平铺」：无 lib/、无 bin/、jar 名不带版本号（issue #218 第 7 条）。
 
@@ -1013,6 +1128,8 @@ def main() -> int:
 
     snap_assert = check_snapshot_assert_contract()
     problems.extend(snap_assert)
+    pre_deploy = check_pre_deploy_verify_contract()
+    problems.extend(pre_deploy)
     layout = check_package_layout()
     problems.extend(layout)
     shade = check_shade_attached()
@@ -1034,6 +1151,7 @@ def main() -> int:
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
     print(f"检查被 .gitignore 忽略的源码文件：{'❌' if ignored else '✅'}")
     print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_assert else '✅'}")
+    print(f"检查部署前验证契约（触发/权限/留痕非静默/升级路径）：{'❌' if pre_deploy else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")

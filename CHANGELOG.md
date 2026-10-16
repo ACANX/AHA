@@ -11,6 +11,18 @@
 ## [Unreleased]
 
 ### 新增
+- **部署前验证：非阻塞质量验证工作流（issue #166，2026-10-16）**：把「**部署前应当自测、但还不宜直接进合并卡点**」的
+  通用验证 / 断言集中到一个独立工作流 [`.github/workflows/PreDeployVerify.yml`](.github/workflows/PreDeployVerify.yml)，
+  **每次 PR 推送自动跑**（`opened` / `synchronize` / `reopened`），也可手动触发（`workflow_dispatch`）。
+  - **留痕**：commit status **`predeploy-verify`** + 幂等 PR 评论（验证对象 / 结论 / 执行人 / 时间 / 对应提交）+ Job Summary；
+  - **非阻塞**：**不进**必需检查 ⇒ 缺它 / 失败**都不拦合并**；成熟后把它加进 required 即成为卡点，**机制不改**；
+  - **失败不静默**：失败也打 `failure` status、也留痕评论（`if: always()`），作业同时变红；
+  - **0 token**：验证项全在本地进程里跑，不做任何模型往返；
+  - **验证项**（跑在**真实构建产物**上，定义在 `bin/PreDeployVerify.py` 的 `CHECKS`——**加一项 = 加一个函数**）：
+    V1 产物能起 / V2 `--help` 列得出全部子命令 / V3 `tool list` / V4 `tool invoke file-read` **真的读到文件** /
+    V5 `provider list` + `model show` / V6 全程无 `UnsatisfiedLinkError`；
+  - **守卫**：`bin/CheckScripts.py` 新增 `check_pre_deploy_verify_contract()`，断言**触发（三事件 + 手动）/ 触发层不过滤 / 权限 / 失败也留痕（`if: always()`）/ status 名与规范一致 / 脚本自检已接线**；
+  - **与 §2.2 的分工**：`/snapshot-assert` 承载「机器验不了、必须人看」的项（快照包真机观感），本工作流承载「机器能验、只是还不敢卡点」的项。
 - **CLI 控制台编码自动协商（issue #235，2026-10-16）**：Windows 控制台按代码页解释字节，`1252` / `936` 下中文会变成 `?`、像素风启动标志退化为纯 ASCII 线框。现改为：程序启动时（任何输出之前）经 FFM 调 `SetConsoleOutputCP(65001)` / `SetConsoleCP(65001)`，并重建 `System.out` / `System.err` 为 UTF-8。**仅当标准输出真的连着控制台**（`GetConsoleMode` + `System.console()`）才改，**管道 / 重定向 / CI 一律不动**，退出时恢复原代码页；失败静默回退到原有的「探测 + 提示 + 降级」。新增 `tty/WindowsConsole.java`、`tty/ConsoleEncoding.java`，`tty/OutputEncoding.java` 与 `AhaCli` 接入。
 - **PR 快照包（pre-release 试包）全线上线（2026-10-15）**：给**未合并**的 PR 出可下载的试包，把自测提前到合并之前。
   - **出包**：4 个触发标签 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli`（**粘性**：标签在则每次 push 重出，移除即停）+ `/snapshot <目标> [平台…]` 评论命令（一次性、大小写不敏感、仅写权限账号生效）+ `workflow_dispatch`；`OS:Win` / `OS:MacOS` / `OS:Ubuntu` 收窄到单平台（不能单独使用）；只改 `Docs/**` 的 PR 不出包，除非**新打**触发标签（显式请求）。
@@ -155,6 +167,7 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **`/snapshot-assert` 永远找不到版本对应的 tag（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`，并在注释里注明**字段名归 GitHub**（不是本地命名的驼峰）。
 - **CLI 原生镜像 `--help` 退出码非 0（issue #117，2026-10-16）**：三平台一致失败——`--help` 渲染 picocli 用法表格时经 `BreakIterator` 读 JDK 的 `sun/text/resources/LineBreakIteratorData`，而该资源**没有扩展名**，按扩展名的 `-H:IncludeResources` 正则匹不上，缺了就在运行期抛 `InternalError: Can't load sun/text/resources/LineBreakIteratorData`（**构建全绿、`--version` 正常**，故三平台一致而非平台差异）。照桌面端的既有做法，给两份 CLI 参数文件（JDK 25 基线 + JDK 27 变体）补上该资源与 `.*\.icu$`；结论登记进 `BuildSpec.md` §10.2 与 `CliNativeDesign.md` §4.3 / R3。
 - **原生 exe 里输入框的轮廓线丢失（issue #229，2026-10-15）**：只在 **原生镜像编出的 exe** 里，切换主题后对话输入框的轮廓线不见了 —— 而内容面底色按 #153 的口径与页底**同色**，轮廓线一没就分不出输入框的范围（JVM 模式正常）。根因：轮廓线此前**完全依赖 CSS**，而原生镜像下 modena 那些带 `derive()` / `linear-gradient()` 的规则会**整条声明被丢弃**（`TS-2610-029`）；`ThemePaint` 的属性 API 兜底只覆盖背景与文字，**边框漏在覆盖范围之外**。
   - 修复：`ThemePaint` 新增 `paintBorder()`，把 `-fx-border-color`（+ 宽度 / 圆角，缺省 1 / 3）落到 `Region.setBorder(...)`；三处同类控件（对话输入框、会话搜索框、日志面板文本域）的内联样式补上轮廓线（值取自补丁样式表，JVM 下外观不变）。约定：样式串没写边框就不动现有边框，写 `transparent` / `none` 才清空。
