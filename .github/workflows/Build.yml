@@ -208,6 +208,12 @@ jobs:
         # 打错的版本号会被静默一路带进产物名与 tag。
         run: python3 .github/Python/ProjectVersion.py --self-test
 
+      - name: 包清单工具自检（PackageManifest.py --self-test）
+        # 清单 / 校验和是四条出包线的共用实现（issue #51 §6）。它的闸口有两个：
+        # 一是不把打包垃圾与逃逸路径写进清单，二是清单与包内容必须逐项一致。
+        # 这两条都是「放宽了也不会立刻暴露」的边界，所以放静态守卫里跑正反例。
+        run: python3 .github/Python/PackageManifest.py --self-test
+
   tag:
     name: tag（V<版本号>）
     needs: build
