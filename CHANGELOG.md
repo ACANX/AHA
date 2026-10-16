@@ -190,6 +190,7 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **原生镜像的 exe 把自己认成 JVM 便携包 ⇒ 点升级去下 JVM 包、exe 自己没变（issue #51，2026-10-16 真机）**：原生镜像里 `getProtectionDomain().getCodeSource()` **不是 null**，它指向**运行中的 exe 自己**；而形态判定用的是「code source 是不是**普通文件**」⇒ `jarBased=true`。触发条件正是最普通的那种用法：安装根里同时有（先前取来的）`aha-desktop.jar` 与（后来放进去的）`AhaDesktopNative.exe`，两种形态并存时必现；资产前缀由形态决定 ⇒ 必然挑到 JVM 包。修复：① `InstallLayout` 先看 GraalVM 运行期属性 `org.graalvm.nativeimage.imagecode`（非空即原生），且 `of(Path)` 只把 **`.jar`** 文件认成 JVM 便携包；② 能力门新增**原生镜像**一条并**排在平台那条之前**（在 Linux/macOS 上不该只被告知「只在 Windows 上实现」），界面与 CLI 在**下载前**置灰并说明「到发布页取原生包手动覆盖」；③ `UpdateService.prepareSwap` 加同一道兜底。真正实现原生自更新另立 [#247](https://github.com/ACANX/AHA/issues/247)（TD-00022）。排查记录：[TS-2610-047](Docs/Troubleshooting/TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md)。
 - **快照取件缺「平铺到 `Dist\` 根」这一步（issue #244，2026-10-16 真机）**：双击 `Dist\UpdateDesktopJvmSnapshot.cmd`
   能下载、能解压，但 `aha-desktop.jar` 与启动脚本躺在 `Dist\<资产名>\` 子目录里，`Dist\` 根下什么都没有 ——
   「取件」只完成一半，还得手工进去搬。而正式版取件（`UpdateJvm.ps1`）一直是「解压 → 平铺到落地根」，
