@@ -2,7 +2,7 @@
 
 > 待办编号：TD-00018
 > 标题：自动打的 `V*` tag 不触发 `Release.yml` —— 不配 PAT 前提下打通自动出包
-> 状态：☐ 未开始（**待拍板**：方案 A ~ E）
+> 状态：☐ 未开始（**方案已定：B（`workflow_dispatch` + `--ref main`），待实施**）
 > 跟踪 Issue 状态：**OPEN**
 > 跟踪 Issue：[#238](https://github.com/ACANX/AHA/issues/238)
 > 创建日期：2026-10-16
@@ -32,7 +32,7 @@ GitHub 规定：**由 `GITHUB_TOKEN` 执行的动作所触发的事件，不会�
 （`aha-cli-*.zip` / `aha-desktop-*.zip`）。0.1.1 以「发行包不强制」收口，故当时未阻塞；
 但**发版在即**，若 0.1.3 期望有发行包，就会落空。
 
-## 需求 / 待拍板
+## 需求
 
 **目标**：**不引入 PAT / GitHub App** 的前提下，让「自动打的 tag」也能自动产出并上传发行包。
 
@@ -42,31 +42,56 @@ GitHub 规定：**由 `GITHUB_TOKEN` 执行的动作所触发的事件，不会�
 > exceptions: `workflow_dispatch` and `repository_dispatch` events always create workflow runs.**
 > —— [GitHub Docs · Triggering a workflow](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)
 
-即：**`GITHUB_TOKEN` 可以触发 `workflow_dispatch` / `repository_dispatch`**；另外 `workflow_call`
-（复用工作流）与 `workflow_run`（工作流完成触发）也不经「事件」这一层，同样不受防递归限制。
+即 **`GITHUB_TOKEN` 可以触发 `workflow_dispatch` / `repository_dispatch`**；`workflow_call`（复用工作流）
+与 `workflow_run`（工作流完成触发）也不经「事件」这一层，同样不受防递归限制。
 
-| 方案 | 做法 | 代价 / 风险 |
+## 拍板结论（ACANX，2026-10-16）：采用**方案 B**
+
+**`Build.yml` 打 tag 成功后，用 `GITHUB_TOKEN` 执行 `gh workflow run Release.yml --ref main -f tag=<TAG>`。**
+
+**理由**：方案 A（`repository_dispatch`）的运行上下文是**默认分支**——本仓库默认分支是 `dev`，
+而 release tag 指向 `main`。A 会把 `gate` / `compat` 与出包都落到 `dev`，与 `Release.yml` 里既有的
+硬约束「**发行包必须由『自身跑过门禁的构建』产出**」直接冲突；要修对得再改 **4** 个文件
+（含共享的 `Gate.yml` / `Compat.yml`）。**B 只改 2 个文件，且整个 run 落在 `main`。**
+
+| `GITHUB_SHA` | `GITHUB_REF`（`repository_dispatch`） |
+| --- | --- |
+| Last commit on **default branch** | **Default branch** |
+
+### 方案对比（决策依据）
+
+| 方案 | 机制 | 结论 |
 | --- | --- | --- |
-| **A. `repository_dispatch`**（倾向：解耦好） | `Build.yml` 打 tag 成功后 `gh api repos/$REPO/dispatches -f event_type=release-tag -f client_payload[tag]=$TAG`；`Release.yml` 加 `repository_dispatch: types: [release-tag]`，按 payload 里的 tag 检出 | 需 `contents: write`（tag 作业已有）；`repository_dispatch` 在**默认分支**跑 workflow，故 `Release.yml` 必须显式 `checkout ref=<payload.tag>`，并把「tag 来源」从 `github.ref_name` 改为输入 |
-| **B. `workflow_dispatch`** | `Build.yml` 打 tag 后 `gh workflow run Release.yml --ref main -f tag=...` | 需给 tag 作业加 `actions: write`；API 触发要求 workflow 存在于默认分支；同样要把 tag 改成入参 |
-| **C. `workflow_call`**（最直白，但耦合） | `Release.yml` 加 `workflow_call`，`Build.yml` 的 tag 作业之后 `uses: ./.github/workflows/Release.yml` | 不经事件，实现最简单；但 Release 变成 Build 的一次 run（日志 / 状态并入、失败耦合），且要支持「被调用」入参 |
-| **D. `workflow_run`** | `Release.yml` 改监听 `Build` 的 `completed`，条件 `head_branch == 'main'` 且确实打了 tag | 绕；要判「本次是否真的打了 tag」；只在默认分支生效 |
-| **E. 改由 `push: branches: [main]` 触发 Release** | tag 由 `Release.yml` 自己打 | 合并到 main 的 `push` 由「人」产生 → 正常触发；但与 `Build.yml` 职责重叠，需判版本是否变化 |
-| **F. 维持现状 + 手工重建 tag** | 删 tag → 人重推 | 现状；**不自动化**，与目标冲突，仅作兜底 |
+| A. `repository_dispatch` | GITHUB_TOKEN 官方例外 | ✗ **否决**：run 上下文 = 默认分支 `dev`，gate/compat 与出包都会落到 dev |
+| **B. `workflow_dispatch` + `--ref main`** | GITHUB_TOKEN 官方例外，**可指定 ref** | ✅ **采用**：run 落在 `main`（= tag 指向的提交），改动最小（2 文件） |
+| C. `workflow_call` | 复用工作流，不经事件 | 备选：与 Build 的 run 耦合（日志 / 状态并入、失败联动） |
+| D. `workflow_run` | 工作流完成触发 | 备选：需判「本次是否真的打了 tag」 |
+| E. `push: branches: [main]` 触发 Release | 人合并产生的 `push` | 备选：与 `Build.yml` 职责重叠、需判版本变化 |
+| F. 维持现状 + 手工重建 tag | 删 tag → 人重推 | 兜底：不自动化 |
 
-**任一方案都需要的同一处小改**：`Release.yml` 目前从 `github.ref_name` 取 tag；改为从
-「事件 payload / 入参」取，并显式检出该 tag（tag 指向 main head，`GITHUB_SHA` 不一定等于它）。
+### 实施要点（B）
+
+| 文件 | 改动 |
+| --- | --- |
+| `Build.yml` 的 `tag` 作业 | `permissions` 加 `actions: write`；在**确实创建了 tag** 之后 `gh workflow run Release.yml --ref main -f tag=$TAG`（幂等跳过分支不派发） |
+| `Release.yml` | `on` 加 `workflow_dispatch`（`inputs.tag`）；tag / 版本来源从 `github.ref_name` 改为 `inputs.tag`（dispatch 时）；两处 `softprops/action-gh-release` 加 `tag_name` |
+| `ReleaseProcess.md` §2 / §4.2、`VersionBumpGuide.md` §5 第 6 条 | 口径改为「已自动化」 |
+
+> **无需改** `gate` / `compat` 的 checkout：`--ref main` 使整个 run 的 `GITHUB_SHA` = `main` head
+> （= tag 指向的提交），所有 `actions/checkout` 默认检出的就是它。
 
 ## 验收标准
 
-- [ ] 选定 A ~ E 之一，并记录取舍理由；
+- [ ] 选定方案 → **B**（2026-10-16 已拍板）；
 - [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现 `aha-cli-<版本>.zip` 与三平台 `aha-desktop-<版本>-<系统>-<架构>.zip`；
 - [ ] 全流程**不使用 PAT / GitHub App token**（只用 `GITHUB_TOKEN`）；
 - [ ] 人工推 tag 的既有路径（`push: tags`）不被破坏；
+- [ ] **幂等**：tag 已存在（重复合入 `main`）时不重复派发；
 - [ ] `ReleaseProcess.md` §2 / §4.2 与 `VersionBumpGuide.md` §5 第 6 条同步为「已自动化」口径。
 
 ## 关联
 
 - 来源：issue #85 复核评论 §6（“待决”项，ACANX 接受另开本单承接）
+- 拍板记录：[#238 评论](https://github.com/ACANX/AHA/issues/238)（方案 A 运行上下文分析 + 改用 B 的决定）
 - `Docs/DevSpec/ReleaseProcess.md` §2 / §4.2；`Docs/Guide/VersionBumpGuide.md` §5 第 6 条
 - 相关：#96（version 分发 workflow，含既有 PAT 取舍）
