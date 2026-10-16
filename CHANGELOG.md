@@ -175,7 +175,8 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
-- **`/snapshot-assert` 永远找不到版本对应的 tag（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`，并在注释里注明**字段名归 GitHub**（不是本地命名的驼峰）。
+- **`/snapshot-assert` 永远找不到 tag + PR 留痕评论 403（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`。
+  同一轮实测还查明**写 PR 评论的权限**：只给 `issues: write` 时 `POST /repos/{}/issues/{}/comments` 仍然 **403**（`Resource not accessible by integration`）—— GITHUB_TOKEN 对 **PR 对话**的写权限要 `pull-requests: write`。`SnapshotAssert.yml` 与新的 `PreDeployVerify.yml` 一并补齐（后者首次运行实测：status 成功、评论 403；补齐后正常）。
 - **CLI 原生镜像 `--help` 退出码非 0（issue #117，2026-10-16）**：三平台一致失败——`--help` 渲染 picocli 用法表格时经 `BreakIterator` 读 JDK 的 `sun/text/resources/LineBreakIteratorData`，而该资源**没有扩展名**，按扩展名的 `-H:IncludeResources` 正则匹不上，缺了就在运行期抛 `InternalError: Can't load sun/text/resources/LineBreakIteratorData`（**构建全绿、`--version` 正常**，故三平台一致而非平台差异）。照桌面端的既有做法，给两份 CLI 参数文件（JDK 25 基线 + JDK 27 变体）补上该资源与 `.*\.icu$`；结论登记进 `BuildSpec.md` §10.2 与 `CliNativeDesign.md` §4.3 / R3。
 - **原生 exe 里输入框的轮廓线丢失（issue #229，2026-10-15）**：只在 **原生镜像编出的 exe** 里，切换主题后对话输入框的轮廓线不见了 —— 而内容面底色按 #153 的口径与页底**同色**，轮廓线一没就分不出输入框的范围（JVM 模式正常）。根因：轮廓线此前**完全依赖 CSS**，而原生镜像下 modena 那些带 `derive()` / `linear-gradient()` 的规则会**整条声明被丢弃**（`TS-2610-029`）；`ThemePaint` 的属性 API 兜底只覆盖背景与文字，**边框漏在覆盖范围之外**。
   - 修复：`ThemePaint` 新增 `paintBorder()`，把 `-fx-border-color`（+ 宽度 / 圆角，缺省 1 / 3）落到 `Region.setBorder(...)`；三处同类控件（对话输入框、会话搜索框、日志面板文本域）的内联样式补上轮廓线（值取自补丁样式表，JVM 下外观不变）。约定：样式串没写边框就不动现有边框，写 `transparent` / `none` 才清空。

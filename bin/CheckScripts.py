@@ -789,8 +789,11 @@ def check_pre_deploy_verify_contract() -> list[str]:
             "需求要求「每次 PR 推送都会自动跑」，而触发层丢事件没有任何提示（2026-10-15 实测 PR #203）"
         )
 
-    # ③ 顶层 permissions：漏 statuses 打标 403；漏 issues 回写评论 403
-    for perm in ("statuses: write", "issues: write"):
+    # ③ 顶层 permissions：漏 statuses 打标 403；漏 pull-requests 回写 PR 评论 403
+    #    实测（2026-10-16）：写 PR 评论走的是 issues 接口，但**只给 `issues: write` 仍然是 403**
+    #    （`Resource not accessible by integration`）—— GITHUB_TOKEN 对 PR 对话的写权限落在
+    #    pull-requests 作用域上。两条都得有，否则「幂等回写留痕」这一步会红。
+    for perm in ("statuses: write", "pull-requests: write", "issues: write"):
         if not re.search(rf"^  {re.escape(perm)}\b", wf_text, re.M):
             problems.append(f"{rel}：顶层 permissions 缺 `{perm}`（真跑时会 403）")
 

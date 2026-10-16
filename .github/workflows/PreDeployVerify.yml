@@ -33,7 +33,12 @@ permissions:
   contents: read
   # 顶层 permissions 会**覆盖**仓库默认权限，漏一项就是 403（现有工作流注释里记着这个坑）
   statuses: write      # 打 commit status（本工作流的结论载体）
-  issues: write        # 幂等回写 PR 评论（gh api 走 issues 接口）
+  # 写 PR 评论走的是 issues 接口（`POST /repos/{}/issues/{}/comments`），
+  # 但**只给 `issues: write` 实测是 403**：GITHUB_TOKEN 对 **PR 对话**的写权限落在
+  # pull-requests 作用域上。2026-10-16 实测：本工作流第一次运行 status 成功、评论 403
+  # （`Resource not accessible by integration`）；补齐后评论正常。
+  pull-requests: write
+  issues: write
 
 concurrency:
   # 同一 PR 连续 push 时取消上一轮：验证的是**当前 head**，旧 run 的结论没有意义。
