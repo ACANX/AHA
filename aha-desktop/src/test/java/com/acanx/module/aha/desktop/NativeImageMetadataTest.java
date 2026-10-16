@@ -180,6 +180,91 @@ class NativeImageMetadataTest {
      * 字面量的静态扫描（含 font / fontpath_linux 的动态名）。每个类的成员访问
      * 都在它自己身上声明，故统一用 {@code allDeclared*} 全量，避免签名跨版本漂移。</p>
      */
+    /** CLI 原生包的可达性元数据（与桌面端共用 aha-core，所以同样要登记更新模块的 DTO）。 */
+    private static final Path CLI_METADATA = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "..", "aha-cli", "src", "main", "resources", "META-INF", "native-image",
+            "com.acanx.module.aha", "aha-cli", "reachability-metadata.json");
+
+    /** aha-core 更新模块的源码目录（仓库布局固定；basedir 是 aha-desktop 模块）。 */
+    private static final Path UPDATE_SOURCE_ROOT = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "..", "aha-core", "src", "main", "java",
+            "com", "acanx", "module", "aha", "core", "update");
+
+    /** 顶层 record / enum（record 可能不写 public）。 */
+    private static final Pattern TOP_LEVEL_RECORD_OR_ENUM = Pattern.compile(
+            "^(?:public )?(?:static )?(?:final )?(?:sealed )?record\\s+(\\w+)|^(?:public )?enum\\s+(\\w+)");
+
+    /** 嵌在顶层类型里的 record / enum（本仓库按 4 空格缩进）。 */
+    private static final Pattern NESTED_RECORD_OR_ENUM = Pattern.compile(
+            "^ {4}(?:public )?(?:static )?(?:final )?record\\s+(\\w+)|^ {4}(?:public )?(?:static )?enum\\s+(\\w+)");
+
+    /**
+     * 更新模块里的每个 record / enum 都必须登记进原生镜像元数据。
+     *
+     * <p>【为什么要单列一条守卫（2026-10-16 真机崩溃）】Jackson 反序列化 record 时要读
+     * <b>record components</b>（{@code Class.getRecordComponents()}），而原生镜像里这要求
+     * **构建期**就把该 record 的访问器登记好，否则运行期抛
+     * {@code UnsupportedFeatureError: Record components not available for record class
+     * com.acanx.module.aha.core.update.ReleaseInfo}。真机就是点「检查更新」时炸在这一条上：
+     * 构建、单测、GUI 冒烟**全跑在 JVM 上**（反射可用），三方全绿，只有原生包会在用户面前抛异常。</p>
+     *
+     * <p>规则刻意从严：**update 包里所有** record / enum 都要登记，而不是只登记「看着像 DTO」的那几个 ——
+     * 多登记几个只是多几十字节元数据（登记了没用到的类型不会让构建失败），漏登记却是一次用户可感知的崩溃；
+     * 而「哪些会被 Jackson 碰」随代码改动而变，人工挑一定会漏。</p>
+     *
+     * <p>新增 record 后忘记登记，这条守卫在 Build/Gate 阶段就红（原生镜像管线本身是可选、不上门禁的）。
+     * 两个原生包（桌面 / CLI）**都要**登记：它们共用 aha-core。</p>
+     *
+     * @throws IOException 读不到源码目录
+     */
+    @Test
+    void everyUpdateRecordAndEnumIsRegisteredForReflection() throws IOException {
+        assertThat(UPDATE_SOURCE_ROOT).as("aha-core 更新模块源码目录").isDirectory();
+        List<String> expected = new ArrayList<>();
+        try (Stream<Path> files = Files.list(UPDATE_SOURCE_ROOT)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
+                    .sorted().toList()) {
+                String owner = file.getFileName().toString().replace(".java", "");
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+                // 嵌套类型的登记名按「文件名 + $ + 简单名」拼，前提是文件里有同名的顶层类型；
+                // 哪天有人加了内层类，这条断言会先红，提醒守卫该升级了
+                assertThat(Pattern.compile("^(?:public )?(?:final )?(?:abstract )?(?:sealed )?"
+                                + "(?:non-sealed )?(?:class|interface|enum|record)\\s+" + owner + "\\b",
+                                Pattern.MULTILINE).matcher(source).find())
+                        .as("%s 里应有与文件名同名的顶层类型", file.getFileName())
+                        .isTrue();
+                for (String line : source.split("\\R")) {
+                    Matcher nested = NESTED_RECORD_OR_ENUM.matcher(line);
+                    if (nested.find()) {
+                        expected.add("com.acanx.module.aha.core.update." + owner + "$" + matched(nested));
+                        continue;
+                    }
+                    Matcher top = TOP_LEVEL_RECORD_OR_ENUM.matcher(line);
+                    if (top.find()) {
+                        expected.add("com.acanx.module.aha.core.update." + matched(top));
+                    }
+                }
+            }
+        }
+        assertThat(expected).as("update 包里应当扫到 record / enum（扫不到说明规则过期了）").isNotEmpty();
+
+        for (Path metadata : List.of(METADATA, CLI_METADATA)) {
+            assertThat(metadata).as("原生镜像可达性元数据").exists();
+            String json = Files.readString(metadata, StandardCharsets.UTF_8);
+            List<String> missing = expected.stream()
+                    .filter(type -> !json.contains("\"" + type + "\""))
+                    .toList();
+            assertThat(missing).as("%s 漏登记这些类型（Jackson 读 record components 时会抛 "
+                    + "UnsupportedFeatureError）", metadata.getFileName()).isEmpty();
+        }
+    }
+
+    private static String matched(Matcher matcher) {
+        return matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+    }
+
     private static final Path JNI_CONFIG = Path.of(
             System.getProperty("basedir", System.getProperty("user.dir")),
             "src", "main", "resources", "META-INF", "native-image",
