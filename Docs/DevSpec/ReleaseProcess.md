@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.25.0
+**文档版本**：v1.26.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
 | v1.25.0 | 2026-10-16 | **自动打的 tag 现在会自动触发发布**（issue #238）：`Release.yml` 新增 `workflow_dispatch`（防递归规则的**官方例外**，由 `Build.yml` 的 tag 作业用 `gh workflow run --ref main` 派发）；两条出包线显式 `checkout` 发布 tag，`action-gh-release` 显式 `tag_name`；§2 第 5 步、§2.1 与 §4.2 按新口径重写（手工重建 tag 降为兜底） | @ACANX / CNXNC |
 | v1.24.0 | 2026-10-15 | 新增 §2.2「快照自测留痕（`snapshot-assert`）」：默认启用、默认不卡点；自测清单（A1–C3）**必测项一律 0 token**，需要 provider 的动作降为可选（`+model`）；命令 `/verified` 与 `/snapshot-failed`；配套静态守卫（issue #166）| @ACANX / CNXNC |
 | v1.23.0 | 2026-10-15 | §3 / §3.1 / §3.3 的 CLI 发行包改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，无 `lib/` 与 `bin/`）；验证命令改 `./Dist/Aha.sh`；发行包版本段改由 `ProjectVersion.py` 读取（包内 jar 名已不含版本号）| @ACANX / CNXNC |
@@ -190,6 +191,43 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
 操作侧见 [BuildGuide.md](../Guide/BuildGuide.md) §3.3 与
 [CommandCheatsheet.md](../Guide/CommandCheatsheet.md) §7。
 
+
+### 2.3 部署前验证（非阻塞质量验证工作流，issue #166）
+
+「**部署前应当自测、但还不宜直接进合并卡点**」的通用验证 / 断言，集中在一个独立工作流里跑：
+
+| 项 | 口径 |
+|---|---|
+| 工作流 | [`.github/workflows/PreDeployVerify.yml`](../../.github/workflows/PreDeployVerify.yml) |
+| 触发 | **每次 PR 推送**（`pull_request` 的 `opened` / `synchronize` / `reopened`）+ **手动**（`workflow_dispatch`）|
+| status | **`predeploy-verify`**（commit status，绑 PR 的 `head_sha`）|
+| 留痕 | 幂等回写一条 PR 评论：**验证对象 / 结论 / 执行人 / 时间 / 对应提交**；另进该次运行的 Job Summary |
+| **卡点** | **默认不做** —— `predeploy-verify` **不在** required status checks 里，缺它 / 失败**都不拦合并** |
+| **升级路径** | 时机成熟时把它**加进** required checks 即成为卡点，**机制本身不改** |
+| 失败可见 | 失败也一定打 `failure` status **并**留痕评论（`if: always()`），不静默 |
+| token 开销 | **0** —— 验证项全在本地进程里跑，不做任何模型往返 |
+| 验证项 | 定义在 [`bin/PreDeployVerify.py`](../../bin/PreDeployVerify.py) 的 `CHECKS`：**加一项 = 加一个函数** |
+
+**与常规 CI 的分工（不替代）**：构建 / 单元测试 / 冒烟 / 静态门禁照旧由 `Build` 与 `Gate` 负责。
+这里只承载「应当自测、但还不敢卡点」的那一类 —— 目前跑在**真实构建产物**上：
+
+| 编号 | 验什么 | 为什么值得在部署前验一遍 |
+|---|---|---|
+| V1 | 产物能起、`version` 打得开 | 包不可运行的回归（入口类 / 资源缺失 / 打包形态）|
+| V2 | `--help` 列得出全部子命令 | picocli 命令面回归；`--help` 曾因缺 JDK 文本断行资源而崩（issue #117）|
+| V3 | `tool list` 列得出工具 | 工具注册回归 |
+| V4 | `tool invoke file-read` **真的读到文件** | 工具真的能执行：参数解析 → 权限判定 → 执行 → 输出 |
+| V5 | `provider list` / `model show` 打得开 | 配置读取面回归 |
+| V6 | 全程未出现 `UnsatisfiedLinkError` | 原生库加载回归 |
+
+> 验证项的**编号单一来源**是脚本里的 `CHECKS`，本表只复述口径；`bin/CheckScripts.py` 断言
+> 工作流的**触发 / 权限 / 留痕非静默 / status 名与本节一致**（改坏即红）。
+
+**为什么「默认不卡点」而不直接上必需检查**：验证项、稳定性、误报都还在演进，
+一上来就挡住合并会把不成熟的判断变成流程税。先把结论**跑出来、留下来**，稳定后再一步升级。
+
+> 与 §2.2（快照自测留痕）的分工：§2.2 承载**机器验不了、必须人看**的项（快照包在真机上的观感），
+> 由人发命令留痕；本节承载**机器能验、只是还不敢卡点**的项，每次 PR 推送自动跑。两者不重叠。
 
 ### 4.1 tag 命名与手工补打
 

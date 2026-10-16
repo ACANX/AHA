@@ -34,7 +34,11 @@ permissions:
   contents: read
   # 顶层 permissions 会**覆盖**仓库默认权限，漏一项就是 403（现有工作流注释里记着这个坑）
   issues: write        # 幂等回写 PR 评论（gh api 走 issues 接口）
-  pull-requests: read  # 读改动文件，给「要不要做可选 M 组」的提示
+  # 写 PR 评论走的是 issues 接口，但**只给 `issues: write` 实测是 403**：
+  # GITHUB_TOKEN 对 **PR 对话**的写权限落在 pull-requests 作用域上。
+  # 2026-10-16 实测（PR #233 与 #241 两次）：status 成功、评论 403
+  # （`Resource not accessible by integration`）；补齐后评论正常。
+  pull-requests: write  # 写 PR 评论所需（同时覆盖原先「读改动文件」的用途）
   statuses: write      # 本工作流的唯一目的：POST commit status
 
 jobs:
@@ -177,7 +181,10 @@ jobs:
           fi
 
           # ── 版本归属：tag 必须存在；快照 tag 还必须是本 PR 的 ────────────────────
-          tags=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[].tagName' 2>/dev/null || true)
+          # 字段名是 GitHub 的 `tag_name`（**下划线**，归平台所有，不是本地命名的驼峰）：
+          # 写成 `tagName` 时 jq 返回空 ⇒ 任何命令都被当成「发布页上没有对应 tag」拒绝。
+          # （PR #233 实测：`--jq '.[].tagName'` 取出 0 条，`--jq '.[].tag_name'` 正常。）
+          tags=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq '.[].tag_name' 2>/dev/null || true)
           tag=$(grep -E "^V${version}-" <<< "${tags}" | head -n1 || true)
           if [ -z "${tag}" ]; then
             echo "发布页上没有与 V${version} 对应的 tag"
