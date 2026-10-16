@@ -241,13 +241,29 @@ if ($env:OS -eq 'Windows_NT') {
     $entry = Join-Path $viaCmd.Base 'apply-update.cmd'
     Copy-Item -LiteralPath (Join-Path $repoRoot 'Dist/apply-update.cmd') -Destination $entry -Force
     $entryCommand = '"' + $entry + '" "' + $viaCmd.PlanFile + '"'
-    cmd.exe /c $entryCommand 2>&1 | Out-Null
+    # 输出不能吞：一键入口是 `cmd → powershell 5.1 → helper` 三段，任何一段报错都只在这里看得见
+    $entryOutput = cmd.exe /c $entryCommand 2>&1
     $code = $LASTEXITCODE
-    Assert-True ($code -eq 0) "一键入口退出码为 0（实际 $code）"
     $resultPath = Join-Path $viaCmd.UpdateRoot 'update-result.json'
-    Assert-True (Test-Path -LiteralPath $resultPath) '一键入口也写了回执'
+    $result = $null
     if (Test-Path -LiteralPath $resultPath) {
         $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    if ($code -ne 0 -or $null -eq $result -or -not [bool]$result.ok) {
+        Write-Host "  [一键入口输出] 退出码 $code"
+        foreach ($line in @($entryOutput)) { Write-Host ("    " + [string]$line) }
+        if ($null -ne $result) { Write-Host ("  [回执] " + ($result | ConvertTo-Json -Compress)) }
+        $logPath = Join-Path $viaCmd.UpdateRoot 'update.log'
+        if (Test-Path -LiteralPath $logPath) {
+            Write-Host '  [update.log 末尾]'
+            foreach ($line in @(Get-Content -LiteralPath $logPath -Encoding UTF8 | Select-Object -Last 12)) {
+                Write-Host ("    " + [string]$line)
+            }
+        }
+    }
+    Assert-True ($code -eq 0) "一键入口退出码为 0（实际 $code）"
+    Assert-True ($null -ne $result) '一键入口也写了回执'
+    if ($null -ne $result) {
         Assert-True ([bool]$result.ok) '回执 ok=true'
     }
     Assert-True ((Get-Content -LiteralPath (Join-Path $viaCmd.InstallRoot 'aha-desktop-native') -Raw) -eq 'NEW-EXE') `
