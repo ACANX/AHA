@@ -106,6 +106,32 @@ GraalVM 对 `META-INF/services` 有**内建**支持，但两个前提常被忽�
 - 资源本身要进镜像（`-H:IncludeResources=META-INF/services/.*`）；
 - 文件里列出的**实现类要可达**（被显式注册，或在某处被静态 new）。
 
+### 1.5 找 **native 侧**按名查找的点（最容易整段漏掉的一路）
+
+前三节找的都是「**Java 代码**在按名查东西」。还有一半查找发生在**框架的原生代码**里
+（`.cpp` / `.dll`），字节码里搜不到，只能扫框架源码、或反编译原生库：
+
+```bash
+# 框架原生代码在按名查找哪些 Java 类 / 成员？
+grep -rnE "FindClass|GetMethodID|GetFieldID|GetStaticMethodID|GetStaticFieldID" \
+    <框架>/modules/*/src/main/native/ | grep -v test
+```
+
+**先判「查找发生在哪一侧」，再决定登记到哪份清单**：
+
+| 查找发生在 | 例子 | 登记到 |
+|---|---|---|
+| Java 侧按名查 | `Class.forName`、`getDeclaredMethod`、FXML 实例化、Jackson | `reflection` |
+| **native 侧**按名查 | OpenJFX `glass.dll` 找 `WinGestureSupport`；`prism_d3d.dll` 用 `GetFieldID` 回写 `D3DDriverInformation` 的字段 | `jniAccessible` / `jni-config.json`（**只补 reflection 无效**） |
+
+两条实测教训：
+
+1. **清单要按原生库家族覆盖**：AHA 的这份清单当初只覆盖了 `glass` / `font` 路径，
+   **整段漏掉 `prism_d3d`** ⇒ OS / 驱动信息全零（`TS-2610-034`）。同类审查要覆盖
+   `prism_d3d` / `prism_common` / `decora_sse` 这些 dll 家族。
+2. **姊妹工程的结论不能直接搬**：别的项目复现了同族故障 ≠ 本仓库有同一缺口。
+   AHA 实测一次反例——先在自己的仓库找调用点，判清哪一侧，再决定补哪一段（`TS-2610-033`）。
+
 ### 盲区
 
 - 条件分支才走的路径发现不了；

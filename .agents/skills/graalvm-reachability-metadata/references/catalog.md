@@ -16,12 +16,15 @@
 | **sqlite-jdbc** 3.53.x | ✅ 自带（`native-image.properties`） | 静态初始化会解压 / 加载本地库 | 加 `--initialize-at-run-time=org.sqlite`；其余不用管 | 已验证（AHA） |
 | **log4j-core / log4j-api** 2.26.x | ✅ 自带（`reflect-config.json` + `resource-config.json`） | 配置装配在运行期按文件系统解析 | 加 `--initialize-at-run-time=org.apache.logging.log4j.core.config` / `.core.util` | 已验证（AHA） |
 | **Jackson 3**（databind / core / annotations） | ❌ 不带 | 所有被 `treeToValue` / `readValue` / `writeValueAsString` / `TypeReference` 触碰的 POJO / 记录 | 手写注册：`allDeclaredConstructors` + `allDeclaredMethods` + `allDeclaredFields` | 已验证（AHA：漏了会在读配置 / 会话时崩） |
+| **Jackson 3 · `record` 反序列化** | ❌ 不带 | `record` 的 **record components**（`Class#getRecordComponents()`）——上面那三个 `allDeclared*` **都不覆盖** | 登记 `record` 类型本身（含构造器）；加「扫源码 ↔ 元数据」的静态守卫防回退 | 已验证（AHA 2026-10-16，PR #243：21 个 record / enum 一条没登记 ⇒ 原生包点「检查更新」必崩 `Record components not available`） |
+| **JDK 自带资源**（`sun/text/resources/*` 等） | —（不属于任何依赖） | `BreakIterator` 用它做文本断行：**无扩展名**，按扩展名的正则永远匹不上 | 显式列进资源清单：`-H:IncludeResources=sun/text/resources/LineBreakIteratorData` + `.*\.icu$` | 已验证（AHA 2026-10-16，issue #117：CLI 原生镜像 `--help` 三平台一致退出码非 0 / `InternalError`，而 `--version` 正常） |
 | **jackson-dataformat-yaml** 3.x | ❌ 不带 | 同 Jackson | 同上 | 已验证（AHA） |
 | **snakeyaml-engine** 3.x | ❌ 不带 | 若只解析到 `JsonNode` / `Map`，无 POJO 反射 | 视用法；有 POJO 绑定就要注册 | 已踩坑（AHA） |
 | **picocli** 4.7.7 | ❌ 不带 | 子命令实例化、`@Option` / `@Parameters` 字段注入、类型转换器 | **用 `picocli-codegen` 注解处理器生成**（比手写可靠） | 已验证（AHA：生成 30 个类型） |
 | **JLine** 4.4.6 | ✅ 自带（reflection / jni / resource / foreign） | 终端 provider（`Exec` / `Jni` / `Ffm` / `Dumb`）、`CLibrary` / `Kernel32` 结构体 | 直接用；**但要补它漏掉的 `org.jline.utils.Signals`**（见下） | 已验证（AHA） |
 | **JLine** · `org.jline.utils.Signals` | ❌（上游元数据未覆盖） | `Class.forName("sun.misc.Signal")` / `"sun.misc.SignalHandler"` + `getMethod("handle", …)` + `getField("SIG_DFL"/"SIG_IGN")` | 手写注册这两个类型（含 public 字段 / 方法）；另注册 `java.lang.ProcessBuilder$RedirectPipeImpl` | 已验证（AHA：`javap` 反编译发现） |
-| **JavaFX** 25 | ❌ 不带完整元数据 | 见下面「JavaFX 专表」；启动反射是**链式**的 | 按启动链路一次补齐 + `jniAccessible` + 资源（着色器 / 原生库） | 已验证到"编译通过"；**真机运行待验证**（AHA `N-16`） |
+| **JavaFX** 25 | ❌ 不带完整元数据 | 见下面「JavaFX 专表」；启动反射是**链式**的 | 按启动链路一次补齐 + `jniAccessible` + 资源（着色器 / 原生库） | **已验证（真机跑过）**：Windows 原生包在真机与 CI 的 Windows 腿上都会启动；真机另暴露三类缺口——prism_d3d 字段回写（#60）、FXML 构造器与枚举属性（#133 / PR #243）、CSS 函数退化（见编译技能的「不崩但表现退化」） |
+| **JavaFX · FXML**（`FXMLLoader`） | ❌ 不带 | ① 元素类型名靠**本文件的 `<?import?>` 表**解析（漏了只在装载时炸）；② 元素实例化走**反射构造器**；③ 属性里的**大写枚举值**走 `BeanAdapter` 反射强转（`valueOf`） | ① 静态对账「元素类型名必须已 import」；② 登记 `allDeclaredConstructors`（`Region`/`Pane`/`Labeled` 等会被直接实例化的类型）；③ **能用 Java 属性 API 表达的，就不要写在 FXML 里**（如 `tabs.setTabClosingPolicy(UNAVAILABLE)`），并加「FXML 不许出现大写枚举值」的守卫 | 已踩坑 + 已验证（AHA `TS-2610-032`：漏 `<?import?>` ⇒ 原生包启动即 `LoadException`，而三方门禁全绿；PR #243：`Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`） |
 | **OpenJFX 分类器工件** | — | 带分类器与不带分类器的 jar 共用同一份 POM，会传递进 0 KB 空壳 | 在 POM 里排除无分类器传递依赖 | 已验证（AHA） |
 | **ServiceLoader 的 provider 实现类**（业务自定义） | —（看 GraalVM 内建支持） | `ServiceLoader.load(X)` 返回的实现类会被反射实例化 | **通常无需手写**：GraalVM 对 `META-INF/services` 有内建支持，会自动注册 provider；前提是服务文件进镜像（资源清单含 `META-INF/services/.*`） | 已踩坑（AHA：agent 采到 6 个业务 provider；真机待确认） |
 | **可选依赖的探测式反射** | — | `Class.forName("某可选库的类")`，类可能不在 classpath | **一般无需处理**：调用方已捕获异常；不要因为 agent 采到就登记 | 已踩坑（AHA：`com.fasterxml.jackson.databind.ObjectMapper` 出现在 agent 结果里，而项目用 Jackson 3） |
@@ -40,6 +43,8 @@
 | `PrismFontFactory` | `DWFactory` / `CTFactory` / `FTFactory` | `getFactory()` | 已踩坑 |
 | `PulseLogger` / `MethodUtil` / `StyleManager` / `ImageStorage` | `PrintLogger` / `JFRPulseLogger` / `Trampoline` / `control.skin.Utils` / `J2DImageLoaderFactory` | `createInstance()` / `invoke(...)` / `getResource(...)` / 构造器 | 已踩坑 |
 | Glass / 字体原生回调 | `Application`、`View`、`Screen`、`*Application`、`NativeLibLoader`、DirectWrite/CoreText/FreeType 结构体 | **`jniAccessible` + 全量方法 / 字段** | 已踩坑 |
+| **native 按名回写字段**（`prism_d3d.dll`） | `com.sun.prism.d3d.D3DDriverInformation`（`GetFieldID` 按字段名回写） | `jniAccessible` + 全量字段（登记进 `jni-config.json`）；漏了**不报错**，表现为 OS / 驱动信息**全零** | 已验证（AHA 2026-10-13，issue #60 / `TS-2610-034`；改后真机取到 `igd10iumd64.dll 31.0.101.4502`） |
+| Windows 手势 / 拖放（`glass.dll` 按名查） | `WinGestureSupport` 等 | `jniAccessible` + 方法 / 字段 | 已踩坑（AHA issue #125：类可达**已验证**；「手感」因本环境无触摸设备**不可达**） |
 | 条件不触发（**不要**盲目加） | `Control.loadClass` 的 `-fx-skin`、`PPSRenderer` 的 `<effect>Peer`、`java.lang.ProcessBuilder$RedirectPipeImpl`（非 JLine 场景）、Swing/Web/Media 可选模块 | 用到了才加 | 已踩坑（AHA：用 `createDefaultSkin()` 静态可达，无需注册） |
 
 JavaFX 资源：着色器 `.obj`（D3D）/ `.frag` `.vert`（ES2）、平台原生库 `.so`/`.dylib`/`.dll`、`.bss`。
