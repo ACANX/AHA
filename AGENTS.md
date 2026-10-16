@@ -297,6 +297,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 资源 / 初始化）：发现 → 登记 → 验证 → 守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 | `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
 | `doc-recording` | 三类过程记录的时机与写法（待办 TD / 开发日志 DevLog / 排查记录 TS）：写什么、怎么命名、登记与自检 | [SKILL.md](.agents/skills/doc-recording/SKILL.md) |
+| `code-review` | 代码审查（含 PR 自审、多轮复核）：命令取证替代读代码印象、P0–P3 判级、逃逸链（为什么 CI 全绿而功能不可用）、复核「已修」、残余归属与真机验收项 | [SKILL.md](.agents/skills/code-review/SKILL.md) |
 
 ## 常用命令
 
