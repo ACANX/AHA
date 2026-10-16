@@ -100,6 +100,10 @@ jobs:
             fi
           done
           echo "CLI 包：Dist/${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/${target}" --kind cli-jvm --version "${version}" --jdk 25
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
@@ -205,6 +209,7 @@ jobs:
         shell: bash
         env:
           EXPECTED: ${{ matrix.expected }}
+          LABEL: ${{ matrix.label }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -269,6 +274,12 @@ jobs:
             exit 1
           fi
           echo "单体 jar：Main-Class=${main}，本平台（${EXPECTED}）原生库 ${same_ext}/${root_natives} 个，无 module-info"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 版本从**唯一读取入口**取（issue #93 / #94），不从产物名里反推。
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
+            --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
 
       - name: 打印本平台解析到的 OpenJFX 工件（自证）
         shell: bash
@@ -280,3 +291,44 @@ jobs:
           # 同 CLI 作业：显式指定 tag（dispatch 下 `github.ref` 是分支）
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: Dist/aha-desktop-[0-9]*.zip
+
+  # ── 收尾：发布页校验和（SHA256SUMS）──────────────────────────────────────────
+  # 为什么要单开一个作业：CLI 与桌面端是**并列**的两个作业，各自直接往同一个 release 上传资产。
+  # 若让它们各自写一份 SHA256SUMS，后写的那份会覆盖先写的，结果是一份「只列了一半资产」
+  # 的校验和 —— 比没有更坏（用户会以为没列的那些不用核）。所以在这里统一下载已发布资产、
+  # 一次性生成完整清单再挂上去（issue #51 §4.3 第①层 / §6）。
+  checksums:
+    name: 发布页校验和（SHA256SUMS）
+    needs: [release, desktop]
+    # 任一作业成功就要出校验和：已经挂在发布页上的资产必须能核对（部分平台失败也要有）。
+    # 全都失败 / 被取消时不出——那时发布页上根本没有资产可核。
+    if: >-
+      always() && (needs.release.result == 'success' || needs.desktop.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: 下载本 tag 已发布的资产
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          # 只取 zip：SHA256SUMS 自身不在清单里（否则自指），重复执行时也不会把自己加进去
+          gh release download "${TAG}" --pattern '*.zip' --dir assets
+          ls -lh assets
+
+      - name: 生成并挂上 SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir assets
+          # --clobber：重复发版（同一 tag 重跑）时覆盖旧的校验和，而不是报错退出
+          gh release upload "${TAG}" assets/SHA256SUMS --clobber

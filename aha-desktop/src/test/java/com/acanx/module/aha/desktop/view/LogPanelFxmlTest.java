@@ -21,6 +21,14 @@ class LogPanelFxmlTest {
     private static final String FXML = UiResources.LOG_PANEL_FXML;
 
     @Test
+    void copyTakesSelectionWhenThereIsOneOtherwiseEverything() {
+        // 右键「复制选中（没有选中则复制全部）」和 Ctrl+C 共用这条规则（纯函数，不需要剪贴板）
+        assertThat(LogPanel.textToCopy("", "全部")).isEqualTo("全部");
+        assertThat(LogPanel.textToCopy(null, "全部")).isEqualTo("全部");
+        assertThat(LogPanel.textToCopy("选中", "全部")).isEqualTo("选中");
+    }
+
+    @Test
     void fxmlShipsNextToTheController() throws IOException {
         assertThat(FxmlViewChecks.read(LogPanel.class, FXML))
                 .as("%s 必须与 LogPanel 同包", FXML)

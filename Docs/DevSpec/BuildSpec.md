@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.43.0
+**文档版本**：v1.46.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,9 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.46.0 | 2026-10-16 | §8.1 的瞬时失败判据补齐**Maven Wrapper 下载发行包失败**（2026-10-16 实测：PR 的 Windows 腿 21 秒红，报 `Conversion from JSON failed` + `FileNotFoundException: …apache-maven-4.0.0-rc-7-bin.zip`，旧判据一条都不命中 ⇒ 一次都没重试；同提交的另一次运行同腿是绿的）。新增判据只匹配这几句报错，编译错误 / 测试失败仍立刻失败（本地用真实 + 反向日志各验一次）| @ACANX / CNXNC |
+| v1.45.0 | 2026-10-16 | §7.1 补两条：① 桌面端两条线的包都必须带换装 helper（否则自更新在「复制 helper」那步必败，见 `ReleaseProcess.md` §3.6）；② 新增守卫 `check_update_helper_packaging()` / `check_repo_script_steps_have_checkout()`，`Script/PowerShell/HelperSelfTest.ps1` 进 `Build.yml` 的 `native-update-script` 作业（换装 helper 首次有真实行为测试）| @ACANX / CNXNC |
+| v1.44.0 | 2026-10-16 | 新增 §7.1「包内清单与发布页校验和」：四条出包线在打包步骤末尾统一写 `AHA-PACKAGE.json` 与 `SHA256SUMS`，契约只有一处定义（`ReleaseProcess.md` §3.4），实现只有一份（`.github/Python/PackageManifest.py`）且自检进 `static-guards`（issue #51 §6）| @ACANX / CNXNC |
 | v1.43.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.42.0 | 2026-10-16 | §7「可选管线」新增**例外口径**：`PreDeployVerify.yml`（issue #166 的部署前验证）虽属独立可选工作流，但其失败本身就是结论 ⇒ 作业级红叉 + `failure` status + 留痕评论，不卡点只体现在**不进 required** | @ACANX / CNXNC |
 | v1.41.0 | 2026-10-16 | §8「main 上的构建成功后自动打 tag」按 issue #238 更新：该作业不再止于「打 tag」，在**新建出 tag** 后用 `workflow_dispatch`（防递归规则的**官方例外**）以 `gh workflow run Release.yml --ref main -f tag=<TAG>` 主动派发发布流程，无需 PAT；权限补 `actions: write`，并注明幂等跳过时**不派发** | @ACANX / CNXNC |
@@ -328,6 +331,27 @@ POM 语法必须兼容 Maven 3.9.x：
 > `jpackage` 安装包**已决策跳过、不采用**：它是第三种发行形态，而「免装 JDK」这一目标
 > 已由原生镜像二进制覆盖（理由见 `ReleaseProcess.md` §3.3）。
 
+### 7.1 包内清单与发布页校验和（issue #51 §6）
+
+四条出包线在**打包步骤的最后**（所有包内自证之后）统一调用
+[`.github/Python/PackageManifest.py`](../../.github/Python/PackageManifest.py) 写入两份契约文件；
+规则与字段表见 [ReleaseProcess.md](ReleaseProcess.md) §3.4 —— **契约只有一处定义，这里只写流程约束**：
+
+| 约束 | 原因 |
+|---|---|
+| 四种 zip 都必须带包内清单 | 应用内升级靠它知道「哪些文件属于这个包」「新包删掉了哪些旧文件」，并逐文件核对大小与哈希 |
+| 清单在包内自证**之后**写入 | 自证看的是「构建产出的包」，判据不该被清单文件干扰 |
+| 原生线的清单步骤**不**共用「改名」步骤的 `continue-on-error` | 缺清单的包对升级器就是不合格的，宁可这条腿红，也不要静默出一个不合格的包 |
+| `Release.yml` 的 `SHA256SUMS` 由单独收尾作业生成 | 两个并列作业各自写一份会互相覆盖，得到「只列了一半资产」的校验和（比没有更坏） |
+| 生成 / 校验实现**只有一份** | 各写一段 shell 必然漂移，而漂移的表现是「某个通道的包永远校验不过」，静默且难查 |
+| `.github/Python/PackageManifest.py --self-test` 进 `static-guards` | 与 `ProjectVersion.py --self-test` 同一口径：这类「放宽了也不会立刻暴露」的边界要在提 PR 时就暴露 |
+| 桌面端两条线的包都必须带换装 helper | 应用内升级靠随包的 `apply-update.cmd` + `AhaApplyUpdate.ps1`；缺了就在「复制 helper」那一步失败 —— 而 `maven-assembly` 对匹配不到的 `<include>` **静默跳过**，只写描述符不算数（`ReleaseProcess.md` §3.6） |
+| helper 的行为由 `Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑 | 它是整条升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查；现在在临时目录里跑失败路径与成功路径（`Build.yml` 的 `native-update-script` 作业） |
+| 调用仓库内脚本的作业必须先 `checkout` | `check_repo_script_steps_have_checkout()`：`native-publish` / `cli-native-publish` / `build-publish` 只下载制品、不检出仓库，直接调 `PackageManifest.py` 会报 `No such file or directory`（本地永远复现不出来） |
+
+> 通道 ↔ tag ↔ 资产名的契约由 `bin/CheckScripts.py` 的 `check_release_channel_contract()` 钉在
+> **PowerShell / Python / Java 三处逐字一致**（`check_native_update_parity()` 管前两处，该守卫补上 Java 这第三处）。
+
 ## 8. 验收标准
 
 **`mvn clean verify` 通过是唯一验收标准——由 CI 判定**（`Gate.yml` / `Compat.yml`），
@@ -463,6 +487,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   | ---- | ---- | ---- |
   | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
   | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
+  | `Exception in thread "main" java.io.FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/<版本>/apache-maven-<版本>-bin.zip`（可能伴随 `Conversion from JSON failed with error: …`）| **Maven Wrapper 拉不到发行包**：Central 那次没把发行包给出来（被挡 / 挑战页）⇒ wrapper 解析或下载失败 | 属于瞬时类，已进重试判据（2026-10-16 实测：旧判据一条都不命中 ⇒ 一次都没重试就红；同提交的另一次运行同腿是绿的）。⚠️ 写判据时注意两点：① **版本号可能带后缀**（`4.0.0-rc-7`），别写成「纯数字点」；② 验证要**逐条**对着日志里那一行验 —— 拿多行样本一起 `grep` 时，一条命中会掩盖另一条写错（第一版就是这么漏的）|
 
 - 完整复盘见 [TS-2610-004-Artifact-Not-Found-In-Central.md](../Troubleshooting/TS-2610-004-Artifact-Not-Found-In-Central.md)。
 

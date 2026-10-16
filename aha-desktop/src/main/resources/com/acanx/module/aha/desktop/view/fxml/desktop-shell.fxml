@@ -90,6 +90,8 @@
                     </Menu>
                     <Menu fx:id="helpMenu">
                         <items>
+                            <MenuItem fx:id="checkUpdateItem"/>
+                            <SeparatorMenuItem/>
                             <MenuItem fx:id="aboutItem"/>
                         </items>
                     </Menu>
