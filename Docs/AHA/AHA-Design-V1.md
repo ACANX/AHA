@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.72.0
+**文档版本**：v3.73.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -491,6 +491,7 @@ aha/
 | v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
 | v3.71.0 | 2026-10-09 | 发行形态最终决策：打包方式表与相关小节去掉 `jpackage`，改为**两种形态**（JVM JAR 聚合包 + 原生镜像二进制）；风险表的「0.2 使用 jpackage」改为按新形态缓解。理由与口径见 `ReleaseProcess.md` §3.3 | @ACANX / CNXNC |
 | v3.72.0 | 2026-10-14 | §3 目录树补 `Docs/Guide/PlanWritingGuide.md`（方案文档编写参考：由 issue #165 的正文体例整理，参考性、非强制） | @cnxnc |
+| v3.73.0 | 2026-10-16 | 技能索引新增 `code-review`（代码审查：命令取证、P0–P3 判级、逃逸链、逐条复核、残余归属与真机验收项），取材于 PR #243 的三轮审查沉淀 | @cnxnc |
 
 ---
 ```
@@ -644,6 +645,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 文件资源 / 运行期初始化）：三路发现法、来源优先级、精确签名、四层守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 | `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
 | `doc-recording` | 三类过程记录的时机与写法（待办 TD / 开发日志 DevLog / 排查记录 TS）：写什么、怎么命名、登记与自检 | [SKILL.md](.agents/skills/doc-recording/SKILL.md) |
+| `code-review` | 代码审查（含 PR 自审、多轮复核）：命令取证替代读代码印象、P0–P3 判级、逃逸链（为什么 CI 全绿而功能不可用）、复核「已修」、残余归属与真机验收项 | [SKILL.md](.agents/skills/code-review/SKILL.md) |
 
 ## 常用命令
 
