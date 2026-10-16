@@ -1334,13 +1334,10 @@ public final class DesktopShell implements ChatView {
         sessionSearch.setId(SESSION_SEARCH_ID);
         sessionSearch.setPromptText("⌕ 搜索会话");
         // 显式套主题：不能只靠根节点的 looked-up colors，否则暗色下仍是白底（issue #49）
-        themed(sessionSearch, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
-                // 显式背景属性：只设 looked-up color 时，原生镜像下偶发不向子节点（.content / .text）传播（issue #49）
-                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
-                // 轮廓线：同输入框（issue #229，会话搜索框属同类控件）
-                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
-                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
-                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
+        themed(sessionSearch, this::sessionSearchStyle);
+        // 轮廓色跟随焦点状态，所以焦点一变就要重刷（与输入框同一处理）
+        sessionSearch.focusedProperty().addListener(
+                (observable, was, now) -> ThemePaint.themed(sessionSearch, sessionSearchStyle()));
         sessionSearch.textProperty().addListener((observable, old, now) -> applySessionFilter(now));
         // TextField 的 maxWidth 默认是「按内容算」，于是它会比左栏还宽并盖到中栏上
         // （真机截图里能看到搜索框横向溢出）。必须显式放开，让 VBox 把它收进栏内。
@@ -1570,23 +1567,56 @@ public final class DesktopShell implements ChatView {
         wireComposer();
     }
 
+    /**
+     * 输入框的样式串：**轮廓色跟着焦点状态走**（issue #229）。
+     *
+     * <p>为什么状态要进样式串：真机看到的那圈「紫色、非常明显」的边是焦点环
+     * （补丁样式表 {@code .text-input:focused → -fx-border-color: FOCUS_BORDER}），
+     * 而普通边框色（{@code BORDER}）在亮 / 暗两种主题下都很淡。把状态算进样式串，
+     * 属性 API 那条兜底与 CSS 那条就永远给同一个颜色；焦点一变就重刷（见 wireComposer）。</p>
+     *
+     * @return 样式串
+     */
+    private String composerStyle() {
+        return "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                // TextArea 的底色在 modena 里来自 .text-area > .content 的查表，
+                // 显式给 background-color 才能在原生镜像下稳定生效（真机截图里它是纯白底）
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-border-color: " + (composer.isFocused() ? Palette.FOCUS_BORDER : Palette.BORDER) + ";"
+                + "-fx-border-width: 1; -fx-border-radius: 3;"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";";
+    }
+
+    /**
+     * 会话搜索框的样式串：与 {@link #composerStyle()} 同理，轮廓色跟随焦点状态。
+     *
+     * @return 样式串
+     */
+    private String sessionSearchStyle() {
+        return "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-border-color: " + (sessionSearch.isFocused() ? Palette.FOCUS_BORDER : Palette.BORDER) + ";"
+                + "-fx-border-width: 1; -fx-border-radius: 3;"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";";
+    }
+
     /** 输入区：输入框 + 发送按钮（节点本身在 desktop-shell.fxml 里）。 */
     private void wireComposer() {
         composerBox.setSpacing(ShellLayout.GAP);
         composer.setId(COMPOSER_ID);
         composer.setPromptText(COMPOSER_PROMPT);
         // 输入框同样显式套主题：否则暗色下是白底 + 浅色文字，看不清（issue #49）
-        themed(composer, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
-                // 同上：TextArea 的底色在 modena 里来自 .text-area > .content 的查表，
-                // 显式给 background-color 才能在原生镜像下稳定生效（真机截图里它是纯白底）
-                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
-                // 轮廓线（issue #229）：原生镜像 exe 里「输入框的轮廓线丢失，纯色界面下分不出范围」——
-                // modena 画那圈线的规则带 derive() / linear-gradient()，原生镜像下整条声明被丢弃
-                //（TS-2610-029）。这里显式给（值与补丁样式表一致，JVM 下外观不变），
-                // 由 ThemePaint.apply 走属性 API 落到 Region 上，不依赖 CSS 传导。
-                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
-                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
-                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
+        //
+        // 轮廓线（issue #229，2026-10-15 二次排查）：真机现象是「亮色下边缘是紫色的主题色、非常明显，
+        // 切到暗色（或从暗切回亮色）后就看不到输入框的边缘」——那圈紫边就是**焦点环**
+        //（补丁样式表 .text-input:focused → FOCUS_BORDER），普通边框色（BORDER）在两种主题下都很淡。
+        // 所以轮廓色必须**跟着焦点状态走**，而且要把状态写进样式串里：这样 JVM 下与补丁样式表一致、
+        // 原生镜像下由属性 API 兜底也有正确的颜色。焦点变化时重刷一次。
+        themed(composer, this::composerStyle);
+        composer.focusedProperty().addListener(
+                (observable, was, now) -> ThemePaint.themed(composer, composerStyle()));
         composer.setWrapText(true);
         composer.setPrefRowCount(3);
         // Enter 发送、Shift+Enter 换行（若直接放行，TextArea 会把 Enter 当换行）

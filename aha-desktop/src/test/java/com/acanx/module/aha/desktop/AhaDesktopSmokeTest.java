@@ -17,7 +17,6 @@ import com.acanx.module.aha.desktop.view.ShellLayout;
 import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
@@ -25,6 +24,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -34,6 +34,9 @@ import javafx.scene.text.Text;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.image.PixelReader;
+import javafx.scene.image.WritableImage;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -402,6 +405,312 @@ class AhaDesktopSmokeTest {
     }
 
     /**
+     * 复现原生镜像下「轮廓线丢失」的**机制**（issue #229 二次排查，2026-10-15）。
+     *
+     * <p><strong>要验证的假设</strong>：原生镜像下 {@code -fx-border-color} 的多部件转换
+     * （{@code Border} / {@code BorderStrokeStyle} / {@code CornerRadii} / {@code BorderWidths}）
+     * 产不出值，而**规则仍然匹配** ⇒ 一次 CSS 重算会把 {@code Region} 的 {@code border} 设成空，
+     * 把 {@link ThemePaint#paintBorder} 刚用属性 API 设上的值冲掉。JVM 下 CSS 算得出值，
+     * 所以现有断言（切主题后读 {@code getBorder()}）永远是绿的 —— 它抓不住这个缺陷。</p>
+     *
+     * <p>这里在 JVM 里制造同一条件：**清空样式表 + 内联样式只留一条产不出值的声明**
+     * （匹配、但产不出值），再强制跑一次 CSS 重算，然后看轮廓线还在不在。</p>
+     *
+     * <p>阶段① 先打印现状（基线证据），阶段② 断言兜底必须成立 —— 修好后阶段① 与阶段② 都应成立。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void borderFallbackSurvivesCssPassThatProducesNoValue() throws Exception {
+        startToolkit();
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
+        onUi(() -> {
+            Palette.setTheme(Theme.DARK);
+            DesktopShell shell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+            Stage stage = new Stage();
+            stage.setScene(new Scene(shell.buildRoot(), 900, 600));
+            stage.show();
+            stageRef.set(stage);
+        });
+        try {
+            Scene scene = uiGet(() -> stageRef.get().getScene());
+            Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
+            String before = uiGet(() -> borderColor(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229] 正常态：轮廓线 = " + before
+                    + "，内联样式 = " + composer.getStyle());
+
+            // 制造「规则匹配、但产不出值」的一次 CSS 重算（等价于原生下那条声明被丢弃）
+            onUi(() -> {
+                scene.getStylesheets().clear();
+                byId(scene, DesktopShell.COMPOSER_ID).setStyle("-fx-border-color: not-a-real-color;");
+            });
+            onUi(() -> {
+                Parent root = scene.getRoot();
+                root.applyCss();
+                root.layout();
+            });
+
+            String after = uiGet(() -> borderColor(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229] 产不出值的 CSS 重算之后：轮廓线 = " + after
+                    + "（期望 " + normalize(Palette.BORDER) + "；为 null 即复现了原生 exe 的丢失机制）");
+            assertThat(after)
+                    .as("CSS 产不出边框值时，属性 API 的兜底必须仍然成立 —— 原生 exe 的轮廓线全靠它")
+                    .isEqualTo(normalize(Palette.BORDER));
+        } finally {
+            onUi(() -> stageRef.get().close());
+        }
+    }
+
+    /**
+     * 像素级探针（issue #229 二次排查，2026-10-15 第二路）：属性对了 ≠ 看得见。
+     *
+     * <p>上一个探针证明「CSS 产不出值时不会冲掉属性 API 的 border」——那个假设被证伪了。
+     * 但两个探针读的都是 {@code getBorder()}（**属性**），而 ACANX 的判据是**原生 exe 里肉眼能否
+     * 看到轮廓线**。属性对、像素不对，同样是不合格：轮廓线可能被上面那层（{@code TextArea} 的
+     * {@code .content}）盖住，也可能根本没画到控件边缘上。</p>
+     *
+     * <p>本探针把**样式表的供给抽掉**（只剩属性 API 这条来源），再对输入框做快照，读
+     * 四个角与中心的实际像素：边缘应当是 {@code Palette.BORDER}、中心是 {@code CONTROL_INNER}。
+     * 这是与真机判据最接近的、JVM 侧能做的检查。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void borderFallbackIsVisiblyPaintedEvenWithoutCss() throws Exception {
+        startToolkit();
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
+        onUi(() -> {
+            Palette.setTheme(Theme.DARK);
+            DesktopShell shell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+            Stage stage = new Stage();
+            stage.setScene(new Scene(shell.buildRoot(), 900, 600));
+            stage.show();
+            stageRef.set(stage);
+        });
+        try {
+            Scene scene = uiGet(() -> stageRef.get().getScene());
+            Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
+            System.out.println("[PROBE #229b] 样式表在场："
+                    + ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null))));
+
+            // 抽掉样式表的供给，只留属性 API 那条来源（原生 exe 下 CSS 给不出值，等价于此）
+            onUi(() -> {
+                scene.getStylesheets().clear();
+                byId(scene, DesktopShell.COMPOSER_ID).setStyle(
+                        "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                                + "-fx-background-color: " + Palette.CONTROL_INNER + ";");
+            });
+            onUi(() -> {
+                Parent root = scene.getRoot();
+                root.applyCss();
+                root.layout();
+            });
+            WritableImage image = uiGet(() -> composer.snapshot(new SnapshotParameters(), null));
+            String measured = ringSummary(image);
+            System.out.println("[PROBE #229b] 抽掉样式表供给侧（只剩属性 API）：" + measured);
+            // 别再猜哪一层在画那圈底色了：把整个子树的「实际背景 / 边框 / insets」转储出来
+            System.out.println("[PROBE #229b] 图层转储 begin");
+            for (String line : uiGet(() -> layerDump(composer))) {
+                System.out.println("[PROBE #229b]   " + line);
+            }
+            System.out.println("[PROBE #229b] 图层转储 end");
+            assertThat(measured)
+                    .as("属性 API 那条边框必须真的画出来（中心 = %s，边中点 = %s）——否则属性对了也没用",
+                            normalize(Palette.CONTROL_INNER), normalize(Palette.BORDER))
+                    .contains("中心=" + normalize(Palette.CONTROL_INNER))
+                    .contains("边中点=" + normalize(Palette.BORDER) + "/" + normalize(Palette.BORDER)
+                            + "/" + normalize(Palette.BORDER) + "/" + normalize(Palette.BORDER));
+
+            // 再钉一条：轮廓线必须在**靠近边缘的位置**，不能只出现在画面中间（否则就不是「范围」了）
+            String band = edgeBandColors(image, 3);
+            System.out.println("[PROBE #229b] 外圈 3px 颜色集合：" + band);
+            assertThat(band)
+                    .as("轮廓色必须出现在靠边的外圈里（原生 exe 里那一圈就靠这个背景层）")
+                    .contains(normalize(Palette.BORDER));
+        } finally {
+            onUi(() -> stageRef.get().close());
+        }
+    }
+
+    /**
+     * 对一个节点做快照，读出四个角与中心的实际颜色（{@code #RRGGBB}）。
+     *
+     * @param image 已取好的快照
+     * @return 形如 {@code 边中点=#3A3A3A/... 中心=#1E1E1E}
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    private static String ringSummary(WritableImage image) throws Exception {
+        if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
+            return "快照不可用(" + (image == null ? "null" : image.getWidth() + "x" + image.getHeight()) + ")";
+        }
+        PixelReader pixels = image.getPixelReader();
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        // 取样点必须避开圆角：半径 3 的圆角处，最外圈像素是「背景没画到」的透明角落，
+        // 读出来是快照的伪色（本轮实测 #F9F9F9）——那是判据取错点，不是产品缺陷。
+        // 取四条边的**中点**（轮廓线真正所在的位置），外加中心。
+        return "边中点=" + hexAt(pixels, width / 2, 0)
+                + "/" + hexAt(pixels, width / 2, height - 1)
+                + "/" + hexAt(pixels, 0, height / 2)
+                + "/" + hexAt(pixels, width - 1, height / 2)
+                + " 中心=" + hexAt(pixels, width / 2, height / 2);
+    }
+
+    private static String hexAt(PixelReader pixels, int x, int y) {
+        Color color = pixels.getColor(x, y);
+        return color == null ? "null" : hexOf(color);
+    }
+
+    /**
+     * 转储节点子树里每一层的**实际背景 / 边框 / insets**（issue #229 二次排查用）。
+     *
+     * <p>目的：像素读数里那个 {@code #F9F9F9} 到底是哪一层画的？属性都设对了、像素却不对，
+     * 就只能把每一层实际生效的值列出来对帐，不靠猜。</p>
+     *
+     * @param root 根节点
+     * @return 每层一行
+     */
+    private static List<String> layerDump(Node root) {
+        List<String> lines = new java.util.ArrayList<>();
+        collectLayers(root, 0, lines);
+        return lines;
+    }
+
+    private static void collectLayers(Node node, int depth, List<String> lines) {
+        if (node == null || depth > 4) {
+            return;
+        }
+        StringBuilder line = new StringBuilder("  ".repeat(depth))
+                .append(node.getClass().getSimpleName())
+                .append(node.getStyleClass())
+                .append(" vis=").append(node.isVisible())
+                .append(" bounds=").append(Math.round(node.getLayoutBounds().getWidth()))
+                .append("x").append(Math.round(node.getLayoutBounds().getHeight()));
+        if (node instanceof Region region) {
+            Background background = region.getBackground();
+            if (background != null) {
+                for (BackgroundFill fill : background.getFills()) {
+                    line.append(" bg[").append(fill.getFill() instanceof Color c ? hexOf(c) : String.valueOf(fill.getFill()))
+                            .append(" insets=").append(fill.getInsets().getTop())
+                            .append(" radii=").append(Math.round(fill.getRadii().getTopLeftHorizontalRadius()))
+                            .append("]");
+                }
+            } else {
+                line.append(" bg=null");
+            }
+            if (region.getBorder() == null || region.getBorder().getStrokes().isEmpty()) {
+                line.append(" border=null");
+            } else {
+                Paint stroke = region.getBorder().getStrokes().get(0).getTopStroke();
+                line.append(" border=").append(stroke instanceof Color c ? hexOf(c) : String.valueOf(stroke));
+            }
+        }
+        lines.add(line.toString());
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectLayers(child, depth + 1, lines);
+            }
+        }
+    }
+
+    /**
+     * 取节点快照**外圈若干像素**里出现过的颜色集合（去重、排序）。
+     *
+     * <p>为什么要看一圈而不是四个角：轮廓线由背景层画出时，圆角处会被抗锯齿抹掉一小块，
+     * 只看角点可能恰好取到混合出来的过渡色。用一整圈才能稳定地判断「靠近边缘处有没有那圈线」。</p>
+     *
+     * @param image 已取好的快照（**不能**在方法内部再调 uiGet：会与调用方的 uiGet 互相等待而死锁）
+     * @param band  外圈宽度（像素）
+     * @return 形如 {@code [#1E1E1E, #3A3A3A]} 的颜色集合
+     */
+    private static String edgeBandColors(WritableImage image, int band) {
+        if (image == null || image.getWidth() < 3 || image.getHeight() < 3) {
+            return "[]";
+        }
+        PixelReader pixels = image.getPixelReader();
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        Set<String> colors = new java.util.TreeSet<>();
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < Math.min(band, height); y++) {
+                colors.add(hexAt(pixels, x, y));
+                colors.add(hexAt(pixels, x, height - 1 - y));
+            }
+        }
+        return colors.toString();
+    }
+
+    /**
+     * 按 ACANX 真机描述立的判据（issue #229，2026-10-15）：
+     *
+     * <blockquote>亮色主题的时候边缘是紫色的主题色，非常明显的，切换到黑色（或从黑切回亮色）后
+     * 就看不到输入框的边缘了。</blockquote>
+     *
+     * <p>那圈紫色是**焦点环**（补丁样式表 {@code .text-input:focused → -fx-border-color: %FOCUS_BORDER%}），
+     * 普通边框（{@code %BORDER%}）在两种主题下都很淡，本来就不显眼。所以判据不是「有没有一圈线」，
+     * 而是：**聚焦时边缘必须是强调色（FOCUS_BORDER），且切主题后仍然如此**。</p>
+     *
+     * <p>读的是像素（四条边中点），不是属性 —— 真机判据就是肉眼能不能看到那圈色。</p>
+     *
+     * @throws Exception 取不到 UI 线程结果时抛出
+     */
+    @Test
+    void focusedComposerKeepsItsAccentOutlineAcrossThemeSwitches() throws Exception {
+        startToolkit();
+        AtomicReference<Stage> stageRef = new AtomicReference<>();
+        AtomicReference<DesktopShell> shellRef = new AtomicReference<>();
+        onUi(() -> {
+            Palette.setTheme(Theme.LIGHT);
+            DesktopShell shell = new DesktopShell(new PlatformFxDispatcher(), () -> { }, () -> "冒烟");
+            Stage stage = new Stage();
+            stage.setScene(new Scene(shell.buildRoot(), 900, 600));
+            stage.show();
+            shellRef.set(shell);
+            stageRef.set(stage);
+            shell.focusComposer();
+        });
+        try {
+            Scene scene = uiGet(() -> stageRef.get().getScene());
+            Node composer = uiGet(() -> byId(scene, DesktopShell.COMPOSER_ID));
+            assertThat(uiGet(() -> composer.isFocused()))
+                    .as("输入框先要真的拿到焦点，否则测的是普通边框").isTrue();
+
+            // ① 切之前（亮色 + 聚焦）：边缘 = 强调色（用户看到的紫色）
+            String before = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
+            System.out.println("[PROBE #229c] 亮色+聚焦（切之前）：" + before);
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
+                    .as("亮色下聚焦的输入框，靠边一圈必须能看到强调色 %s（用户看到的那圈紫边）",
+                            normalize(Palette.FOCUS_BORDER))
+                    .contains(normalize(Palette.FOCUS_BORDER));
+
+            // ② 亮 → 暗：焦点环必须跟着换成暗色的强调色（用户报的「切完就看不到」）
+            onUi(() -> shellRef.get().applyTheme(Theme.DARK));
+            String dark = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
+            System.out.println("[PROBE #229c] 切到暗色后（仍聚焦）：" + dark);
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
+                    .as("切到暗色后焦点环必须仍在（暗色强调色 %s）—— 真机就是这一步丢的",
+                            normalize(Palette.FOCUS_BORDER))
+                    .contains(normalize(Palette.FOCUS_BORDER));
+
+            // ③ 暗 → 亮：切回来同样要回来
+            onUi(() -> shellRef.get().applyTheme(Theme.LIGHT));
+            String back = ringSummary(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)));
+            System.out.println("[PROBE #229c] 再切回亮色（仍聚焦）：" + back);
+            assertThat(edgeBandColors(uiGet(() -> composer.snapshot(new SnapshotParameters(), null)), 3))
+                    .as("从暗色切回亮色同样要有焦点环（否则就是「切一次对、再切就错」）")
+                    .contains(normalize(Palette.FOCUS_BORDER));
+        } finally {
+            onUi(() -> stageRef.get().close());
+        }
+    }
+
+    /** 四条边中点都是某个颜色的期望串。 */
+    private static String accentEdges(String hex) {
+        String c = normalize(hex);
+        return "边中点=" + c + "/" + c + "/" + c + "/" + c;
+    }
+
+    /**
      * 反复读状态标签，直到后台虚拟线程的值经桥接落到 UI 线程。
      *
      * <p><strong>只在发消息之前调用</strong>：状态标签会被 {@code setBusy(true)} 覆写成
@@ -464,8 +773,12 @@ class AhaDesktopSmokeTest {
             return null;
         }
         Background background = region.getBackground();
-        if (background == null || background.getFills().isEmpty()
-                || !(background.getFills().get(0).getFill() instanceof Color color)) {
+        if (background == null || background.getFills().isEmpty()) {
+            return null;
+        }
+        // 取**最上层**那一层：基面现在可能有「轮廓 + 底色」两层，轮廓在下（整块铺满）、
+        // 底色在上（按边框宽度缩进）——可见的底色是**上层**那个（issue #229 二次排查）。
+        if (!(background.getFills().get(background.getFills().size() - 1).getFill() instanceof Color color)) {
             return null;
         }
         return String.format("#%02X%02X%02X",
