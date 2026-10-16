@@ -193,33 +193,8 @@ public record PackageManifest(
         }
     }
 
-    /** 路径安全：必须是相对路径、不得含 {@code ..} 段、不得含反斜杠或盘符。 */
+    /** 路径安全：复用 {@link PathSafety}（包内清单与换装计划用同一套底线）。 */
     private static Path safeRelativePath(FileEntry entry) {
-        String text = entry.path() == null ? "" : entry.path().trim();
-        if (text.isEmpty()) {
-            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID, "包内清单有空路径条目");
-        }
-        if (text.contains("\\") || text.contains(":")) {
-            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                    "包内清单的路径含 Windows 分隔符或盘符（契约要求用 `/` 的相对路径）：" + text);
-        }
-        Path relative;
-        try {
-            relative = Path.of(text);
-        } catch (RuntimeException e) {
-            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                    "包内清单的路径不合法：" + text, e);
-        }
-        if (relative.isAbsolute()) {
-            throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                    "包内清单的路径是绝对路径（契约要求相对路径）：" + text);
-        }
-        for (Path segment : relative) {
-            if ("..".equals(segment.toString())) {
-                throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                        "包内清单的路径含 `..` 段（会写到包外）：" + text);
-            }
-        }
-        return relative;
+        return PathSafety.requireRelative(entry.path(), "包内清单的路径");
     }
 }
