@@ -49,11 +49,12 @@ class UpdateLauncherTest {
         assertThat(command).hasSize(3);
         assertThat(command.get(0)).isEqualTo("sh");
         assertThat(command.get(1)).isEqualTo("-c");
+        // 不假设临时目录长什么样（Windows runner 上是 C:\Users\…）：只断言「每个路径都被单引号包住」，
+        // 否则路径里的空格会把参数切开 —— 这条与平台无关，也正是要守的东西
         assertThat(command.get(2))
-                .contains("nohup")
-                .contains("'/tmp")
-                .contains(UpdateLauncher.POSIX_ENTRY)
-                .contains(UpdatePaths.PLAN_FILE)
+                .contains("nohup ")
+                .contains("'" + helperDir.resolve(UpdateLauncher.POSIX_ENTRY).toAbsolutePath() + "'")
+                .contains("'" + plan.toAbsolutePath() + "'")
                 .endsWith(">/dev/null 2>&1 &");
     }
 
