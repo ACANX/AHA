@@ -12,7 +12,9 @@ import com.acanx.module.aha.desktop.view.LogPanel;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.core.update.AhaVersion;
+import com.acanx.module.aha.core.update.GitHubReleaseClient;
 import com.acanx.module.aha.core.update.InstallLayout;
+import com.acanx.module.aha.core.update.PackageDownloader;
 import com.acanx.module.aha.core.update.UpdatePaths;
 import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.desktop.view.ThemePaint;
@@ -29,6 +31,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Button;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Tab;
@@ -53,6 +56,10 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -499,6 +506,11 @@ class AhaDesktopSmokeTest {
         // 升级 tab 的契约控件：断言它自己的根节点（不依赖 tab 是否选中）
         VBox upgradeRoot = uiGet(pane::build);
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHANNEL)).isNotNull();
+        // 三个通道选项必须有标题说明它们是干什么的（真机反馈：不知道这三行是什么）
+        assertThat(byId(upgradeRoot, UpgradePane.ID_CHANNEL_TITLE))
+                .as("通道区要有标题").isInstanceOf(Label.class);
+        assertThat(((Label) byId(upgradeRoot, UpgradePane.ID_CHANNEL_TITLE)).getText())
+                .contains("发布通道");
         assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(Label.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
@@ -857,6 +869,64 @@ class AhaDesktopSmokeTest {
             } else {
                 System.setProperty("AHA_HOME", previousHome);
             }
+        }
+    }
+
+    /**
+     * 检查进行中切通道：「检查更新」必须**立刻**可用（真机反馈的「切了通道后点不动」）。
+     *
+     * <p>做法：把升级服务指向一个**接了就不回话**的本机 socket，于是「检查在跑」这个状态是
+     * 确定的（不是碰运气）；切完通道后立刻断言按钮可用，再让那个 socket 放行、断言按钮**仍然**可用
+     * （旧通道那次检查回来也不许把界面糊住）。全程不需要外网。</p>
+     *
+     * @param tempDir 临时目录（设置文件与暂存都放这里）
+     */
+    @Test
+    void switchingChannelReleasesTheCheckButtonWhileACheckIsRunning(@TempDir Path tempDir)
+            throws Exception {
+        startToolkit();
+        try (ServerSocket hold = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            Thread holder = Thread.ofVirtual().start(() -> {
+                try (Socket socket = hold.accept()) {
+                    socket.getInputStream().readNBytes(1);   // 拿到请求就挂着：检查会一直「在跑」
+                    Thread.sleep(800);
+                } catch (IOException | InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            DesktopSettings settings = DesktopSettings.load(tempDir.resolve(DesktopSettings.FILE_NAME));
+            UpdateService slow = new UpdateService(UpdatePaths.at(tempDir.resolve("update")),
+                    GitHubReleaseClient.forApiBase(
+                            URI.create("http://127.0.0.1:" + hold.getLocalPort() + "/")),
+                    new PackageDownloader());
+            UpgradePane pane = uiGet(() -> new UpgradePane(settings, new PlatformFxDispatcher(),
+                    () -> { }, slow));
+            VBox root = uiGet(pane::build);
+            Button check = (Button) byId(root, UpgradePane.ID_CHECK);
+            Button action = (Button) byId(root, UpgradePane.ID_ACTION);
+            Label status = (Label) byId(root, UpgradePane.ID_STATUS);
+            RadioButton stable = (RadioButton) byId(root, UpgradePane.ID_CHANNEL_STABLE);
+
+            uiGet(() -> {
+                check.fire();
+                return null;
+            });
+            assertThat(uiGet(check::isDisabled)).as("检查期间按钮应置灰（状态确实在跑）").isTrue();
+
+            uiGet(() -> {
+                stable.setSelected(true);
+                return null;
+            });
+
+            assertThat(uiGet(check::isDisabled))
+                    .as("切了通道就该能立刻重新点「检查更新」，不必等旧检查跑完").isFalse();
+            assertThat(uiGet(status::getText)).contains("已切到");
+            assertThat(uiGet(action::isDisabled)).isTrue();
+
+            holder.interrupt();
+            // 那次旧检查回来（连接断了）也不许把界面糊住：稍等片刻，按钮仍然可用
+            Thread.sleep(1200);
+            assertThat(uiGet(check::isDisabled)).as("旧检查收尾后按钮仍然可用").isFalse();
         }
     }
 

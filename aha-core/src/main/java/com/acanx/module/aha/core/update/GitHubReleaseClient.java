@@ -62,6 +62,18 @@ public final class GitHubReleaseClient {
     private final int perPage;
 
     /** 默认构造：真实的 GitHub 发布页。 */
+    /**
+     * 指向别的 API 基址（企业镜像；测试里也用它把请求引到本机 socket）。
+     *
+     * @param apiBase API 基址，例如 {@code https://github.example.com/api/v3}
+     * @return 客户端
+     */
+    public static GitHubReleaseClient forApiBase(URI apiBase) {
+        return new GitHubReleaseClient(apiBase, DEFAULT_REPOSITORY, DEFAULT_PER_PAGE,
+                HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(),
+                JsonMapper.builder().build());
+    }
+
     public GitHubReleaseClient() {
         this(DEFAULT_API_BASE, DEFAULT_REPOSITORY, DEFAULT_PER_PAGE,
                 HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(),

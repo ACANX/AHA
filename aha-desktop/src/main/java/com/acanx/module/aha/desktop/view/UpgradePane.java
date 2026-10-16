@@ -15,6 +15,7 @@ import com.acanx.module.aha.core.update.UpdateLauncher;
 import com.acanx.module.aha.core.update.UpdatePaths;
 import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -71,6 +72,14 @@ public final class UpgradePane {
     /** 通道选择区的 id。 */
     public static final String ID_CHANNEL = "aha.upgrade.channel";
 
+    /** 通道区**标题**的 id（三个选项是干什么用的那行字）。 */
+    public static final String ID_CHANNEL_TITLE = "aha.upgrade.channel.title";
+
+    /** 三个通道各自的 id（冒烟测试按它点选）。 */
+    public static final String ID_CHANNEL_STABLE = "aha.upgrade.channel.stable";
+    public static final String ID_CHANNEL_BETA = "aha.upgrade.channel.beta";
+    public static final String ID_CHANNEL_ALPHA = "aha.upgrade.channel.alpha";
+
     /** 当前版本行的 id。 */
     public static final String ID_CURRENT = "aha.upgrade.current";
 
@@ -126,6 +135,8 @@ public final class UpgradePane {
 
     private final HBox actionRow = new HBox();
 
+    private final Label channelTitle = new Label("发布通道（决定从哪条发布线取版本）");
+
     private final Label channelNote = new Label();
 
     private final Label currentLabel = new Label();
@@ -146,6 +157,15 @@ public final class UpgradePane {
     private VBox root;
 
     private boolean busy;
+
+    /**
+     * 检查更新的「代号」：每次检查、每次切通道都 +1。
+     *
+     * <p>为什么需要它：检查是异步的，网络慢时可能要几十秒。用户在这期间切了通道，
+     * 旧通道的结果回来会盖掉新通道的列表；更糟的是它还会把「检查中」的状态糊在界面上
+     * （2026-10-16 真机反馈：切了通道后「检查更新」一直点不动）。代号不匹配的结果**直接丢掉**。</p>
+     */
+    private long checkGeneration;
 
     /**
      * 构造。
@@ -181,6 +201,12 @@ public final class UpgradePane {
         channelRow.setId(ID_CHANNEL);
         channelRow.setAlignment(Pos.CENTER_LEFT);
         channelRow.setSpacing(12);
+        stableButton.setId(ID_CHANNEL_STABLE);
+        betaButton.setId(ID_CHANNEL_BETA);
+        alphaButton.setId(ID_CHANNEL_ALPHA);
+        channelTitle.setId(ID_CHANNEL_TITLE);
+        ThemePaint.themedForever(channelTitle,
+                () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-font-weight: bold;");
         checkRow.setAlignment(Pos.CENTER_LEFT);
         actionRow.setAlignment(Pos.CENTER_LEFT);
         checkRow.getChildren().add(checkButton);
@@ -224,8 +250,11 @@ public final class UpgradePane {
         selectChannelInUi(settings.updateChannel());
         updateChannelNote();
 
-        root = new VBox(8, channelRow, channelNote, currentLabel, checkRow, versionList, actionRow,
-                progress, statusLabel);
+        // 内边距不是装饰：TabPane 的内容区默认**没有**留白，通道那一行会紧贴着 tab 标题，
+        // 看着挤、点击也容易落在 tab 头上（2026-10-16 真机反馈）。
+        root = new VBox(10, channelTitle, channelRow, channelNote, currentLabel, checkRow,
+                versionList, actionRow, progress, statusLabel);
+        root.setPadding(new Insets(12, 14, 12, 14));
         root.setId(ID_TAB);
         if (unsupportedReason != null) {
             statusLine(unsupportedReason + "；可手动到发布页取件（「检查更新」仍可用，便于看有哪些版本）。");
@@ -247,38 +276,70 @@ public final class UpgradePane {
             return;
         }
         ReleaseChannel channel = selectedChannel();
+        long generation = ++checkGeneration;
         busy = true;
         checkButton.setDisable(true);
         actionButton.setDisable(true);
         versionList.getItems().clear();
-        statusLine("正在检查「" + channel.label() + "」通道的可用版本…");
+        progress.setVisible(true);
+        progress.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+        statusLine("正在检查「" + channel.label() + "」通道的可用版本…（网络慢时最多等 30 秒）");
         settings.lastCheckAt(Instant.now().toString());
         settings.save();
         Thread.ofVirtual().name("aha-upgrade-check").start(() -> {
             try {
                 List<Row> rows = catalog(channel);
+                if (generation != checkGeneration) {
+                    return;   // 期间切了通道 / 又点了一次：这次结果已经过时，丢掉
+                }
+                String message = rows.isEmpty() ? emptyReason(channel)
+                        : "检查完成，共 " + rows.size() + " 个版本（来源：" + SOURCE + "）";
                 dispatcher.dispatch(() -> {
-                    versionList.getItems().setAll(rows);
-                    statusLine(rows.isEmpty() ? emptyReason(channel)
-                            : "检查完成，共 " + rows.size() + " 个版本（来源：" + SOURCE + "）");
-                    busy = false;
-                    checkButton.setDisable(false);
+                    if (generation != checkGeneration) {
+                        return;
+                    }
+                    try {
+                        versionList.getItems().setAll(rows);
+                        statusLine(message);
+                    } finally {
+                        endCheck();
+                    }
                 });
             } catch (UpdateException e) {
-                dispatcher.dispatch(() -> {
-                    statusLine(failure(e));
-                    busy = false;
-                    checkButton.setDisable(false);
-                });
+                dispatchCheckFailure(generation, failure(e));
             } catch (RuntimeException e) {
                 LOG.warn("检查更新时出现未预期的问题", e);
-                dispatcher.dispatch(() -> {
-                    statusLine("检查失败：" + e.getClass().getSimpleName() + ": " + e.getMessage());
-                    busy = false;
-                    checkButton.setDisable(false);
-                });
+                dispatchCheckFailure(generation,
+                        "检查失败：" + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         });
+    }
+
+    /** 检查失败：只更新文案（同样要收尾）。 */
+    private void dispatchCheckFailure(long generation, String message) {
+        dispatcher.dispatch(() -> {
+            if (generation != checkGeneration) {
+                return;
+            }
+            try {
+                statusLine(message);
+            } finally {
+                endCheck();
+            }
+        });
+    }
+
+    /**
+     * 检查收尾：把「忙」的状态与按钮放开。
+     *
+     * <p><b>无论成功、失败还是界面更新自己抛异常，都必须走到这里</b> —— `busy` 卡住一次，
+     * 用户就再也点不动「检查更新」（真机上表现为「卡住了」）。</p>
+     */
+    private void endCheck() {
+        busy = false;
+        checkButton.setDisable(false);
+        actionButton.setDisable(true);
+        progress.setVisible(false);
     }
 
     /**
@@ -324,6 +385,13 @@ public final class UpgradePane {
             settings.updateChannel(channel);
             settings.save();
             updateChannelNote();
+            // 切通道 = 上一次的检查作废：**同时把界面放开**。否则用户要等旧通道那次检查跑完
+            // （网络慢时几十秒）才能点「检查更新」—— 真机上就是「切了通道后按钮一直点不动」。
+            // 旧结果回来时会被 generation 丢掉（2026-10-16 真机反馈）。
+            checkGeneration++;
+            busy = false;
+            checkButton.setDisable(false);
+            progress.setVisible(false);
             versionList.getItems().clear();
             actionButton.setDisable(true);
             statusLine("已切到「" + channel.label() + "」通道，点「检查更新」刷新列表。");
@@ -428,6 +496,7 @@ public final class UpgradePane {
             return;
         }
         ReleaseChannel channel = selectedChannel();
+        checkGeneration++;   // 在飞的检查结果作废：别让它回来解开换装期间的按钮状态
         busy = true;
         checkButton.setDisable(true);
         actionButton.setDisable(true);
