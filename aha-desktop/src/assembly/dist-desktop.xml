@@ -33,6 +33,19 @@
                 <include>CHANGELOG.md</include>
             </includes>
         </fileSet>
+        <!--
+            自更新换装 helper（issue #51 §4.5）：必须随包分发 —— App 在换装前把它复制到
+            `<AHA_HOME>/update/`（放安装根之外：它会自删，也不该出现在被替换的目录里）。
+            两个文件都不带版本号：计划文件才是唯一入参，换版本不用改脚本。
+        -->
+        <fileSet>
+            <directory>${project.parent.basedir}/Dist</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>apply-update.cmd</include>
+                <include>AhaApplyUpdate.ps1</include>
+            </includes>
+        </fileSet>
     </fileSets>
 
     <files>

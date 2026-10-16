@@ -77,7 +77,8 @@ Write-Host "安装位置：$TargetExe"
 Write-Host ''
 
 # API 请求才带 token（未认证的 60 次/小时很容易撞上）；
-# 下载请求不带——GitHub 的下载地址会 302 到 objects.githubusercontent.com，
+# 下载请求不带——GitHub 的下载地址会 302 到资产 CDN（objects / release-assets
+#  .githubusercontent.com 都见过，2026-10-16 实测换过一次），
 # 没必要把凭据交到另一个主机上（Python 侧也是这么做的）。
 $headers = @{ 'User-Agent' = 'AHA-UpdateNative'; 'Accept' = 'application/vnd.github+json' }
 $downloadHeaders = @{ 'User-Agent' = 'AHA-UpdateNative' }

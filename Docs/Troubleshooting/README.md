@@ -112,6 +112,7 @@ TS-2610-030-Native-Font-Rendering-Diff.md
 | [TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md](TS-2610-043-Snapshot-Comment-Stale-On-Cross-Line.md) | 快照评论跨线陈旧：JVM 线收到纯原生目标时不更新自己那条，停在「未打任何 `SNAPSHOT:*` 触发标签」⇒ 改为写「属 X 线，交由 X 处理」的交接说明 | 2026-10-15 13:00 | 见 issue #205 |
 | [TS-2610-044-Publish-Skipped-By-Null-Bool-Compare.md](TS-2610-044-Publish-Skipped-By-Null-Bool-Compare.md) | `null != false` 是 **false**：`build-publish` 的门用了 `inputs.publish != false`，`push` 无 inputs ⇒ 每次发布被静默跳过，dev 的 JVM 预发行包停发 4 天（run 仍报 success） | 2026-10-15 14:00 | 见 issue #213 |
 | [TS-2610-045-Selected-Row-Invisible-By-Css-Specificity.md](TS-2610-045-Selected-Row-Invisible-By-Css-Specificity.md) | 下拉列表当前项「看不见，也没完全隐藏」：选中态背景规则的特异性低于基面规则（5 个类 vs 1 类 + 2 伪类）而选中态**文字**色却能生效 ⇒ 亮色下白底白字 | 2026-10-15 15:00 | 见 issue #227 |
+| [TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md](TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md) | 原生镜像的 exe 把自己认成 JVM 便携包：原生镜像里 code source **不是 null**、它指向 exe 自己，而判定用「是不是普通文件」⇒ `jarBased=true` ⇒ 点升级去下 JVM 包、exe 自己没变（`Dist\` 里两种形态并存时必现） | 2026-10-16 21:00 | 见 PR #243（另一半实现见 #247）|
 | [TS-2610-046-Input-Outline-Lost-In-Native.md](TS-2610-046-Input-Outline-Lost-In-Native.md) | 原生镜像 exe 里输入框轮廓线丢失（JVM 正常）：modena 的 derive/linear-gradient 让整条声明被丢弃，而 ThemePaint 的属性 API 兜底只覆盖背景与文字、**漏了边框** ⇒ 与页底同色又没有边，分不出输入框范围 | 2026-10-15 16:00 | 见 issue #229 |
 
 ## 3. 维护规则

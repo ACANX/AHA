@@ -3,6 +3,7 @@ package com.acanx.module.aha.desktop;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -85,6 +87,86 @@ class NativeImageMetadataTest {
             "src", "main", "resources", "META-INF", "native-image",
             "com.acanx.module.aha", "aha-desktop", "reachability-metadata.json");
 
+    /** 桌面端 FXML 骨架所在目录（本测试按目录扫，新增视图不用改这里）。 */
+    private static final Path FXML_ROOT = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "src", "main", "resources", "com", "acanx", "module", "aha", "desktop");
+
+    /** FXML 里「大写枚举值」属性的形态：{@code tabClosingPolicy="UNAVAILABLE"}。 */
+    private static final Pattern ENUM_VALUED_ATTRIBUTE = Pattern.compile(
+            "([a-zA-Z][a-zA-Z0-9:]*)\\s*=\\s*\"([A-Z][A-Z0-9_]*)\"");
+
+    /**
+     * 值就是大写字符串、**不是枚举**的属性名（否则会误报）。
+     *
+     * <p>这份白名单刻意很短：真出现「大写枚举值」时应当**改到 Java 里设**，
+     * 而不是往这里加名字。</p>
+     */
+    private static final Set<String> STRING_VALUED_ATTRIBUTES = Set.of(
+            "fx:id", "id", "text", "styleClass", "style", "url", "promptText", "value", "name");
+
+    /**
+     * FXML 里不许出现「枚举字面量」属性值（2026-10-16 真机自测：设置面板打不开）。
+     *
+     * <p>为什么单列一条守卫：这种写法在 **JVM 版完全正常**，只有原生镜像会炸 ——
+     * FXMLLoader 的枚举强制转换走 {@code BeanAdapter} 的反射路径（元数据里登记
+     * {@code com.sun.javafx.reflect.Trampoline.invoke} 就是这条路径），未登记的类型会抛
+     * {@code Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy}。
+     * 而构建、单测、GUI 冒烟全跑在 JVM 上（反射可用），**三方全绿**，
+     * 直到真机点开设置面板才发现。</p>
+     *
+     * <p>改法：FXML 里不写枚举属性，在 Java 里 {@code set}（参考
+     * {@code SettingsDialog#wireTabs}）。</p>
+     *
+     * @throws IOException 读不到 FXML 目录
+     */
+    @Test
+    void fxmlNeverSetsEnumValuedAttributes() throws IOException {
+        List<Path> files;
+        try (Stream<Path> walk = Files.walk(FXML_ROOT)) {
+            files = walk.filter(path -> path.getFileName().toString().endsWith(".fxml")).toList();
+        }
+        List<String> offenders = new ArrayList<>();
+        for (Path file : files) {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            boolean insideComment = false;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
+                // 注释必须先剥（无论行内还是跨行）：说明文字里会写出「反例」，否则守卫会把
+                // 自己的说明当成违规（这条是写守卫时被自己的反向注入抓到的）
+                if (insideComment) {
+                    if (line.contains("-->")) {
+                        insideComment = false;
+                    }
+                    continue;
+                }
+                int start = line.indexOf("<!--");
+                if (start >= 0) {
+                    int end = line.indexOf("-->", start + 4);
+                    if (end < 0) {
+                        insideComment = true;
+                        continue;
+                    }
+                    line = line.substring(0, start) + line.substring(end + 3);
+                }
+                Matcher matcher = ENUM_VALUED_ATTRIBUTE.matcher(line);
+                while (matcher.find()) {
+                    if (STRING_VALUED_ATTRIBUTES.contains(matcher.group(1))) {
+                        continue;
+                    }
+                    offenders.add(file.getFileName() + ":" + (index + 1) + "  " + matcher.group());
+                }
+            }
+        }
+        assertThat(files).as("要真的扫到 FXML 文件（目录布局变了就同步这里）").hasSizeGreaterThan(3);
+        assertThat(offenders)
+                .as("FXML 里不要写枚举型属性值：原生镜像的 FXMLLoader 用反射转换枚举，"
+                        + "未在 reachability-metadata.json 登记的类型会抛 Unable to coerce…"
+                        + "（2026-10-16 真机自测：设置面板打不开）。请在 Java 里 set，"
+                        + "参考 SettingsDialog#wireTabs")
+                .isEmpty();
+    }
+
     /**
      * JNI 可达类清单（issue #37）。
      *
@@ -98,6 +180,91 @@ class NativeImageMetadataTest {
      * 字面量的静态扫描（含 font / fontpath_linux 的动态名）。每个类的成员访问
      * 都在它自己身上声明，故统一用 {@code allDeclared*} 全量，避免签名跨版本漂移。</p>
      */
+    /** CLI 原生包的可达性元数据（与桌面端共用 aha-core，所以同样要登记更新模块的 DTO）。 */
+    private static final Path CLI_METADATA = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "..", "aha-cli", "src", "main", "resources", "META-INF", "native-image",
+            "com.acanx.module.aha", "aha-cli", "reachability-metadata.json");
+
+    /** aha-core 更新模块的源码目录（仓库布局固定；basedir 是 aha-desktop 模块）。 */
+    private static final Path UPDATE_SOURCE_ROOT = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "..", "aha-core", "src", "main", "java",
+            "com", "acanx", "module", "aha", "core", "update");
+
+    /** 顶层 record / enum（record 可能不写 public）。 */
+    private static final Pattern TOP_LEVEL_RECORD_OR_ENUM = Pattern.compile(
+            "^(?:public )?(?:static )?(?:final )?(?:sealed )?record\\s+(\\w+)|^(?:public )?enum\\s+(\\w+)");
+
+    /** 嵌在顶层类型里的 record / enum（本仓库按 4 空格缩进）。 */
+    private static final Pattern NESTED_RECORD_OR_ENUM = Pattern.compile(
+            "^ {4}(?:public )?(?:static )?(?:final )?record\\s+(\\w+)|^ {4}(?:public )?(?:static )?enum\\s+(\\w+)");
+
+    /**
+     * 更新模块里的每个 record / enum 都必须登记进原生镜像元数据。
+     *
+     * <p>【为什么要单列一条守卫（2026-10-16 真机崩溃）】Jackson 反序列化 record 时要读
+     * <b>record components</b>（{@code Class.getRecordComponents()}），而原生镜像里这要求
+     * **构建期**就把该 record 的访问器登记好，否则运行期抛
+     * {@code UnsupportedFeatureError: Record components not available for record class
+     * com.acanx.module.aha.core.update.ReleaseInfo}。真机就是点「检查更新」时炸在这一条上：
+     * 构建、单测、GUI 冒烟**全跑在 JVM 上**（反射可用），三方全绿，只有原生包会在用户面前抛异常。</p>
+     *
+     * <p>规则刻意从严：**update 包里所有** record / enum 都要登记，而不是只登记「看着像 DTO」的那几个 ——
+     * 多登记几个只是多几十字节元数据（登记了没用到的类型不会让构建失败），漏登记却是一次用户可感知的崩溃；
+     * 而「哪些会被 Jackson 碰」随代码改动而变，人工挑一定会漏。</p>
+     *
+     * <p>新增 record 后忘记登记，这条守卫在 Build/Gate 阶段就红（原生镜像管线本身是可选、不上门禁的）。
+     * 两个原生包（桌面 / CLI）**都要**登记：它们共用 aha-core。</p>
+     *
+     * @throws IOException 读不到源码目录
+     */
+    @Test
+    void everyUpdateRecordAndEnumIsRegisteredForReflection() throws IOException {
+        assertThat(UPDATE_SOURCE_ROOT).as("aha-core 更新模块源码目录").isDirectory();
+        List<String> expected = new ArrayList<>();
+        try (Stream<Path> files = Files.list(UPDATE_SOURCE_ROOT)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
+                    .sorted().toList()) {
+                String owner = file.getFileName().toString().replace(".java", "");
+                String source = Files.readString(file, StandardCharsets.UTF_8);
+                // 嵌套类型的登记名按「文件名 + $ + 简单名」拼，前提是文件里有同名的顶层类型；
+                // 哪天有人加了内层类，这条断言会先红，提醒守卫该升级了
+                assertThat(Pattern.compile("^(?:public )?(?:final )?(?:abstract )?(?:sealed )?"
+                                + "(?:non-sealed )?(?:class|interface|enum|record)\\s+" + owner + "\\b",
+                                Pattern.MULTILINE).matcher(source).find())
+                        .as("%s 里应有与文件名同名的顶层类型", file.getFileName())
+                        .isTrue();
+                for (String line : source.split("\\R")) {
+                    Matcher nested = NESTED_RECORD_OR_ENUM.matcher(line);
+                    if (nested.find()) {
+                        expected.add("com.acanx.module.aha.core.update." + owner + "$" + matched(nested));
+                        continue;
+                    }
+                    Matcher top = TOP_LEVEL_RECORD_OR_ENUM.matcher(line);
+                    if (top.find()) {
+                        expected.add("com.acanx.module.aha.core.update." + matched(top));
+                    }
+                }
+            }
+        }
+        assertThat(expected).as("update 包里应当扫到 record / enum（扫不到说明规则过期了）").isNotEmpty();
+
+        for (Path metadata : List.of(METADATA, CLI_METADATA)) {
+            assertThat(metadata).as("原生镜像可达性元数据").exists();
+            String json = Files.readString(metadata, StandardCharsets.UTF_8);
+            List<String> missing = expected.stream()
+                    .filter(type -> !json.contains("\"" + type + "\""))
+                    .toList();
+            assertThat(missing).as("%s 漏登记这些类型（Jackson 读 record components 时会抛 "
+                    + "UnsupportedFeatureError）", metadata.getFileName()).isEmpty();
+        }
+    }
+
+    private static String matched(Matcher matcher) {
+        return matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+    }
+
     private static final Path JNI_CONFIG = Path.of(
             System.getProperty("basedir", System.getProperty("user.dir")),
             "src", "main", "resources", "META-INF", "native-image",

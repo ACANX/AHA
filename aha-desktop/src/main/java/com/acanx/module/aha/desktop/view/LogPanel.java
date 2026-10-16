@@ -17,11 +17,15 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.Duration;
@@ -58,6 +62,12 @@ public final class LogPanel {
 
     /** 复制按钮 id。 */
     public static final String COPY_ID = "aha.log.copy";
+
+    /** 右键菜单「复制选中（没选中则复制全部）」的 id。 */
+    public static final String COPY_SELECTED_MENU_ID = "aha.log.menu.copy.selected";
+
+    /** 右键菜单「复制全部」的 id。 */
+    public static final String COPY_ALL_MENU_ID = "aha.log.menu.copy.all";
 
     /** 自动刷新间隔（毫秒）。 */
     public static final long TICK_MS = 500;
@@ -212,9 +222,7 @@ public final class LogPanel {
         refresh.setId(REFRESH_ID);
         refresh.setOnAction(event -> refresh());
         copy.setId(COPY_ID);
-        copy.setOnAction(event -> stats.setText(Clipboards.copy(area.getText())
-                ? "已复制当前视图（" + area.getText().length() + " 字符）"
-                : "复制失败：剪贴板不可用"));
+        copy.setOnAction(event -> copyText(area.getText(), "当前视图"));
         clear.setId(CLEAR_ID);
         clear.setOnAction(event -> {
             LogCapture.buffer().clear();
@@ -233,7 +241,46 @@ public final class LogPanel {
                 + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
                 + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
                 + "-fx-text-fill: " + Palette.FOREGROUND + ";");
+        // 【为什么要有右键菜单（2026-10-16 真机反馈）】JavaFX 里**非可编辑**的 TextArea
+        // 没有默认右键菜单（默认菜单只给可编辑控件）—— 用户在日志区右键复制不出来，只能靠上面那个按钮。
+        MenuItem copySelected = new MenuItem("复制选中（没有选中则复制全部）");
+        copySelected.setId(COPY_SELECTED_MENU_ID);
+        copySelected.setOnAction(event -> copyText(textToCopy(area.getSelectedText(), area.getText()), "选中"));
+        MenuItem copyAllItem = new MenuItem("复制全部");
+        copyAllItem.setId(COPY_ALL_MENU_ID);
+        copyAllItem.setOnAction(event -> copyText(area.getText(), "全部"));
+        MenuItem selectAll = new MenuItem("全选");
+        selectAll.setOnAction(event -> area.selectAll());
+        area.setContextMenu(new ContextMenu(copySelected, copyAllItem, new SeparatorMenuItem(), selectAll));
+        // 顺手让 Ctrl/Cmd+C 也能用（非可编辑控件同样不响应）
+        area.setOnKeyPressed(event -> {
+            if (event.isShortcutDown() && event.getCode() == KeyCode.C) {
+                copyText(textToCopy(area.getSelectedText(), area.getText()), "选中");
+                event.consume();
+            }
+        });
         VBox.setVgrow(area, Priority.ALWAYS);
+    }
+
+    /**
+     * 该复制哪段：**有选中就复制选中**，否则整段。
+     *
+     * @param selected 选中的文本（可能为空）
+     * @param all      全部文本
+     * @return 要写入剪贴板的文本
+     */
+    static String textToCopy(String selected, String all) {
+        if (selected != null && !selected.isEmpty()) {
+            return selected;
+        }
+        return all == null ? "" : all;
+    }
+
+    /** 写剪贴板 + 在工具栏给一句反馈（复制成功/失败都要有回声）。 */
+    private void copyText(String text, String what) {
+        stats.setText(Clipboards.copy(text)
+                ? "已复制" + what + "（" + text.length() + " 字符）"
+                : "复制失败：剪贴板不可用");
     }
 
     /**

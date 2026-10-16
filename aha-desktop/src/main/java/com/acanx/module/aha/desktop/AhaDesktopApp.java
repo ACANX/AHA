@@ -12,6 +12,9 @@ import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
+import com.acanx.module.aha.core.update.UpdatePaths;
+import com.acanx.module.aha.core.update.UpdateResult;
+import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
 import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
@@ -24,6 +27,7 @@ import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.UpgradePane;
 import com.acanx.module.aha.desktop.view.SystemTheme;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopSettings;
@@ -129,6 +133,58 @@ public final class AhaDesktopApp extends Application {
      * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
      * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
      */
+    /**
+     * 打开设置面板，并把**装载失败**说给用户听。
+     *
+     * <p>为什么要兜：设置面板的 FXML 是「点了才装载」，失败时抛在 JavaFX 线程上 ——
+     * 用户的体验是「点了设置，什么都没发生」。而原生镜像下的装载失败（反射 / 资源类）
+     * 恰恰只会在**运行期**暴露，编译与 JVM 冒烟都看不见（2026-10-16 真机自测）。</p>
+     *
+     * @param shell 壳（把提示写进消息流）
+     * @param open  打开动作
+     */
+    private static void openSettingsSafely(DesktopShell shell, Runnable open) {
+        try {
+            open.run();
+        } catch (RuntimeException failure) {
+            LOG.warn("设置面板打不开", failure);
+            shell.appendNotice("设置面板打不开：" + failure.getMessage()
+                    + "（详情见日志；可先直接改 ~/.aha/settings.properties）");
+        }
+    }
+
+    /**
+     * 上次换装收尾结果 → 一句话（没有可说的返回 {@code null}）。
+     *
+     * <p>结论文案交给 {@link UpdateResult#summary()}（界面不自己拼），这里只补两件它不知道的事：
+     * ① 成功但计划里没有可用拉起命令时，helper 会把「请手动启动」写进 {@code reason}；
+     * ② 写了计划、helper 却没自报启动（回执也不存在）—— 这一条以前是**静默**的
+     * 「App 关了、什么都没发生」。</p>
+     *
+     * @param report 启动收尾报告
+     * @return 给用户看的一句话；无需提示时为 {@code null}
+     */
+    static String startupNotice(UpdateService.StartupReport report) {
+        if (report.result().isPresent()) {
+            UpdateResult result = report.result().get();
+            String extra = result.ok() && result.reason() != null && !result.reason().isBlank()
+                    ? "（" + result.reason() + "）" : "";
+            return "上次换装结果：" + result.summary() + extra + "（日志：~/.aha/update/update.log）";
+        }
+        if (report.swapInFlight()) {
+            return "上次换装可能还在进行（暂存与备份本次不动，也不动它的计划文件）；"
+                    + "换装结束后下次启动会给出结果。";
+        }
+        if (report.helperNeverRan()) {
+            return "上次写过换装计划，但换装程序没有启动 —— 可能被安全策略拦下了，"
+                    + "也可能只是「只暂存没执行」；安装目录未改动。";
+        }
+        if (report.warning() != null) {
+            return "启动收尾有情况：" + report.warning();
+        }
+        return null;
+    }
+
     private static void logRenderingDiagnostics() {
         LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
                 property("prism.order"), property("prism.lcdtext"), property("prism.text"),
@@ -232,6 +288,20 @@ public final class AhaDesktopApp extends Application {
         DesktopShell shell = new DesktopShell(dispatcher, stage::close, this::configSummary);
         shell.setConfigSummary(configSummary());
 
+        // 上次换装的收尾（2026-10-16 审查 P1-5）：**读回执** + 清理暂存与旧备份。
+        // 为什么必须有这段：这两件事此前在生产代码里没有任何调用点 —— 回执从不展示
+        // （升级成功/失败/已回滚用户都不知道）、`pkg.zip` 与解包副本永不清理（每次升级或
+        // 失败白占 50–110 MB）、`Update.BackupKeep` 成了死配置。
+        // 放虚拟线程上做（可能要删上百 MB），结果回界面线程显示。
+        Thread.ofVirtual().name("aha-update-startup").start(() -> {
+            UpdateService.StartupReport report = new UpdateService(UpdatePaths.defaultPaths())
+                    .onStartup(UpdateService.runningVersion(), settings.backupKeep());
+            String notice = startupNotice(report);
+            if (notice != null) {
+                dispatcher.dispatch(() -> shell.appendNotice(notice));
+            }
+        });
+
         // Agent 服务：与 CLI 用同一个工厂、同一份配置；工具授权走桌面端弹窗
         DesktopToolApprover approver = new DesktopToolApprover(
                 (toolName, permission, arguments, alreadyAllowed) -> askApproval(
@@ -278,12 +348,24 @@ public final class AhaDesktopApp extends Application {
                 LOG.info("系统配色变化，跟随系统主题生效：{}", resolved.label());
             }
         });
-        shell.onOpenSettings(() -> new SettingsDialog(
-                settings,
-                this::configSummary,
-                () -> shell.openProviderDialogForSettings(),
-                shell::applyTheme,
-                shell::fontSize).show(stage));
+        // 设置面板（两个 tab：界面 / 升级）。升级 tab 的换装动作要**主动退出**进程——
+        // 正在运行的进程换不掉自己的文件（issue #51 §4.5）：由它拉起 helper，然后退出，
+        // 剩下的交给 helper（等本进程退出 → 替换 → 自证 → 重新拉起 → 写回执）。
+        UpgradePane upgradePane = new UpgradePane(settings, dispatcher, () -> {
+            // 真正给用户看的提示在升级页的状态行上（"正在替换并重启…"）；这里再 append 一条
+            // 只会随着 System.exit 一起消失，改为只留日志（2026-10-16 第二轮审查 P3）。
+            LOG.info("换装已拉起，正在退出：~/.aha/update/update.log");
+            stage.close();
+            System.exit(0);
+        }, null);
+        SettingsDialog settingsDialog = new SettingsDialog(settings, this::configSummary,
+                () -> shell.openProviderDialogForSettings(), shell::applyTheme, shell::fontSize,
+                upgradePane);
+        // 装载失败不要在 JavaFX 线程上抛未捕获异常（那样用户点「设置」只会「什么也没发生」）——
+        // 2026-10-16 真机自测就撞到过：FXML 里一个枚举属性让原生镜像装载失败，界面上一点提示都没有。
+        // 现在兜住并把原因说出来（完整栈仍在日志里）。
+        shell.onOpenSettings(() -> openSettingsSafely(shell, () -> settingsDialog.show(stage)));
+        shell.onCheckUpdate(() -> openSettingsSafely(shell, () -> settingsDialog.showUpgradeTab(stage)));
 
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),

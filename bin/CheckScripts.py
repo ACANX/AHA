@@ -48,6 +48,14 @@
     且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
     ——静默且难查。把它们钉在一起，漂移立刻可见。
 
+  通道契约：三处实现的一致性（issue #51 §8.3）
+    - 「通道 ↔ tag ↔ 资产名」的规则在本仓库已行三处实现：两套 PowerShell 脚本
+      （`UpdateJvm.ps1` / `UpdateNative.ps1`）、一套 Python 脚本、
+      以及 Java 侧的 `ChannelContract.java` + `UpdateKind.java`。
+      Java 这一处是新增的（issue #51 的服务层），不加守卫必然漂移。
+    - 钉的是**契约片段本身**（如 `NATIVE_TAG_INFIX + kind.tagSuffix()`），
+      而不是拼接后的整串：把中缀换到别处再拼出同样的结果也应该被看出来。
+
   发行包形态：两条线都必须是「包根平铺」（issue #218 / #217）
     - 装配描述符里**不许**再有 `dependencySet`（依赖全在单体 jar 里）、
       `fileSet` 的输出目录**不许**是 `bin/` 或 `lib/`、单体 jar 的 `destName`
@@ -100,6 +108,21 @@ TRACKED_SCRIPT_DIRS = ("Dist",)
 #: 原生取件的两套实现：命名契约必须一致（见模块 docstring）
 NATIVE_PS1 = ROOT / "Dist" / "UpdateNative.ps1"
 NATIVE_PY = ROOT / "Script" / "Python" / "NativeVersionUpdate.py"
+
+#: 通道契约的第三处实现（Java，issue #51 §2.1）：一个覆盖四条出包线的统一表。
+JVM_PS1 = ROOT / "Dist" / "UpdateJvm.ps1"
+JAVA_UPDATE_DIR = ROOT / "aha-core" / "src" / "main" / "java" / "com" / "acanx" / "module" / "aha" / "core" / "update"
+JAVA_KINDS = JAVA_UPDATE_DIR / "UpdateKind.java"
+JAVA_CHANNEL_CONTRACT = JAVA_UPDATE_DIR / "ChannelContract.java"
+
+#: Java 枚举常量：`DESKTOP_JVM("Desktop-JVM", "aha-desktop-", true, false),`
+JAVA_KIND_RE = re.compile(
+    r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*(true|false),\s*(true|false)\)', re.M)
+JAVA_CONST_RE = re.compile(r'\b([A-Z_]{3,})\s*=\s*"([^"]+)"')
+
+#: `Dist/UpdateJvm.ps1`：`$TagSuffix = '-aha-jvm'` 与 `Prefix = 'aha-desktop-'`。
+PS_JVM_TAG_RE = re.compile(r"\$TagSuffix\s*=\s*'([^']+)'")
+PS_JVM_PREFIX_RE = re.compile(r"Prefix\s*=\s*'([^']+)'")
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
 SNAPSHOT_ASSERT_WORKFLOW = ROOT / ".github" / "workflows" / "SnapshotAssert.yml"
@@ -140,6 +163,25 @@ FATJAR_POMS = {
 }
 #: 单体 jar 的落地名：**去版本号**，启动脚本与用户命令都写死这个名字（换版本不用改）
 FLAT_JAR_NAME = {"cli": "aha-cli.jar", "desktop": "aha-desktop.jar"}
+
+#: 换装 helper（issue #51 §4.5）的 Java 侧常量位置：文件名与「已启动」标记的**唯一来源**
+JAVA_UPDATE_LAUNCHER = JAVA_UPDATE_DIR / "UpdateLauncher.java"
+JAVA_UPDATE_PATHS = JAVA_UPDATE_DIR / "UpdatePaths.java"
+PS_APPLY_UPDATE = ROOT / "Dist" / "AhaApplyUpdate.ps1"
+#: 必须把换装 helper 打进**包根**的两条发行线（缺一个，那条线的自更新就是死的）
+HELPER_PACKAGES = {
+    "桌面端 JVM（jar 便携包）": ASSEMBLY_DESCRIPTORS["desktop"],
+    "桌面端原生（单文件）": ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
+}
+#: 「作业里调用仓库脚本 ⇒ 该作业必须先 checkout」要认的解释器/入口
+REPO_SCRIPT_CALL_RE = re.compile(
+    r"\b(?:python3?|bash|sh|pwsh|powershell)\s+(?:-\S+\s+)*[\"']?(\.github/|bin/|Script/|Dist/)[\w./-]+"
+)
+#: YAML 键（`name:` / `uses:` / `with:` …）：剥掉 `- run:` 前缀后仍像键的，不可能是命令
+YAML_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]*:")
+JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+#: 「被忽略却被引用」的判定只看这几类**本该手写**的扩展名（产物不在其列）
+IGNORED_REF_SUFFIXES = {".cmd", ".bat", ".ps1", ".psm1", ".sh", ".py", ".md", ".txt"}
 #: 启动脚本：包根平铺形态下它们是 `java -jar <去版本号的 jar>`，不再有模块路径
 FLAT_LAUNCHERS = {
     "cli": (ROOT / "bin" / "AhaCli.sh", ROOT / "bin" / "AhaCli.bat"),
@@ -322,9 +364,39 @@ def check_ignored_sources() -> list[str]:
         if not entry:
             continue
         if "/src/" in entry or entry.endswith(".java"):
-            offenders.append(entry)
-    return [f"源码文件被 .gitignore 忽略了（git 不会报错，只有 CI 会发现）：{path}"
-            for path in offenders]
+            offenders.append(f"源码文件被 .gitignore 忽略了（git 不会报错，只有 CI 会发现）：{entry}")
+            continue
+        # 非源码：如果它被装配描述符或工作流**按名字引用**，同样是致命组合 ——
+        # 本地的文件掩盖了「CI 上根本没有这个文件」这件事（`Dist/apply-update.cmd` 实测踩过）。
+        # 只看「本该手写」的那几类文件，且排除 __pycache__ 之类的运行时垃圾；
+        # 产物（target/classes/module-info.class 这种）不在其列。
+        if not entry.startswith(("Dist/", "Script/", "bin/")) or "__pycache__" in entry:
+            continue
+        if Path(entry).suffix.lower() not in IGNORED_REF_SUFFIXES:
+            continue
+        base = Path(entry).name
+        for referenced_by, text in _referencing_texts():
+            if re.search(r"(?<![\w.-])" + re.escape(base) + r"(?![\w.-])", text):
+                offenders.append(
+                    f"{entry} 被 .gitignore 忽略，却被 {referenced_by} 引用 —— "
+                    "本地看得见、CI 上不存在，打出来的包里会缺东西"
+                )
+                break
+    return offenders
+
+
+def _referencing_texts() -> list[tuple[str, str]]:
+    """会「按名字引用仓库文件」的文本：装配描述符 + 工作流 + Dist 下的手写脚本。"""
+    candidates = list(ASSEMBLY_DESCRIPTORS.values()) + [
+        ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
+    ]
+    candidates += sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    candidates += sorted((ROOT / "Dist").glob("*.ps1"))
+    texts: list[tuple[str, str]] = []
+    for path in candidates:
+        if path.exists():
+            texts.append((str(path.relative_to(ROOT)), path.read_text(encoding="utf-8", errors="replace")))
+    return texts
 
 
 XML_COMMENT = re.compile(r"<!--(.*?)-->", re.S)
@@ -505,6 +577,99 @@ def check_native_update_parity() -> list[str]:
 
 
 SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def check_release_channel_contract() -> list[str]:
+    """通道 ↔ tag ↔ 资产名的契约在 PowerShell / Python / Java 三处必须逐字一致（issue #51 §8.3）。
+
+    这是本仓库第三次（也是头一次用 Java）实现「从发布页挑包」的规则：
+    `Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`（PowerShell）、
+    `Script/Python/NativeVersionUpdate.py`（Python）、`ChannelContract.java` + `UpdateKind.java`（Java）。
+    规则一旦漂移，表现是「某个通道 / 平台上永远取不到包」—— 静默且难查，所以钉在这里。
+
+    钉的是**契约片段本身**，不是拼接后的整串：Java 把原生 tag 拼成
+    `NATIVE_TAG_INFIX + kind.tagSuffix()`，所以这里比的是「中缀 + 目标词」与另外两处的字面量相等，
+    这样改任一侧都会被拦下（只钉拼接结果的话，把中缀拆到别处就检不出来了）。
+    """
+    needed = (NATIVE_PS1, NATIVE_PY, JVM_PS1, JAVA_KINDS, JAVA_CHANNEL_CONTRACT)
+    if not all(path.exists() for path in needed):
+        # 与 check_native_update_parity 同口径：文件还没到位（例如在老分支上跑）时不误报。
+        return []
+    problems: list[str] = []
+
+    py = {m.group(1).lower(): m.groups()[1:]
+          for m in PY_KIND_RE.finditer(NATIVE_PY.read_text(encoding="utf-8"))}
+    ps = {m.group(1).lower(): m.groups()[1:]
+          for m in PS_KIND_RE.finditer(NATIVE_PS1.read_text(encoding="utf-8-sig"))}
+    java_kinds = {m.group(1): m.groups()[1:]
+                  for m in JAVA_KIND_RE.finditer(JAVA_KINDS.read_text(encoding="utf-8"))}
+    java_consts = dict(JAVA_CONST_RE.findall(JAVA_CHANNEL_CONTRACT.read_text(encoding="utf-8")))
+    if not py or not ps or not java_kinds or "JVM_TAG_SUFFIX" not in java_consts:
+        return [
+            "通道契约的三处一致性检查没能解析出契约："
+            f"Python 侧 {sorted(py)} / PowerShell 侧 {sorted(ps)} / Java 侧 {sorted(java_kinds)}；"
+            "请确认三处仍是可识别的写法（KINDS 表 / $kinds 表 / UpdateKind 枚举常量）"
+        ]
+
+    # ── ① 原生线：tag 后缀、资产前缀三处逐字一致 ──────────────────────────────
+    native_infix = java_consts.get("NATIVE_TAG_INFIX")
+    for key in sorted(set(py) | set(ps)):
+        if key not in py or key not in ps:
+            problems.append(f"通道契约：原生种类 {key!r} 在 Python / PowerShell 中不是两边都有")
+            continue
+        py_tag, py_prefix = py[key][0], py[key][1]
+        ps_tag, ps_prefix = ps[key][0], ps[key][1]
+        if py_tag != ps_tag or py_prefix != ps_prefix:
+            problems.append(
+                f"通道契约：原生种类 {key!r} 的 Python 与 PowerShell 不一致——"
+                f"tag {py_tag!r} vs {ps_tag!r}，前缀 {py_prefix!r} vs {ps_prefix!r}")
+        java_kind = next(((name, value) for name, value in java_kinds.items()
+                          if value[1] == py_prefix and value[3] == "true"), None)
+        if java_kind is None:
+            problems.append(
+                f"通道契约：原生资产前缀 {py_prefix!r} 在 Java 的 UpdateKind 里找不到对应的原生常量"
+                "（挑的是 nativeImage=true 且 assetPrefix 相同的那一个）")
+            continue
+        java_name, java_kind_value = java_kind
+        if native_infix is None or f"{native_infix}{java_kind_value[0].lower()}" != py_tag:
+            problems.append(
+                f"通道契约：原生 tag 在 Java（{java_name}）拼成 "
+                f"{native_infix!r}+{java_kind_value[0].lower()!r}，"
+                f"而 Python / PowerShell 写的是 {py_tag!r}；这会让原生取件永远找不到包")
+
+    # ── ② JVM 线：tag 后缀与两个资产前缀 ────────────────────────────────────
+    jvm_ps1_text = JVM_PS1.read_text(encoding="utf-8-sig")
+    ps_native_text = NATIVE_PY.read_text(encoding="utf-8")
+    jvm_tag = PS_JVM_TAG_RE.search(jvm_ps1_text)
+    if jvm_tag is None:
+        problems.append("通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffix`，无法与 Java 对齐")
+    elif jvm_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+        problems.append(
+            f"通道契约：dev 线 JVM tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {jvm_tag.group(1)!r}，"
+            f"Java 侧 JVM_TAG_SUFFIX 是 {java_consts.get('JVM_TAG_SUFFIX')!r}")
+    ps_prefixes = set(PS_JVM_PREFIX_RE.findall(jvm_ps1_text))
+    for name in ("DESKTOP_JVM", "CLI_JVM"):
+        if name not in java_kinds:
+            problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {name}")
+            continue
+        java_prefix = java_kinds[name][1]
+        if java_prefix not in ps_prefixes:
+            problems.append(
+                f"通道契约：JVM 线资产前缀 {java_prefix!r}（Java 侧 {name}）"
+                f"没出现在 `Dist/UpdateJvm.ps1` 的前缀表里（实际：{sorted(ps_prefixes)}）")
+
+    # ── ③ JDK 段与扩展名：三处一致 ────────────────────────────────────────
+    jdk_infix = java_consts.get("JDK_INFIX")
+    zip_suffix = java_consts.get("ZIP_SUFFIX")
+    if jdk_infix != "-jdk":
+        problems.append(f"通道契约：Java 侧 JDK 段应是 '-jdk'，实际 {jdk_infix!r}")
+    if zip_suffix != ".zip":
+        problems.append(f"通道契约：Java 侧扩展名应是 '.zip'，实际 {zip_suffix!r}")
+    if jdk_infix and f"{jdk_infix}{{jdk}}" not in ps_native_text:
+        problems.append(
+            f"通道契约：Python 侧资产名里应能看到 `{jdk_infix}{{jdk}}`（JDK 段），"
+            "否则原生包的 JDK 段只剩 Java 一处约定")
+    return problems
 
 
 def maybe_scannable_files():
@@ -1156,6 +1321,157 @@ def check_yaml_input_bool_compare(path: Path) -> list[str]:
     return problems
 
 
+def check_update_helper_packaging() -> list[str]:
+    """换装 helper 必须**真的在包里、也真的在仓库里**（issue #51 §4.5，2026-10-16 审查 P0）。
+
+    来历：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉，`git add -A` 静默跳过、
+    `git status` 干净 —— 于是打出来的包里没有它，应用内升级在「复制 helper」这一步必然失败，
+    而每一道门禁都是绿的：
+
+      * `maven-assembly` 对匹配不到的 `<include>` **静默跳过**，不报错；
+      * 单测在 `@TempDir` 里自己造 helper，测不到「真包里有不有」；
+      * 文件级守卫只扫 git 跟踪的文件，被忽略的文件对它**不存在**。
+
+    因此这里把三件事钉死：① 两条发行线的装配描述符都必须收 helper；
+    ② helper 必须存在**且被 git 跟踪**；③ helper 写「已启动」标记的名字与 Java 侧逐字一致
+    （App 拉起 helper 后要等这个标记才敢退出，名字漂移就会永远等不到）。
+    """
+    problems: list[str] = []
+    if not JAVA_UPDATE_LAUNCHER.exists():
+        return [f"缺 {JAVA_UPDATE_LAUNCHER.relative_to(ROOT)}（换装 helper 的常量来源）"]
+
+    java = JAVA_UPDATE_LAUNCHER.read_text(encoding="utf-8")
+    names: dict[str, str] = {}
+    for const in ("WINDOWS_ENTRY", "WINDOWS_SCRIPT", "POSIX_ENTRY"):
+        match = re.search(rf'public static final String {const}\s*=\s*"([^"]+)"', java)
+        if not match:
+            problems.append(f"{JAVA_UPDATE_LAUNCHER.relative_to(ROOT)}：找不到常量 {const}")
+        else:
+            names[const] = match.group(1)
+    if problems:
+        return problems
+
+    # ① 两条发行线都要把它们铺到包根
+    for label, descriptor in HELPER_PACKAGES.items():
+        rel = descriptor.relative_to(ROOT)
+        if not descriptor.exists():
+            problems.append(f"缺装配描述符 {rel}（{label}）")
+            continue
+        try:
+            tree = ElementTree.parse(descriptor)
+        except ElementTree.ParseError as exc:
+            problems.append(f"{rel}：XML 解析失败（{exc}）")
+            continue
+        included: set[str] = set()
+        for file_set in tree.findall(".//a:fileSet", ASSEMBLY_NS):
+            directory = (file_set.findtext("a:directory", default="", namespaces=ASSEMBLY_NS) or "")
+            if not directory.rstrip("/").endswith("Dist"):
+                continue
+            included.update((node.text or "").strip()
+                            for node in file_set.findall("a:includes/a:include", ASSEMBLY_NS))
+        for helper in (names["WINDOWS_ENTRY"], names["WINDOWS_SCRIPT"]):
+            if helper not in included:
+                problems.append(
+                    f"{rel}：没有把换装 helper {helper!r} 打进包（{label} 的自更新会在"
+                    f"「复制 helper」那一步失败）。现状：Dist 文件集里只有 {sorted(included) or '无'}"
+                )
+
+    # ② helper 必须存在且被 git 跟踪（被忽略时，① 照样能过 —— 它只看配置）
+    for helper in (names["WINDOWS_ENTRY"], names["WINDOWS_SCRIPT"]):
+        path = ROOT / "Dist" / helper
+        rel = path.relative_to(ROOT)
+        if not path.exists():
+            problems.append(f"缺换装 helper {rel}（装配描述符引用了它，磁盘上却没有）")
+            continue
+        tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "--", str(rel)],
+                                 cwd=ROOT, capture_output=True, text=True, check=False)
+        if tracked.returncode != 0:
+            problems.append(
+                f"{rel} 没有被 git 跟踪（多半被 .gitignore 的 `Dist/*` 吃掉了）——"
+                "CI 上不存在这个文件，打出来的包里也没有它，而本地每道门禁都是绿的"
+            )
+
+    # ③ 换装「已启动」标记名：Java 侧与 PowerShell 侧必须逐字一致
+    if JAVA_UPDATE_PATHS.exists() and PS_APPLY_UPDATE.exists():
+        paths_java = JAVA_UPDATE_PATHS.read_text(encoding="utf-8")
+        match = re.search(r'String\s+\w*(?:STARTED|MARKER)\w*\s*=\s*"([^"]+)"', paths_java)
+        if not match:
+            problems.append(
+                f"{JAVA_UPDATE_PATHS.relative_to(ROOT)}：找不到换装「已启动」标记常量"
+                "（App 拉起 helper 后要靠它判断 helper 是否真的起来了）"
+            )
+        elif match.group(1) not in PS_APPLY_UPDATE.read_text(encoding="utf-8"):
+            problems.append(
+                f"换装「已启动」标记名不一致：Java 侧 {match.group(1)!r} 没有出现在 "
+                f"{PS_APPLY_UPDATE.relative_to(ROOT)}（App 会永远等不到标记而不敢退出）"
+            )
+    return problems
+
+
+def check_repo_script_steps_have_checkout() -> list[str]:
+    """作业里调用**仓库内**脚本 ⇒ 该作业必须先 checkout（2026-10-16 CI 实测）。
+
+    来历：给 `native-publish` / `cli-native-publish` / `build-publish` 加「生成 SHA256SUMS」
+    步骤（调用 `.github/Python/PackageManifest.py`），但这三个作业只下载制品、**不检出仓库**，
+    于是 CI 报 `can't open file '.../PackageManifest.py': [Errno 2] No such file or directory`。
+    本地复现不出来（本地永远有工作区），所以钉成守卫。
+    """
+    problems: list[str] = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        rel = path.relative_to(ROOT)
+        blocks: list[tuple[str, list[str]]] = []
+        current_name: str | None = None
+        current: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = JOB_HEADER_RE.match(line)
+            if match:
+                if current_name is not None:
+                    blocks.append((current_name, current))
+                current_name, current = match.group(1), [line]
+            elif current_name is not None:
+                current.append(line)
+        if current_name is not None:
+            blocks.append((current_name, current))
+
+        for name, block in blocks:
+            body = "\n".join(block)
+            if "actions/checkout" in body:
+                continue
+            for line in block:
+                # 【为什么要剥前缀（2026-10-16 第二轮审查 P2-⑥）】
+                # 以前直接跳过以 `run:` 开头的行 —— 于是**单行** `run: python3 …` 这种调用
+                # 完全看不见（注进去验证过：漏报）。反过来，`echo "… python3 bin/CheckDocs.py …"`
+                # 会被误报成调用。所以：剥掉 `- run:` / `run:` 前缀后只看命令本身，
+                # 并排除 shell 的「只喊不做」（echo / printf / :）。
+                text = _strip_yaml_step_prefix(line.strip())
+                if not text or text.startswith(("#", "echo ", "printf ", ": ")):
+                    continue
+                if YAML_KEY_RE.match(text):
+                    continue
+                if REPO_SCRIPT_CALL_RE.search(text):
+                    problems.append(
+                        f"{rel}：作业 {name} 调用了仓库内脚本但**没有 `actions/checkout`**"
+                        f"（{text[:60]}）—— CI 上找不到脚本，本地却永远正常"
+                    )
+                    break
+    return problems
+
+
+def _strip_yaml_step_prefix(stripped: str) -> str:
+    """把 `- run: …` / `run: …` 的 YAML 前缀剥掉，只留下要执行的命令文本。
+
+    @param stripped 已 strip 过的一行
+    @return 命令文本；这行不是命令时原样返回
+    """
+    text = stripped
+    if text.startswith("- "):
+        text = text[2:].strip()
+    if text.startswith("run:"):
+        text = text[len("run:"):].strip()
+    # `run: |` / `run: >` 这种块头本身就是命令文本（后续行另计）
+    return "" if text in ("|", ">", "|-", ">-", "|+", ">+") else text
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AHA 脚本文件规约检查")
     parser.add_argument("--verbose", action="store_true", help="输出每个文件的检查结果")
@@ -1194,6 +1510,8 @@ def main() -> int:
     problems.extend(ignored)
     parity = check_native_update_parity()
     problems.extend(parity)
+    channel = check_release_channel_contract()
+    problems.extend(channel)
     snap_parity = check_snapshot_fetch_parity()
     problems.extend(snap_parity)
     snapshot = check_snapshot_manifest()
@@ -1202,6 +1520,10 @@ def main() -> int:
     for path in groups["yml"]:
         input_compare.extend(check_yaml_input_bool_compare(path))
     problems.extend(input_compare)
+    helper_pkg = check_update_helper_packaging()
+    problems.extend(helper_pkg)
+    checkout = check_repo_script_steps_have_checkout()
+    problems.extend(checkout)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
@@ -1212,8 +1534,11 @@ def main() -> int:
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
+    print(f"检查通道契约三处（PowerShell / Python / Java）一致：{'❌' if channel else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
+    print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
     if problems:
         print("\n[问题]")
