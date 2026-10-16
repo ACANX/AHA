@@ -4,9 +4,9 @@
 > 标题：实现 POSIX 的换装 helper（`apply-update.sh`），让 Linux / macOS 也能应用内升级
 > 状态：⏳ 待做（**触发条件**：有人要在 Linux / macOS 上用应用内升级）
 > 跟踪 Issue 状态：**OPEN**
-> 跟踪 Issue：[#51](https://github.com/ACANX/AHA/issues/51)
+> 跟踪 Issue：[#250](https://github.com/ACANX/AHA/issues/250)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-16（原载体 [#51](https://github.com/ACANX/AHA/issues/51) 已随 PR #243 交付后关闭；本单转由 [#250](https://github.com/ACANX/AHA/issues/250) 跟踪）
 
 ---
 

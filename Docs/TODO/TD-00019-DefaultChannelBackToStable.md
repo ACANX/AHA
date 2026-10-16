@@ -4,9 +4,9 @@
 > 标题：首个带资产的正式发版落地后，把应用内升级的默认通道从 `Beta` 改回 `Stable`
 > 状态：⏳ 待做（**触发条件明确**：release 页出现带资产的 `V<x.y.z>`）
 > 跟踪 Issue 状态：**OPEN**
-> 跟踪 Issue：[#51](https://github.com/ACANX/AHA/issues/51)
+> 跟踪 Issue：[#252](https://github.com/ACANX/AHA/issues/252)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-16（原载体 [#51](https://github.com/ACANX/AHA/issues/51) 已随 PR #243 交付后关闭；本单转由 [#252](https://github.com/ACANX/AHA/issues/252) 跟踪）
 
 ---
 
