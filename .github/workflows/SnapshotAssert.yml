@@ -1,4 +1,4 @@
-name: Snapshot Assert
+name: SnapshotAssert
 
 # 把「某 PR 的快照自测通过」记成一条 commit status（`context = snapshot-assert`）。issue #166。
 #
