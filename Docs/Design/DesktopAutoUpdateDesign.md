@@ -1,0 +1,227 @@
+# 桌面端应用内升级设计
+
+> **文档版本**：v1.0.0
+> **状态**：生效（Windows 侧已实现；Linux / macOS 的应用内升级**后置**，见 §1 边界）
+> **生效日期**：2026-10-16
+> **最后更新**：2026-10-16
+> **负责人**：@ACANX
+> **适用版本**：AHA 0.2 起
+> **跟踪 Issue**：[#51](https://github.com/ACANX/AHA/issues/51)
+
+## 变更日志
+
+| 版本 | 日期 | 变更内容 | 变更人 |
+|---|---|---|---|
+| v1.0.0 | 2026-10-16 | 初版：需求映射、通道与契约、服务层职责、换装协议（计划文件 / helper）、界面与配置键、安全模型、**验证记录**（哪些已验、哪些待真人验） | @ACANX / CNXNC |
+
+---
+
+## 0. 本文定位
+
+| 文档 | 回答什么 |
+|---|---|
+| [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md) | 「原生镜像包怎么**手工一键取到本机**」（脚本工具，0.1.x 的既有能力） |
+| **本文** | 「**程序自己**怎么发现、下载、校验、替换并重启」（0.2 起的应用内升级） |
+| [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §3.4 / §3.5 | 发布资产与**通道契约**（tag / 资产名 / 清单 / 校验和）——本文只引用，不重复定义 |
+| [BuildSpec.md](../DevSpec/BuildSpec.md) §7.1 | 四条出包线怎么写清单与校验和 |
+
+两者是**互补**关系：脚本工具在「程序坏到起不来」时仍然能用（它只依赖 PowerShell / Python），
+应用内升级在「程序能起来」时更省事。任一方都不能替代另一方。
+
+## 1. 需求与边界
+
+需求（R1–R8）与决策（D1–D10）的完整记录在 issue [#51](https://github.com/ACANX/AHA/issues/51)，
+此处只列**边界**——凡是被明确排除的，都不要在实现里顺手加回来：
+
+- **不做增量更新**：只下整包（25–55 MB）。diff 的复杂度与失败面远大于收益；
+- **不做后台常驻 / 静默安装**：只在用户点「检查更新」或（可选）启动时**检查**；
+- **不做形态切换**（JVM 便携包 ↔ 原生单文件）：跨形态要处理运行时依赖差异，另立方案；
+- **不做系统级安装**（`jpackage` / 系统包管理器）：发行形态已定「便携包 + 原生单文件」（`ReleaseProcess.md` §3.3）；
+- **不提权、不改 PATH / 注册表 / 快捷方式**；
+- **Linux / macOS 的应用内升级本期不实现、不验证**：代码保持可编译、服务层跨平台无差别，
+  界面必须**明确写清**并给手动取件指引（§5.4）；
+- **不把 Alpha 当交付物**：快照包 7 天有效期，界面上必须写明。
+
+## 2. 通道与契约
+
+三通道（`stable` / `beta` / `alpha`）的 tag 形态、资产名、清单与校验和的定义**全部在**
+[ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §3.5；三处实现（PowerShell / Python / Java）
+的一致性由 `bin/CheckScripts.py` 的 `check_release_channel_contract()` 钉住。
+
+**默认通道暂定 `Beta`**（D9）：Stable 当前没有可下包。这条默认值的落实机制见 §6 的「缺键不写盘」，
+配套待办 [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)。
+
+## 3. 服务层（`aha-core`，无 JavaFX 依赖）
+
+落在 `com.acanx.module.aha.core.update`，桌面端与将来的 CLI 共用同一套实现（不做两套）：
+
+| 类 | 职责 | 关键约束 |
+|---|---|---|
+| `AhaVersion` / `ReleaseChannel` / `UpdateKind` / `ChannelContract` | 版本模型与通道契约 | 命名规则**只此一处**，双向（生成 + 解析） |
+| `PlatformTag` | `os.name` / `os.arch` → 平台标签 | 与「应用内升级是否实现」是**两个维度**，别混 |
+| `GitHubReleaseClient` / `ReleaseInfo` / `AssetInfo` / `ReleaseFilter` | 读发布页、按通道过滤 | 翻页上限 2 页；识别限流；**不重试**（重试放大限流） |
+| `AssetSelector` | 在**某一个版本自己的**资产里按「形态 → 平台 → JDK 轴」挑 | 挑不到**响亮报错并列出该版实际资产**，绝不退到旧版（issue #210 的教训） |
+| `PackageDownloader` / `PackageUnpacker` / `Checksums` | 下载、解包、校验和 | 先写 `.part` 再改名；只跟随白名单跳转；zip-slip 在解包处拦；**校验和不符不落地** |
+| `PackageManifest` | 包内清单解析与逐项核对 | 路径逃逸、大小或哈希不符一律拒绝 |
+| `UpdateService` | 把上面串成「发现 → 挑资产 → 下载 → 校验 → 解包 → 落暂存 → 写计划」 | **只落暂存、只写计划**，绝不自己替换文件 |
+| `UpdatePaths` / `StagingArea` / `UpdateLog` / `UpdatePlan` / `PathSafety` | 暂存、日志、计划 | 一切都在 `~/.aha/update/` 之下；计划里的路径必须绝对、动作路径必须落在安装根内 |
+| `InstallLayout` / `SwapPlan` | 安装根与形态判定、动作列表与备份/回滚 | **只动清单内文件**；两份清单都没有的一律不碰 |
+| `UpdateLauncher` / `UpdateResult` / `UpdateCommand` | 拉起 helper、回执、无界面入口 | helper 放 `~/.aha/update/`（它会自删，且不该出现在被替换的目录里） |
+
+## 4. 换装协议
+
+### 4.1 为什么必须由外部 helper 完成
+
+正在运行的进程**不能可靠地替换自己的文件**：Windows 上被使用的 `.exe` / `.jar` 通常被占用；
+即便改名成功，也只剩「下次启动才生效」的半程。所以顺序固定为：
+
+| 步 | 谁做 | 做什么 |
+|---|---|---|
+| 1 | App | 备好暂存、算动作、写 `update-plan.json`、把 helper 复制到 `~/.aha/update/` |
+| 2 | App | **脱离式**拉起 helper（Windows `cmd /c start "" /b …`；POSIX `sh -c 'nohup … &'`） |
+| 3 | App | 界面显示「正在替换并重启…」后**主动退出** |
+| 4 | helper | 等 App 退出（轮询 pid，超时 60s）→ **备份 → 替换 → 逐文件按清单哈希自证** → 重新拉起 → 写回执 → 自删（best-effort） |
+| 5 | helper | 任一步失败 ⇒ 用备份**回滚**，写 `ok:false` 回执，**仍然尝试拉起旧版本** |
+| 6 | 下次启动的 App | 读回执（**读完即消费**）：成功静默，失败弹窗并指向 `update.log` |
+
+### 4.2 `update-plan.json` 字段（App 与 helper 之间唯一的接口）
+
+| 字段 | 含义 |
+|---|---|
+| `version` | 目标版本 |
+| `installRoot` | 安装根（绝对路径） |
+| `packageRoot` | 解压后的新包目录（绝对路径）—— helper 从这里拷文件 |
+| `backupDir` | 备份目录（绝对路径） |
+| `pid` | App 进程号（helper 据此等它退出） |
+| `restart` | 换装成功后拉起 App 的命令（绝对路径） |
+| `actions[]` | `{path, kind}`；`kind` ∈ `replace` / `delete`（delete 也是**移入备份**，不真删） |
+| `createdAt` | 计划生成时间（ISO-8601） |
+
+写计划前会校验：安装根 / 新包目录 / 备份目录 / 拉起命令必须绝对；动作路径必须落在安装根内
+（`PathSafety`，与包内清单共用同一套底线）。
+
+### 4.3 只动清单里的文件
+
+判定只看两份包内清单：新包清单里有 ⇒ `replace`；已装清单里有而新包没有 ⇒ `delete`；
+**两份都没有 ⇒ 一律不碰**。原因：`Dist/` 里除了构建产物还有**被跟踪的手写入口**
+（`UpdateJvm.ps1`、`Update*.cmd`、`README.commands.md`）以及用户自己放的东西，
+整个目录替换会误删。
+
+## 5. 界面
+
+### 5.1 设置改 TabPane
+
+设置面板分「界面」与「升级」两个 tab；「界面」tab 的内容是原有三块（主题 / 字号 / 默认模型），
+行为不变。「升级」tab 由 `UpgradePane` 程序化构建。
+
+### 5.2 控件 id（冒烟测试按它断言）
+
+`aha.settings.tab.interface` / `aha.settings.tab.upgrade` / `aha.upgrade.channel` /
+`aha.upgrade.current` / `aha.upgrade.check` / `aha.upgrade.list` / `aha.upgrade.status`，
+另有 `aha.upgrade.action`（升级 / 降级按钮）与 `aha.upgrade.progress`（进度条）。
+
+### 5.3 状态机
+
+```
+IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
+                                              │升级 / 降级
+                                              ▼
+                                        CONFIRM（降级必确认）
+                                              ▼
+                            DOWNLOADING ─▶ VERIFYING ─▶ STAGING ─▶ SWAPPING（退出中）
+                                  │
+                                  └─ 失败 ⇒ 可读错误 + 下一步（限流说「稍后再试」）
+```
+
+版本列表每一行回答：**这是什么版本**（标记 + 版本 + 时间）、**相对当前是升还是降**、
+**能不能用在本机**（缺本平台资产 ⇒ 灰显 + 悬浮说明原因）、**点下去会发生什么**（按钮文案）。
+空列表要分清三种原因：本通道没发过包 / 该平台形态没资产 / Alpha 已过期 —— **不能都写成「已是最新」**。
+
+### 5.4 平台在界面上的表达
+
+| 平台 | 检查更新 | 升级 / 降级 |
+|---|---|---|
+| Windows | ✅ | ✅（本期实现并验证） |
+| Linux / macOS | ✅（只读发布页，没有理由禁掉） | **置灰** + 手动取件指引（可手动下 `aha-desktop-<版本>-<平台>.zip`，或用 `Dist/` 的同族脚本） |
+
+原则：**不让用户点了才发现不行**；置灰必须配「怎么办」的替代动作。
+
+## 6. 配置键（`~/.aha/desktop.properties`）
+
+| 键 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `Update.Channel` | `stable` / `beta` / `alpha` | `beta`（**暂定**） | 缺键取默认、**不主动写盘** ⇒ 将来改回 `stable` 会惠及「从没选过该键」的安装 |
+| `Update.CheckOnStartup` | `true` / `false` | `false` | 启动只**检查**，不自动下载 |
+| `Update.AlphaAcknowledged` | `true` / `false` | `false` | 首次切到 Alpha 的一次性确认 |
+| `Update.BackupKeep` | 整数 | `2` | 保留备份份数（0–10） |
+| `Update.LastCheckAt` | ISO 时间 | — | 上次检查时间，**仅展示用，不参与决策** |
+
+实现要点（`DesktopSettings`）：只有**用户显式设过**的 `Update.*` 键才落盘；值写坏了不算「设过」。
+`ReleaseChannel.of` 对不认识的值返回默认通道而不是 `null`，所以读盘与命令行解析都必须**回头比一次 key**。
+
+## 7. 安全模型
+
+| 项 | 约定 |
+|---|---|
+| 白名单主机 | 只允许 `api.github.com`、`github.com`，以及资产 302 之后的 `objects.githubusercontent.com` |
+| 资产地址 | 初始地址必须匹配本仓库发布页前缀 |
+| 重定向 | **逐跳**校验主机（不满足即拒，不发出第二次请求） |
+| 不执行包内脚本 | helper 只按计划落文件；包里的任何脚本都不执行 |
+| 不接受任意 URL | 不支持用户自定义下载地址 |
+| 不提权 | 不请求管理员 / `sudo`；写不进去就报错并说明 |
+| 留痕 | 检查与换装写 `~/.aha/update/update.log`（版本、来源 tag、资产名、校验结果） |
+| 无遥测 | 除 GitHub 发布页外不发任何请求 |
+
+## 8. 验证记录
+
+> 口径：**未验证的不得写成已验证**。本节分两块——Agent 侧（可机器判别、离线）与
+> ACANX 侧（必须真人真机跑）。ACANX 侧的表格**留空待填**，填完这一节才算闭环。
+
+### 8.1 Agent 侧（已完成，可复跑）
+
+| 项 | 证据 |
+|---|---|
+| 版本模型与通道契约 | `AhaVersionTest` / `ChannelContractTest`（`./mvnw -pl aha-core test`） |
+| 发布页解析、限流识别、不重试 | `GitHubReleaseClientTest`（本机 mock 服务器；fixture 为真实响应投影） |
+| 挑资产与 #210 反例（缺本平台腿必须报错、不得退版） | `AssetSelectorTest` |
+| 下载 / 校验 / 解包 / 清单核对 | `PackageDownloaderTest`、`ChecksumsTest`、`PackageUnpackerTest`、`PackageManifestTest` |
+| 只动清单内文件、备份可还原 | `SwapPlanTest`（关键两条：手写文件不被删、回滚回到换装前） |
+| 计划与暂存 | `UpdatePlanTest`、`StagingAreaTest`、`PathSafety` 相关用例 |
+| 端到端（离线） | `UpdateServiceTest`：发现 → 挑资产 → 下载 → 校验 → 解包 → 清单核对；校验和不符**不落地** |
+| 命令行入口解析 | `UpdateCommandTest`（含「`--channel` 拼错必须报错」） |
+| 界面契约（控件 id / 两个 tab） | `AhaDesktopSmokeTest#settingsDialogHasBothTabsAndTheUpgradeControls`（`-Daha.ui.tests=true`） |
+| 配置键与「缺键不写盘」 | `DesktopSettingsTest` |
+| 出包契约（清单 / 校验和 / 三处一致） | `.github/Python/PackageManifest.py --self-test`（正 5 反 11）、`check_release_channel_contract()` |
+
+### 8.2 ACANX 侧（**待真人真机验**，逐条填结论）
+
+| # | 项 | 怎么做 | 期望 | 结论 |
+|---|---|---|---|---|
+| 1 | Windows 上真跑一次升级 | 装一个旧版（如 `V0.1.3.00241` 的包），设置 → 升级 → 选新版本 → 升级 | 程序自己退出、几十秒后重新起来，`关于`/启动横幅里的版本号变了 | ⏳ |
+| 2 | 失败注入①：校验和不符 | 把 `~/.aha/update/<版本>/pkg.zip` 手动改几个字节（或在网络中间截断），再点升级 | 报「校验和不符，已拒绝落地」，**正式文件不出现**，程序版本不变 | ⏳ |
+| 3 | 失败注入②：替换中途失败 | 让 helper 在替换时失败（例如把 `~/.aha/update/` 设成只读，或临时改计划里的动作路径） | 自动回滚，**旧版本仍能起来**，`update-result.json` 里 `ok:false` 且 `rolledBack:true` | ⏳ |
+| 4 | 运行中改名 / 覆盖的真实行为 | 在 App 运行时手工对 `aha-desktop.jar` / 原生 exe 做改名与覆盖 | 记录真实结果（决定 helper 是否必须等进程退出） | ⏳ |
+| 5 | helper 从 `~/.aha/update/` 自删是否可靠 | 升级完看目录 | 两个 helper 文件消失；若留下，记录现象 | ⏳ |
+| 6 | 重启后用户看到什么 | 升级成功与失败各看一次 | 成功静默（只写日志）；失败弹窗并指向 `update.log` | ⏳ |
+| 7 | 用户数据未被触碰 | 升级前后比对 `~/.aha/` 下非 `update/` 目录的 mtime | 无变化 | ⏳ |
+| 8 | 备份与回滚可用 | 升级后看 `~/.aha/update/backup/<旧版本>/`，再按 §4.1 手工回滚一次 | 备份含旧文件（含被新包删掉的文件），回滚后旧版本能起来 | ⏳ |
+| 9 | Windows 原生形态自更新 | 用 `AHA-Desktop-Native-…` 包走同一条路径 | 替换后能起来、版本正确、备份可回滚 | ⏳ |
+
+采集方式（把结论与原始输出贴进 PR 评论）：
+
+```bash
+# 日志（含检查 / 下载 / 解包 / 计划 / 回落结论）
+tail -50 ~/.aha/update/update.log
+# 回执（读完即消费：再启动一次就没了，先复制一份）
+cat ~/.aha/update/update-result.json
+# 备份内容
+find ~/.aha/update/backup -maxdepth 3 -type f | head -20
+```
+
+## 9. 与其它文档的关系
+
+- 通道 ↔ tag ↔ 资产名：**只有** [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §3.5 定义；
+- 出包线怎么写清单与校验和：**只有** [BuildSpec.md](../DevSpec/BuildSpec.md) §7.1 说明流程；
+- 工作流命名 / 权限 / 触发：**只有** [GitHubActionsSpec.md](../DevSpec/GitHubActionsSpec.md) 定义；
+- 手工取件脚本（另一条路）：[DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)；
+- 用户怎么用：[AppUpdateGuide.md](../Guide/AppUpdateGuide.md)。

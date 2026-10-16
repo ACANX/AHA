@@ -11,6 +11,14 @@
 ## [Unreleased]
 
 ### 新增
+- **桌面端应用内升级（issue #51，2026-10-16）**：设置面板里多一个「升级」tab，可选通道、检查更新、看版本列表、升级 / 降级；下载 → 校验 → 由外部 helper 换装 → 自动重启。
+  - **三通道**：`Stable`（正式发版，当前还没有带资产的正式发版）/ `Beta`（dev 最新合并，**默认**）/ `Alpha`（PR 试包，7 天有效期，首次切换需确认）；
+  - **契约只有一处**：通道 ↔ tag ↔ 资产名定义在 `ReleaseProcess.md` §3.5，PowerShell / Python / Java 三处实现逐字一致由守卫钉住；
+  - **不静默**：缺本平台资产时明确报错并列出该版本**实际资产**（不退到更旧版本）；「没有校验和」与「校验和不符」分开表达，后者**不落地**；降级要二次确认并提示用户数据不回滚；
+  - **换装由外部 helper 完成**（正在运行的进程换不掉自己的文件）：App 写计划 → 拉起 helper → 主动退出，helper 等它退出后备份 → 替换 → 逐文件按清单哈希自证 → 重新拉起 → 写回执；失败自动回滚并仍尝试拉起旧版本；
+  - 命令行兜底入口：`AhaDesktop.bat --update-to <版本> [--yes] [--check]`；
+  - **平台范围**：本期只实现并只验证 Windows；Linux / macOS 仍可检查更新，升级按钮置灰并给手动取件指引；
+  - 设计与验证记录：[Docs/Design/DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md)；用法：[Docs/Guide/AppUpdateGuide.md](Docs/Guide/AppUpdateGuide.md)。
 - **发布资产的两份契约文件（issue #51 §6，2026-10-16）**：四种包形态的每个 zip 现在都在**包根**带一份 [`AHA-PACKAGE.json`](Docs/DevSpec/ReleaseProcess.md)（`kind` / `version` / `platform` / `jdk` + 每个文件的 `path` / `sha256` / `size`），每个 release 都带 `SHA256SUMS`（每个 zip 一行）。
   - **为什么**：应用内升级要靠它知道「哪些文件属于这个包」「新包删掉了哪些旧文件」，并在解压后**逐文件**核对大小与哈希；发布页校验和则覆盖「下载是否被截断 / 传输是否被篡改」。
   - **只有一份实现**：`.github/Python/PackageManifest.py`（四条出包线都调它，避免各写一段 shell 后漂移 —— 漂移的表现是「某个通道的包永远校验不过」，静默且难查）；

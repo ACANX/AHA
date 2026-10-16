@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.28.0
+**文档版本**：v1.29.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
 | v1.28.0 | 2026-10-16 | 新增 §3.4「发布资产里的两份契约文件」：四种包形态的 zip 带包内清单 `AHA-PACKAGE.json`、每个 release 带 `SHA256SUMS`；生成/校验只有一份实现（`.github/Python/PackageManifest.py`），四条出包线都调它；`Release.yml` 新增收尾作业统一出完整校验和（issue #51 §6）| @ACANX / CNXNC |
 | v1.27.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.26.0 | 2026-10-16 | 新增 §2.3「部署前验证（非阻塞质量验证工作流）」：`PreDeployVerify.yml` 每次 PR 推送自动跑 + 手动触发，status `predeploy-verify`，留痕（对象/结论/执行人/时间/提交），**默认不进必需检查**（升级即加进 required）；与 §2.2 的分工一并写清（issue #166）| @ACANX / CNXNC |
@@ -413,6 +414,33 @@ unzip -p Dist/aha-desktop-0.1.3.00242-windows-amd64.zip AHA-PACKAGE.json | head 
 python3 .github/Python/PackageManifest.py verify --zip Dist/aha-desktop-0.1.3.00242-windows-amd64.zip
 python3 .github/Python/PackageManifest.py --self-test     # 正向 5 项 + 反向 11 项
 ```
+
+### 3.5 升级通道契约（三通道 ↔ tag ↔ 资产名）
+
+应用内升级（issue #51）按三个通道取包。**这张表是契约的唯一定义**；三处实现
+（`Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`、`Script/Python/NativeVersionUpdate.py`、
+Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致，由 `bin/CheckScripts.py` 的
+`check_release_channel_contract()` 钉住（改任一处漏改另一处，守卫会报出来）。
+
+| 通道 | 版本形态 | tag | 资产名 | 产出线 |
+|---|---|---|---|---|
+| **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| `aha-desktop-<版本>-<平台>.zip`（桌面端 JVM）、`aha-cli-<版本>.zip` | `Release.yml` |
+| **Beta** | `x.y.z.PPPPP` | JVM 线 `V<版本>-aha-jvm`；原生线 `V<版本>-aha-desktop-native` / `-aha-cli-native` | JVM 线同上（JDK 27 变体带 `-jdk27`）；原生线 `AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip` | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
+| **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<目标词>-SNAPSHOT` | `AHA-<目标词>-<快照版本>-<平台>-jdk<JDK>.zip` | 快照线（同上，7 天有效期） |
+
+配套口径（每一条都有对应的实现或守卫，不是口号）：
+
+1. **平台标签**只有三个：`windows-amd64` / `ubuntu-amd64` / `macos-arm64`（Windows ARM64 打不出包，
+   见 §3.2 的 OpenJFX 分类器限制）；
+2. **JDK 轴**：升级默认只取 JDK 25 变体（JVM 线资产名**不带** `-jdk` 后缀的那份）；`-jdk27` 是试验分支、
+   **不默认**；原生线与快照线**始终**带 `-jdk<JDK>`；
+3. **形态不可混升**：JVM 便携包只升 JVM 包，原生单文件只升原生包；
+4. **缺资产不退化**：某版本缺本平台的腿 ⇒ 明确报错并列出该版本**实际有哪些资产**，
+   **不得**退到更旧的版本（issue #210 的教训）；
+5. Stable 通道的 tag 形态与其余两条线的**预发行 tag 互不匹配**，因此正式发版不会被误当成 Beta；
+6. 桌面端的默认通道与配置键（`Update.Channel` 等）见
+   [DesktopAutoUpdateDesign.md](../Design/DesktopAutoUpdateDesign.md) §6；默认值改回 Stable 的触发条件
+   登记在 [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)。
 
 ---
 

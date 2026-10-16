@@ -113,6 +113,37 @@ class SwapPlanTest {
     }
 
     @Test
+    void plansANativeSingleFileSwapTheSameWay() throws IOException {
+        // 原生形态（Windows 单文件自更新，issue #51 §7 P4）：包里只有一个可执行文件。
+        // 动作列表的算法与 JVM 形态**完全一致**（只看两份清单），所以这里断言「就是一条 replace
+        // + 一条 delete」即可 —— helper 与计划格式都不需要为原生形态另开分支。
+        givenInstalledPackage();
+        String executable = InstallLayout.isWindows() ? "aha-desktop-native.exe" : "aha-desktop-native";
+        Files.writeString(installRoot.resolve(executable), "OLD-EXE");
+        Files.createDirectories(installRoot.resolve("old-native-helper"));
+        Files.writeString(installRoot.resolve("old-native-helper").resolve("x.txt"), "GONE-IN-NEW");
+        Files.writeString(packageRoot.resolve(executable), "NEW-EXE");
+
+        PackageManifest installed = manifest(OLD_VERSION, executable, "old-native-helper/x.txt");
+        PackageManifest fresh = manifest(NEW_VERSION, executable);
+        List<UpdatePlan.Action> actions = SwapPlan.actions(fresh, installed);
+
+        assertThat(actions).extracting(UpdatePlan.Action::path)
+                .containsExactly(executable, "old-native-helper/x.txt");
+        assertThat(actions.get(0).deleting()).isFalse();
+        assertThat(actions.get(1).deleting()).isTrue();
+
+        SwapPlan.apply(installRoot, packageRoot, backupDir, actions);
+        assertThat(Files.readString(installRoot.resolve(executable))).isEqualTo("NEW-EXE");
+        assertThat(installRoot.resolve("old-native-helper")).doesNotExist();
+
+        SwapPlan.rollback(installRoot, backupDir, actions);
+        assertThat(Files.readString(installRoot.resolve(executable))).isEqualTo("OLD-EXE");
+        assertThat(Files.readString(installRoot.resolve("old-native-helper").resolve("x.txt")))
+                .isEqualTo("GONE-IN-NEW");
+    }
+
+    @Test
     void worksWithoutAnInstalledManifest() throws IOException {
         givenInstalledPackage();
 
