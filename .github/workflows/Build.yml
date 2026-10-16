@@ -162,11 +162,15 @@ jobs:
   #         build 作业的结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
   #
   # 【重要】用 `GITHUB_TOKEN` 推的 tag **不会触发下游工作流**（GitHub 防递归的既定行为），
-  #         所以 `Release.yml` 不会因这里的 tag 自动开跑。本仓库**不为此配置 PAT**——
-  #         发布按 ReleaseProcess.md §4.2 手工重建 tag（由人推送，不受防递归限制）。
+  #         所以 `Release.yml` 的 `push: tags` 不会因这里的 tag 自动开跑。本仓库**不为此配置
+  #         PAT**——改用该规则的**官方例外** `workflow_dispatch`：本作业在 tag 真的新建出来之后，
+  #         用 `gh workflow run Release.yml --ref main -f tag=<TAG>` 把发布流程主动派发起来
+  #         （issue #238）。`--ref main` 不能省——派发在默认分支（dev）上会让发布流程跑到 dev，
+  #         详见 `Release.yml` 顶部注释。派发失败或需要重来时的兜底仍是
+  #         ReleaseProcess.md §4.2 的手工重建 tag。
   #
-  # 【权限】推 tag 需要 `contents: write`。若仓库把 Actions 默认权限设成了只读，
-  #         这一步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
+  # 【权限】推 tag 需要 `contents: write`、派发工作流需要 `actions: write`。若仓库把 Actions
+  #         默认权限设成了只读，这两步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
   native-update-script:
     name: native-update-script（Windows 一键入口：PowerShell 语法 + 参数绑定 + 选包）
     # 这条曾经只能靠肉眼：本仓库在它上面连踩两次——参数名与局部变量大小写冲突
@@ -211,6 +215,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 派发 `Release.yml`（`gh workflow run` 走 workflow_dispatch 接口）需要它：
+      # 只有 `contents: write` 时这一步是 403（issue #238）
+      actions: write
     steps:
       - uses: actions/checkout@v7
 
@@ -223,12 +230,15 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: 打 tag 并推送（已存在则跳过）
+        id: tag
         env:
           TAG: V${{ steps.version.outputs.version }}
         run: |
-          # 幂等：同一版本被重复合入 main 是正常事（例如只改了文档），不该因此报错
+          # 幂等：同一版本被重复合入 main 是正常事（例如只改了文档），不该因此报错。
+          # 跳过时**不派发** Release.yml（`created=false`）——否则每次 push 到 main 都会重复发版。
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "tag ${TAG} 已存在，跳过"
+            echo "created=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           git config user.name  "github-actions[bot]"
@@ -236,3 +246,16 @@ jobs:
           git tag -a "${TAG}" -m "AHA ${TAG}" "${GITHUB_SHA}"
           git push origin "refs/tags/${TAG}"
           echo "已创建并推送 tag：${TAG}（指向 ${GITHUB_SHA}）"
+          echo "created=true" >> "${GITHUB_OUTPUT}"
+
+      - name: 派发 Release.yml（GITHUB_TOKEN 的官方例外：workflow_dispatch）
+        # 只有**真的新建了 tag** 才派发；tag 已存在说明这次合入没带新版本（幂等，见上一步）
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: V${{ steps.version.outputs.version }}
+        run: |
+          # `--ref main`：`workflow_dispatch` 的 GITHUB_SHA 是「所派发 ref 的最新提交」，
+          # 用默认分支（dev）派发会让发布流程跑到 dev（理由见 Release.yml 顶部注释）。
+          gh workflow run Release.yml --ref main -f "tag=${TAG}"
+          echo "已派发 Release.yml（ref=main，tag=${TAG}）"

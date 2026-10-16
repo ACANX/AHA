@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.40.0
+**文档版本**：v1.41.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.41.0 | 2026-10-16 | §8「main 上的构建成功后自动打 tag」按 issue #238 更新：该作业不再止于「打 tag」，在**新建出 tag** 后用 `workflow_dispatch`（防递归规则的**官方例外**）以 `gh workflow run Release.yml --ref main -f tag=<TAG>` 主动派发发布流程，无需 PAT；权限补 `actions: write`，并注明幂等跳过时**不派发** | @ACANX / CNXNC |
 | v1.40.0 | 2026-10-16 | §10.2 新增 `#117` 结论行：picocli `--help` 渲染依赖的 JDK 文本断行资源（`sun/text/resources/LineBreakIteratorData`，**无扩展名**）必须显式登记；两份 CLI 参数文件同步补齐（issue #117）| @ACANX / CNXNC |
 | v1.39.0 | 2026-10-15 | §7 新增「包根平铺 + shade 附带产物」的**静态守卫**：`check_package_layout()` / `check_shade_attached()`；dev 线的包体自证补上**本平台原生库点名 + 跨平台污染检查**（原只判 `>0`），CLI 补「任意深度原生库 >0」（issue #218 第 7 条 / #217 第 3 条）| @ACANX / CNXNC |
 | v1.38.0 | 2026-10-15 | §7 CLI 发行包也改为**包根平铺**（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`，jar 名去版本号，无 `lib/` 与 `bin/`），两条线形态一致；新增「CLI 的 shade 也必须 `shadedArtifactAttached=true`」的理由（装配描述符与原生镜像线都要普通 jar，issue #217）| @ACANX / CNXNC |
@@ -490,14 +491,19 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
 
 - **从根 POM 读版本号**（`<version>`），创建 `V<版本号>` 的附注 tag 并推送——
   工作流与文档都不写版本字面量，避免版本升了 tag 不跟的两处口径；
-- **幂等**：同名 tag 已存在则跳过（只改文档的合并也会 push 到 `main`，不该因此报错）；
-- 需要 `contents: write`；若仓库把 Actions 默认权限设为只读，该作业会失败，
-  处置同第 8.1 节的权限类问题。
+- **幂等**：同名 tag 已存在则跳过（只改文档的合并也会 push 到 `main`，不该因此报错），
+  且**跳过时不派发**发布流程（否则每次 push 到 `main` 都会重复发版）；
+- 需要 `contents: write` + `actions: write`（后者用于派发 `Release.yml`）；若仓库把 Actions
+  默认权限设为只读，该作业会失败，处置同第 8.1 节的权限类问题。
 
 两个必须知道的事实：
 
-1. **`GITHUB_TOKEN` 推的 tag 不会触发下游工作流**（GitHub 防递归），所以 `Release.yml`
-   不会因这个 tag 自动开跑——补救见 [ReleaseProcess.md](ReleaseProcess.md) §4.2；
+1. **`GITHUB_TOKEN` 推的 tag 不会触发下游工作流**（GitHub 防递归），所以 `Release.yml` 的
+   `push: tags` 不会因这个 tag 自动开跑。该规则有**官方例外**：本作业在**新建出 tag** 之后
+   执行 `gh workflow run Release.yml --ref main -f tag=<TAG>`（`workflow_dispatch`）主动派发
+   发布流程，**无需 PAT**（issue #238）。`--ref main` 不能省——派发在默认分支（`dev`）上
+   会让整个 run 落在 `dev`，与「发行包必须由自身跑过门禁的构建产出」冲突；手工兜底见
+   [ReleaseProcess.md](ReleaseProcess.md) §4.2；
 2. 新增 `tag` 作业**不改变**任何既有作业名，因此不影响分支保护的必需检查契约（第 8.1 节）。
 
 ## 9. 规范变更程序
