@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.45.0
+**文档版本**：v1.46.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.46.0 | 2026-10-16 | §8.1 的瞬时失败判据补齐**Maven Wrapper 下载发行包失败**（2026-10-16 实测：PR 的 Windows 腿 21 秒红，报 `Conversion from JSON failed` + `FileNotFoundException: …apache-maven-4.0.0-rc-7-bin.zip`，旧判据一条都不命中 ⇒ 一次都没重试；同提交的另一次运行同腿是绿的）。新增判据只匹配这几句报错，编译错误 / 测试失败仍立刻失败（本地用真实 + 反向日志各验一次）| @ACANX / CNXNC |
 | v1.45.0 | 2026-10-16 | §7.1 补两条：① 桌面端两条线的包都必须带换装 helper（否则自更新在「复制 helper」那步必败，见 `ReleaseProcess.md` §3.6）；② 新增守卫 `check_update_helper_packaging()` / `check_repo_script_steps_have_checkout()`，`Script/PowerShell/HelperSelfTest.ps1` 进 `Build.yml` 的 `native-update-script` 作业（换装 helper 首次有真实行为测试）| @ACANX / CNXNC |
 | v1.44.0 | 2026-10-16 | 新增 §7.1「包内清单与发布页校验和」：四条出包线在打包步骤末尾统一写 `AHA-PACKAGE.json` 与 `SHA256SUMS`，契约只有一处定义（`ReleaseProcess.md` §3.4），实现只有一份（`.github/Python/PackageManifest.py`）且自检进 `static-guards`（issue #51 §6）| @ACANX / CNXNC |
 | v1.43.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
@@ -486,6 +487,7 @@ GitHub 上出现过 `Could not find artifact ... in central (https://repo.maven.
   | ---- | ---- | ---- |
   | `... was not found in <url> during a previous attempt. This failure was **cached** in the local repository ...` | 本地仓库记了失败标记，更新间隔内不再重试 | 清 `*.lastUpdated`，或加 `-U` |
   | `Could not find artifact ... in central (<url>)` | 当次解析就失败 | 重试；先核实版本是否真实存在（`curl` 一下 Central） |
+  | `Conversion from JSON failed with error: Invalid character after parsing property name` + `FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/<版本>/apache-maven-<版本>-bin.zip` | **Maven Wrapper 拉不到发行包**：Central 那次返回的不是元数据（被挡 / 挑战页），wrapper 解析失败 | 属于瞬时类，已进重试判据（2026-10-16 实测：旧判据不认它，一次都没重试就红；同提交的另一次运行同腿是绿的）|
 
 - 完整复盘见 [TS-2610-004-Artifact-Not-Found-In-Central.md](../Troubleshooting/TS-2610-004-Artifact-Not-Found-In-Central.md)。
 
