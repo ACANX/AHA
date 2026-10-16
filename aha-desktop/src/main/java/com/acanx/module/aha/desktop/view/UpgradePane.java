@@ -89,6 +89,9 @@ public final class UpgradePane {
     /** 当前版本行的 id。 */
     public static final String ID_CURRENT = "aha.upgrade.current";
 
+    /** 「复制版本号」入口的 id（版本号必须能一键复制出来，2026-10-16 真机反馈）。 */
+    public static final String ID_CURRENT_COPY = "aha.upgrade.current.copy";
+
     /** 「检查更新」按钮的 id。 */
     public static final String ID_CHECK = "aha.upgrade.check";
 
@@ -148,7 +151,14 @@ public final class UpgradePane {
 
     private final Label channelNote = new Label();
 
-    private final Label currentLabel = new Label();
+    /**
+     * 「当前版本」那一行。
+     *
+     * <p>与 {@link #statusArea} 同理，用**只读 `TextArea` 而不是 `Label`**：真机反馈「版本号复制不出来」，
+     * 而 `Label` 既不能选中、也没有右键菜单。只读 `TextArea` 天生支持拖选 + Ctrl/Cmd+C；
+     * 右键另给一个直达入口「复制版本号」（只复制版本号本身，不带别的字）。</p>
+     */
+    private final TextArea currentArea = new TextArea();
 
     private final Button checkButton = new Button("检查更新");
 
@@ -237,10 +247,34 @@ public final class UpgradePane {
         channelNote.setWrapText(true);
         ThemePaint.themedForever(channelNote,
                 () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
-        currentLabel.setId(ID_CURRENT);
-        currentLabel.setText("当前版本：AHA " + AppVersion.buildVersion() + "（"
+        currentArea.setId(ID_CURRENT);
+        currentArea.setText("当前版本：AHA " + AppVersion.buildVersion() + "（"
                 + kind.targetWord() + " / " + platform.value() + "）");
-        ThemePaint.themedForever(currentLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+        currentArea.setEditable(false);
+        currentArea.setWrapText(true);
+        currentArea.setPrefRowCount(1);
+        currentArea.setMaxWidth(Double.MAX_VALUE);
+        currentArea.setMaxHeight(Region.USE_PREF_SIZE);
+        ThemePaint.themedForever(currentArea, () -> "-fx-text-fill: " + Palette.MUTED + ";"
+                + " -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0;");
+        MenuItem copyVersion = new MenuItem("复制版本号（只复制版本号）");
+        copyVersion.setId(ID_CURRENT_COPY);
+        copyVersion.setOnAction(event -> Clipboards.copy(AppVersion.buildVersion()));
+        MenuItem copyCurrentSelected = new MenuItem("复制选中（没有选中则复制整行）");
+        copyCurrentSelected.setId(ID_CURRENT_COPY + ".selected");
+        copyCurrentSelected.setOnAction(event -> copySelectionOrAll(currentArea));
+        MenuItem selectAllCurrent = new MenuItem("全选");
+        selectAllCurrent.setId(ID_CURRENT_COPY + ".select");
+        selectAllCurrent.setOnAction(event -> currentArea.selectAll());
+        currentArea.setContextMenu(new ContextMenu(copyVersion, copyCurrentSelected,
+                new SeparatorMenuItem(), selectAllCurrent));
+        // 只读控件同样不理会 Ctrl/Cmd+C，这里自己接一下（复制选中，没选中则整行）
+        currentArea.setOnKeyPressed(event -> {
+            if (event.isShortcutDown() && event.getCode() == KeyCode.C) {
+                copySelectionOrAll(currentArea);
+                event.consume();
+            }
+        });
 
         checkButton.setId(ID_CHECK);
         checkButton.setOnAction(event -> checkNow());
@@ -269,7 +303,7 @@ public final class UpgradePane {
         // 另有「复制升级信息」把「版本 / 形态 / 平台 / 通道 / 状态」一次复制齐（排查最需要这几行）。
         MenuItem copySelection = new MenuItem("复制选中（没有选中则复制全部）");
         copySelection.setId(ID_STATUS_COPY);
-        copySelection.setOnAction(event -> copyStatusText());
+        copySelection.setOnAction(event -> copySelectionOrAll(statusArea));
         MenuItem copyContext = new MenuItem("复制升级信息（版本 / 形态 / 平台 / 通道 / 状态）");
         copyContext.setId(ID_STATUS_COPY + ".all");
         copyContext.setOnAction(event -> Clipboards.copy(upgradeInfoForCopy()));
@@ -281,7 +315,7 @@ public final class UpgradePane {
         // 只读控件同样不理会 Ctrl/Cmd+C，这里自己接一下（复制选中，没选中则整条）
         statusArea.setOnKeyPressed(event -> {
             if (event.isShortcutDown() && event.getCode() == KeyCode.C) {
-                copyStatusText();
+                copySelectionOrAll(statusArea);
                 event.consume();
             }
         });
@@ -302,7 +336,7 @@ public final class UpgradePane {
         // 看着挤、点击也容易落在 tab 头上（2026-10-16 真机反馈）。
         HBox channelHeader = new HBox(8, channelTitle, channelRow);
         channelHeader.setAlignment(Pos.CENTER_LEFT);
-        root = new VBox(10, channelHeader, channelNote, currentLabel, checkRow,
+        root = new VBox(10, channelHeader, channelNote, currentArea, checkRow,
                 versionList, actionRow, progress, statusArea);
         root.setPadding(new Insets(12, 14, 12, 14));
         root.setId(ID_TAB);
@@ -657,11 +691,16 @@ public final class UpgradePane {
         statusArea.setText("状态：" + text);
     }
 
-    /** 复制状态行：**有选中就复制选中**，否则整条（与日志区同一套规则）。 */
-    private void copyStatusText() {
-        String selected = statusArea.getSelectedText();
+    /**
+     * 复制一个只读文本区：**有选中就复制选中**，否则整区。
+     *
+     * <p>状态行与「当前版本」行共用这一份规则 —— 两处各写一遍迟早会不一致（与日志面板
+     * `LogPanel#textToCopy` 同一口径）。</p>
+     */
+    private static void copySelectionOrAll(TextArea area) {
+        String selected = area.getSelectedText();
         Clipboards.copy(selected == null || selected.isEmpty()
-                ? statusArea.getText() : selected);
+                ? area.getText() : selected);
     }
 
     private static InstallLayout detectLayout() {

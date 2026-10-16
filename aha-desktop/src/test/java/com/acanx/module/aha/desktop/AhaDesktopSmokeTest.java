@@ -528,7 +528,17 @@ class AhaDesktopSmokeTest {
         assertThat(((HBox) channelTitle.getParent()).getChildren())
                 .as("同一行里要装着三个选项那一组")
                 .contains(channelRowOf(upgradeRoot));
-        assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(Label.class);
+        // 「当前版本」那一行也要能复制（真机反馈）：与状态行同一处理 —— 只读 TextArea，能拖选；
+        // 右键另有直达入口「复制版本号」。
+        assertThat(byId(upgradeRoot, UpgradePane.ID_CURRENT)).isInstanceOf(TextArea.class);
+        TextArea currentRow = (TextArea) byId(upgradeRoot, UpgradePane.ID_CURRENT);
+        assertThat(currentRow.isEditable()).as("只读，但可选中").isFalse();
+        assertThat(uiGet(() -> {
+            currentRow.selectAll();
+            return currentRow.getSelectedText();
+        })).as("当前版本行必须能整个选中（选中就能 Ctrl+C）").isEqualTo(uiGet(currentRow::getText));
+        assertThat(hasMenuItem(currentRow.getContextMenu(), UpgradePane.ID_CURRENT_COPY))
+                .as("要有「复制版本号」入口").isTrue();
         assertThat(byId(upgradeRoot, UpgradePane.ID_CHECK)).isInstanceOf(Button.class);
         assertThat(byId(upgradeRoot, UpgradePane.ID_LIST)).isInstanceOf(ListView.class);
         // 失败信息就显示在状态行上：**必须能选中**（真机反馈两轮：Label 既选不中也复制不出来），
