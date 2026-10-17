@@ -246,9 +246,9 @@ jobs:
           fi
           echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2 与原生库 ${natives} 项）"
           echo "单体 jar 冒烟输出：$(head -1 <<<"$out")"
-          # ── 包内清单（issue #51 §6）：CLI JVM 包平台无关，不带 --platform ────────
+          # ── 包内清单（issue #51 §6）：issue #269 起 CLI-JVM 也带平台段 ──────────
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-            --zip "$target" --kind cli-jvm --version "${VERSION}" --jdk "${JDK}"
+            --zip "$target" --kind cli-jvm --version "${VERSION}" --platform "${LABEL}" --jdk "${JDK}"
 
       - name: UploadArtifacts
         uses: actions/upload-artifact@v7
@@ -256,7 +256,7 @@ jobs:
           # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
           name: Mvn-Artifact-${{ inputs.label }}-jdk${{ inputs.jdk }}
           path: |
-            Dist/aha-desktop-${{ inputs.version }}-${{ inputs.label }}*.zip
-            Dist/aha-cli-${{ inputs.version }}*.zip
+            Dist/aha-desktop-jvm-${{ inputs.version }}-${{ inputs.label }}*.zip
+            Dist/aha-cli-jvm-${{ inputs.version }}-${{ inputs.label }}*.zip
           if-no-files-found: warn
           retention-days: 14
