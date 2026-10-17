@@ -285,16 +285,23 @@ jobs:
           find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
           ls -lh artifacts/ || true
           count=0
-          for f in artifacts/aha-desktop-*.zip; do
+          # 新文法（issue #269）：上游已产出 aha-<product>-jvm-<版本>-<平台>-jdk25.zip
+          for f in artifacts/aha-desktop-jvm-*.zip artifacts/aha-cli-jvm-*.zip; do
             [ -e "$f" ] || continue
-            label=$(basename "$f" | sed -E 's/^aha-desktop-[0-9.]+-([a-z0-9-]+)\.zip$/\1/')
-            mv "$f" "artifacts/AHA-Desktop-JVM-${VERSION}-${label}-jdk25.zip"
             count=$((count + 1))
           done
-          # CLI 包平台无关（只在 Ubuntu 腿产出）⇒ 按 §八 仍带平台段，用产出它的腿作标签
-          for f in artifacts/aha-cli-*.zip; do
+          # 兼容旧名（旧版上游只给 aha-desktop-<版本>-<平台>.zip / aha-cli-<版本>.zip）
+          for f in artifacts/aha-desktop-[0-9]*.zip; do
             [ -e "$f" ] || continue
-            mv "$f" "artifacts/AHA-Cli-JVM-${VERSION}-ubuntu-amd64-jdk25.zip"
+            label=$(basename "$f" | sed -E 's/^aha-desktop-[0-9.]+-([a-z0-9-]+)\.zip$/\1/')
+            mv "$f" "artifacts/aha-desktop-jvm-${VERSION}-${label}-jdk25.zip"
+            count=$((count + 1))
+          done
+          for f in artifacts/aha-cli-[0-9]*.zip; do
+            [ -e "$f" ] || continue
+            label=$(basename "$f" | sed -E 's/^aha-cli-[0-9.]+-?([a-z0-9-]*)\.zip$/\1/')
+            [ -n "$label" ] || label=ubuntu-amd64
+            mv "$f" "artifacts/aha-cli-jvm-${VERSION}-${label}-jdk25.zip"
             count=$((count + 1))
           done
           echo "整理出 ${count} 个资产："

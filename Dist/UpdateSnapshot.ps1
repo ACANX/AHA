@@ -87,11 +87,11 @@ $TtlDays      = 7
 
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线与原生线共用同一套，issue #215）
 $kinds = @{
-    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
-    'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('AHA-Desktop-JVM-') }
-    'cli-jvm'        = @{ Title = 'JVM CLI 便携包';   Targets = @('Cli-JVM', 'Cli');         Prefixes = @('AHA-Cli-JVM-') }
-    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
-    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
+    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('aha-desktop-jvm-', 'aha-cli-jvm-') }
+    'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('aha-desktop-jvm-') }
+    'cli-jvm'        = @{ Title = 'JVM CLI 便携包';   Targets = @('Cli-JVM', 'Cli');         Prefixes = @('aha-cli-jvm-') }
+    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('aha-desktop-native-') }
+    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('aha-cli-native-') }
 }
 
 #: 目标 → 本机要替换的可执行文件基名。JVM 便携包没有单一 exe（是整包），不安装。
@@ -192,10 +192,10 @@ function Get-Candidates {
         if ($PrFilter -gt 0 -and $prNum -ne $PrFilter) { continue }
         # 本平台该取哪个资产：先按目标找前缀（JVM 线的平台标签与原生线不同）
         $prefix = $null
-        if ($target -in @('Desktop-JVM', 'Desktop')) { $prefix = 'AHA-Desktop-JVM-' }
-        elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'AHA-Cli-JVM-' }
-        elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'AHA-Desktop-Native-' }
-        else { $prefix = 'AHA-Cli-Native-' }
+        if ($target -in @('Desktop-JVM', 'Desktop')) { $prefix = 'aha-desktop-jvm-' }
+        elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'aha-cli-jvm-' }
+        elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'aha-desktop-native-' }
+        else { $prefix = 'aha-cli-native-' }
         $platform = if ($target -in @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
         $asset = Get-AssetFor -Release $r -Prefix $prefix -Platform $platform
         $published = if ($r.published_at) { [datetime]$r.published_at } else { [datetime]$r.created_at }

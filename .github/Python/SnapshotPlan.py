@@ -105,14 +105,12 @@ FETCH_LAUNCHER_DEFAULT = r"Dist\UpdateSnapshot.ps1 -Kind jvm -Pr {pr}"
 RELEASE_NAME_FORMAT = TAG_FORMAT
 
 #: 快照包资产名（#165 §八）。`{label}` 用平台标签；CLI 包平台无关，但按 §八 仍带平台段。
-# 命名对称（ACANX 定案，2026-10-14）：桌面端与 CLI 都要带目标段，且与原生线对称——
-#   原生：AHA-Desktop-Native-… / AHA-Cli-Native-…
-#   JVM ：AHA-Desktop-JVM-…    / AHA-Cli-JVM-…
-# 早先桌面端写成 `AHA-JVM-…`（不带 `Desktop`）：标签写的是 `…-AHA-Desktop-SNAPSHOT`，
-# 资产却叫 `AHA-JVM-…`，两处对不上，也读不出「这是桌面包」。
+# 自 issue #269 起资产名统一为**小写新文法**（与 tag 的大写 `AHA-<product>-<form>` 无关）：
+#   aha-<product>-<form>-<版本>-<平台>-<runtime>.zip
+# 四个目标共用一套文法，JVM 与原生只在 `form` / `runtime` 段不同。
 ASSET_FORMATS = {
-    "Desktop-JVM": "AHA-Desktop-JVM-{version}-{label}-jdk25.zip",
-    "Cli-JVM": "AHA-Cli-JVM-{version}-{label}-jdk25.zip",
+    "Desktop-JVM": "aha-desktop-jvm-{version}-{label}-jdk25.zip",
+    "Cli-JVM": "aha-cli-jvm-{version}-{label}-jdk25.zip",
 }
 
 # 【2026-10-15 合并】原生线原先另有一张 `OS_LABELS_NATIVE`（值是 `*-amd64`）。issue #215 把 JVM 线
@@ -131,8 +129,8 @@ NATIVE_LEGS: dict[str, list[tuple[str, str, int]]] = {
 
 #: 原生线资产名（#165 §八）：镜像包 + 同名族的独立报告包（报告包是 dev 线既有产物，快照一并带上）。
 NATIVE_ASSET_FORMATS = {
-    "Desktop-Native": "AHA-Desktop-Native-{version}-{label}-jdk{jdk}.zip",
-    "Cli-Native": "AHA-Cli-Native-{version}-{label}-jdk{jdk}.zip",
+    "Desktop-Native": "aha-desktop-native-{version}-{label}-graalvm{jdk}.zip",
+    "Cli-Native": "aha-cli-native-{version}-{label}-graalvm{jdk}.zip",
 }
 
 #: 原生腿标签 → 平台中文名（写进 run 摘要，验收 12 要求摘要写明「限定平台：Windows」）。
@@ -289,7 +287,7 @@ def asset_names(targets: list[str], version: str, platforms: list[str], line: st
                 continue
             for leg in build_legs([target], platforms, line="native"):
                 names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]))
-                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-Report.zip"))
+                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-diagnostics.zip"))
         return names
     labels = platforms or ["ubuntu-amd64", "windows-amd64"]
     for target in targets:
@@ -466,11 +464,11 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         "- `ubuntu-amd64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
         "CentOS / RHEL 等其他发行版**未验证**；\n"
         "- `windows-amd64`：构建与冒烟环境为 GitHub Actions 的 Windows runner（`windows-latest`，本 run 的镜像是 `windows-2025-vs2026`）。\n"
-    ) if any(name.startswith(("AHA-Desktop-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
+    ) if any(name.startswith(("aha-desktop-jvm", "aha-cli-jvm")) for name in plan["assets"]) else ""
     native_note = (
         "\n> **原生包是试验性产物**（GraalVM native-image），不是正式发行包；"
-        "同一平台的镜像包与 `-Report.zip` 报告包一一对应。\n"
-    ) if any(name.startswith(("AHA-Desktop-Native", "AHA-Cli-Native")) for name in plan["assets"]) else ""
+        "同一平台的镜像包与 `-diagnostics.zip` 诊断包一一对应。\n"
+    ) if any(name.startswith(("aha-desktop-native", "aha-cli-native")) for name in plan["assets"]) else ""
     return (
         f"{marker}\n"
         f"### 快照包（{label}）：`{plan['version']}`\n\n"
@@ -609,12 +607,18 @@ def self_test() -> int:
     problems += 0 if tags_ok else 1
     print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
           + "、".join(g["tag"] for g in plan["releases"]))
+    prefix_by_target = {
+        "Desktop-JVM": "aha-desktop-jvm-",
+        "Cli-JVM": "aha-cli-jvm-",
+        "Desktop-Native": "aha-desktop-native-",
+        "Cli-Native": "aha-cli-native-",
+    }
     prefix_ok = all(
-        all(name.startswith(f"AHA-{group['target']}-") for name in group["assets"])
+        all(name.startswith(prefix_by_target[group["target"]]) for name in group["assets"])
         for group in plan["releases"]
     )
     problems += 0 if prefix_ok else 1
-    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标对称（AHA-<目标>-…）："
+    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标一致（aha-<product>-<form>-…，issue #269）："
           + "；".join(f"{g['target']}→{g['assets'][0]}" for g in plan["releases"]))
     name_ok = all(g["name"] == g["tag"] for g in plan["releases"])
     problems += 0 if name_ok else 1
@@ -659,7 +663,7 @@ def self_test() -> int:
     ok_full = len(full["legs"]) == 5 and len(full["releases"]) == 1 \
         and full["releases"][0]["tag"] == f"V{full['version']}-AHA-Desktop-Native-SNAPSHOT" \
         and full["version"].endswith("10141814") \
-        and all(a.startswith("AHA-Desktop-Native-") for a in full["assets"])
+        and all(a.startswith("aha-desktop-native-") for a in full["assets"])
     problems += 0 if ok_full else 1
     print(f"  {'✅' if ok_full else '❌'} 原生线：全部腿 = 5 条，且每个目标一条 `V<版本>-AHA-<目标>-SNAPSHOT`")
     checks += 1
