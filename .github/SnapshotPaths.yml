@@ -45,7 +45,7 @@ paths:
     - .github/workflows/DesktopNative.yml
     - .github/workflows/CliNative.yml
     # 本文件自身决定「怎么分类」。它与 C 组同效（都出包），显式列出是为了意图明确。
-    - .github/snapshot-paths.yml
+    - .github/SnapshotPaths.yml
   # B. 不出包：不进产物，但 PR 评论与 run 摘要要写明原因
   b:
     - Docs/**

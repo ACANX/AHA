@@ -32,7 +32,7 @@
       所以用 `git ls-files` 把其中**被跟踪**的那几个手写入口单独捡回来）。
 
   快照清单：单一来源与消费方一致（issue #165）
-    - `.github/snapshot-paths.yml` 是「触发标签 + 变更分类路径」的**单一来源**；
+    - `.github/SnapshotPaths.yml` 是「触发标签 + 变更分类路径」的**单一来源**；
       `SnapshotJVM.yml` / `DesktopNative.yml` 与文档都必须与它一致：
         * 全仓出现的标签字面量必须与清单**逐字一致（含大小写）**——写错的表现是
           「打了标签却毫无反应」，静默且难查；
@@ -200,7 +200,7 @@ ASSEMBLY_NS = {"a": "http://maven.apache.org/ASSEMBLY/2.2.0"}
 #: 快照出包的单一来源（issue #165）：触发标签与变更分类路径清单。
 #: 消费方是 `SnapshotJVM.yml` / `DesktopNative.yml` 与文档——三者一旦漂移，表现是**静默**的
 #: （某个改动悄悄不出包 / 打错标签毫无反应），因此在这里钉成断言。
-SNAPSHOT_MANIFEST = ROOT / ".github" / "snapshot-paths.yml"
+SNAPSHOT_MANIFEST = ROOT / ".github" / "SnapshotPaths.yml"
 
 #: 仓库里**真实存在**的 7 个标签（`gh label list` 可查）。这是全仓唯一一处把标签名写死的地方——
 #: 名字必须与 GitHub 上的既有事实对齐，不能由清单自定义；清单与所有消费方都要与它逐字一致。
@@ -225,7 +225,7 @@ SCANNABLE_SUFFIXES = {
 }
 
 #: 快照工作流必须出现的清单引用（不许自己再写一套路径）
-SNAPSHOT_MANIFEST_REF = "snapshot-paths.yml"
+SNAPSHOT_MANIFEST_REF = "SnapshotPaths.yml"
 
 PY_KIND_RE = re.compile(
     r'key="(\w+)".*?tag_suffix="([^"]+)".*?asset_prefix="([^"]+)".*?exe_base="([^"]+)"',
