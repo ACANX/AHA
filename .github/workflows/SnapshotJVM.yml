@@ -306,7 +306,10 @@ jobs:
           done
           if [ -n "${cli_src}" ]; then
             for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
-              cp -f "${cli_src}" "artifacts/aha-cli-jvm-${VERSION}-${platform}-jdk25.zip"
+              dest="artifacts/aha-cli-jvm-${VERSION}-${platform}-jdk25.zip"
+              # 源本身就是其中一个平台名时跳过（`cp a a` 会报 "same file" 并退出）
+              [ "${dest}" = "${cli_src}" ] && continue
+              cp -f "${cli_src}" "${dest}"
             done
           fi
           # 计数：任何非报告包的 zip（不依赖前缀——前缀改过一次，按前缀计数会静默归零）

@@ -349,7 +349,10 @@ jobs:
             cli_version=$(basename "${cli_src}" | sed -E 's/^aha-cli-jvm-([0-9.]+)-.*-jdk([0-9]+)\.zip$/\1/')
             cli_jdk=$(basename "${cli_src}" | sed -E 's/.*-jdk([0-9]+)\.zip$/\1/')
             for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
-              cp -f "${cli_src}" "artifacts/aha-cli-jvm-${cli_version}-${platform}-jdk${cli_jdk}.zip"
+              dest="artifacts/aha-cli-jvm-${cli_version}-${platform}-jdk${cli_jdk}.zip"
+              # 源本身就是其中一个平台名时跳过（`cp a a` 会报 "same file" 并退出）
+              [ "${dest}" = "${cli_src}" ] && continue
+              cp -f "${cli_src}" "${dest}"
             done
             files=(artifacts/*.zip)
           fi
