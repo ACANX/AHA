@@ -177,7 +177,7 @@
 | `CliNative.yml` | `cli-native-image` | `CliNativeImageLeg.yml` | `CliNativeImageLeg` | `上传制品` | `UploadArtifact` |
 | `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `下载全部制品` | `DownloadAllArtifacts` |
 | `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `整理资产（没有产物也算正常，不失败）` | `CollectAssets` |
-| `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `决定发布载体（快照 ⇒ `<快照版本>-AHA-Cli-Native-SNAPSHOT`；dev ⇒ `native-v` 族）` | `ResolveReleaseCarrier` |
+| `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `决定发布载体（快照 ⇒ `<快照版本>-AHA-Cli-Native`；dev ⇒ `native-v` 族）` | `ResolveReleaseCarrier` |
 | `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `生成发布页校验和（SHA256SUMS）` | `GenerateChecksums` |
 | `CliNative.yml` | `cli-native-publish` | `CliNative.yml` | `CliNativePublish` | `PreRelease-AHA-Cli-Native-VPR` | `PublishPreRelease` |
 | `CliNative.yml` | `comment` | `CliNative.yml` | `Comment` | `回写 PR 评论（幂等；逻辑与瞬时重试都在 .github/Python/SnapshotComment.py）` | `UpsertPullRequestComment` |
@@ -206,7 +206,7 @@
 | `DesktopNative.yml` | `native-image` | `NativeImageLeg.yml` | `NativeImageLeg` | `上传制品` | `UploadArtifact` |
 | `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `下载全部制品` | `DownloadAllArtifacts` |
 | `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `整理资产（没有产物也算正常，不失败）` | `CollectAssets` |
-| `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `决定发布载体（快照 ⇒ `<快照版本>-AHA-Desktop-Native-SNAPSHOT`；dev ⇒ `native-v` 族）` | `ResolveReleaseCarrier` |
+| `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `决定发布载体（快照 ⇒ `<快照版本>-AHA-Desktop-Native`；dev ⇒ `native-v` 族）` | `ResolveReleaseCarrier` |
 | `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `生成发布页校验和（SHA256SUMS）` | `GenerateChecksums` |
 | `DesktopNative.yml` | `native-publish` | `DesktopNative.yml` | `NativePublish` | `PreRelease-AHA-Desktop-Native-VPR` | `PublishPreRelease` |
 | `DesktopNative.yml` | `comment` | `DesktopNative.yml` | `Comment` | `回写 PR 评论（幂等；逻辑与瞬时重试都在 .github/Python/SnapshotComment.py）` | `UpsertPullRequestComment` |

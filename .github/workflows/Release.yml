@@ -12,6 +12,12 @@ on:
       # 实测风险：不加这两行时，每次出快照都会跑一遍完整的正式发版流程。
       - '!V*-SNAPSHOT'
       - '!v*-SNAPSHOT'
+      # 2026-10-17 起快照 tag 去掉了 `-SNAPSHOT` 后缀（`V<5 段>-AHA-<product>-<form>`），
+      # 5 段版本已能区分快照；这里按 `-AHA-` / `-aha-` 排除，避免快照触发正式发版。
+      - '!V*-AHA-*'
+      - '!v*-AHA-*'
+      - '!V*-aha-*'
+      - '!v*-aha-*'
 
   # 自动打的 tag 由 `GITHUB_TOKEN` 推送，**不会**触发上面的 `push: tags`（GitHub 防递归）。
   # 但 `workflow_dispatch` 是该规则的**官方例外**：`Build.yml` 的 tag 作业在成功打完 tag 后，

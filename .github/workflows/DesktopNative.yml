@@ -381,7 +381,7 @@ jobs:
     # 制品仍由各腿的 upload-artifact 上传，PR 页面底部能直接下。
     # 发布条件（只有这两种情况才发）：
     #   * push 到 dev（既有行为）：发 `V<版本>-aha-desktop-native`；
-    #   * 快照请求（判定 should_build）且构建成功：发 `V<快照版本>-AHA-Desktop-Native-SNAPSHOT`。
+    #   * 快照请求（判定 should_build）且构建成功：发 `V<快照版本>-AHA-Desktop-Native`。
     #   其它 PR（没打触发标签）：**不发**——只留 Actions 制品，供 PR 页面直接下载（issue #144 的既有行为）。
     if: >-
       always() && !cancelled()
@@ -489,8 +489,8 @@ jobs:
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          # 快照用 `V<快照版本>-AHA-Desktop-Native-SNAPSHOT`（保持 prerelease: true，
-          # 且 `Release.yml` 的 tag 过滤已排除 `-SNAPSHOT`，不会触发正式发版）；
+          # 快照用 `V<快照版本>-AHA-Desktop-Native`（保持 prerelease: true，
+          # 且 `Release.yml` 的 tag 过滤已排除 `-AHA-*`，不会触发正式发版）；
           # dev 线仍用 `native-v` 族前缀。
           tag_name: ${{ steps.carrier.outputs.tag }}
           name: ${{ steps.carrier.outputs.name }}

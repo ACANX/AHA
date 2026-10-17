@@ -443,7 +443,9 @@ def check_release_auto_dispatch() -> list[str]:
     if "tag_name: ${{ inputs.tag || github.ref_name }}" not in release_text:
         problems.append("Release.yml 的 `action-gh-release` 没有显式 `tag_name` —— 派发时会挂到分支上")
     # ② 快照 tag 的负向排除不能丢（丢了则每次出快照都跑完整发版）
-    for pattern in ("'!V*-SNAPSHOT'", "'!v*-SNAPSHOT'"):
+    #    2026-10-17 起快照 tag 去掉了 `-SNAPSHOT`，改按 `-AHA-` / `-aha-` 排除；
+    #    旧的 `-SNAPSHOT` 规则保留（历史 tag 仍可能被重推）。
+    for pattern in ("'!V*-AHA-*'", "'!V*-aha-*'", "'!V*-SNAPSHOT'"):
         if pattern not in release_text:
             problems.append(f"Release.yml 缺快照 tag 负向排除 {pattern}（issue #165 的两条硬约束之一）")
 
@@ -596,7 +598,7 @@ def check_snapshot_fetch_parity() -> list[str]:
     ps = SNAPSHOT_FETCH_PS1.read_text(encoding="utf-8-sig")
     problems: list[str] = []
 
-    # ① tag 形如 `V<版本>-AHA-<目标>-SNAPSHOT`
+    # ① tag 形如 `V<版本>-AHA-<目标>`（5 段版本；旧 tag 的 `-SNAPSHOT` 后缀仍兼容）
     tag_fmt = re.search(r'TAG_FORMAT = "([^"]+)"', py)
     if not tag_fmt:
         return ["快照命名契约：没能从 SnapshotPlan.py 解析出 TAG_FORMAT（写法变了？）"]
@@ -622,8 +624,8 @@ def check_snapshot_fetch_parity() -> list[str]:
                 problems.append(f"快照命名契约：$TagPattern 里没有目标 {target!r}——该目标的快照本地取不到")
 
     # ② 资产前缀：Python 的两张表必须与 PS1 的 $kinds 表逐一对应
-    py_prefixes = set(re.findall(r'"(AHA-[A-Za-z-]+-)\{version\}', py))
-    ps_prefixes = set(re.findall(r"'(AHA-[A-Za-z-]+-)'", ps))
+    py_prefixes = set(re.findall(r'"(aha-[a-z-]+-)\{version\}', py))
+    ps_prefixes = set(re.findall(r"'(aha-[a-z-]+-)'", ps))
     missing = sorted(py_prefixes - ps_prefixes)
     extra = sorted(ps_prefixes - py_prefixes)
     if missing:

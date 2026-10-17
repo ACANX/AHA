@@ -64,7 +64,7 @@ class ChannelContractTest {
                 BASELINE, "ubuntu-amd64", 25))
                 .isEqualTo("aha-desktop-native-0.1.3-ubuntu-amd64-graalvm25.zip");
 
-        // 快照（Alpha）：同样是新文法（tag 仍是 -AHA-…-SNAPSHOT）。
+        // 快照（Alpha）：同样是新文法（tag 为 -AHA-<product>-<form>，无 -SNAPSHOT 后缀）。
         assertThat(ChannelContract.assetName(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
                 SNAPSHOT, "windows-amd64", 25))
                 .isEqualTo("aha-desktop-jvm-0.1.3.00242.10161125-windows-amd64-jdk25.zip");
@@ -86,9 +86,9 @@ class ChannelContractTest {
         assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD))
                 .isEqualTo("V0.1.3.00242-aha-cli-native");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-desktop-jvm-SNAPSHOT");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-desktop-jvm");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.CLI_NATIVE, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-cli-native-SNAPSHOT");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-cli-native");
     }
 
     @Test
@@ -112,7 +112,7 @@ class ChannelContractTest {
                 "V0.1.3.00242-aha-jvm")).contains(BUILD);
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
                 "V0.1.3.00242-aha-jvm")).contains(BUILD);
-        // 快照旧 tag 用大写驼峰目标词。
+        // 快照旧 tag 用大写驼峰目标词 + `-SNAPSHOT` 后缀。
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_NATIVE,
                 "V0.1.3.00242.10161125-AHA-Desktop-Native-SNAPSHOT")).contains(SNAPSHOT);
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,

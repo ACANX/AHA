@@ -435,7 +435,7 @@ jobs:
         if: steps.collect.outputs.any == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          # 快照 ⇒ `V<快照版本>-AHA-Cli-Native-SNAPSHOT`（prerelease: true；`Release.yml` 已排除 `-SNAPSHOT`）；
+          # 快照 ⇒ `V<快照版本>-AHA-Cli-Native`（prerelease: true；`Release.yml` 已排除 `-AHA-*`）；
           # dev 线 ⇒ 原有的 `native-v` 语义（tag 里带 -aha-cli-native 与桌面端区分）。
           tag_name: ${{ steps.carrier.outputs.tag }}
           name: ${{ steps.carrier.outputs.name }}
