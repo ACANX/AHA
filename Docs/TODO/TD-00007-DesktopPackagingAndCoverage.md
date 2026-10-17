@@ -40,3 +40,7 @@
 
 - `Docs/TODO.md` `D-05` / `D-08`、`Docs/DevSpec/TestingSpec.md` §3、`Docs/DevSpec/ReleaseProcess.md`
 
+## 原文摘录（来源文件已于 2026-10-17 删除）
+
+| D-06 | 发行目标平台与 CI runner 平台不匹配 | 文档缺陷 | ✅ | P2 | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3 |
+| D-06 | `DesktopDesign.md` §2/§3、`Build.yml` | 平台清单对齐 | ◐ 已决策，待回填 |

@@ -36,3 +36,8 @@
 - `Docs/Design/DesktopDesign.md` §11、`Docs/Design/GUIDesign.md`
 - `Docs/Dbsx.txt`（0.2 待办）
 
+## 原文摘录（来源文件已于 2026-10-17 删除）
+
+### `Docs/TODO.md` D-13
+
+| D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |

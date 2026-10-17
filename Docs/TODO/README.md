@@ -21,9 +21,10 @@
 | **GitHub Issue** | 单个事项的长期跟踪：评论、状态、关闭 |
 | `Docs/Troubleshooting/` | 问题排查 / 事故复盘的**过程记录** |
 | `Docs/DevLog/` | 已完成事项的**开发记录** |
-| `Docs/PLAN.md`（已冻结） | 「做不到 / 已决定暂缓」的结论与依据 |
+| 各 `TD-*` 的「结论 / 已排除方案」小节 | 「做不到 / 已决定暂缓」的结论与依据 |
 
-> `Docs/TODO.md` 为历史文件，**已冻结**，不再更新。
+> `Docs/TODO.md` / `Docs/PLAN.md` / `Docs/Dbsx.txt` 已于 2026-10-17 **删除**：已完成 / 不做 / 过时的条目归档在
+> [`Docs/DevLog/20261017-15.md`](../DevLog/20261017-15.md)，剩余任务已逐条折进本目录的 `TD-*`。
 
 ## 1. 文件命名
 
@@ -127,7 +128,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 排查档案正文对齐 TroubleShootingDocSpec 的**四节必备项** | ✅ 已完成（2026-10-13） | [#128](https://github.com/ACANX/AHA/issues/128)（**已关闭**） | 取**选项 C**：32 篇 + 模板补齐四节；规范新增 §5（+ §4 入口）；`CheckDocs.py` 新增机器检查 |
 | [TD-00019](TD-00019-DefaultChannelBackToStable.md) | 默认升级通道从 `Beta` 改回 `Stable` | ✅ **已完成**（2026-10-17，PR [#255](https://github.com/ACANX/AHA/pull/255) → `1f10666`）；「`Stable` 通道能列出版本」依赖种子发版，转 [#238](https://github.com/ACANX/AHA/issues/238) 跟踪 | [#252](https://github.com/ACANX/AHA/issues/252) | D9 的临时默认值（Stable 当时无可下包）；机制已就绪：`Update.Channel` **缺键不写盘**，所以改回默认值会惠及「从没选过该键」的安装；原载体 #51 已关闭，本单转由 #252 跟踪 |
 | [TD-00022](TD-00022-NativeImageSelfUpdate.md) | 原生镜像（`AhaDesktopNative`）的应用内自更新 | ⏳ 待真机确认（唯一剩余项已登记 #122） | [#122](https://github.com/ACANX/AHA/issues/122) | 通道契约 / 资产选择 / 形态判定 / 包内清单与 helper / 换装计划 / 重启命令**逐层核对均已就绪**；我曾误判为「未实现」并多拦一层（表现为「升级按钮永远是灰的」），门已撤、正向用例已补；剩下的是**真机验一次「替换正在运行的 exe」**（`TS-2610-047` §4.1 记录了这次误判的更正）；#247 已随 PR #243 交付后关闭 |
-| [TD-00023](TD-00023-FrozenDocsResidualBacklog.md) | 三份冻结文档（`TODO.md`/`PLAN.md`/`Dbsx.txt`）遗留任务的**索引与最小任务拆解**（`T-01`…`T-26`） | ◐ 进行中（索引已建） | —— 按条目分散跟踪（各条「执行载体」列） | 已完成 / 不做 / 过时的条目已归档到 `Docs/DevLog/20261017-15.md`；本文档只管「剩下的还要做的事」，状态以各 TD / Issue 为准 |
+| [TD-00023](TD-00023-TuiGuiRealMachineChecklist.md) | TUI / GUI **必须在真机或人工确认**的 7 项（WSL 内验不到） | ☐ 未开始 | [#122](https://github.com/ACANX/AHA/issues/122) | 原 `Docs/PLAN.md` §5，该文件已于 2026-10-17 删除，原文保存在本文档 |
 | [TD-00020](TD-00020-PosixUpdateHelper.md) | POSIX 换装 helper（Linux / macOS 的应用内升级） | ⏳ 待做 | [#250](https://github.com/ACANX/AHA/issues/250) | 服务层 / 计划 / 回执 / 握手都已平台无关，增量只在一个 `apply-update.sh`；现状是界面**提前置灰**并说明原因（2026-10-16 审查 P1-7 已修），功能本身仍缺；原载体 #51 已关闭，本单转由 #250 跟踪 |
 | [TD-00021](TD-00021-RollbackToPreviousVersion.md) | 回滚到上一版（界面入口） | ⏳ 待做 | [#251](https://github.com/ACANX/AHA/issues/251) | 备份与 `SwapPlan.rollback` 都已就绪，缺的是「让用户看得见、点得到」；入口必须照实说明 `Update.BackupKeep` 决定了能切回的范围（2026-10-16 第二轮审查 P3-⑤）；原载体 #51 已关闭，本单转由 #251 跟踪 |
 | [TD-00018](TD-00018-ReleaseTagAutoTrigger.md) | 自动打的 `V*` tag 不触发 `Release.yml`：不配 PAT 打通自动出包 | ✅ **已完成**（2026-10-17） | [#238](https://github.com/ACANX/AHA/issues/238)（**已关闭**） | **方案 B 已实现并闭环**：`Build.yml` 新建出 tag 后 `gh workflow run Release.yml --ref main` 派发（PR [#240](https://github.com/ACANX/AHA/pull/240)）。**首次真发版验收**（`V0.1.3`，2026-10-17）：`main` 构建成功 → tag 自动创建 → 自动派发 `Release.yml` → 4 份 zip + `SHA256SUMS`，7 个作业全 success；实物核对（`sha256sum -c` 4/4、包根 `AHA-PACKAGE.json` 逐项一致、jar 无构建号）与客户端契约审计（真实资产名 4/4）见 [#238 评论](https://github.com/ACANX/AHA/issues/238#issuecomment-6230970801) |
