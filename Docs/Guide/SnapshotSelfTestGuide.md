@@ -103,7 +103,7 @@ PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**
 等 CI 跑完，到发布页（Releases → 该 pre-release）确认资产出现，tag 形如：
 
 ```text
-V0.1.3.00165.10141530-AHA-Cli-JVM-SNAPSHOT
+V0.1.3.00165.10141530-AHA-Cli-JVM
 ```
 
 资产名形如 `aha-cli-0.1.3.00165.10141530.zip`（桌面端为 `aha-desktop-0.1.3.00165.10141530-Win.zip` 之类）。
@@ -141,7 +141,7 @@ Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装
 ### 5.3 第三步：按 A 组清单自测（CLI，0 token）
 
 ```bat
-cd Dist\V0.1.3.00165.10141530-AHA-Cli-JVM-SNAPSHOT
+cd Dist\V0.1.3.00165.10141530-AHA-Cli-JVM
 
 :: A1 启动
 AhaCli.bat version
@@ -169,7 +169,7 @@ A5「无 `UnsatisfiedLinkError`」不用单独测：A2 的工具调用与会话�
 ### 5.4 第三步（桌面端）：按 B 组清单自测（0 token）
 
 ```bat
-cd Dist\V0.1.3.00165.10141530-AHA-Desktop-JVM-SNAPSHOT
+cd Dist\V0.1.3.00165.10141530-AHA-Desktop-JVM
 AhaDesktop.bat
 ```
 
@@ -201,7 +201,7 @@ AhaDesktop.bat
 
 | 项 | 值 |
 |---|---|
-| 快照版本 | `0.1.3.00165.10141530`（tag `V0.1.3.00165.10141530-AHA-Cli-JVM-SNAPSHOT`）|
+| 快照版本 | `0.1.3.00165.10141530`（tag `V0.1.3.00165.10141530-AHA-Cli-JVM`）|
 | 平台 / JDK | Win / jdk25 |
 | 结论 | ✅ 必测清单通过 |
 | token 开销 | 0 |

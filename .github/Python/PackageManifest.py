@@ -26,7 +26,7 @@
   ——落地器就是这么核对的（`PackageManifest.java`）；
 * 清单写在**包根**：`AHA-PACKAGE.json` 自身**不进** `files`（否则校验和自指）；
 * `kind` 取值与 Java 的 `UpdateKind.of()` 一致：`desktop-jvm` / `desktop-native` / `cli-jvm` / `cli-native`；
-  `cli-jvm` 平台无关，**必须不带** `--platform`，其余三种**必须带**；
+  四种形态**都必须带** `--platform`（自 issue #269 起 CLI-JVM 也按平台拆名）；
 * 打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）一律**响亮失败**，
   而不是默默写进清单；
 * 生成与校验都是确定性的（条目按 `path` 排序），同一份输入产出同一份 JSON，便于比对。
@@ -56,7 +56,8 @@ SUMS_NAME = "SHA256SUMS"
 KIND_HAS_PLATFORM = {
     "desktop-jvm": True,
     "desktop-native": True,
-    "cli-jvm": False,
+    # issue #269：CLI-JVM 也带平台段（三平台三个名字，内容暂相同）。
+    "cli-jvm": True,
     "cli-native": True,
 }
 
@@ -271,8 +272,8 @@ def self_test() -> int:
         expect_fail("版本不符", lambda: verify(package, "desktop-jvm", "0.1.3.00241", None))
         expect_fail("形态不符", lambda: verify(package, "cli-jvm", None, None))
         expect_fail("平台不符", lambda: verify(package, None, None, "ubuntu-amd64"))
-        expect_fail("平台无关的形态给了平台", lambda: build_manifest(
-            "cli-jvm", "0.1.3.00242", "windows-amd64", 25, read_entries(package)))
+        expect_fail("CLI-JVM 没给平台（issue #269 起必须带平台段）", lambda: build_manifest(
+            "cli-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("带平台的形态没给平台", lambda: build_manifest(
             "desktop-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("不认识的形态", lambda: build_manifest(

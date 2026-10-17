@@ -12,6 +12,12 @@ on:
       # 实测风险：不加这两行时，每次出快照都会跑一遍完整的正式发版流程。
       - '!V*-SNAPSHOT'
       - '!v*-SNAPSHOT'
+      # 2026-10-17 起快照 tag 去掉了 `-SNAPSHOT` 后缀（`V<5 段>-AHA-<product>-<form>`），
+      # 5 段版本已能区分快照；这里按 `-AHA-` / `-aha-` 排除，避免快照触发正式发版。
+      - '!V*-AHA-*'
+      - '!v*-AHA-*'
+      - '!V*-aha-*'
+      - '!v*-aha-*'
 
   # 自动打的 tag 由 `GITHUB_TOKEN` 推送，**不会**触发上面的 `push: tags`（GitHub 防递归）。
   # 但 `workflow_dispatch` 是该规则的**官方例外**：`Build.yml` 的 tag 作业在成功打完 tag 后，
@@ -75,19 +81,16 @@ jobs:
           # 版本从**唯一读取入口**取（issue #93 / #94）：平铺后包内 jar 名不含版本号，
           # 「从产物名读版本」那条路没有了，改用各工作流共用的版本读取点。
           version=$(python3 .github/Python/ProjectVersion.py --resolve)
-          target="aha-cli-${version}.zip"
           # 包内形态（issue #218）：平铺 —— 单体 jar + 启动脚本 + 文档，全在包根。
-          # 先在临时目录里打，再移进 Dist/：
-          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
+          # 先在临时目录里打，再复制成三个平台名：
+          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身收进归档；
           #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
           #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
-          mv -- "${RUNNER_TEMP}/${target}" Dist/
-          # 产物统一落 Dist/：仓库根只放源码与文档
-          ls -lh "Dist/${target}"
+          tmp="${RUNNER_TEMP}/aha-cli.zip"
+          (cd Dist && zip -qr "${tmp}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
           # 包内自证：不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
           entries="${RUNNER_TEMP}/cli-release-entries.txt"
-          "$JAVA_HOME/bin/jar" tf "Dist/${target}" > "$entries"
+          "$JAVA_HOME/bin/jar" tf "${tmp}" > "$entries"
           if grep -Eq '^(lib|bin)/' "$entries"; then
             echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
             grep -E '^(lib|bin)/' "$entries" | head -5
@@ -98,15 +101,20 @@ jobs:
               echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
             fi
           done
-          echo "CLI 包：Dist/${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
-          # ── 包内清单（issue #51 §6）────────────────────────────────────────
-          # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
-          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-            --zip "Dist/${target}" --kind cli-jvm --version "${version}" --jdk 25
-          # 写完立刻回读校验（先写后验，只差一次 zip 读取）：清单若生成有误，
-          # 用户下载后才在升级时撞「校验和不符」——那是发布出去之后才发现，代价最高。
-          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
-            --zip "Dist/${target}" --kind cli-jvm --version "${version}"
+          # issue #269：CLI-JVM 三个平台三个名字（内容暂相同，后续再真正按平台生成）。
+          for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
+            target="Dist/aha-cli-jvm-${version}-${platform}-jdk25.zip"
+            cp -- "${tmp}" "${target}"
+            # ── 包内清单（issue #51 §6）──────────────────────────────────────
+            # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
+            PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+              --zip "${target}" --kind cli-jvm --version "${version}" --platform "${platform}" --jdk 25
+            # 写完立刻回读校验（先写后验，只差一次 zip 读取）：清单若生成有误，
+            # 用户下载后才在升级时撞「校验和不符」——那是发布出去之后才发现，代价最高。
+            PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+              --zip "${target}" --kind cli-jvm --version "${version}" --platform "${platform}"
+            echo "CLI 包：${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
+          done
       - name: UploadReleaseAssets
         uses: softprops/action-gh-release@v3
         with:
@@ -160,6 +168,130 @@ jobs:
       expected: mac-aarch64
       ref: ${{ inputs.tag || github.ref_name }}
 
+  # ── 版本号：原生腿需要「0.1.4」而不是 tag 「V0.1.4」 ─────────────────────
+  ResolveVersion:
+    name: ResolveVersion
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: ReadVersion
+        id: version
+        run: echo "version=$(python3 .github/Python/ProjectVersion.py --resolve)" >> "$GITHUB_OUTPUT"
+
+  # ── 原生线：Stable 自 0.1.4 起也出原生包（issue #269）───────────────────────
+  #   每条腿复用快照线同一份可复用工作流（`NativeImageLeg.yml` / `CliNativeImageLeg.yml`），
+  #   逻辑只有一份；这里只负责「传对版本与平台」。
+  DesktopNativeUbuntuAmd64:
+    name: DesktopNativeUbuntuAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      platform: ubuntu
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  DesktopNativeWindowsAmd64:
+    name: DesktopNativeWindowsAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      platform: win
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  DesktopNativeMacOSAarch64:
+    name: DesktopNativeMacOSAarch64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      platform: mac-aarch64
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeUbuntuAmd64:
+    name: CliNativeUbuntuAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      platform: ubuntu
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeWindowsAmd64:
+    name: CliNativeWindowsAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      platform: win
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeMacOSAarch64:
+    name: CliNativeMacOSAarch64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      platform: mac-aarch64
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  # 原生腿只上传 Actions 制品，不直接发版（与快照线同一套 legs）；这里统一挂到发布页。
+  NativePublish:
+    name: NativePublish
+    needs:
+      - ResolveVersion
+      - DesktopNativeUbuntuAmd64
+      - DesktopNativeWindowsAmd64
+      - DesktopNativeMacOSAarch64
+      - CliNativeUbuntuAmd64
+      - CliNativeWindowsAmd64
+      - CliNativeMacOSAarch64
+    # 部分腿失败也要发布已成功的那些（原生编译是可选管线，见 NativeImageLeg 的容错说明）。
+    if: always() && needs.ResolveVersion.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: DownloadNativeArtifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: UploadNativeAssets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # download-artifact 把每个制品的 zip 放在自己的子目录里，先收平到 artifacts/ 顶层。
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          files=(artifacts/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "⚠️ 本次没有原生包可发布（各腿可能未编出二进制）"
+            exit 0
+          fi
+          gh release upload "${TAG}" "${files[@]}" --clobber
+          echo "已上传 ${#files[@]} 个原生包"
+
   Checksums:
     name: ReleaseChecksum
     needs:
@@ -167,6 +299,7 @@ jobs:
       - DesktopPackageUbuntuAmd64
       - DesktopPackageWindowsAmd64
       - DesktopPackageMacOSAarch64
+      - NativePublish
     # 任一作业成功就要出校验和：已经挂在发布页上的资产必须能核对（部分平台失败也要有）。
     # 全都失败 / 被取消时不出——那时发布页上根本没有资产可核。
     if: >-
@@ -203,12 +336,9 @@ jobs:
         run: |
           set -euo pipefail
           version=$(python3 .github/Python/ProjectVersion.py --resolve)
-          expected=(
-            "aha-cli-${version}.zip"
-            "aha-desktop-${version}-ubuntu-amd64.zip"
-            "aha-desktop-${version}-windows-amd64.zip"
-            "aha-desktop-${version}-macos-aarch64.zip"
-          )
+          # 期望清单**只从矩阵读**（issue #269 §3）：四组合 × 三平台 = 12 份。
+          # 不再在工作流里硬编码资产名——那是「矩阵写在两处」的老问题。
+          mapfile -t expected < <(python3 .github/Python/ReleaseMatrix.py --asset-names --version "${version}")
           missing=()
           for name in "${expected[@]}"; do
             [ -f "assets/${name}" ] || missing+=("${name}")

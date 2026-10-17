@@ -7,7 +7,7 @@
     不带薄壳时也可直调：UpdateSnapshot.ps1 -Kind jvm -Pr <N>
 
     快照包 = 某个**未合并 PR** 的试包（issue #165 方案）。它挂在发布页的 pre-release 上：
-        tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
+        tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native（旧 tag 的 -SNAPSHOT 后缀仍兼容）
     本脚本做四件事：
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
       2. 挑出**本机平台**该取哪个资产（JVM 线与原生线自 2026-10-15 起**共用同一套**：`windows-amd64` / `ubuntu-amd64`）；
@@ -82,16 +82,16 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # ── 命名契约（唯一来源：.github/Python/SnapshotPlan.py）──────────────────────────
 # 这三行字面量一旦与判定脚本漂移，就会变成「发布页上有包、本地却永远取不到」。
 # bin/CheckScripts.py 会断言两边一致（与原生取件的 PS1/Python 契约同一思路）。
-$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
+$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)(?:-SNAPSHOT)?$'
 $TtlDays      = 7
 
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线与原生线共用同一套，issue #215）
 $kinds = @{
-    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('AHA-Desktop-JVM-', 'AHA-Cli-JVM-') }
-    'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('AHA-Desktop-JVM-') }
-    'cli-jvm'        = @{ Title = 'JVM CLI 便携包';   Targets = @('Cli-JVM', 'Cli');         Prefixes = @('AHA-Cli-JVM-') }
-    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('AHA-Desktop-Native-') }
-    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('AHA-Cli-Native-') }
+    'jvm'            = @{ Title = 'JVM 便携包';  Targets = @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli'); Prefixes = @('aha-desktop-jvm-', 'aha-cli-jvm-') }
+    'desktop-jvm'    = @{ Title = 'JVM 桌面端便携包'; Targets = @('Desktop-JVM', 'Desktop'); Prefixes = @('aha-desktop-jvm-') }
+    'cli-jvm'        = @{ Title = 'JVM CLI 便携包';   Targets = @('Cli-JVM', 'Cli');         Prefixes = @('aha-cli-jvm-') }
+    'desktop-native' = @{ Title = '原生桌面包';  Targets = @('Desktop-Native', 'NativeDesktop'); Prefixes = @('aha-desktop-native-') }
+    'cli-native'     = @{ Title = '原生 CLI 包'; Targets = @('Cli-Native', 'NativeCli');         Prefixes = @('aha-cli-native-') }
 }
 
 #: 目标 → 本机要替换的可执行文件基名。JVM 便携包没有单一 exe（是整包），不安装。
@@ -156,14 +156,21 @@ function Get-Json {
 }
 
 function Get-AssetFor {
-    # 一个快照 release 里可能有多个平台的资产（以及 `-Report.zip` 报告包）。
-    # 判据：前缀属于该目标，且以 `-<平台>-jdk<JDK>.zip` 收尾；显式排除报告包。
-    param($Release, [string]$Prefix, [string]$Platform)
-    return $Release.assets | Where-Object {
-        $_.name.StartsWith($Prefix) -and
-        $_.name.EndsWith("-$Platform-jdk25.zip") -and
-        -not $_.name.EndsWith('-Report.zip')
-    } | Select-Object -First 1
+    # 一个快照 release 里可能有多个平台的资产（以及报告包 `-report.zip`）。
+    # 判据：前缀属于该目标，且以 `-<平台>-(jdk|graalvm)<JDK>.zip` 收尾；显式排除报告包。
+    # `-Platforms` 是**候选列表**：CLI-JVM 内容平台无关，按本平台名找不到时回退到
+    # ubuntu / windows / macos 中实际存在的那一份（issue #269 §6 第 7 条）。
+    param($Release, [string]$Prefix, [string[]]$Platforms)
+    foreach ($platform in $Platforms) {
+        $hit = $Release.assets | Where-Object {
+            $_.name.StartsWith($Prefix) -and
+            $_.name -match ("-" + [regex]::Escape($platform) + "-(?:jdk|graalvm)[0-9]+\.zip$") -and
+            -not $_.name.EndsWith('-report.zip') -and
+            -not $_.name.EndsWith('-Report.zip')
+        } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    return $null
 }
 
 function Get-Candidates {
@@ -192,12 +199,19 @@ function Get-Candidates {
         if ($PrFilter -gt 0 -and $prNum -ne $PrFilter) { continue }
         # 本平台该取哪个资产：先按目标找前缀（JVM 线的平台标签与原生线不同）
         $prefix = $null
-        if ($target -in @('Desktop-JVM', 'Desktop')) { $prefix = 'AHA-Desktop-JVM-' }
-        elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'AHA-Cli-JVM-' }
-        elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'AHA-Desktop-Native-' }
-        else { $prefix = 'AHA-Cli-Native-' }
-        $platform = if ($target -in @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
-        $asset = Get-AssetFor -Release $r -Prefix $prefix -Platform $platform
+        if ($target -in @('Desktop-JVM', 'Desktop')) { $prefix = 'aha-desktop-jvm-' }
+        elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'aha-cli-jvm-' }
+        elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'aha-desktop-native-' }
+        else { $prefix = 'aha-cli-native-' }
+        $platforms = if ($target -in @('Cli-JVM', 'Cli')) {
+            # CLI-JVM：本平台优先，找不到再回退到其它平台（内容相同）
+            @($jvmPlatform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')
+        } elseif ($target -in @('Desktop-JVM', 'Desktop')) {
+            @($jvmPlatform)
+        } else {
+            @($nativePlatform)
+        }
+        $asset = Get-AssetFor -Release $r -Prefix $prefix -Platforms $platforms
         $published = if ($r.published_at) { [datetime]$r.published_at } else { [datetime]$r.created_at }
         $items += [pscustomobject]@{
             Tag       = $r.tag_name

@@ -99,8 +99,8 @@ $TagSuffix = '-aha-jvm'
 #: 包根本来就没有的条目会被跳过（旧形态的包平铺不了），实测里会点名说明。
 $kinds = @{
     'Desktop' = @{
-        Title = '桌面端 JVM 便携包'; ByPlatform = $true; SubDir = 'desktop-jvm'
-        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-'; Workflow = 'BuildJVMArtifacts.yml'
+        Title = '桌面端 JVM 便携包'; SubDir = 'desktop-jvm'
+        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-jvm-'; LegacyPrefix = 'aha-desktop-'; ByPlatform = $true; Workflow = 'BuildJVMArtifacts.yml'
         Flat = @(
             @{ Glob = 'aha-desktop.jar'; Name = 'aha-desktop.jar' }
             @{ Glob = 'AhaDesktop.bat';  Name = 'AhaDesktop.bat' }
@@ -108,8 +108,8 @@ $kinds = @{
         )
     }
     'Cli'     = @{
-        Title = 'CLI JVM 便携包'; ByPlatform = $false; SubDir = 'cli-jvm'
-        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-'; Workflow = 'BuildJVMArtifacts.yml'
+        Title = 'CLI JVM 便携包'; SubDir = 'cli-jvm'
+        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-jvm-'; LegacyPrefix = 'aha-cli-'; ByPlatform = $true; PlatformFree = $true; Workflow = 'BuildJVMArtifacts.yml'
         Flat = @(
             @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
             @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
@@ -175,20 +175,32 @@ function Get-TagVersion {
     return $body
 }
 
-# ── 资产名：桌面端 `<前缀><版本>-<平台>[-jdk27].zip`；CLI `<前缀><版本>[-jdk27].zip` ──
+# ── 资产名（issue #269）：`aha-<product>-jvm-<版本>-<平台>-jdk<JDK>.zip` ──────────
+#    旧名（0.1.3 / 0.1.4 双发别名）仍返回作为候选：`aha-desktop-<版本>-<平台>[-jdk27].zip`、
+#    `aha-cli-<版本>[-jdk27].zip`（旧 CLI-JVM 是平台无关的一份包）。
 function Get-AssetNames {
     param([string]$Version)
-    $suffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
-    if ($kindInfo.ByPlatform) {
-        $names = @(("{0}{1}-{2}{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $suffix))
-        # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。
-        # 新产出用 aarch64，但旧包仍要能取到。
-        if ($Platform -eq 'macos-aarch64') {
-            $names += ("{0}{1}-macos-arm64{2}.zip" -f $kindInfo.Prefix, $Version, $suffix)
+    $legacySuffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
+    if ($kindInfo.PlatformFree) {
+        # CLI-JVM 内容平台无关：本平台名优先，其次按三平台依次回退（issue #269 §6 第 7 条）。
+        $names = @()
+        foreach ($candidate in @($Platform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')) {
+            $names += ("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $candidate, $Jdk)
         }
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
         return $names
     }
-    return @(("{0}{1}{2}.zip" -f $kindInfo.Prefix, $Version, $suffix))
+    $names = @(("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $Jdk))
+    if ($kindInfo.ByPlatform) {
+        $names += ("{0}{1}-{2}{3}.zip" -f $kindInfo.LegacyPrefix, $Version, $Platform, $legacySuffix)
+        # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。
+        if ($Platform -eq 'macos-aarch64') {
+            $names += ("{0}{1}-macos-arm64{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        }
+    } else {
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+    }
+    return $names
 }
 
 function Get-AssetFor {
