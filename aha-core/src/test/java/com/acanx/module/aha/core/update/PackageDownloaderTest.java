@@ -73,7 +73,7 @@ class PackageDownloaderTest {
 
     @Test
     void downloadsThenVerifiesAndLeavesNoPartFile() throws IOException {
-        String name = "aha-desktop-0.1.3.00242-windows-amd64.zip";
+        String name = "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip";
         server.responder((path, out) -> respond(out, 200, PAYLOAD));
 
         AtomicInteger lastDownloaded = new AtomicInteger();
@@ -225,7 +225,7 @@ class PackageDownloaderTest {
 
     @Test
     void reusesACachedFileWithTheSameSizeWithoutAnyRequest() throws IOException {
-        String name = "aha-cli-0.1.3.00242.zip";
+        String name = "aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip";
         Files.write(staging.resolve(name), PAYLOAD);
         server.responder((path, out) -> respond(out, 500, new byte[0]));
 
@@ -239,7 +239,7 @@ class PackageDownloaderTest {
 
     @Test
     void redownloadsWhenTheCachedFileFailsTheChecksum() throws IOException {
-        String name = "aha-cli-0.1.3.00242.zip";
+        String name = "aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip";
         // 同名同大小、但内容坏了：缓存不可信，应当丢掉重下，而不是直接失败
         Files.write(staging.resolve(name), "JAR-BYTES".getBytes(StandardCharsets.UTF_8));
         server.responder((path, out) -> respond(out, 200, PAYLOAD));

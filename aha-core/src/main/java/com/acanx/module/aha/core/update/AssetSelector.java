@@ -182,9 +182,10 @@ public final class AssetSelector {
         if (!contractAsset.version().equals(release.version())) {
             return false;
         }
-        boolean platformOk = kind.hasPlatform()
-                ? platform.matches(contractAsset.platformTag())
-                : contractAsset.platformTag() == null;
+        // 旧 CLI-JVM 包（0.1.3 的 aha-cli-<版本>.zip）没有平台段：按「平台无关」放行，
+        // 一个版本周期内仍要让老用户升得上来（issue #269 §4）。
+        boolean platformOk = contractAsset.platformTag() == null
+                || platform.matches(contractAsset.platformTag());
         return platformOk && contractAsset.jdk() == ChannelContract.DEFAULT_JDK;
     }
 
@@ -233,9 +234,8 @@ public final class AssetSelector {
                 continue;
             }
             ChannelContract.Asset contractAsset = parsed.get();
-            boolean platformOk = kind.hasPlatform()
-                    ? platform.matches(contractAsset.platformTag())
-                    : contractAsset.platformTag() == null;
+            boolean platformOk = contractAsset.platformTag() == null
+                    || platform.matches(contractAsset.platformTag());
             if (platformOk && contractAsset.version().equals(release.version())
                     && contractAsset.jdk() != ChannelContract.DEFAULT_JDK) {
                 return "；注：该平台只有 jdk" + contractAsset.jdk() + " 变体（试验分支），"

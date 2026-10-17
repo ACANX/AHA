@@ -95,7 +95,7 @@ jobs:
             exit 1
           fi
 
-          target="Dist/aha-desktop-${version}-${LABEL}.zip"
+          target="Dist/aha-desktop-jvm-${version}-${LABEL}-jdk25.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
@@ -180,10 +180,10 @@ jobs:
           # 版本从**唯一读取入口**取（issue #93 / #94），不从产物名里反推。
           version=$(python3 .github/Python/ProjectVersion.py --resolve)
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
+            --zip "Dist/aha-desktop-jvm-${version}-${LABEL}-jdk25.zip" \
             --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
-            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" --kind desktop-jvm \
+            --zip "Dist/aha-desktop-jvm-${version}-${LABEL}-jdk25.zip" --kind desktop-jvm \
             --version "${version}" --platform "${LABEL}"
 
       - name: PrintOpenJfxArtifacts
@@ -195,4 +195,4 @@ jobs:
         with:
           # 同 CLI 作业：显式指定 tag（dispatch 下 `github.ref` 是分支）
           tag_name: ${{ inputs.ref }}
-          files: Dist/aha-desktop-[0-9]*.zip
+          files: Dist/aha-desktop-jvm-*.zip

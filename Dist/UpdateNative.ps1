@@ -57,8 +57,8 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # 两套实现刻意并存（Windows 不假设有 Python、POSIX 不假设有 PowerShell），但这三个字面量
 # 一旦漂移就会变成「某个平台上永远取不到包」——bin/CheckScripts.py 会断言两边一致。
 $kinds = @{
-    Desktop = @{ Title = '桌面端原生镜像'; TagSuffix = '-aha-desktop-native'; AssetPrefix = 'AHA-Desktop-Native-'; ExeBase = 'aha-desktop-native' }
-    Cli     = @{ Title = 'CLI 原生镜像';   TagSuffix = '-aha-cli-native';     AssetPrefix = 'AHA-Cli-Native-';     ExeBase = 'aha-cli-native' }
+    Desktop = @{ Title = '桌面端原生镜像'; TagSuffix = '-aha-desktop-native'; AssetPrefix = 'aha-desktop-native-'; ExeBase = 'aha-desktop-native' }
+    Cli     = @{ Title = 'CLI 原生镜像';   TagSuffix = '-aha-cli-native';     AssetPrefix = 'aha-cli-native-';     ExeBase = 'aha-cli-native' }
 }
 $kindInfo = $kinds[$Kind]
 
@@ -87,12 +87,14 @@ elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
 function Get-MatchingAsset {
     param($Release)
-    # 同一族资产里有「报告包」（AHA-*-…-jdk25-Report.zip）：它与镜像包同版本号，只差结尾。
-    # 这里靠「必须以 -$Platform-jdk$Jdk.zip 收尾」直接排除，并额外显式排除 -Report.zip。
+    # 同一族资产里有「诊断包」（…-graalvm25-diagnostics.zip）：它与镜像包同版本号，只差结尾。
+    # 这里靠「必须以 -$Platform-graalvm$Jdk.zip 收尾」直接排除，并额外显式排除诊断包，
+    # 兼容旧写法 -Report.zip / -jdk<JDK>（issue #269 的过渡期别名）。
     $Release.assets | Where-Object {
         $_.name.StartsWith($kindInfo.AssetPrefix) -and
-        $_.name.EndsWith("-$Platform-jdk$Jdk.zip") -and
-        -not $_.name.EndsWith('-Report.zip')
+        $_.name -match "-$([regex]::Escape($Platform))-(?:graalvm|jdk)$Jdk\.zip$" -and
+        -not $_.name.EndsWith('-Report.zip') -and
+        -not $_.name.EndsWith('-diagnostics.zip')
     } | Select-Object -First 1
 }
 

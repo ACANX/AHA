@@ -52,7 +52,7 @@ class UpdateServiceTest {
 
     private static final PlatformTag WINDOWS = PlatformTag.of("Windows 11", "amd64");
 
-    private static final String ASSET_NAME = "aha-desktop-0.1.3.00243-windows-amd64.zip";
+    private static final String ASSET_NAME = "aha-desktop-jvm-0.1.3.00243-windows-amd64-jdk25.zip";
 
     @TempDir
     Path tempDir;
@@ -107,7 +107,7 @@ class UpdateServiceTest {
                      {"name":"SHA256SUMS","size":%d,"browser_download_url":"%s/assets/SHA256SUMS","state":"uploaded"}]},
                   {"tag_name":"V0.1.3.00242-aha-jvm","prerelease":true,"draft":false,
                    "published_at":"2026-10-16T02:00:00Z","assets":[
-                     {"name":"aha-desktop-0.1.3.00242-windows-amd64.zip","size":1,
+                     {"name":"aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip","size":1,
                       "browser_download_url":"%s/assets/old.zip","state":"uploaded"}]}
                 ]
                 """.formatted(ASSET_NAME, zipSize, server.base(), ASSET_NAME, sumsSize, server.base(),

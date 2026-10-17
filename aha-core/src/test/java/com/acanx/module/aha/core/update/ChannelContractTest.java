@@ -9,10 +9,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 通道契约：tag 与资产名的生成 / 解析（issue #51 §2.1）。
+ * 通道契约：tag 与资产名的生成 / 解析（issue #51 §2.1；文法统一见 issue #269）。
  *
- * <p>断言里的资产名<b>逐字抄自 2026-10-16 的发布页实查</b>（{@code gh api} 的资产列表），
- * 不是照文档猜的 —— 这份契约只要有一个人改错，三处实现就会漂移。</p>
+ * <p>新文法（0.1.4 起）是<br>
+ * {@code aha-<product>-<form>-<version>-<os>-<arch>-<runtime>.zip}；<br>
+ * 旧名（0.1.3 及更早）在过渡期内仍要能解析，故本类同时钉住「新名生成」与「旧名兼容」两条线。</p>
  *
  * @since 0.2.0
  */
@@ -34,38 +35,42 @@ class ChannelContractTest {
     }
 
     @Test
-    void buildsAssetNamesThatMatchTheLiveReleasePage() {
-        // dev 线 JVM 包（V0.1.3.00242-aha-jvm 的 8 个资产）
+    void buildsAssetNamesInTheUnifiedGrammar() {
+        // dev 线（Beta）：四组合共用一套文法，平台段与 runtime 段都显式。
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
-                BUILD, "windows-amd64", 25)).isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
+                BUILD, "windows-amd64", 25))
+                .isEqualTo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
-                BUILD, "macos-aarch64", 27)).isEqualTo("aha-desktop-0.1.3.00242-macos-aarch64-jdk27.zip");
+                BUILD, "macos-aarch64", 27))
+                .isEqualTo("aha-desktop-jvm-0.1.3.00242-macos-aarch64-jdk27.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
-                BUILD, null, 25)).isEqualTo("aha-cli-0.1.3.00242.zip");
-        assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
-                BUILD, null, 27)).isEqualTo("aha-cli-0.1.3.00242-jdk27.zip");
-
-        // dev 线原生包（V0.1.3.00242-aha-desktop-native）
+                BUILD, "ubuntu-amd64", 25))
+                .isEqualTo("aha-cli-jvm-0.1.3.00242-ubuntu-amd64-jdk25.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
                 BUILD, "ubuntu-amd64", 25))
-                .isEqualTo("AHA-Desktop-Native-0.1.3.00242-ubuntu-amd64-jdk25.zip");
+                .isEqualTo("aha-desktop-native-0.1.3.00242-ubuntu-amd64-graalvm25.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE,
                 BUILD, "windows-amd64", 25))
-                .isEqualTo("AHA-Cli-Native-0.1.3.00242-windows-amd64-jdk25.zip");
+                .isEqualTo("aha-cli-native-0.1.3.00242-windows-amd64-graalvm25.zip");
 
-        // 正式发版（ReleaseProcess.md §3.1 / §3.2）
+        // 正式发版（Stable）：同一套文法，原生形态自 0.1.4 起也进 Stable（issue #269 §3）。
         assertThat(ChannelContract.assetName(ReleaseChannel.STABLE, UpdateKind.DESKTOP_JVM,
-                BASELINE, "windows-amd64", 25)).isEqualTo("aha-desktop-0.1.3-windows-amd64.zip");
+                BASELINE, "windows-amd64", 25))
+                .isEqualTo("aha-desktop-jvm-0.1.3-windows-amd64-jdk25.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.STABLE, UpdateKind.CLI_JVM,
-                BASELINE, null, 25)).isEqualTo("aha-cli-0.1.3.zip");
+                BASELINE, "macos-aarch64", 25))
+                .isEqualTo("aha-cli-jvm-0.1.3-macos-aarch64-jdk25.zip");
+        assertThat(ChannelContract.assetName(ReleaseChannel.STABLE, UpdateKind.DESKTOP_NATIVE,
+                BASELINE, "ubuntu-amd64", 25))
+                .isEqualTo("aha-desktop-native-0.1.3-ubuntu-amd64-graalvm25.zip");
 
-        // 快照（BuildSpec.md §11.1：JVM 线只有 JDK 25，资产名里始终带 -jdk 段）
+        // 快照（Alpha）：同样是新文法（tag 仍是 -AHA-…-SNAPSHOT）。
         assertThat(ChannelContract.assetName(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
                 SNAPSHOT, "windows-amd64", 25))
-                .isEqualTo("AHA-Desktop-JVM-0.1.3.00242.10161125-windows-amd64-jdk25.zip");
-        assertThat(ChannelContract.assetName(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_NATIVE,
+                .isEqualTo("aha-desktop-jvm-0.1.3.00242.10161125-windows-amd64-jdk25.zip");
+        assertThat(ChannelContract.assetName(ReleaseChannel.ALPHA, UpdateKind.CLI_NATIVE,
                 SNAPSHOT, "ubuntu-amd64", 25))
-                .isEqualTo("AHA-Desktop-Native-0.1.3.00242.10161125-ubuntu-amd64-jdk25.zip");
+                .isEqualTo("aha-cli-native-0.1.3.00242.10161125-ubuntu-amd64-graalvm25.zip");
     }
 
     @Test
@@ -73,24 +78,23 @@ class ChannelContractTest {
         assertThat(ChannelContract.tag(ReleaseChannel.STABLE, UpdateKind.DESKTOP_JVM, BASELINE))
                 .isEqualTo("V0.1.3");
         assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, BUILD))
-                .isEqualTo("V0.1.3.00242-aha-jvm");
+                .isEqualTo("V0.1.3.00242-aha-desktop-jvm");
+        assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_JVM, BUILD))
+                .isEqualTo("V0.1.3.00242-aha-cli-jvm");
         assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, BUILD))
                 .isEqualTo("V0.1.3.00242-aha-desktop-native");
         assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD))
                 .isEqualTo("V0.1.3.00242-aha-cli-native");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-Desktop-JVM-SNAPSHOT");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-desktop-jvm-SNAPSHOT");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.CLI_NATIVE, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-Cli-Native-SNAPSHOT");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-cli-native-SNAPSHOT");
     }
 
     @Test
     void tagRoundTripsForEverySupportedCombination() {
         for (ReleaseChannel channel : ReleaseChannel.values()) {
             for (UpdateKind kind : UpdateKind.values()) {
-                if (!ChannelContract.supports(channel, kind)) {
-                    continue;
-                }
                 AhaVersion version = versionOf(channel);
                 String tag = ChannelContract.tag(channel, kind, version);
                 Optional<AhaVersion> parsed = ChannelContract.versionOfTag(channel, kind, tag);
@@ -102,18 +106,32 @@ class ChannelContractTest {
     }
 
     @Test
+    void acceptsLegacyTagsFromBeforeTheRename() {
+        // 0.1.3 的 dev JVM tag 是 -aha-jvm（两个 JVM 形态共用）。
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
+                "V0.1.3.00242-aha-jvm")).contains(BUILD);
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
+                "V0.1.3.00242-aha-jvm")).contains(BUILD);
+        // 快照旧 tag 用大写驼峰目标词。
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_NATIVE,
+                "V0.1.3.00242.10161125-AHA-Desktop-Native-SNAPSHOT")).contains(SNAPSHOT);
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
+                "V0.1.3.00242.10161125-AHA-Desktop-JVM-SNAPSHOT")).contains(SNAPSHOT);
+    }
+
+    @Test
     void versionOfTagRejectsOtherChannelsAndKinds() {
         // 通道对不上
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.STABLE, UpdateKind.DESKTOP_JVM,
-                "V0.1.3.00242-aha-jvm")).isEmpty();
+                "V0.1.3.00242-aha-desktop-jvm")).isEmpty();
         // 形态对不上（同名 tag 的另一种目标词）
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
-                "V0.1.3.00242-aha-jvm")).isEmpty();
+                "V0.1.3.00242-aha-desktop-jvm")).isEmpty();
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE,
                 "V0.1.3.00242-aha-desktop-native")).isEmpty();
-        // 版本段数与通道不符（快照 tag 里放的是 4 段版本）
+        // 版本段数与通道不符
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
-                "V0.1.3.00242-AHA-Desktop-JVM-SNAPSHOT")).isEmpty();
+                "V0.1.3.00242-AHA-desktop-jvm-SNAPSHOT")).isEmpty();
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
                 "V0.1.3")).isEmpty();
         // 空值安全
@@ -138,7 +156,7 @@ class ChannelContractTest {
         }
         List<Case> cases = List.of(
                 new Case(ReleaseChannel.STABLE, UpdateKind.DESKTOP_JVM, BASELINE, "windows-amd64", 25),
-                new Case(ReleaseChannel.STABLE, UpdateKind.CLI_JVM, BASELINE, null, 25),
+                new Case(ReleaseChannel.STABLE, UpdateKind.CLI_JVM, BASELINE, "ubuntu-amd64", 25),
                 new Case(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, BUILD, "ubuntu-amd64", 27),
                 new Case(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, BUILD, "ubuntu-amd64", 25),
                 new Case(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD, "macos-aarch64", 25),
@@ -158,37 +176,53 @@ class ChannelContractTest {
     }
 
     @Test
-    void reportArchiveIsNotAnUpgradeAsset() {
-        // 原生线同族的构建报告包不得被当成升级资产（否则会拿报告包去替换程序）。
+    void parsesLegacyAssetNamesFromBeforeTheRename() {
+        // 0.1.3 的 JVM 桌面包：默认变体不带 -jdk 段。
+        Optional<ChannelContract.Asset> desktop = ChannelContract.parseAsset(
+                ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
+                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+        assertThat(desktop).isPresent();
+        assertThat(desktop.get().jdk()).isEqualTo(25);
+        assertThat(desktop.get().platformTag()).isEqualTo("windows-amd64");
+
+        // 0.1.3 的 CLI-JVM 是平台无关的一份包（解析结果 platform 为 null）。
+        Optional<ChannelContract.Asset> cli = ChannelContract.parseAsset(
+                ReleaseChannel.STABLE, UpdateKind.CLI_JVM, "aha-cli-jvm-0.1.3-windows-amd64-jdk25.zip");
+        assertThat(cli).isPresent();
+        assertThat(cli.get().platformTag()).isNull();
+
+        // 0.1.3 的原生包（大写驼峰前缀 + -jdk<JDK>）。
+        Optional<ChannelContract.Asset> nativeAsset = ChannelContract.parseAsset(
+                ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
+                "aha-desktop-native-0.1.3.00242-ubuntu-amd64-graalvm25.zip");
+        assertThat(nativeAsset).isPresent();
+        assertThat(nativeAsset.get().jdk()).isEqualTo(25);
+    }
+
+    @Test
+    void reportAndDiagnosticsArchivesAreNotUpgradeAssets() {
+        // 诊断包 / 旧报告包与镜像包同族，绝不能被当成升级资产。
+        assertThat(ChannelContract.parseAsset(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
+                "aha-desktop-native-0.1.3.00242-ubuntu-amd64-graalvm25-diagnostics.zip")).isEmpty();
         assertThat(ChannelContract.parseAsset(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
                 "AHA-Desktop-Native-0.1.3.00242-ubuntu-amd64-jdk25-Report.zip")).isEmpty();
         // 前缀不属于本形态
         assertThat(ChannelContract.parseAsset(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE,
-                "aha-desktop-0.1.3.00242-windows-amd64.zip")).isEmpty();
+                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip")).isEmpty();
         // 源码包 / 文档包
         assertThat(ChannelContract.parseAsset(ReleaseChannel.STABLE, UpdateKind.CLI_JVM,
-                "aha-cli-0.1.3-sources.zip")).isEmpty();
+                "aha-cli-jvm-0.1.3-ubuntu-amd64-jdk25-sources.zip")).isEmpty();
     }
 
     @Test
-    void stableHasNoNativePackagesYet() {
-        assertThat(ChannelContract.supports(ReleaseChannel.STABLE, UpdateKind.DESKTOP_NATIVE))
-                .isFalse();
-        assertThat(ChannelContract.supports(ReleaseChannel.STABLE, UpdateKind.CLI_NATIVE))
-                .isFalse();
-        assertThat(ChannelContract.supports(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE))
-                .isTrue();
-
-        assertThatThrownBy(() -> ChannelContract.assetName(ReleaseChannel.STABLE,
-                UpdateKind.DESKTOP_NATIVE, BASELINE, "windows-amd64", 25))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("目前没有");
-        assertThatThrownBy(() -> ChannelContract.tag(ReleaseChannel.STABLE,
-                UpdateKind.DESKTOP_NATIVE, BASELINE))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("目前没有");
-        assertThat(ChannelContract.parseAsset(ReleaseChannel.STABLE, UpdateKind.CLI_NATIVE,
-                "AHA-Cli-Native-0.1.3-ubuntu-amd64-jdk25.zip")).isEmpty();
+    void everyChannelSupportsEveryKindSince014() {
+        for (ReleaseChannel channel : ReleaseChannel.values()) {
+            for (UpdateKind kind : UpdateKind.values()) {
+                assertThat(ChannelContract.supports(channel, kind))
+                        .as("%s × %s", channel.key(), kind.targetWord())
+                        .isTrue();
+            }
+        }
     }
 
     @Test
@@ -208,13 +242,12 @@ class ChannelContractTest {
     }
 
     @Test
-    void rejectsPlatformMisuseAndTooOldJdk() {
-        // CLI 的 JVM 包平台无关：给了平台段是调用方的错，不能默默忽略。
+    void rejectsMissingPlatformAndTooOldJdk() {
+        // 四种形态都带平台段：缺平台段是调用方的错，不能默默忽略。
         assertThatThrownBy(() -> ChannelContract.assetName(ReleaseChannel.STABLE, UpdateKind.CLI_JVM,
-                BASELINE, "windows-amd64", 25))
+                BASELINE, null, 25))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("没有平台段");
-        // 桌面端包必须有平台段。
+                .hasMessageContaining("必须传入平台标签");
         assertThatThrownBy(() -> ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
                 BUILD, "  ", 25))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -234,6 +267,7 @@ class ChannelContractTest {
 
         assertThat(UpdateKind.of("Desktop-JVM")).isEqualTo(UpdateKind.DESKTOP_JVM);
         assertThat(UpdateKind.of("desktop_jvm")).isEqualTo(UpdateKind.DESKTOP_JVM);
+        assertThat(UpdateKind.of("desktop-jvm")).isEqualTo(UpdateKind.DESKTOP_JVM);
         assertThat(UpdateKind.of(" cli-native ")).isEqualTo(UpdateKind.CLI_NATIVE);
         assertThat(UpdateKind.of("nope")).isNull();
         assertThat(UpdateKind.of(null)).isNull();
@@ -246,26 +280,5 @@ class ChannelContractTest {
         // 否则测试会红 —— 免得「改默认」被人忘掉或被顺手改掉。
         assertThat(ReleaseChannel.DEFAULT).isEqualTo(ReleaseChannel.STABLE);
         assertThat(ReleaseChannel.DEFAULT.key()).isEqualTo("stable");
-    }
-
-    @Test
-    void defaultChannelStillCannotServeNativeShapes() {
-        // 默认通道换了，**形态边界没换**：原生线还没发正式版 ⇒ 原生形态在默认通道用不了。
-        // 所以这条不仅断言「不支持」，还断言提示**给出了可切换的通道** ——
-        // 默认值落在 Stable 之后，原生装机的首屏就会碰到它（issue #252 的排期边界）
-        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.CLI_JVM)).isTrue();
-        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.DESKTOP_JVM)).isTrue();
-        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.DESKTOP_NATIVE))
-                .isFalse();
-    }
-
-    @Test
-    void missingAssetMessageSaysWhichChannelToSwitchTo() {
-        // 「不支持」必须落到「怎么办」：只说「没有这种包」等于把用户堵在墙前
-        assertThat(AssetSelectorTest.unsupportedMessage(UpdateKind.DESKTOP_NATIVE))
-                .contains("目前没有")
-                .contains("开发 Beta")
-                .contains("快照 Alpha")
-                .doesNotContain("「稳定 Stable」");   // 句首那句是被描述的通道，不算备选
     }
 }

@@ -86,7 +86,7 @@ class AssetSelectorTest {
                 UpdateKind.DESKTOP_JVM, WINDOWS);
 
         // 该版本同时有 `…-windows-amd64.zip` 与 `…-windows-amd64-jdk27.zip`：默认必须取前者
-        assertThat(asset.name()).isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
+        assertThat(asset.name()).isEqualTo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
     }
 
     @Test
@@ -94,10 +94,10 @@ class AssetSelectorTest {
         ChannelRelease release = BETA_DESKTOP_JVM.get(0);
 
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, WINDOWS).name())
-                .isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
+                .isEqualTo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
                 PlatformTag.of("Linux", "x86_64")).name())
-                .isEqualTo("aha-desktop-0.1.3.00242-ubuntu-amd64.zip");
+                .isEqualTo("aha-desktop-jvm-0.1.3.00242-ubuntu-amd64-jdk25.zip");
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
                 .isEqualTo("aha-desktop-0.1.3.00242-macos-arm64.zip");
     }
@@ -109,7 +109,7 @@ class AssetSelectorTest {
         String onWindows = AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS).name();
         String onMacos = AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, MACOS_ARM).name();
 
-        assertThat(onWindows).isEqualTo("aha-cli-0.1.3.00242.zip");
+        assertThat(onWindows).isEqualTo("aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
         assertThat(onMacos).isEqualTo(onWindows);
         // 平台无关的包不受「本平台没有包」的限制：Windows ARM64 上 CLI JVM 包照样能用（只要有 JDK）
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS_ARM).name())
@@ -124,7 +124,7 @@ class AssetSelectorTest {
         ChannelRelease release = BETA_DESKTOP_NATIVE.get(0);
 
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, WINDOWS).name())
-                .isEqualTo("AHA-Desktop-Native-0.1.3.00242-windows-amd64-jdk25.zip");
+                .isEqualTo("aha-desktop-native-0.1.3.00242-windows-amd64-graalvm25.zip");
         // 同族的 `-Report.zip` 是构建报告，不是升级资产：它压根解析不出（名字不匹配），因此不在候选里
         assertThat(AssetSelector.resolve(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, WINDOWS))
                 .isPresent()
@@ -142,7 +142,7 @@ class AssetSelectorTest {
                 .isInstanceOf(UpdateException.class)
                 // 报错点名的是**本平台**的规范名（aarch64），不是资产名里的历史写法
                 .hasMessageContaining("macos-aarch64")
-                .hasMessageContaining("AHA-Desktop-Native-0.1.3.00242-windows-amd64-jdk25.zip");
+                .hasMessageContaining("aha-desktop-native-0.1.3.00242-windows-amd64-graalvm25.zip");
     }
 
     @Test
@@ -151,7 +151,7 @@ class AssetSelectorTest {
         String json = """
                 [
                   {"tag_name": "V0.1.3.00244-aha-jvm", "prerelease": true, "draft": false, "assets": [
-                    {"name": "aha-desktop-0.1.3.00244-macos-aarch64.zip", "size": 1,
+                    {"name": "aha-desktop-jvm-0.1.3.00244-macos-aarch64-jdk25.zip", "size": 1,
                      "browser_download_url": "https://example.invalid/a.zip", "state": "uploaded"}]},
                   {"tag_name": "V0.1.3.00243-aha-jvm", "prerelease": true, "draft": false, "assets": [
                     {"name": "aha-desktop-0.1.3.00243-macos-arm64.zip", "size": 1,
@@ -163,7 +163,7 @@ class AssetSelectorTest {
 
         assertThat(AssetSelector.select(candidates.get(0), ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
-                .isEqualTo("aha-desktop-0.1.3.00244-macos-aarch64.zip");
+                .isEqualTo("aha-desktop-jvm-0.1.3.00244-macos-aarch64-jdk25.zip");
         assertThat(AssetSelector.select(candidates.get(1), ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
                 .isEqualTo("aha-desktop-0.1.3.00243-macos-arm64.zip");
@@ -182,12 +182,12 @@ class AssetSelectorTest {
         List<ChannelRelease> candidates = ReleaseFilter.select(read("""
                 [
                   {"tag_name": "V0.1.3.00243-aha-jvm", "prerelease": true, "draft": false, "assets": [
-                    {"name": "aha-desktop-0.1.3.00243-ubuntu-amd64.zip", "size": 1,
+                    {"name": "aha-desktop-jvm-0.1.3.00243-ubuntu-amd64-jdk25.zip", "size": 1,
                      "browser_download_url": "https://example.invalid/u.zip", "state": "uploaded"},
                     {"name": "aha-desktop-0.1.3.00243-macos-arm64.zip", "size": 1,
                      "browser_download_url": "https://example.invalid/m.zip", "state": "uploaded"}]},
                   {"tag_name": "V0.1.3.00242-aha-jvm", "prerelease": true, "draft": false, "assets": [
-                    {"name": "aha-desktop-0.1.3.00242-windows-amd64.zip", "size": 1,
+                    {"name": "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip", "size": 1,
                      "browser_download_url": "https://example.invalid/w.zip", "state": "uploaded"}]}
                 ]
                 """), ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM);
@@ -200,7 +200,7 @@ class AssetSelectorTest {
                 UpdateKind.DESKTOP_JVM, WINDOWS))
                 .isInstanceOf(UpdateException.class)
                 .hasMessageContaining("V0.1.3.00243-aha-jvm")
-                .hasMessageContaining("aha-desktop-0.1.3.00243-ubuntu-amd64.zip")
+                .hasMessageContaining("aha-desktop-jvm-0.1.3.00243-ubuntu-amd64-jdk25.zip")
                 .hasMessageContaining("aha-desktop-0.1.3.00243-macos-arm64.zip")
                 .hasMessageContaining("不会退回到更旧的版本")
                 .satisfies(error -> assertThat(((UpdateException) error).code())
@@ -228,7 +228,7 @@ class AssetSelectorTest {
     @Test
     void reportsChannelThatHasNoSuchKind() {
         // 正式发版只出 CLI 包与桌面端 JVM 包：稳定通道没有原生形态，与平台无关
-        ChannelRelease stable = release("V0.1.2", "0.1.2", "aha-desktop-0.1.2-windows-amd64.zip");
+        ChannelRelease stable = release("V0.1.2", "0.1.2", "aha-desktop-jvm-0.1.2-windows-amd64-jdk25.zip");
 
         assertThatThrownBy(() -> AssetSelector.select(stable, ReleaseChannel.STABLE,
                 UpdateKind.DESKTOP_NATIVE, WINDOWS))
@@ -243,14 +243,14 @@ class AssetSelectorTest {
     void reportsDuplicateMatchesAsInvalidResponse() {
         // `-jdk25` 后缀本不该出现在默认变体上；一旦同时存在两个等价资产，命名契约就是重复的
         ChannelRelease release = release("V0.1.3.00242-aha-jvm", "0.1.3.00242",
-                "aha-desktop-0.1.3.00242-windows-amd64.zip",
+                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip",
                 "aha-desktop-0.1.3.00242-windows-amd64-jdk25.zip");
 
         assertThatThrownBy(() -> AssetSelector.select(release, ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_JVM, WINDOWS))
                 .isInstanceOf(UpdateException.class)
                 .hasMessageContaining("命名契约重复")
-                .hasMessageContaining("aha-desktop-0.1.3.00242-windows-amd64.zip")
+                .hasMessageContaining("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip")
                 .hasMessageContaining("aha-desktop-0.1.3.00242-windows-amd64-jdk25.zip")
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_INVALID_RESPONSE));
@@ -259,20 +259,20 @@ class AssetSelectorTest {
     @Test
     void ignoresAssetsWhoseVersionDoesNotMatchTheTag() {
         ChannelRelease release = release("V0.1.3.00242-aha-jvm", "0.1.3.00242",
-                "aha-desktop-0.1.3.00999-windows-amd64.zip");
+                "aha-desktop-jvm-0.1.3.00999-windows-amd64-jdk25.zip");
 
         assertThat(AssetSelector.resolve(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, WINDOWS))
                 .isEmpty();
         assertThatThrownBy(() -> AssetSelector.select(release, ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_JVM, WINDOWS))
-                .hasMessageContaining("aha-desktop-0.1.3.00999-windows-amd64.zip");
+                .hasMessageContaining("aha-desktop-jvm-0.1.3.00999-windows-amd64-jdk25.zip");
     }
 
     @Test
     void ignoresAssetsThatAreNotUploadedYet() {
         ChannelRelease release = new ReleaseFilter.ChannelRelease("V0.1.3.00242-aha-jvm",
                 AhaVersion.parse("0.1.3.00242"), true, null, List.of(
-                new AssetInfo("aha-desktop-0.1.3.00242-windows-amd64.zip", 0, "https://example.invalid/w.zip",
+                new AssetInfo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip", 0, "https://example.invalid/w.zip",
                         "starting")));
 
         assertThat(AssetSelector.resolve(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, WINDOWS))
@@ -282,7 +282,7 @@ class AssetSelectorTest {
     @Test
     void hintsWhenOnlyTheExperimentalJdkVariantExists() {
         ChannelRelease release = release("V0.1.3.00242-aha-jvm", "0.1.3.00242",
-                "aha-desktop-0.1.3.00242-windows-amd64-jdk27.zip");
+                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk27.zip");
 
         // 「资产列表里明明有本平台的包却挑不到」时必须说清原因（jdk27 是试验分支）
         assertThatThrownBy(() -> AssetSelector.select(release, ReleaseChannel.BETA,

@@ -3,45 +3,51 @@ package com.acanx.module.aha.core.update;
 import java.util.Locale;
 
 /**
- * 可升级的「形态」：桌面端 / CLI × JVM 便携包 / 原生单文件（issue #51 §2.1、§2.3）。
+ * 可升级的「形态」：`<product>` × `<form>` 四组合（issue #51 §2.1、§2.3；命名文法见 issue #269）。
  *
- * <p>四个取值对应发布页上的四族资产，它们的命名规则不同（平台段有无、前缀大小写都不同），
- * 因此把「目标词」与「资产前缀」固化在这里，由 {@link ChannelContract} 统一生成与解析 ——
- * 命名规则只能有一处，否则必然漂移（历史上 JVM 线与原生线就各写过一套）。</p>
+ * <p>四个取值对应发布页上的四族资产。自 0.1.4 起它们共用**一套文法**：</p>
+ *
+ * <pre>{@code
+ * aha-<product>-<form>-<version>-<os>-<arch>-<runtime>.zip
+ * }</pre>
+ *
+ * <p>因此本枚举只保留「组合」这一层信息（product / form），前缀、tag 后缀、是否原生都由它派生 ——
+ * 命名规则只允许有一处（{@link ChannelContract}），否则历史上的「JVM 线与原生线各写一套」必然重演。</p>
+ *
+ * <p><b>旧名兼容</b>：0.1.3 及更早的资产名是两套（{@code aha-desktop-…} / {@code AHA-Desktop-Native-…}），
+ * 0.1.4 的一个版本周期内仍要能解析，故 {@link #legacyAssetPrefix()} 与
+ * {@link #legacyTargetWord()} 保留旧写法，由 {@link ChannelContract#parseAsset} 走兼容分支。</p>
  *
  * @since 0.2.0
  */
 public enum UpdateKind {
 
     /** 桌面端 JVM 便携包（{@code aha-desktop.jar} + 启动脚本）。 */
-    DESKTOP_JVM("Desktop-JVM", "aha-desktop-", true, false),
+    DESKTOP_JVM("Desktop-JVM", "desktop", "jvm"),
 
     /** 桌面端原生单文件（native-image 产物）。 */
-    DESKTOP_NATIVE("Desktop-Native", "AHA-Desktop-Native-", true, true),
+    DESKTOP_NATIVE("Desktop-Native", "desktop", "native"),
 
-    /** CLI JVM 包（平台无关，一份包通吃）。 */
-    CLI_JVM("Cli-JVM", "aha-cli-", false, false),
+    /** CLI JVM 包（三个平台三个名字，内容暂相同，见 issue #269 §6 第 7 条）。 */
+    CLI_JVM("Cli-JVM", "cli", "jvm"),
 
     /** CLI 原生单文件。 */
-    CLI_NATIVE("Cli-Native", "AHA-Cli-Native-", true, true);
+    CLI_NATIVE("Cli-Native", "cli", "native");
 
     private final String targetWord;
 
-    private final String assetPrefix;
+    private final String product;
 
-    private final boolean hasPlatform;
+    private final String form;
 
-    private final boolean nativeImage;
-
-    UpdateKind(String targetWord, String assetPrefix, boolean hasPlatform, boolean nativeImage) {
+    UpdateKind(String targetWord, String product, String form) {
         this.targetWord = targetWord;
-        this.assetPrefix = assetPrefix;
-        this.hasPlatform = hasPlatform;
-        this.nativeImage = nativeImage;
+        this.product = product;
+        this.form = form;
     }
 
     /**
-     * 快照 tag 里的目标词（大写驼峰带连字符），也是资产名里的目标段。
+     * 快照 tag 里的目标词（大写驼峰带连字符），也是**旧**资产名里的目标段。
      *
      * @return 目标词，如 {@code Desktop-JVM}
      */
@@ -50,45 +56,84 @@ public enum UpdateKind {
     }
 
     /**
-     * 资产名前缀。
+     * 产品段。
      *
-     * @return 前缀，如 {@code aha-desktop-}（稳定 / dev 线的 JVM 包）或 {@code AHA-Desktop-Native-}
+     * @return {@code desktop} 或 {@code cli}
      */
-    public String assetPrefix() {
-        return assetPrefix;
+    public String product() {
+        return product;
     }
 
     /**
-     * 资产名里是否带平台段（{@code windows-amd64} 之类）。
+     * 形态段。
      *
-     * <p>CLI 的 JVM 包<b>没有</b>平台维度：它是平台无关的一份包。给它传平台段是调用方的错，
-     * 由 {@link ChannelContract#assetName} 直接拒绝。</p>
+     * @return {@code jvm} 或 {@code native}
+     */
+    public String form() {
+        return form;
+    }
+
+    /**
+     * 资产名前缀（新文法）。
      *
-     * @return 需要平台段返回 {@code true}
+     * @return 前缀，如 {@code aha-desktop-jvm-}
+     */
+    public String assetPrefix() {
+        return "aha-" + product + "-" + form + "-";
+    }
+
+    /**
+     * 旧资产名前缀（0.1.3 及更早，兼容用）。
+     *
+     * <p>JVM 线是 {@code aha-desktop-} / {@code aha-cli-}；原生线是
+     * {@code AHA-Desktop-Native-} / {@code AHA-Cli-Native-}。</p>
+     *
+     * @return 旧前缀
+     */
+    public String legacyAssetPrefix() {
+        return nativeImage() ? "AHA-" + targetWord + "-" : "aha-" + product + "-";
+    }
+
+    /**
+     * 旧 tag 的目标词（{@code Desktop-JVM} / {@code Desktop-Native} / …），供 Alpha 旧 tag 解析。
+     *
+     * @return 旧目标词
+     */
+    public String legacyTargetWord() {
+        return targetWord;
+    }
+
+    /**
+     * 资产名里是否带平台段。
+     *
+     * <p>自 issue #269 起**所有形态都带**平台段：CLI-JVM 原本是平台无关的一份包，
+     * 现在先按平台拆成三个名字（内容暂相同），后续再真正按平台生成。</p>
+     *
+     * @return 恒为 {@code true}
      */
     public boolean hasPlatform() {
-        return hasPlatform;
+        return true;
     }
 
     /**
      * 是否原生镜像（单文件）形态。
      *
-     * <p>形态决定升级时怎么替换：JVM 形态是「jar + 启动脚本」平铺替换，原生形态是「替换那个可执行文件」。
-     * 两者<b>不可混升</b>（issue #51 §2.3 硬约束）。</p>
+     * <p>形态决定升级时怎么替换：JVM 形态是「jar + 启动脚本」平铺替换，原生形态是「替换那个可执行文件」；
+     * 同时决定 runtime 段是 {@code jdk<N>} 还是 {@code graalvm<N>}。两者<b>不可混升</b>（issue #51 §2.3）。</p>
      *
      * @return 原生形态返回 {@code true}
      */
     public boolean nativeImage() {
-        return nativeImage;
+        return "native".equals(form);
     }
 
     /**
-     * tag 里 {@code -aha-} 之后的目标后缀（仅原生线的 dev tag 用得上）。
+     * dev 线 tag 里 {@code -aha-} 之后的后缀（{@code desktop-jvm} / {@code desktop-native} / …）。
      *
-     * @return 小写目标后缀，如 {@code desktop-native}
+     * @return 小写后缀
      */
     public String tagSuffix() {
-        return targetWord.toLowerCase(Locale.ROOT);
+        return product + "-" + form;
     }
 
     /**
@@ -103,7 +148,8 @@ public enum UpdateKind {
         }
         String normalized = text.trim().toLowerCase(Locale.ROOT).replace('_', '-');
         for (UpdateKind kind : values()) {
-            if (kind.targetWord.toLowerCase(Locale.ROOT).equals(normalized)) {
+            if (kind.tagSuffix().equals(normalized)
+                    || kind.targetWord.toLowerCase(Locale.ROOT).equals(normalized)) {
                 return kind;
             }
         }

@@ -58,6 +58,7 @@ jobs:
         # -Daha.build.version：注入 version.properties 的 build 项，供「关于」/ 启动页显示。
         # 复用现有 assembly 链路：package 阶段即产出 Dist/aha-desktop-<版本>-<平台>.zip
         # 与 CLI 的 Dist/{bin,lib}（见 aha-desktop/pom.xml、aha-cli/pom.xml）。
+        # 发布名按 issue #269 的新文法重命名（见下方 target）。
         uses: ./.github/actions/maven-run
         with:
           command: >-
@@ -106,11 +107,9 @@ jobs:
             echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
             exit 1
           fi
-          # JDK 25 保持原名（不带 JDK 段），JDK 27 加 -jdk27 区分两类产物。
-          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
-          # 命名序：<版本>-<平台>-<JDK>，JDK 段一律放最后，与原生线
-          # （AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip）保持一致，便于按平台归堆取件。
-          target="Dist/aha-desktop-${VERSION}-${LABEL}${suffix}.zip"
+          # issue #269 新文法：aha-<product>-<form>-<版本>-<平台>-<runtime>.zip。
+          # runtime 段一律显式（jdk25 / jdk27），不再靠「默认变体不带后缀」区分。
+          target="Dist/aha-desktop-jvm-${VERSION}-${LABEL}-jdk${JDK}.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
@@ -184,12 +183,12 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
+          LABEL: ${{ inputs.label }}
           JDK: ${{ inputs.jdk }}
         run: |
           set -euo pipefail
-          # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
-          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
-          target="Dist/aha-cli-${VERSION}${suffix}.zip"
+          # issue #269 新文法：CLI-JVM 也带平台段（三平台三个名字，内容暂相同）。
+          target="Dist/aha-cli-jvm-${VERSION}-${LABEL}-jdk${JDK}.zip"
           # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
           # 只列这几个入口，不写 `.`：将来 Dist/ 里再放别的产物也不会被误收。
           # （zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。）

@@ -86,8 +86,8 @@ class GitHubReleaseClientTest {
         assertThat(first.publishedAt()).isNotNull();
         assertThat(first.assetList()).hasSize(8);
         assertThat(first.assetList()).extracting(AssetInfo::name)
-                .contains("aha-desktop-0.1.3.00242-windows-amd64.zip",
-                        "aha-cli-0.1.3.00242-jdk27.zip");
+                .contains("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip",
+                        "aha-cli-jvm-0.1.3.00242-windows-amd64-jdk27.zip");
         assertThat(first.assetList().get(0).uploaded()).isTrue();
 
         assertThat(server.callCount()).isEqualTo(1);
@@ -182,7 +182,7 @@ class GitHubReleaseClientTest {
                     "published_at": "2026-10-20T00:00:00Z",
                     "author": {"login": "ACANX"},
                     "assets": [
-                      {"name": "aha-cli-0.1.3.zip", "size": 1234,
+                      {"name": "aha-cli-jvm-0.1.3-windows-amd64-jdk25.zip", "size": 1234,
                        "browser_download_url": "https://example.invalid/a.zip",
                        "state": "uploaded", "digest": "sha256:deadbeef"}
                     ]
@@ -195,7 +195,7 @@ class GitHubReleaseClientTest {
         assertThat(releases).hasSize(1);
         assertThat(releases.get(0).tag()).isEqualTo("V0.1.3");
         assertThat(releases.get(0).assetList()).hasSize(1);
-        assertThat(releases.get(0).assetList().get(0).name()).isEqualTo("aha-cli-0.1.3.zip");
+        assertThat(releases.get(0).assetList().get(0).name()).isEqualTo("aha-cli-jvm-0.1.3-windows-amd64-jdk25.zip");
     }
 
     // ── 测试脚手架 ────────────────────────────────────────────────────────────
