@@ -25,6 +25,7 @@ jobs:
     with:
       os: windows-latest
       maven: wrapper
+      optional: false
 
   BuildUbuntuLatestWrapper:
     name: BuildUbuntuLatestWrapper
@@ -32,6 +33,7 @@ jobs:
     with:
       os: ubuntu-latest
       maven: wrapper
+      optional: false
 
   BuildUbuntuLatestSystem:
     name: BuildUbuntuLatestSystem
@@ -39,16 +41,17 @@ jobs:
     with:
       os: ubuntu-latest
       maven: system
+      optional: false
 
   # macOS 目前只作演示与可选验证（见 BuildSpec.md 第 4.1 节）：
   # 不计入必需检查，失败不使整体构建失败。
   BuildMacOSLatestWrapper:
     name: BuildMacOSLatestWrapper
-    continue-on-error: true
     uses: ./.github/workflows/BuildLeg.yml
     with:
       os: macos-latest
       maven: wrapper
+      optional: true
 
   # ── GUI 冒烟：真开窗口跑 AhaDesktopSmokeTest（Linux + Xvfb，非阻塞）──────────
   #
@@ -192,8 +195,8 @@ jobs:
   #         版本改了 tag 跟着走，不会形成两处口径。
   #
   # 为什么 `needs` 列出四条腿就够了：带 `needs` 的作业在依赖失败时会被跳过，不必再判 `result`。
-  #         唯一的边角是那条**可选**的 macOS 腿（`continue-on-error`）：若它没通过且影响到了
-  #         job 结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
+  #         唯一的边角是那条**可选**的 macOS 腿（`optional: true`，容错在 `BuildLeg.yml` 内部）：
+  #         若它没通过且影响到了 job 结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
   #
   # 【重要】用 `GITHUB_TOKEN` 推的 tag **不会触发下游工作流**（GitHub 防递归的既定行为），
   #         所以 `Release.yml` 的 `push: tags` 不会因这里的 tag 自动开跑。本仓库**不为此配置

@@ -17,7 +17,7 @@ name: DesktopNative
 # 实测（PR #15 / dev@192a10d）：四条腿全红，虽然不是必需检查、也确实没挡住合并，
 # 但满屏红叉会让人以为整条流程挂了。所以这里要分两层看：
 #
-#   * 作业级 continue-on-error 只保证「**整次运行**不变红」，
+#   * 可复用工作流 `NativeImageLeg.yml` 内部的作业级 continue-on-error 只保证「**整次运行**不变红」，
 #     **作业本身仍然显示失败（红叉）**——这正是当时的观感来源；
 #   * 要让**作业**也绿，必须把容错放到**步骤级**：
 #     凡是在「没有工具链 / 属于试验」前提下可能失败的步骤都加 continue-on-error: true，
@@ -275,7 +275,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"ubuntu-amd64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/NativeImageLeg.yml
     with:
       os: ubuntu-latest
@@ -295,7 +294,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"windows-amd64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/NativeImageLeg.yml
     with:
       os: windows-latest
@@ -315,7 +313,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"macos-aarch64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/NativeImageLeg.yml
     with:
       os: macos-latest
@@ -335,7 +332,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"windows-amd64/jdk27"'))
-    continue-on-error: true
     uses: ./.github/workflows/NativeImageLeg.yml
     with:
       os: windows-latest
@@ -355,7 +351,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"ubuntu-amd64/jdk27"'))
-    continue-on-error: true
     uses: ./.github/workflows/NativeImageLeg.yml
     with:
       os: ubuntu-latest

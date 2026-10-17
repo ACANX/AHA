@@ -17,7 +17,7 @@ name: CliNative
 # 4. **可被打断**：原生镜像构建慢，同一分支的新一次运行会取消上一次（见 concurrency）。
 #
 # ── 关于「可选」：怎么才算真的非阻塞 ───────────────────────────────────────────
-# 同 DesktopNative：作业级 continue-on-error 只保证「整次运行」不变红，
+# 同 DesktopNative：`CliNativeImageLeg.yml` 内部的作业级 continue-on-error 只保证「整次运行」不变红，
 # **作业本身仍显示红叉**。要让作业也绿，必须把容错放到**步骤级**，
 # 再由各作业末尾的「结论」步骤把真实情况写进 Job Summary。
 # 取舍写明：**原生编译真坏了，CI 不会红**，只表现为摘要里少一版、发布页少一个包。
@@ -245,7 +245,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"ubuntu-amd64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/CliNativeImageLeg.yml
     with:
       os: ubuntu-latest
@@ -265,7 +264,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"windows-amd64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/CliNativeImageLeg.yml
     with:
       os: windows-latest
@@ -285,7 +283,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"macos-aarch64/jdk25"'))
-    continue-on-error: true
     uses: ./.github/workflows/CliNativeImageLeg.yml
     with:
       os: macos-latest
@@ -305,7 +302,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"windows-amd64/jdk27"'))
-    continue-on-error: true
     uses: ./.github/workflows/CliNativeImageLeg.yml
     with:
       os: windows-latest
@@ -325,7 +321,6 @@ jobs:
       && (github.event_name == 'push' || needs.Plan.outputs.should_build == 'true')
       && (needs.Plan.outputs.should_build != 'true'
           || contains(needs.Plan.outputs.legs, '"ubuntu-amd64/jdk27"'))
-    continue-on-error: true
     uses: ./.github/workflows/CliNativeImageLeg.yml
     with:
       os: ubuntu-latest

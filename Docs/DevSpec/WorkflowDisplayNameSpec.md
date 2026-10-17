@@ -43,6 +43,10 @@
 - 矩阵作业**展开为逐腿静态作业**：显示名与作业 id 一致（如 `NativeImageWindowsAmd64JDK25`），
   重复的 steps 放进可复用工作流（`*Leg.yml`）；
 - 收窄（「这次只出哪几条腿」）用 **job 级 `if`**，不再靠步骤级遮挡。
+- **调用可复用工作流的 job 只允许**：`name` / `uses` / `with` / `secrets` / `strategy` / `needs` / `if` / `permissions` / `concurrency`；
+  **`runs-on` / `steps` / `continue-on-error` 一律不许** —— 写了会让**整个工作流文件解析失败**
+  （GitHub 的报错不指向具体键，只显示「This run likely failed because of a workflow file issue」）。
+  「可选腿」的容错放进可复用工作流内部的 job（如 `BuildLeg.yml` 的 `continue-on-error: ${{ inputs.optional }}`）。
 
 ### 2.3 commit status context（强制）
 

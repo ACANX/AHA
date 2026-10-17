@@ -37,6 +37,10 @@ jobs:
   CliNativeImageLeg:
     name: CliNativeImageLeg
     runs-on: ${{ inputs.os }}
+    # 整条原生镜像管线都是**可选**的：任一腿失败都不牵连其余腿与发布作业。
+    # 注意：`continue-on-error` **不能**写在调用可复用工作流的 job 上（会让整个文件解析失败），
+    # 所以放在这里 —— 调用方（DesktopNative / CliNative）不再声明它。
+    continue-on-error: true
     env:
       AHA_VERSION: ${{ inputs.aha_version }}
     steps:
