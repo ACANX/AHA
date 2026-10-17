@@ -287,7 +287,7 @@ def asset_names(targets: list[str], version: str, platforms: list[str], line: st
                 continue
             for leg in build_legs([target], platforms, line="native"):
                 names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]))
-                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-diagnostics.zip"))
+                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-report.zip"))
         return names
     labels = platforms or ["ubuntu-amd64", "windows-amd64"]
     for target in targets:
@@ -467,7 +467,7 @@ def comment_body(plan: dict, run_url: str = "") -> str:
     ) if any(name.startswith(("aha-desktop-jvm", "aha-cli-jvm")) for name in plan["assets"]) else ""
     native_note = (
         "\n> **原生包是试验性产物**（GraalVM native-image），不是正式发行包；"
-        "同一平台的镜像包与 `-diagnostics.zip` 诊断包一一对应。\n"
+        "同一平台的镜像包与 `-report.zip` 报告包一一对应。\n"
     ) if any(name.startswith(("aha-desktop-native", "aha-cli-native")) for name in plan["assets"]) else ""
     return (
         f"{marker}\n"

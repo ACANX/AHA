@@ -87,14 +87,14 @@ elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
 function Get-MatchingAsset {
     param($Release)
-    # 同一族资产里有「诊断包」（…-graalvm25-diagnostics.zip）：它与镜像包同版本号，只差结尾。
-    # 这里靠「必须以 -$Platform-graalvm$Jdk.zip 收尾」直接排除，并额外显式排除诊断包，
+    # 同一族资产里有「报告包」（…-graalvm25-report.zip）：它与镜像包同版本号，只差结尾。
+    # 这里靠「必须以 -$Platform-graalvm$Jdk.zip 收尾」直接排除，并额外显式排除报告包，
     # 兼容旧写法 -Report.zip / -jdk<JDK>（issue #269 的过渡期别名）。
     $Release.assets | Where-Object {
         $_.name.StartsWith($kindInfo.AssetPrefix) -and
         $_.name -match "-$([regex]::Escape($Platform))-(?:graalvm|jdk)$Jdk\.zip$" -and
-        -not $_.name.EndsWith('-Report.zip') -and
-        -not $_.name.EndsWith('-diagnostics.zip')
+        -not $_.name.EndsWith('-report.zip') -and
+        -not $_.name.EndsWith('-Report.zip')
     } | Select-Object -First 1
 }
 

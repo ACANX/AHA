@@ -467,7 +467,7 @@ jobs:
             （JDK 27 试验），两者 diff 就是这一版做的实验改动。
 
             ## 独立报告包（与镜像包同族命名）
-            每腿另有一个 `aha-cli-native-<版本>-<系统>-<架构>-graalvm<JDK>-diagnostics.zip`，
+            每腿另有一个 `aha-cli-native-<版本>-<系统>-<架构>-graalvm<JDK>-report.zip`，
             内含 native-image 构建报告、镜像参数、可达性元数据与 picocli 生成的反射元数据。
 
   # ── 4. 回写 PR 评论（**幂等**：同一条评论反复编辑，见 #165 §六）──────────────
