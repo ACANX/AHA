@@ -456,7 +456,8 @@ jobs:
         run: |
           set -euo pipefail
           # POM 产出的是 aha-cli-native-<版本>-<jdk>.zip，这里加上「操作系统 + 架构」。
-          src=$(ls Dist/aha-cli-native-*.zip)
+          # 排除同族的诊断包（`-diagnostics.zip`），否则 `ls` 会返回两行、`mv` 直接失败。
+          src=$(ls Dist/aha-cli-native-*.zip | grep -v -- "-diagnostics.zip" | head -n1)
           target="Dist/aha-cli-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"

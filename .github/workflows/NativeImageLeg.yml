@@ -728,7 +728,8 @@ jobs:
           # POM 产出的是 aha-desktop-native-<版本>-<jdk>.zip，
           # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
           # 产物统一落 Dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
-          src=$(ls Dist/aha-desktop-native-*.zip)
+          # 排除同族的诊断包（`-diagnostics.zip`），否则 `ls` 会返回两行、`mv` 直接失败。
+          src=$(ls Dist/aha-desktop-native-*.zip | grep -v -- "-diagnostics.zip" | head -n1)
           target="Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip"
           mv -- "$src" "$target"
           ls -lh "$target"
