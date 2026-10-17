@@ -145,10 +145,10 @@
 
 | 编号 | 事项                                        | 类型     | 证据 | 优先级 | 状态      | 落地文档                                      |
 | ---- | ------------------------------------------- | -------- | ---- | ------ | --------- | --------------------------------------------- |
-| A-07 | `BuildSpec.md` §6 的覆盖率排除项引用失准    | 文档缺陷 | ⚠️    | P2     | ◐ 进行中  | `BuildSpec.md` §6                             |
+| ~~A-07~~ | ~~`BuildSpec.md` §6 的覆盖率排除项引用失准~~    | 文档缺陷 | ⚠️    | P2     | ~~◐ 进行中~~  | `BuildSpec.md` §6                             |
 | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
-| A-09 | `PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引 | 文档缺陷 | ✅ | P2 | ✅ 已完成 | `PLAN.md` §8.2 |
-| A-10 | `PLAN.md` 有两个 `## 8.` 标题（「相关文档」与「0.1.0 发布前问题清单」），后者才是正文；`### 8.4` 亦排在 `8.7` 之后 | 文档 | ✅ | P2 | ✅ 已完成 | `Docs/PLAN.md` |
+| ~~A-09~~ | ~~`PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引~~ | 文档缺陷 | ✅ | P2 | ~~✅ 已完成~~ | `PLAN.md` §8.2 |
+| ~~A-10~~ | ~~`PLAN.md` 有两个 `## 8.` 标题（「相关文档」与「0.1.0 发布前问题清单」），后者才是正文；`### 8.4` 亦排在 `8.7` 之后~~ | 文档 | ✅ | P2 | ~~✅ 已完成~~ | `Docs/PLAN.md` |
 
 ### A-07 ◐ 进行中
 
@@ -290,9 +290,9 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
-| D-04 | TestFX 在 JPMS + 无显示 CI 下的配置     | 风险     | ⚠️    | P2     | ✅ 已定案（2026-10-09） | `TestingSpec.md` §5.2              |
+| ~~D-04~~ | ~~TestFX 在 JPMS + 无显示 CI 下的配置~~     | 风险     | ⚠️    | P2     | ~~✅ 已定案（2026-10-09）~~ | `TestingSpec.md` §5.2              |
 | D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
-| D-08 | 打包流水线已就位；`jpackage` 已决策跳过 | 风险     | ✅    | P2     | ✅ 结项（2026-10-09） | `ReleaseProcess.md` §3.3           |
+| ~~D-08~~ | ~~打包流水线已就位；`jpackage` 已决策跳过~~ | 风险     | ✅    | P2     | ~~✅ 结项（2026-10-09）~~ | `ReleaseProcess.md` §3.3           |
 | D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 | N-04 | 增加 JDK 27 编译分支（对比 Leyden AOT / 原始类型 / GC 对启动与内存的影响），**先只开 Windows**，为 JDK 29 铺路 | 需求 | ✅ | P2 | ◐ 机制已就位，数据待采集 | `aha-desktop-native/pom.xml`（`native-jdk27` profile）、`native-image-args-jdk27.txt`、`DesktopNativeDesign.md` §5 |
@@ -350,26 +350,26 @@ CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口�
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
 
-### D-08 ✅ 结项（2026-10-09）：打包流水线已就位，jpackage 已决策跳过
+~~### D-08 ✅ 结项（2026-10-09）：打包流水线已就位，jpackage 已决策跳过~~
 
-**复核（✅ 已核实）**：`Build.yml` 仍无打包 job（dev 的 JVM 便携包已由独立工作流
-`BuildJVMArtifacts.yml` 承担，见 issue #63）；`Release.yml` 仍只上传 `dist.zip`。
+~~**复核（✅ 已核实）**：`Build.yml` 仍无打包 job（dev 的 JVM 便携包已由独立工作流~~
+~~`BuildJVMArtifacts.yml` 承担，见 issue #63）；`Release.yml` 仍只上传 `dist.zip`。~~
 
-**残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵
-（桌面端安装包需另设产物）。
+~~**残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵~~
+~~（桌面端安装包需另设产物）。~~
 
-**补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；
-必需检查仍是 Windows + Linux。
+~~**补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；~~
+~~必需检查仍是 Windows + Linux。~~
 
-**已落地（2026-10-08）**：`Release.yml` 新增 `desktop` 作业（矩阵 `ubuntu` / `windows` / `macos`，
-`fail-fast: false`），每条腿跑 `./mvnw clean verify` 后由产物名 + 依赖树**双向自证**平台分类器，
-再把 `aha-desktop-<版本>-<系统>-<架构>.zip` 上传到 release 页面；CLI 资产同步改名
-`aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住
-且不动物件）。
+~~**已落地（2026-10-08）**：`Release.yml` 新增 `desktop` 作业（矩阵 `ubuntu` / `windows` / `macos`，~~
+~~`fail-fast: false`），每条腿跑 `./mvnw clean verify` 后由产物名 + 依赖树**双向自证**平台分类器，~~
+~~再把 `aha-desktop-<版本>-<系统>-<架构>.zip` 上传到 release 页面；CLI 资产同步改名~~
+~~`aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住~~
+~~且不动物件）。~~
 
-**已决策跳过（2026-10-09）**：`jpackage` 自包含安装包（MSI / DEB / DMG）**不采用**——发行形态最终
-只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，「免装 JDK」由后者覆盖，
-也不必再维护安装器 + 签名 / 公证链路。理由与口径见 `ReleaseProcess.md` §3.3（issue #78 / #112）。
+~~**已决策跳过（2026-10-09）**：`jpackage` 自包含安装包（MSI / DEB / DMG）**不采用**——发行形态最终~~
+~~只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，「免装 JDK」由后者覆盖，~~
+~~也不必再维护安装器 + 签名 / 公证链路。理由与口径见 `ReleaseProcess.md` §3.3（issue #78 / #112）。~~
 
 ### F-17 ☐ 新增（2026-10-08）：`-Djavafx.platform=win` 时构建输出 `recursive variable reference: javafx.platform`
 
@@ -429,9 +429,9 @@ CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口�
 | E-07 | Log4j2 在 native-image 下的兼容性                      | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
 | E-08 | `java.net.http` 的 TLS/SSL 配置                        | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
 | E-09 | 虚拟线程在 native-image 的支持现状                     | 调研   | ⚠️    | P2     | ☐ 未完成  | `Constitution.md` 第 5 条               |
-| E-10 | 覆盖率门禁在 native 产物下不适用                       | 待决策 | ✅    | P2     | ⏸ 待决策  | `BuildSpec.md` §6/§8、`TestingSpec.md`  |
-| E-11 | 发行布局（bin+lib）与单文件产物冲突                    | 待决策 | ✅    | P2     | ⏸ 待决策  | `BuildSpec.md` §7                       |
-| E-12 | `TODO.md` 文件名不合规（原 D-05 自身）                 | 规范偏差 | ✅  | P3     | ⏸ 待决策  | `DocumentationSpec.md` 第 1 节          |
+| ~~E-10~~ | ~~覆盖率门禁在 native 产物下不适用~~                       | 待决策 | ✅    | P2     | ~~⏸ 待决策~~  | `BuildSpec.md` §6/§8、`TestingSpec.md`  |
+| ~~E-11~~ | ~~发行布局（bin+lib）与单文件产物冲突~~                    | 待决策 | ✅    | P2     | ~~⏸ 待决策~~  | `BuildSpec.md` §7                       |
+| ~~E-12~~ | ~~`TODO.md` 文件名不合规（原 D-05 自身）~~                 | 规范偏差 | ✅  | P3     | ~~⏸ 待决策~~  | `DocumentationSpec.md` 第 1 节          |
 
 ### E-01 ⏸ 待决策（本节最关键）
 
@@ -596,10 +596,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 | 编号 | 决策问题 | 建议 | 理由 |
 | ---- | ---- | ---- | ---- |
-| H-01 | 启动标志默认风格 | **维持像素风**（现状 `auto` = 像素风优先） | 它挂在能力探测之后，旧 CMD / 16 色会自动降级为线框风，降级路径已就位；像素风也正是本项目的辨识度所在 |
-| E-12 | `TODO.md` 是否改名 | **维持 `TODO.md`** | 这是社区通用名；改名会让贡献者、脚本与 DevLog 的引用一起失配，收益只是「规范化」。更省事的做法是在 `DocumentationSpec.md` §1 为它记一条命名例外 |
-| A-08 | `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | **维持现状** | `Docs/AHA/` 的定位是「权威设计文档」；`PLAN.md`/`TODO.md` 是活的状态台账，放根目录更显眼；`Dbsx.txt` 是用户原始输入，宜先定去留（§8.3.4）再谈归档 |
-| F-07 | `.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并 | **纳入检查 + 合并进 `bin/`** | 脚本规约要么全查、要么别立；两个目录职责重叠会长期制造「改了这个忘那个」；合并后 `CheckScripts.py` 只需覆盖一个目录 |
+| ~~H-01~~ | ~~启动标志默认风格~~ | **维持像素风**（现状 `auto` = 像素风优先） | 它挂在能力探测之后，旧 CMD / 16 色会自动降级为线框风，降级路径已就位；像素风也正是本项目的辨识度所在 |
+| ~~E-12~~ | ~~`TODO.md` 是否改名~~ | **维持 `TODO.md`** | 这是社区通用名；改名会让贡献者、脚本与 DevLog 的引用一起失配，收益只是「规范化」。更省事的做法是在 `DocumentationSpec.md` §1 为它记一条命名例外 |
+| ~~A-08~~ | ~~`PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/`~~ | **维持现状** | `Docs/AHA/` 的定位是「权威设计文档」；`PLAN.md`/`TODO.md` 是活的状态台账，放根目录更显眼；`Dbsx.txt` 是用户原始输入，宜先定去留（§8.3.4）再谈归档 |
+| ~~F-07~~ | ~~`.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并~~ | **纳入检查 + 合并进 `bin/`** | 脚本规约要么全查、要么别立；两个目录职责重叠会长期制造「改了这个忘那个」；合并后 `CheckScripts.py` 只需覆盖一个目录 |
 
 | 顺序 | 编号 | 决策问题                                                     | 影响范围                     | 状态     |
 | ---- | ---- | ------------------------------------------------------------ | ---------------------------- | -------- |
@@ -637,10 +637,10 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | C-03 | `BuildSpec.md` §7                  | 补充依赖治理手段（若采纳）    | ☐ 未完成 |
 | C-04 | `BuildSpec.md` §7                  | 补充 `jlink` 禁令解除条件     | ☐ 未完成 |
 | D-05 | `TestingSpec.md` §3                | 补充 Desktop 覆盖率策略       | ☐ 未完成（待决策） |
-| E-10 | `BuildSpec.md` §6/§8               | 补充 native 产物验收标准      | ☐ 未完成（待决策） |
+| ~~E-10~~ | ~~`BuildSpec.md` §6/§8~~               | 补充 native 产物验收标准      | ☐ 未完成（待决策） |
 | A-08 | `DocumentationSpec.md` §2 | 明确 `Docs/` 根下暂存区文件的存放位置 | ⏸ 待决策 |
 | F-07 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 | 明确 `.ps1` 是否纳入检查、`Script/` 目录去留 | ⏸ 待决策 |
-| E-12 | `DocumentationSpec.md` 第 1 节     | 文件名保留名单（若采纳）      | ☐ 未完成（待决策） |
+| ~~E-12~~ | ~~`DocumentationSpec.md` 第 1 节~~     | 文件名保留名单（若采纳）      | ☐ 未完成（待决策） |
 
 ### 阶段三：设计与实现（0.2 前）
 
@@ -650,7 +650,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | D-01 ~ D-04、D-08       | `DesktopDesign.md`、`DesktopDesign` 打包/测试小节、`Build.yml` | 新增线程模型、打包、测试小节 | ◐ 骨架已就位 |
 | D-06                    | `DesktopDesign.md` §2/§3、`Build.yml`                   | 平台清单对齐                 | ◐ 已决策，待回填 |
 | E-02 ~ E-09             | `BuildSpec.md`（新增 native 章节）                      | 待验证后登记                 | ☐ 未完成 |
-| E-11                    | `BuildSpec.md` §7                                       | 发行矩阵                     | ☐ 未完成（待决策） |
+| ~~E-11~~                    | ~~`BuildSpec.md` §7~~                                       | 发行矩阵                     | ☐ 未完成（待决策） |
 | 6.1 序 1、3、4、5       | `MemoryStorageDesign.md`、`aha-core`、`aha-cli`         | 记忆写入与命令落地           | ☐ 未完成 |
 
 ### 阶段四：本文件处置
@@ -899,15 +899,15 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | ---- | ---- | -------- | -------- | ---- |
 | ~~G-01~~ | 推送 `dev` 上的两条文档提交（`abd5d85` 规则集整改规格、`ca80c5c` F-12 复发记录） | 这批文档不进上游就等于白做 | `git ls-remote origin refs/heads/dev` 与本地 `dev` 一致（或经 PR 合入 `dev`）；`dev → main` 的 PR 能带上它们 | ☐ 未完成 |
 | ~~G-02~~ | ~~**分支规则集整改**：`main` 补配 `Gate` / `Compat` 两条必需检查，并把审批数从 1 改为 0；`dev` 同样把审批数改为 0。附现状实测表与目标规格表~~ | ① 该拦的门禁没拦；② 三条规则对「单人 + 机器」永远无法满足，PR 被锁死（见 [TS-2610-005-Ruleset-Blocks-Single-Maintainer.md](Troubleshooting/TS-2610-005-Ruleset-Blocks-Single-Maintainer.md)） | 五项必需检查齐全，且**预期失败的 PR 合不进去、正常 PR 单人能合进去** | ✗ **不做**（2026-10-10 决定） |
-| G-03 | 确认每周定期扫描真的在跑 | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ☐ 未完成 |
-| G-04 | 为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则） | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ☐ 未完成 |
-| G-06 | 处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」） | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
+| ~~G-03~~ | ~~确认每周定期扫描真的在跑~~ | 定期扫描静默失效无人知，漂移会持续积累 | 合入 `main` 后手动跑通一次 `Gate`；随后 Actions 出现 `schedule` 触发的运行记录 | ~~☐ 未完成~~ |
+| ~~G-04~~ | ~~为 `main` 规则集的 `code_scanning` 规则提供真结果：**开启 CodeQL**（推荐；若不开则必须删掉该规则）~~ | `Waiting for Code Scanning results` 永不结束，PR #7 现在卡在这里 | Security → Code scanning 出现分析结果，PR 上该检查给出结论 | ~~☐ 未完成~~ |
+| ~~G-06~~ | ~~处置 0.1.0 的裸 tag：给同一提交补一个 `V0.1.0` 别名 tag（或明确「兼容两种写法」）~~ | 已发布的 tag 是 `0.1.0`（无 `V` 前缀），而后来的约定与 `Release.yml` 的触发都是 `V*`；不处置则 `CHANGELOG` 的 `[0.1.0]` 链接与约定长期不一致 | `git ls-remote --tags origin` 能看到 `V0.1.0` 与 `0.1.0` 指向同一提交（`9138847`），或规范中明确写出兼容策略 |
 | ~~G-05~~ | ~~仓库设置：**关闭 squash 与 rebase 合并**，只保留 `Create a merge commit`~~ | 长期集成分支 `dependa` 一旦被 squash，血缘就断了，下次 PR 必然 `dirty`——本次已实际复发（`F-12`） | 设置生效后，`dependa → dev` 的合并提交是双父，`git merge-base --is-ancestor origin/dev dependa` 成立 | ✗ **不做**（2026-10-10 决定） |
-| G-09 | 推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`） | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ☐ 未完成 |
-| G-12 | 推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist` | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ☐ 未完成 |
-| G-13 | 推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ☐ 未完成 |
-| G-14 | 推送 issue #46 的修复分支并提 PR（`feat/issue-46-build-version` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-26` 也拿不到带构建号的包 | ① `git ls-remote origin refs/heads/feat/issue-46-build-version` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 `N-26` 验证构建号显示 | ☐ 未完成 |
-| G-16 | 推送 issue #49 第三轮修复分支并提 PR（`fix/issue-49-native-css-functions` → `dev`） | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第三轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-css-functions` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第三轮验证 | ☐ 未完成 |
+| ~~G-09~~ | ~~推送 CLI 原生镜像的变更并提 PR（`aha-cli-native` 模块 + `CliNative.yml` → `dev`）~~ | 本地没有推送凭据（同 `G-01`）；不推上去，`CliNative` 不会首次运行，`N-19` 无法开工 | ① 分支推上去、PR 上 `Build` / `Gate` / `Compat` 绿；② 合入 `dev` 后 `CliNative` 自动跑，三条 jdk25 腿产物自证第 ⑦ 项输出「已注册 picocli 命令、JLine Signals 与 AHA 配置记录」；③ 发布页出现 `V<版本>-aha-cli-native` 预发行版 | ~~☐ 未完成~~ |
+| ~~G-12~~ | ~~推送本次变更分支并提 PR（`feat/desktop-dist-scripts` → `dev`）：桌面端便携包脚本、命令速查、构建输出目录统一为 `Dist`~~ | 本地没有推送凭据（同 `G-01`）；不推上去，CI 的 `Build` / `Gate` / `Compat` 不会对本次改动跑一遗，改到工作流里的 `Dist/` 路径也得不到 Linux runner 的真实验证 | ① `git ls-remote origin refs/heads/feat/desktop-dist-scripts` 能看到该分支；② PR 上 `Build` / `Gate` / `Compat` 绿，尤其 `Dist/` 路径改动在 Linux 上被实际执行；③ 合入 `dev` 后再决定是否并入 `main` | ~~☐ 未完成~~ |
+| ~~G-13~~ | ~~推送 issue #44 的修复分支并提 PR（`fix/issue-44-native-theme-font` → `dev`）~~ | 不推上去，CI 不会对本次改动做编译与全量测试，`N-24` 也拿不到合入后自动产出的原生包 | ① `git ls-remote origin refs/heads/fix/issue-44-native-theme-font` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-24` 验证 | ~~☐ 未完成~~ |
+| ~~G-14~~ | ~~推送 issue #46 的修复分支并提 PR（`feat/issue-46-build-version` → `dev`）~~ | 不推上去，CI 不会对本次改动做编译与全量测试，`N-26` 也拿不到带构建号的包 | ① `git ls-remote origin refs/heads/feat/issue-46-build-version` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` / `CliNative` 重出包，供 `N-26` 验证构建号显示 | ~~☐ 未完成~~ |
+| ~~G-16~~ | ~~推送 issue #49 第三轮修复分支并提 PR（`fix/issue-49-native-css-functions` → `dev`）~~ | 不推上去，CI 不会对本次改动做编译与全量测试，`N-25` 也拿不到第三轮的原生包 | ① `git ls-remote origin refs/heads/fix/issue-49-native-css-functions` 能看到该分支；② PR 上 `Build` / `CodeQL` 绿；③ 合入 `dev` 后 `DesktopNative` 重出 Windows 包，供 `N-25` 第三轮验证 | ~~☐ 未完成~~ |
 
 ### G-01 ☐ 未完成
 
