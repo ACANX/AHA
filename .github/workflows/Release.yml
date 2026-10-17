@@ -104,6 +104,10 @@ jobs:
           # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/${target}" --kind cli-jvm --version "${version}" --jdk 25
+          # 写完立刻回读校验（先写后验，只差一次 zip 读取）：清单若生成有误，
+          # 用户下载后才在升级时撞「校验和不符」——那是发布出去之后才发现，代价最高。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+            --zip "Dist/${target}" --kind cli-jvm --version "${version}"
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
@@ -280,6 +284,9 @@ jobs:
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
             --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" --kind desktop-jvm \
+            --version "${version}" --platform "${LABEL}"
 
       - name: 打印本平台解析到的 OpenJFX 工件（自证）
         shell: bash
@@ -322,6 +329,38 @@ jobs:
           gh release download "${TAG}" --pattern '*.zip' --dir assets
           ls -lh assets
 
+      - name: 资产齐全自证（缺任何一个平台的包就判失败，不允许「部分发布」静默变绿）
+        # 为什么要有这一步：`release` 与 `desktop` 是并列作业，任一成功本作业就会跑起来
+        # （`if: always() && (… || …)`）。于是「只出了 CLI 包 / 只出了两个平台」时，
+        # 发布页照样会生成、`SHA256SUMS` 照样会挂上 —— 而应用内升级按平台取件，
+        # 用户那边看到的是「该版本没有本平台可用的包」。这种「部分发布」不能靠人盯。
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          expected=(
+            "aha-cli-${version}.zip"
+            "aha-desktop-${version}-ubuntu-amd64.zip"
+            "aha-desktop-${version}-windows-amd64.zip"
+            "aha-desktop-${version}-macos-arm64.zip"
+          )
+          missing=()
+          for name in "${expected[@]}"; do
+            [ -f "assets/${name}" ] || missing+=("${name}")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::${TAG} 的发布资产不齐（缺 ${#missing[@]} 份）：${missing[*]}"
+            {
+              echo "### ❌ 发布资产不齐 —— ${TAG}"
+              echo
+              echo "缺 ${#missing[@]} 份（应用内升级按平台取件，缺哪份哪类用户就升不了）："
+              printf -- '- `%s`\n' "${missing[@]}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          echo "资产齐全：${#expected[@]} 份（CLI + 三平台桌面端）"
       - name: 生成并挂上 SHA256SUMS
         shell: bash
         env:

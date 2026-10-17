@@ -48,6 +48,13 @@
     且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
     ——静默且难查。把它们钉在一起，漂移立刻可见。
 
+  发版自动派发链路（issue #238）
+    - 自动打的 tag 由 `GITHUB_TOKEN` 推出，**不会**触发 `push` 事件，因此
+      `Build.yml` 的 `tag` 作业必须用 `gh workflow run Release.yml --ref main` 主动派发；
+    - 断言：`Release.yml` 保留 `workflow_dispatch` + `tag` 入参 + 显式 `tag_name`；
+      `Build.yml` 的 `tag` 作业有 `contents/actions: write`、幂等跳过、只在新建 tag 时派发；
+    - 改坏的表现是「发布页只有 tag、没有发行包，而 CI 全绿」—— 只在发版当天才发现。
+
   通道契约：三处实现的一致性（issue #51 §8.3）
     - 「通道 ↔ tag ↔ 资产名」的规则在本仓库已行三处实现：两套 PowerShell 脚本
       （`UpdateJvm.ps1` / `UpdateNative.ps1`）、一套 Python 脚本、
@@ -399,6 +406,65 @@ def check_ignored_sources() -> list[str]:
                 )
                 break
     return offenders
+
+
+def _workflow_job_block(text: str, job: str) -> str:
+    """取出某个作业的 YAML 片段（从 `  <job>:` 到下一个同级键为止）。"""
+    match = re.search(rf"^  {re.escape(job)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text, re.M | re.S)
+    return match.group(0) if match else ""
+
+
+def check_release_auto_dispatch() -> list[str]:
+    """issue #238：自动打的 tag 经 `workflow_dispatch` 派发 `Release.yml` —— 这条链路不许被改坏。
+
+    为什么值得钉死：它**没有别的兜底**。tag 由 `GITHUB_TOKEN` 推出时 GitHub 不触发 `push` 事件，
+    所以派发那一段是「发布页有没有发行包」的唯一开关；改坏的表现是**发布页只有 tag、没有资产，
+    而 CI 全绿** —— 正是 #238 当初的样子，且要到发版当天才发现。
+    """
+    problems: list[str] = []
+    release = ROOT / ".github" / "workflows" / "Release.yml"
+    build = ROOT / ".github" / "workflows" / "Build.yml"
+    for path in (release, build):
+        if not path.is_file():
+            return [f"缺少 {path.relative_to(ROOT)}（发布链路无法核对）"]
+
+    release_text = release.read_text(encoding="utf-8")
+    build_text = build.read_text(encoding="utf-8")
+
+    # ① Release.yml 必须能被 workflow_dispatch 派发，且 tag 来自入参
+    if not re.search(r"^  workflow_dispatch:\n", release_text, re.M):
+        problems.append("Release.yml 缺 `workflow_dispatch` —— 自动派发与手工补发都靠它（issue #238）")
+    if not re.search(r"^      tag:\n", release_text, re.M):
+        problems.append("Release.yml 的 `workflow_dispatch` 缺 `tag` 入参（派发时用 `-f tag=<TAG>`）")
+    if "inputs.tag || github.ref_name" not in release_text:
+        problems.append("Release.yml 没有用 `inputs.tag || github.ref_name` 取发布 tag —— "
+                        "派发时 `github.ref` 是分支，会指错对象（issue #238）")
+    if "tag_name: ${{ inputs.tag || github.ref_name }}" not in release_text:
+        problems.append("Release.yml 的 `action-gh-release` 没有显式 `tag_name` —— 派发时会挂到分支上")
+    # ② 快照 tag 的负向排除不能丢（丢了则每次出快照都跑完整发版）
+    for pattern in ("'!V*-SNAPSHOT'", "'!v*-SNAPSHOT'"):
+        if pattern not in release_text:
+            problems.append(f"Release.yml 缺快照 tag 负向排除 {pattern}（issue #165 的两条硬约束之一）")
+
+    # ③ Build.yml 的 tag 作业：权限、幂等、派发 ref
+    tag_job = _workflow_job_block(build_text, "tag")
+    if not tag_job:
+        problems.append("Build.yml 找不到 `tag` 作业（自动打 tag 的入口）")
+    else:
+        if "actions: write" not in tag_job:
+            problems.append("Build.yml 的 `tag` 作业缺 `actions: write` —— "
+                            "`gh workflow run` 会 403，发行包不会产出（issue #238）")
+        if "contents: write" not in tag_job:
+            problems.append("Build.yml 的 `tag` 作业缺 `contents: write` —— 推不了 tag")
+        if 'ls-remote --exit-code --tags origin "refs/tags/${TAG}"' not in tag_job:
+            problems.append("Build.yml 的 `tag` 作业缺幂等判定（tag 已存在时应跳过，验收标准之一）")
+        if "created == 'true'" not in tag_job:
+            problems.append("Build.yml 的派发步骤没有限制「只在真的新建了 tag 时」—— "
+                            "否则每次 push 到 main 都会重复发版")
+        if "gh workflow run Release.yml --ref main" not in tag_job:
+            problems.append("Build.yml 的派发命令缺 `--ref main` —— "
+                            "`workflow_dispatch` 的 SHA 是所派发 ref 的头部，用默认分支会跑到 dev（issue #238）")
+    return problems
 
 
 def _tracked_basenames() -> set[str] | None:
@@ -1558,6 +1624,8 @@ def main() -> int:
     problems.extend(helper_pkg)
     checkout = check_repo_script_steps_have_checkout()
     problems.extend(checkout)
+    auto_dispatch = check_release_auto_dispatch()
+    problems.extend(auto_dispatch)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
@@ -1573,6 +1641,7 @@ def main() -> int:
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
     print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
     print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
+    print(f"检查发版自动派发链路（#238：tag → workflow_dispatch → Release.yml）：{'❌' if auto_dispatch else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
     if problems:
         print("\n[问题]")
