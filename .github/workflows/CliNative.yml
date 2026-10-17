@@ -411,7 +411,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ needs.Plan.outputs.should_build }}" = "true" ]; then
-            tag=$(python3 -c 'import json,os; g=json.loads(os.environ["RELEASES"]); print(g[0]["tag"] if g else "")')
+            # 按**本工作流的目标**从 Plan 输出里挑载体：Plan 可能同时选中 Desktop 与 Cli，
+            # 取 g[0] 会把 CLI 的包挂到 Desktop 的 tag 上（2026-10-17 实测）。
+            tag=$(python3 -c 'import json,os; g=json.loads(os.environ["RELEASES"]); print(next((r["tag"] for r in g if r["target"] == "Cli-Native"), g[0]["tag"] if g else ""))')
             name="${tag}"
             echo "载体：快照 pre-release（${tag}）"
           else
