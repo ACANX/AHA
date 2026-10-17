@@ -87,11 +87,11 @@ class TerminalCapabilitiesTest {
     @Test
     void coloredRequiresTtyAndDepth() {
         TerminalCapabilities tty = new TerminalCapabilities(
-                true, TerminalCapabilities.ColorDepth.ANSI16, 80, "");
+                true, TerminalCapabilities.ColorDepth.ANSI16, 80, true, "");
         TerminalCapabilities piped = new TerminalCapabilities(
-                false, TerminalCapabilities.ColorDepth.TRUECOLOR, 80, "");
+                false, TerminalCapabilities.ColorDepth.TRUECOLOR, 80, false, "");
         TerminalCapabilities noColor = new TerminalCapabilities(
-                true, TerminalCapabilities.ColorDepth.NONE, 80, "");
+                true, TerminalCapabilities.ColorDepth.NONE, 80, true, "");
 
         assertThat(tty.colored()).isTrue();
         // 管道输出即便终端支持颜色也要关闭，否则会吐出 ANSI 转义垃圾
@@ -109,7 +109,7 @@ class TerminalCapabilitiesTest {
     @Test
     void withersAdjustTtyAndWidth() {
         TerminalCapabilities base = new TerminalCapabilities(
-                false, TerminalCapabilities.ColorDepth.ANSI256, 0, "test");
+                false, TerminalCapabilities.ColorDepth.ANSI256, 0, false, "test");
 
         assertThat(base.withTty(true).tty()).isTrue();
         assertThat(base.withTty(true).colored()).isTrue();
@@ -120,7 +120,30 @@ class TerminalCapabilitiesTest {
     @Test
     void descriptionSummarizesDetectionInputs() {
         TerminalCapabilities capabilities = new TerminalCapabilities(
-                true, TerminalCapabilities.ColorDepth.ANSI16, 80, "TERM=xterm depth=ANSI16");
+                true, TerminalCapabilities.ColorDepth.ANSI16, 80, true, "TERM=xterm depth=ANSI16");
         assertThat(capabilities.description()).contains("TERM=xterm");
+        // 粘贴能力也要出现在摘要里：真机上「多行粘贴被逐行提交」时，
+        // 看启动日志就能核对探测结果，不用去猜
+        assertThat(TerminalCapabilities.detect(false).description()).contains("bracketedPaste=");
+    }
+
+    @Test
+    void bracketedPasteIsAssumedUnlessWeCanTellItIsMissing() {
+        // 非 Windows：xterm 家族及其衍生都支持，一律视为支持 —— 宁可少提示，不误提示
+        assertThat(TerminalCapabilities.detectBracketedPaste(
+                "Linux", Map.of("TERM", "xterm-256color"))).isTrue();
+        assertThat(TerminalCapabilities.detectBracketedPaste("Mac OS X", Map.of())).isTrue();
+        // Windows Terminal：TERM 常为空，靠 WT_SESSION 认出来
+        assertThat(TerminalCapabilities.detectBracketedPaste(
+                "Windows 11", Map.of("WT_SESSION", "3c4d5e6f"))).isTrue();
+        // mintty / Git Bash：TERM 有值
+        assertThat(TerminalCapabilities.detectBracketedPaste(
+                "Windows 11", Map.of("TERM", "xterm-256color"))).isTrue();
+        // 传统控制台 conhost：既无 TERM 也无 WT_SESSION ⇒ 多行粘贴会被逐行提交，
+        // 这正是 issue #75 的场景，必须判成「不支持」以便给出替代入口
+        assertThat(TerminalCapabilities.detectBracketedPaste("Windows 11", Map.of())).isFalse();
+        // dumb 终端
+        assertThat(TerminalCapabilities.detectBracketedPaste(
+                "Linux", Map.of("TERM", "dumb"))).isFalse();
     }
 }
