@@ -112,9 +112,13 @@ class AssetSelectorTest {
         // 0.1.3 的 CLI-JVM 是平台无关的一份包（issue #269 起新包才带平台段）
         assertThat(onWindows).isEqualTo("aha-cli-0.1.3.00242.zip");
         assertThat(onMacos).isEqualTo(onWindows);
-        // 平台无关的包不受「本平台没有包」的限制：Windows ARM64 上 CLI JVM 包照样能用（只要有 JDK）
-        assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS_ARM).name())
-                .isEqualTo(onWindows);
+        // issue #269 起 CLI-JVM 按平台拆名（三平台），Windows ARM64 不在发布范围：
+        // 与桌面包同一口径，明确报「本平台未发布」，而不是静默给出别的平台的包。
+        assertThatThrownBy(() -> AssetSelector.select(release, ReleaseChannel.BETA,
+                UpdateKind.CLI_JVM, WINDOWS_ARM))
+                .isInstanceOf(UpdateException.class)
+                .satisfies(error -> assertThat(((UpdateException) error).code())
+                        .isEqualTo(UpdateException.CODE_PLATFORM_UNPUBLISHED));
         // 形态不混：快照线的桌面端包不能被 CLI 形态挑走
         assertThat(AssetSelector.resolve(ALPHA_DESKTOP_JVM.get(0), ReleaseChannel.ALPHA,
                 UpdateKind.CLI_JVM, WINDOWS)).isEmpty();
