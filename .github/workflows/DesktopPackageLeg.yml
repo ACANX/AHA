@@ -27,6 +27,13 @@ on:
         type: string
         required: true
 
+# 与调用方同一口径：Windows runner 上也用 Git Bash，脚本只有一套。
+# 【踩坑】可复用工作流**不会继承**调用方的 `defaults.run.shell` —— 漏了这段，
+# Windows 腿会按默认的 pwsh 解释 bash 语法，直接红（2026-10-17 实测）。
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: write
 
