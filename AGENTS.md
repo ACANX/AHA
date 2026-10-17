@@ -48,6 +48,29 @@
 
 ---
 
+## 🧱 Agent 执行域（能力剥离，issue #70）
+
+上面那条不只靠约定，还有**执行域兜底**：`bin/AgentSandbox.sh` 用 Linux 命名空间（bubblewrap）
+把命令放进一个**没有本地构建能力**的域里执行 —— 域内 `/mnt`（Windows 盘）不可见、宿主 JDK 目录
+被盖成空目录、`mvn` / `mvnw` / `java` / `javac` / `gradle` 都是拒绝桩（命中即退出码 `97`，
+并提示「去看 PR 的 CI checks」）。**工作区文件一个都不改**，所以 git 看不到任何虚假变更。
+
+```bash
+./bin/AgentSandbox.sh -- <命令>        # 在 Agent 域内执行（默认当前目录；--repo <目录> 可指定）
+./bin/AgentSandbox.sh --print-plan     # 只打印生效的 bwrap 参数（取证 / 排障）
+python3 bin/CheckAgentBoundary.py      # 自证：域内确实没构建能力，且隔离失效时它会变红
+```
+
+- **Agent 侧**：本地构建 / 测试不在域内做（也做不了）——改完推送，看 PR 的 checks；
+- **人类开发者不受影响**：直接用 `./mvnw`，不需要进这个域，也不需要任何额外配置；
+- **不覆盖**：Windows 侧原生启动的工具（OpenCode / DSH 等）在命名空间之外，见 issue #70 的 P2；
+- **尚未启用 shell 自动进域**（PATH shim / `~/.bashrc` 包装）：属**仓库外**的机器配置，
+  待 ACANX 决定后由人安装；在此之前用上面的命令显式进入；
+- 设计见 [AgentExecutionBoundaryDesign.md](Docs/Design/AgentExecutionBoundaryDesign.md)；
+  CI 卡点是 `Gate.yml` 的「Agent 执行边界自证」一步（隔离一被改坏，自证立刻变红）。
+
+---
+
 ## 项目概览
 
 AHA 是一个 Agent Harness 工具，支持 CLI 与桌面端双模式运行。
