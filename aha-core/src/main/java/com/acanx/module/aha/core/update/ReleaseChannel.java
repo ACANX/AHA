@@ -14,10 +14,17 @@ import java.util.Locale;
  *       同 PR 同目标保留最近 3 条、有效期 7 天。</li>
  * </ul>
  *
- * <p><b>默认通道是 {@link #BETA}（暂定）</b>：Stable 通道当前没有任何资产
- * （正式 release {@code V0.1.1} / {@code V0.1.2} 的资产数为 0，见 issue #51 §1.2 实查），
- * 因此先以 Beta 作为默认；<b>等首个带资产的正式发版落地后，再把默认值改回 Stable</b>
- * （issue #51 §10 D9，已登记待办 TD-00019）。</p>
+ * <p><b>默认通道是 {@link #STABLE}</b>（2026-10-16 由临时值 {@link #BETA} 改回，
+ * issue #252 / 待办 TD-00019）。此前暂定 Beta 的原因很具体：正式 release
+ * {@code 0.1.0} / {@code V0.1.1} / {@code V0.1.2} 的资产数均为 0（2026-10-16 实查），
+ * 默认取 Stable 会让首次打开的升级面板是个空列表、被理解成「坏了」。
+ * 改回的机制前提已经就位：{@code Update.Channel} <b>缺键不写盘</b>
+ * （只有用户显式选过才落盘），所以「从没改过该键」的安装会<b>跟着默认值走</b>，
+ * 用户显式选过的不受影响。</p>
+ *
+ * <p><b>形态边界</b>：Stable 通道目前只有 JVM 形态的资产（原生线的正式发布排在 1.x），
+ * 所以原生形态装机在默认通道列不出可升级的版本，界面会说明原因并指出可切换的通道
+ * （见 {@link ChannelContract#supports}）。</p>
  *
  * @since 0.2.0
  */
@@ -33,9 +40,12 @@ public enum ReleaseChannel {
     ALPHA("alpha", "快照 Alpha", "某个未合并 PR 的试包，不是交付物；7 天后自动清理");
 
     /**
-     * 默认通道：<b>暂定 Beta</b>（Stable 暂无可下包，见类注释与 issue #51 §10 D9）。
+     * 默认通道：<b>稳定 Stable</b>（2026-10-16 由临时值 Beta 改回，issue #252 / TD-00019）。
+     *
+     * <p>改回前确认过「缺键不写盘」的机制真的在生效：从没选过通道的安装会跟着这个值走，
+     * 显式选过的不受影响（见 {@code DesktopSettings} 的 {@code explicitKeys}）。</p>
      */
-    public static final ReleaseChannel DEFAULT = BETA;
+    public static final ReleaseChannel DEFAULT = STABLE;
 
     private final String key;
 

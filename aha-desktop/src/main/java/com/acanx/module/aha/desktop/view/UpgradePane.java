@@ -209,6 +209,16 @@ public final class UpgradePane {
     private long checkGeneration;
 
     /**
+     * 正在把配置里的通道**渲染**成选项（不是用户改通道）。
+     *
+     * <p>为什么需要它：渲染初始选中会触发 {@code selectedToggleProperty} 监听器，而监听器里会
+     * 调 {@link DesktopSettings#updateChannel(ReleaseChannel)} 并保存 —— 那会把「只是打开过一次
+     * 升级面板」记成「用户显式选过通道」，于是这个安装**再也不会跟随代码默认值**
+     * （issue #252 的验收前提：从没选过通道的安装要跟着默认值走）。</p>
+     */
+    private boolean applyingInitialChannel;
+
+    /**
      * 构造。
      *
      * @param settings      设置（通道、备份份数等都从这里读）
@@ -361,7 +371,12 @@ public final class UpgradePane {
         VBox.setVgrow(versionList, Priority.ALWAYS);
 
         wireChannelButtons();
-        selectChannelInUi(settings.updateChannel());
+        applyingInitialChannel = true;
+        try {
+            selectChannelInUi(settings.updateChannel());
+        } finally {
+            applyingInitialChannel = false;
+        }
         updateChannelNote();
 
         // 内边距不是装饰：TabPane 的内容区默认**没有**留白，通道那一行会紧贴着 tab 标题，
@@ -375,8 +390,9 @@ public final class UpgradePane {
         if (unsupportedReason != null) {
             statusLine(unsupportedReason + "；可手动到发布页取件（「检查更新」仍可用，便于看有哪些版本）。");
         } else {
-            statusLine("点「检查更新」从 " + SOURCE + " 取可用版本。默认通道 "
-                    + ReleaseChannel.DEFAULT.label() + "；Stable 目前还没有带资产的正式发版。"
+            statusLine("点「检查更新」从 " + SOURCE + " 取可用版本。当前通道 "
+                    + selectedChannel().label() + "（改过就按改过的，没改过跟随默认值 "
+                    + ReleaseChannel.DEFAULT.label() + "）。"
                     + "下载与替换可能需要几十秒，期间请不要关闭程序。");
         }
         return root;
@@ -490,6 +506,10 @@ public final class UpgradePane {
         }
         channels.selectedToggleProperty().addListener((observable, old, now) -> {
             if (now == null) {
+                return;
+            }
+            if (applyingInitialChannel) {
+                // 渲染初始选中而已：既不算用户改通道，也不该写盘（见字段注释）
                 return;
             }
             ReleaseChannel channel = selectedChannel();
@@ -696,9 +716,28 @@ public final class UpgradePane {
         if (!kind.hasPlatform() || platform.hasPublishedPackages()) {
             return "「" + channel.label() + "」通道暂无可列出的版本：可能还没有带资产的发版（"
                     + SOURCE + "），或该形态在该通道不发版；Alpha 的版本也可能已被清理"
-                    + "（快照包 7 天有效期）。";
+                    + "（快照包 7 天有效期）。" + alternativeChannels(channel);
         }
         return platform.unpublishedReason() + "；可手动到发布页取件";
+    }
+
+    /**
+     * 空列表必须给出**下一步**：指出还能去哪个通道。
+     *
+     * <p>默认通道改成 Stable 之后这条更要紧 —— 正式发版若还没有带资产的包，首屏就是空列表，
+     * 只说「暂无可列出的版本」会被读成「功能坏了」（issue #252 的成因）。</p>
+     */
+    private static String alternativeChannels(ReleaseChannel channel) {
+        StringBuilder others = new StringBuilder();
+        for (ReleaseChannel other : ReleaseChannel.values()) {
+            if (other != channel) {
+                if (others.length() > 0) {
+                    others.append('或');
+                }
+                others.append('「').append(other.label()).append('」');
+            }
+        }
+        return "也可以切到" + others + "通道再看看。";
     }
 
     private void selectChannelInUi(ReleaseChannel channel) {

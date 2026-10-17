@@ -31,7 +31,7 @@ class UpdateCommandTest {
                 .parse(List.of("--update-to", "0.1.3.00243")).orElseThrow();
 
         assertThat(options.targetVersion()).isEqualTo(AhaVersion.parse("0.1.3.00243"));
-        // 默认通道取 ReleaseChannel.DEFAULT（暂定 Beta：Stable 目前没有可下包）
+        // 默认通道取 ReleaseChannel.DEFAULT（Stable：2026-10-16 由临时值 Beta 改回，issue #252）
         assertThat(options.channel()).isEqualTo(ReleaseChannel.DEFAULT);
         assertThat(options.confirmed()).isFalse();
         assertThat(options.checkOnly()).isFalse();
