@@ -1,9 +1,9 @@
 # GitHub Actions 规范
 
-**文档版本**：v1.0.0
+**文档版本**：v1.1.0
 **状态**：生效
 **生效日期**：2026-10-16
-**最后更新**：2026-10-16
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.1.0 | 2026-10-17 | §2.1 补齐 5 个可复用工作流；新增 §2.3「显示名 / 作业 id / commit status context / 平台标签」并指向 `WorkflowDisplayNameSpec.md`（issue [#287](https://github.com/ACANX/AHA/issues/287)）—— 显示名必须是**静态**英文大驼峰（零表达式、零标点），矩阵因此展开为逐腿静态作业 | @cnxnc |
 | v1.0.0 | 2026-10-16 | 初版：工作流文件的**命名**（`name:` 大驼峰单数、与文件名一一对应）、触发层不过滤、权限白名单与 PR 评论所需的 `pull-requests: write`、结论（commit status）与幂等留痕（`if: always()`）、守卫清单 | @ACANX / CNXNC |
 
 ---
@@ -52,6 +53,11 @@
 | `SnapshotCleanup.yml` | `SnapshotCleanup` |
 | `SnapshotJVM.yml` | `SnapshotJVM` |
 | `VersionBump.yml` | `VersionBump` |
+| `BuildLeg.yml` | `BuildLeg` |
+| `BuildMvnArtifactLeg.yml` | `BuildMvnArtifactLeg` |
+| `CliNativeImageLeg.yml` | `CliNativeImageLeg` |
+| `DesktopPackageLeg.yml` | `DesktopPackageLeg` |
+| `NativeImageLeg.yml` | `NativeImageLeg` |
 
 **为什么**：这个字符串到处都是 —— Actions 页面、运行列表、PR 上的检查分组、`gh run list` 的输出列。
 写成 `Snapshot Assert` 这类带空格的写法时，「文件名」与「显示名」就成了**两套写法**，检索、对照、
@@ -63,6 +69,9 @@
 **机械校验**：`bin/CheckScripts.py::check_workflow_names()` 逐个工作流断言本规则（文件名 + `name:` + 两者一一对应），
 不满足即红。
 
+**`*Leg.yml` 是可复用工作流**（`on: workflow_call`）：它们只被主工作流 `uses:` 调用，不产生独立运行条目；
+文件名与 `name:` 同样一一对应，规则不因「不直接触发」而放宽。
+
 ### 2.2 文件名
 
 工作流文件名与本仓库其余 Markdown 一致，采用**大驼峰**，并**与 `name:` 一一对应**
@@ -71,6 +80,22 @@
 
 **不允许 kebab-case / snake_case 文件名**（`snapshot-cleanup.yml` 已在 2026-10-16 更名为
 `SnapshotCleanup.yml`，本条不再有例外）。
+
+### 2.3 显示名、作业 id、context 与平台标签
+
+| 对象 | 规则 | 细则 |
+|---|---|---|
+| 显示名（`name:` / `run-name:`，含**作业与步骤**）| **静态**英文大驼峰 `^[A-Z][A-Za-z0-9]*$`；**零表达式、零标点、零中文** | [WorkflowDisplayNameSpec.md](WorkflowDisplayNameSpec.md) §2.1 |
+| 作业 id（`jobs.<id>`）| 与显示名同规则；矩阵作业**展开为逐腿静态作业** | 同上 §2.2 |
+| commit status context | 与显示名同规则（`SnapshotAssert` / `PreDeployVerify`）| 同上 §2.3 |
+| 平台标签 | 架构词统一 `aarch64`；读取兼容历史 `macos-arm64` | 同上 §2.4 |
+
+**为什么显示名必须静态**：`${{ … }}` 进显示名会让 PR 检查列表的名字随矩阵值变化 ——
+分支保护按作业名匹配（`BuildSpec.md` §8.1），一改矩阵键就悄悄改了检查名；而这类漂移**不会报错**。
+因此矩阵一律展开为逐腿静态作业，重复的 steps 放进 `*Leg.yml` 可复用工作流（逻辑只有一份）。
+
+**机械校验**：`bin/CheckScripts.py::check_workflow_display_names()` 扫描全部 `name:` / `run-name:`
+（顶层、作业、步骤三层），命中 `${{`、中文、标点或非大驼峰即红。
 
 ## 3. 触发
 
@@ -110,6 +135,7 @@
 | 守卫 | 断言 |
 |---|---|
 | `check_workflow_names()` | 顶层 `name:` 为大驼峰单数（本文 §2.1）|
+| `check_workflow_display_names()` | 所有 `name:` / `run-name:` 为**静态**英文大驼峰（本文 §2.3）|
 | `check_yaml_shell_vars()` | `run:` 里 `$VAR` 后不得紧跟非 ASCII（macOS bash 3.2 会把中文字符并进变量名 ⇒ unbound variable）|
 | `check_yaml_input_bool_compare()` | 不得对 `inputs.*` 做宽松布尔比较（`push` 事件下 `inputs` 为 `null`，`null != false` 求值为 false ⇒ 作业被**静默跳过**，issue #213）|
 | `check_snapshot_assert_contract()` | 快照自测留痕的 context / 命令 / 权限 / 清单编号一致 |

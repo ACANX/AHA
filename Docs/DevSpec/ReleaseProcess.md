@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.31.2
+**文档版本**：v1.32.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-17
@@ -15,6 +15,7 @@
 |---|---|---|---|
 | v1.31.2 | 2026-10-17 | 发布流水线三处加固（发版前审计）：① 打包作业在生成 `AHA-PACKAGE.json` 后**立即 `verify` 回读**（清单错了在发布前就红，而不是用户升级时才撞「校验和不符」）；② `checksums` 作业新增**资产齐全自证**——期望 CLI + 三平台桌面端共 4 份 zip，缺任何一份即失败并在 Job Summary 点名（原来「只出了部分平台」也会绿着把发布页生成出来）；③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路（`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）钉死 | @cnxnc |
 | v1.31.1 | 2026-10-17 | §2 的「一致性校验」补一句口径：产物名版本段**只比对带版本段的产物**（`<artifactId>-<版本>…`）；包根扁平化后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` 不带版本号、不参与该比对（版本由包内 `AHA-PACKAGE.json` 承载），跳过项写进校验日志。修的是 `ProjectVersion.py` 被根聚合 artifactId 前缀碰撞后的**假红**（`dev` 上 Gate 自 2026-10-15 起一直红，issue #260） | @cnxnc |
+| v1.32.0 | 2026-10-17 | 按 issue [#287](https://github.com/ACANX/AHA/issues/287) 同步：平台标签 `macos-arm64` ⇒ `macos-aarch64`（读取兼容旧资产名）、commit status context `snapshot-assert` ⇒ `SnapshotAssert`、`predeploy-verify` ⇒ `PreDeployVerify` | @cnxnc |
 | v1.31.0 | 2026-10-16 | 口径 6 更新：桌面端**默认通道已由临时值 `beta` 改回 `stable`**（issue #252 / TD-00019），并写明原生形态因 Stable 暂不发原生包、应用内升级仍走 `beta` / `alpha` | @ACANX / CNXNC |
 | v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
 | v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
@@ -113,11 +114,11 @@
      `CliNative.yml` / `BuildJVMArtifacts.yml`）会传 `-Daha.build.version=<a.b.c.PPPPP>`（如 `0.1.1.00046`），
      供 GUI「关于」与 CLI 启动页 / `/help` 显示，便于按版本号排查（issue #46）
 3. 执行完整构建与验收
-4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `tag` 作业在 `main` 上的构建成功后，
+4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `Tag` 作业在 `main` 上的构建成功后，
    按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
 5. `Release.yml` **由 CI 自动开跑**（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）：
-   `Build.yml` 的 `tag` 作业在**新建**出 tag 之后，用 `GITHUB_TOKEN` 经 `workflow_dispatch`
+   `Build.yml` 的 `Tag` 作业在**新建**出 tag 之后，用 `GITHUB_TOKEN` 经 `workflow_dispatch`
    派发它（GitHub 防递归的**官方例外**，issue #238），派发 ref 固定为 `main` —— 见 4.2。
    手工补触发的方法（派发失败 / 资产重来）同样见 4.2
 6. 合回 `dev`，删除 `release/*` 分支
@@ -152,7 +153,7 @@
 2. 清理由 `SnapshotCleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
    `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
 
-### 2.2 快照自测留痕（`snapshot-assert`）：默认启用、默认不卡点
+### 2.2 快照自测留痕（`SnapshotAssert`）：默认启用、默认不卡点
 
 「这个包我跑过了」需要留痕，但**不能**变成流程税。机制见
 [`.github/workflows/SnapshotAssert.yml`](../../.github/workflows/SnapshotAssert.yml)（issue #166）：
@@ -160,7 +161,7 @@
 | 项 | 口径 |
 |---|---|
 | 启用 | **默认启用** —— 工作流随仓库就位，PR 上发评论即打标，无需任何开关 |
-| 卡点 | **默认不做卡点** —— `snapshot-assert` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
+| 卡点 | **默认不做卡点** —— `SnapshotAssert` **不**加入 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里**显式**加入 |
 | 命令 | `/snapshot-assert <版本> <平台> [jdk27] [+model]`（打 `success`）；`/snapshot-assert-fail <版本> <平台> [jdk27] <原因>`（打 `failure`，失败也要可见）。两条命令同前缀 ⇒ 另外三条命令式工作流的守卫里**一条排除**即可覆盖 |
 | 平台 / JDK | 平台词 `Win` / `MacOS` / `Ubuntu`（与快照出包同一套）；JDK 段省略即 `jdk25` |
 | 绑定 | status 绑在 PR 当时的 `head_sha` ⇒ **PR 再 push 后旧验证自动失效**（新 sha 上没有这条 status）|
@@ -219,9 +220,9 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
 |---|---|
 | 工作流 | [`.github/workflows/PreDeployVerify.yml`](../../.github/workflows/PreDeployVerify.yml) |
 | 触发 | **每次 PR 推送**（`pull_request` 的 `opened` / `synchronize` / `reopened`）+ **手动**（`workflow_dispatch`）|
-| status | **`predeploy-verify`**（commit status，绑 PR 的 `head_sha`）|
+| status | **`PreDeployVerify`**（commit status，绑 PR 的 `head_sha`）|
 | 留痕 | 幂等回写一条 PR 评论：**验证对象 / 结论 / 执行人 / 时间 / 对应提交**；另进该次运行的 Job Summary |
-| **卡点** | **默认不做** —— `predeploy-verify` **不在** required status checks 里，缺它 / 失败**都不拦合并** |
+| **卡点** | **默认不做** —— `PreDeployVerify` **不在** required status checks 里，缺它 / 失败**都不拦合并** |
 | **升级路径** | 时机成熟时把它**加进** required checks 即成为卡点，**机制本身不改** |
 | 失败可见 | 失败也一定打 `failure` status **并**留痕评论（`if: always()`），不静默 |
 | token 开销 | **0** —— 验证项全在本地进程里跑，不做任何模型往返 |
@@ -257,8 +258,8 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
   版本号的**唯一权威源是根目录 `version` 文件**（机器位置是根 POM 的 `<revision>`，
   由 `VersionDistribute.py` 写入），工作流与文档都不复制它。
 - 自动打 tag 的触发条件：**push 到 `main`**（`dev` → `main` 的 PR 合并之后）且 `Build.yml` 的
-  `build` 作业成功。
-- 需要手工补打的情形：那条**可选**的 macOS 腿没有通过、连带 `build` 作业未算成功；
+  四条 `Build*` 腿全部成功。
+- 需要手工补打的情形：那条**可选**的 macOS 腿没有通过、连带 `Build*` 四条腿未全部成功；
   或推送 tag 时权限不足。手工命令：
 
   ```
@@ -276,7 +277,7 @@ M3 边界观感 —— 要不要做**由工作流按 PR 改动文件给出提示
 > events triggered by the `GITHUB_TOKEN` will not create a new workflow run, **with the following
 exceptions: `workflow_dispatch` and `repository_dispatch` events always create workflow runs.**
 
-本仓库据此**不配置 PAT**：`Release.yml` 增加 `workflow_dispatch`，`Build.yml` 的 `tag` 作业在
+本仓库据此**不配置 PAT**：`Release.yml` 增加 `workflow_dispatch`，`Build.yml` 的 `Tag` 作业在
 **真的新建出 tag** 之后，用 `GITHUB_TOKEN` 派发它：
 
 ```
@@ -286,7 +287,7 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 两条口径必须同时成立，缺一个就会把「验过的构建」换成「别的提交」：
 
 1. **`--ref main` 不能省**。`workflow_dispatch` 的 `GITHUB_SHA` 是**所派发 ref 的最新提交**；
-   用默认分支 `dev` 派发会让整个 run 落在 dev 上（`gate` / `compat` 与两条出包线都会取到 dev）。
+   用默认分支 `dev` 派发会让整个 run 落在 dev 上（`Gate` / `Compat` 与两条出包线都会取到 dev）。
    带 `main` 时 `GITHUB_SHA` = `main` head = tag 指向的提交（tag 由同一作业按 `${GITHUB_SHA}` 创建）。
 2. **tag 由入参传入**（`-f tag=…`）：两条出包线按它显式 `checkout`，并作为 `action-gh-release`
    的 `tag_name`。`workflow_dispatch` 下 `github.ref` 是分支，不能靠默认值取 tag。
@@ -331,7 +332,7 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 |---|---|
 | Windows x86_64 | `aha-desktop-<版本>-windows-amd64.zip` |
 | Linux x86_64（验证环境为 Ubuntu） | `aha-desktop-<版本>-ubuntu-amd64.zip` |
-| macOS Apple Silicon | `aha-desktop-<版本>-macos-arm64.zip` |
+| macOS Apple Silicon | `aha-desktop-<版本>-macos-aarch64.zip` |
 
 包内布局（**包根平铺**，2026-10-15 起，issue #218）：`aha-desktop.jar`（单体 jar：本项目模块 +
 全部运行时依赖 + **本平台** OpenJFX 的类与原生库）+ `AhaDesktop.sh` / `AhaDesktop.bat` +
@@ -446,7 +447,7 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
 
 配套口径（每一条都有对应的实现或守卫，不是口号）：
 
-1. **平台标签**只有三个：`windows-amd64` / `ubuntu-amd64` / `macos-arm64`（Windows ARM64 打不出包，
+1. **平台标签**只有三个：`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`（架构词统一 `aarch64`；读取兼容历史资产名 `macos-arm64`）（Windows ARM64 打不出包，
    见 §3.2 的 OpenJFX 分类器限制）；
 2. **JDK 轴**：升级默认只取 JDK 25 变体（JVM 线资产名**不带** `-jdk` 后缀的那份）；`-jdk27` 是试验分支、
    **不默认**；原生线与快照线**始终**带 `-jdk<JDK>`；

@@ -7,7 +7,7 @@
     dev 线的 JVM 便携包挂在发布页的**预发行版**上：
 
         tag   形如  V0.1.3.00178-aha-jvm
-        资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-arm64）
+        资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-aarch64）
               CLI     aha-cli-<版本>[-jdk27].zip                （**平台无关**，只有一份）
 
     本脚本做五件事：
@@ -33,8 +33,8 @@
       * **资产名规则不同**：原生包是 `<前缀><版本>-<平台>-jdk<JDK>.zip`（平台段与 jdk 段**都必有**）；
         JVM 包是 `aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`
         （平台段只有桌面端有、jdk 段只有 27 有）；
-      * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-arm64`，
-        2026-10-15 统一，issue #215）。
+      * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`，
+        2026-10-15 统一（issue #215），2026-10-17 架构词统一为 `aarch64`（issue #287））。
 
       把这两套规则塞进同一份脚本，会让它同时背两套分支 —— 得不偿失。
 
@@ -134,7 +134,7 @@ $StateFile = Join-Path $OutDir $kindInfo.State
 
 # 本机架构 → JVM 线的平台词（与原生线的 windows-amd64 不同）。
 if (-not $Platform) {
-    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-arm64' } else { $Platform = 'windows-amd64' }
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-aarch64' } else { $Platform = 'windows-amd64' }
 }
 if (-not $Jdk) { $Jdk = '25' }
 
@@ -176,13 +176,19 @@ function Get-TagVersion {
 }
 
 # ── 资产名：桌面端 `<前缀><版本>-<平台>[-jdk27].zip`；CLI `<前缀><版本>[-jdk27].zip` ──
-function Get-AssetName {
+function Get-AssetNames {
     param([string]$Version)
     $suffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
     if ($kindInfo.ByPlatform) {
-        return ("{0}{1}-{2}{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $suffix)
+        $names = @(("{0}{1}-{2}{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $suffix))
+        # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。
+        # 新产出用 aarch64，但旧包仍要能取到。
+        if ($Platform -eq 'macos-aarch64') {
+            $names += ("{0}{1}-macos-arm64{2}.zip" -f $kindInfo.Prefix, $Version, $suffix)
+        }
+        return $names
     }
-    return ("{0}{1}{2}.zip" -f $kindInfo.Prefix, $Version, $suffix)
+    return @(("{0}{1}{2}.zip" -f $kindInfo.Prefix, $Version, $suffix))
 }
 
 function Get-AssetFor {
@@ -191,10 +197,12 @@ function Get-AssetFor {
     if (-not $version) { return $null }
     # 先按命名规则拼出目标资产名，再到清单里**精确匹配**：
     # JVM 包的 asset 名规则与原生包不同（jdk 段可选），精确匹配比前缀 + 后缀猜更稳。
-    $wanted = Get-AssetName $version
-    foreach ($a in $Release.assets) {
-        if ($a.state -ne 'uploaded') { continue }
-        if ($a.name -eq $wanted) { return $a }
+    $wantedNames = Get-AssetNames $version
+    foreach ($wanted in $wantedNames) {
+        foreach ($a in $Release.assets) {
+            if ($a.state -ne 'uploaded') { continue }
+            if ($a.name -eq $wanted) { return $a }
+        }
     }
     return $null
 }

@@ -70,7 +70,7 @@ public final class ChannelContract {
     /** 版本段的通用正则片段（3–5 段；具体段数由通道决定）。 */
     private static final String VERSION_GROUP = "(?<version>[0-9]+(?:\\.[0-9]+){2,4})";
 
-    /** 平台标签片段（{@code windows-amd64} / {@code macos-arm64}）。 */
+    /** 平台标签片段（{@code windows-amd64} / {@code macos-aarch64}）。 */
     private static final String PLATFORM_GROUP = "(?<platform>[a-z0-9]+(?:-[a-z0-9]+)*)";
 
     /** 资产名末尾的 JDK 段（解析时先剥掉它，再匹配剩下的核心部分）。 */

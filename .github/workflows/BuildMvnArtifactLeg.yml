@@ -1,0 +1,263 @@
+name: BuildMvnArtifactLeg
+
+# 可复用工作流：`BuildJVMArtifacts.yml` 的一条「JVM 便携包」腿（issue #287）。
+#
+# 【为什么抽出来】作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），
+# 而矩阵只能靠表达式区分腿。于是改成「每腿一个静态作业 + 共用这份 steps」：
+# 主工作流里每腿只有 8 行 `uses:` + `with:`，逻辑不复制。
+#
+# 【选腿】「本次出哪几条腿」由调用方的 **job 级 `if`** 过滤（读 `needs.BuildVersion.outputs.selected`），
+# 未选中的腿直接 skipped（不起 runner、也不靠步骤级 if 逐个遮挡）。
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: runner 标签
+        type: string
+        required: true
+      label:
+        description: 平台标签（ubuntu-amd64 / windows-amd64 / macos-aarch64）
+        type: string
+        required: true
+      jdk:
+        description: JDK 大版本（25 / 27）
+        type: string
+        required: true
+      upload_cli:
+        description: 是否在本腿产出 CLI 包（平台无关，只在一条腿产出）
+        type: boolean
+        required: true
+      version:
+        description: 构建版本号（来自 BuildVersion）
+        type: string
+        required: true
+
+# 与调用方同一口径：Windows runner 上也用 Git Bash，脚本只有一套。
+# 【踩坑】可复用工作流**不会继承**调用方的 `defaults.run.shell` —— 漏了这段，
+# Windows 腿会按默认的 pwsh 解释 bash 语法，直接红（2026-10-17 实测）。
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  BuildMvnArtifactLeg:
+    name: BuildMvnArtifactLeg
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.jdk }}
+
+      - name: BuildDesktopAndCli
+        # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
+        # -Daha.build.version：注入 version.properties 的 build 项，供「关于」/ 启动页显示。
+        # 复用现有 assembly 链路：package 阶段即产出 Dist/aha-desktop-<版本>-<平台>.zip
+        # 与 CLI 的 Dist/{bin,lib}（见 aha-desktop/pom.xml、aha-cli/pom.xml）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B
+            -Dmaven.compiler.release=${{ inputs.jdk }}
+            -pl aha-desktop,aha-cli -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.build.version=${{ inputs.version }}
+
+      - name: VerifyClassFileVersion
+        # 只看「构建成功」不够：release 没生效时仍会以默认 25 编出来。
+        # 直接读任一 class 的 major version：Java 25 = 69，Java 27 = 71。
+        shell: bash
+        env:
+          JDK: ${{ inputs.jdk }}
+        run: |
+          set -uo pipefail
+          f=$(find aha-common/target/classes -name '*.class' | head -n1 || true)
+          if [ -z "$f" ]; then echo "::error::找不到 class 文件，无法自证"; exit 1; fi
+          # 只截字节、不做偏移：od 分 GNU（Linux）与 BSD（macOS）两派，`-j`/`-N` 的
+          # 行为并不一致——macOS 上会多吐字段，把 awk 的结果变成两行，比较必然失败。
+          # 这里先用 head/tail 截出 major 的两个字节，再用两端一致的 `-A n -t x1`
+          # 取十六进制，最后交给 shell 换算，彻底绕开 od 的实现差异。
+          hex=$(head -c 8 "$f" | tail -c 2 | od -A n -t x1 | tr -d ' \n')
+          major=$((16#${hex}))
+          if [ "${JDK}" = "27" ]; then expect=71; else expect=69; fi
+          echo "样本：${f}  major=${major}  期望=${expect}"
+          if [ "${major}" != "${expect}" ]; then
+            echo "::error::class 字节码版本不符（期望 ${expect}，实际 ${major}）"
+            exit 1
+          fi
+          echo "自证通过：Java ${JDK} 字节码（major=${major}）"
+
+      - name: NormalizeDesktopPackageName
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          LABEL: ${{ inputs.label }}
+          JDK: ${{ inputs.jdk }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # 用 [0-9] 而不是 *：避免把原生镜像包 aha-desktop-native-*.zip 误当桌面端包
+          files=(Dist/aha-desktop-[0-9]*.zip)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
+            exit 1
+          fi
+          # JDK 25 保持原名（不带 JDK 段），JDK 27 加 -jdk27 区分两类产物。
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          # 命名序：<版本>-<平台>-<JDK>，JDK 段一律放最后，与原生线
+          # （AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip）保持一致，便于按平台归堆取件。
+          target="Dist/aha-desktop-${VERSION}-${LABEL}${suffix}.zip"
+          mv -- "${files[0]}" "$target"
+          size=$(du -h "$target" | cut -f1)
+          # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
+          # 判据全部落在「解包后的实际内容」上，不看构建日志：包体形态已经回归过一次
+          # （issue #217，fat jar 顶替了 lib/ 里的模块化 jar），只看「构建成功」防不住。
+          work="$RUNNER_TEMP/desktop-pkg-check"
+          rm -rf "$work"; mkdir -p "$work"; cp -- "$target" "$work/pkg.zip"
+          entries="$work/entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
+          # ① 不得再有 lib/ 与 bin/（旧形态残留 ⇒ 直接失败）
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::桌面端包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
+            exit 1
+          fi
+          # ② 三个入口都平铺在包根
+          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
+          # ③ 单体 jar 自证：Main-Class = 转发类、无 module-info、含 JavaFX 类与本平台原生库
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-desktop.jar )
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-desktop.jar META-INF/MANIFEST.MF )
+          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
+          if [ "$main" != "com.acanx.module.aha.desktop.AhaDesktopLauncher" ]; then
+            echo "::error::单体 jar 的 Main-Class 应为 AhaDesktopLauncher（不继承 Application 的转发类），实际：${main:-<空>}"
+            exit 1
+          fi
+          fat="$work/fat-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/aha-desktop.jar" > "$fat"
+          if grep -qx 'module-info.class' "$fat"; then
+            echo "::error::单体 jar 不得含 module-info.class"; exit 1
+          fi
+          if ! grep -q '^javafx/application/Application.class$' "$fat"; then
+            echo "::error::单体 jar 内含不到 JavaFX（javafx/application/Application.class）"; exit 1
+          fi
+          # ④ 本平台原生库：按平台**点名**，且不允许混进别的平台（与 Release.yml 同一口径）。
+          #    JavaFX 的原生库在 jar **根级**；sqlite-jdbc / jline 那类第三方包把全平台库放在
+          #    org/** 下（jar 的固有行为，不是打包缺陷），按根级过滤即可把它们排除在外。
+          case "${LABEL}" in
+            windows-amd64) ext="dll";   want="glass.dll" ;;
+            ubuntu-amd64)  ext="so";    want="libglass.so" ;;
+            macos-aarch64)   ext="dylib"; want="libglass.dylib" ;;
+            *) echo "::error::未知平台标签 ${LABEL}（matrix 与这里的映射要一起改）"; exit 1 ;;
+          esac
+          if ! grep -qx "$want" "$fat"; then
+            echo "::error::单体 jar 内没有本平台（${LABEL}）的 ${want} —— 运行时会报缺 JavaFX 运行时"
+            exit 1
+          fi
+          same_ext=$(grep -Ec "^[^/]+\.${ext}$" "$fat" || true)
+          if [ "$same_ext" -eq 0 ]; then
+            echo "::error::本平台（${LABEL}）原生库数量为 0（期望 .${ext}）"; exit 1
+          fi
+          other=$(grep -E '^[^/]+\.(dll|so|dylib)$' "$fat" | grep -v "\.${ext}$" || true)
+          if [ -n "$other" ]; then
+            echo "::error::单体 jar 内混进了别的平台的原生库："
+            echo "$other" | head -5
+            exit 1
+          fi
+          echo "桌面端包：${target}（${size}；平铺形态，单体 jar 含 JavaFX 类与本平台原生库 ${same_ext} 个）"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 放在所有包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
+          # 清单是升级器替换文件与逐项校验的依据，缺了它这个包对升级器就是不合格的。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "$target" --kind desktop-jvm --version "${VERSION}" --platform "${LABEL}" --jdk "${JDK}"
+
+      - name: PackageCliDistribution
+        # 既有条件（CLI 包平台无关，只在 Ubuntu 腿产出）与「本次要不要这条腿」叠加
+        if: inputs.upload_cli
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          JDK: ${{ inputs.jdk }}
+        run: |
+          set -euo pipefail
+          # 命名序：aha-cli-<版本>[-jdk27]：前缀固定 `aha-cli`，与桌面端 `aha-desktop-` 对称。
+          if [ "${JDK}" = "27" ]; then suffix="-jdk27"; else suffix=""; fi
+          target="Dist/aha-cli-${VERSION}${suffix}.zip"
+          # 先在临时目录里打，再移进 Dist/：直接往 Dist/ 里写 zip 会把正在写入的自身收进归档。
+          # 只列这几个入口，不写 `.`：将来 Dist/ 里再放别的产物也不会被误收。
+          # （zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。）
+          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
+          mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
+          size=$(du -h "$target" | cut -f1)
+          # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
+          # 与桌面端同一套口径：判据落在「打出来的 zip 里实际有什么」，不看构建日志。
+          work="$RUNNER_TEMP/cli-pkg-check"
+          rm -rf "$work"; mkdir -p "$work"; cp -- "$target" "$work/pkg.zip"
+          entries="$work/entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
+          # ① 不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
+            exit 1
+          fi
+          # ② 三个入口都平铺在包根
+          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
+          # ③ 单体 jar 自证：Main-Class、无 module-info、依赖真在里面、能真的跑起来
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-cli.jar )
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-cli.jar META-INF/MANIFEST.MF )
+          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
+          if [ "$main" != "com.acanx.module.aha.cli.AhaCli" ]; then
+            echo "::error::单体 jar 的 Main-Class 应为 AhaCli，实际：${main:-<空>}"; exit 1
+          fi
+          fat="$work/fat-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/aha-cli.jar" > "$fat"
+          if grep -qx 'module-info.class' "$fat"; then
+            echo "::error::单体 jar 不得含 module-info.class"; exit 1
+          fi
+          # 依赖自带的原生库确实在包里：CLI 没有 JavaFX（根级没有原生库），
+          # sqlite-jdbc / jline 的把全平台原生库放在 org/** 下，故按**任意深度**计数。
+          natives=$(grep -Ec '\.(dll|so|dylib)$' "$fat" || true)
+          if [ "$natives" -eq 0 ]; then
+            echo "::error::单体 jar 内没有任何原生库（sqlite-jdbc / jline 都要用）—— 运行时会报 UnsatisfiedLinkError"
+            exit 1
+          fi
+          # 每个关键依赖挑一个类：证明 shade 真的把 runtime 依赖合进去了
+          # （而不是只打出了本项目自己的那几个模块）
+          for c in picocli/CommandLine.class org/sqlite/JDBC.class org/apache/logging/log4j/core/Logger.class; do
+            if ! grep -qx "$c" "$fat"; then
+              echo "::error::单体 jar 内缺 ${c}（shade 没把依赖合进来？）"; exit 1
+            fi
+          done
+          # 真跑一次：`version` 子命令不需要交互、也不需要图形环境
+          out=$("$JAVA_HOME/bin/java" -jar "$work/aha-cli.jar" version 2>&1 || true)
+          if ! grep -q "${VERSION}" <<<"$out"; then
+            echo "::error::单体 jar 跑不出预期版本（期望含 ${VERSION}）：$out"; exit 1
+          fi
+          echo "CLI 包：${target}（${size}；平铺形态，单体 jar 含 picocli / sqlite-jdbc / log4j2 与原生库 ${natives} 项）"
+          echo "单体 jar 冒烟输出：$(head -1 <<<"$out")"
+          # ── 包内清单（issue #51 §6）：CLI JVM 包平台无关，不带 --platform ────────
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "$target" --kind cli-jvm --version "${VERSION}" --jdk "${JDK}"
+
+      - name: UploadArtifacts
+        uses: actions/upload-artifact@v7
+        with:
+          # 桌面端每腿一个平台包；CLI 只在 upload_cli 的腿上传（一份平台无关包）。
+          name: Mvn-Artifact-${{ inputs.label }}-jdk${{ inputs.jdk }}
+          path: |
+            Dist/aha-desktop-${{ inputs.version }}-${{ inputs.label }}*.zip
+            Dist/aha-cli-${{ inputs.version }}*.zip
+          if-no-files-found: warn
+          retention-days: 14

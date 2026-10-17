@@ -47,10 +47,10 @@ SNAPSHOT_LABELS: dict[str, str] = {
 OS_WORDS: dict[str, str] = {"win": "OS:Win", "macos": "OS:MacOS", "ubuntu": "OS:Ubuntu"}
 
 #: 平台限定标签 → 平台标签。**两条线共用这一套词**（2026-10-15 统一，见 issue #215 / BuildSpec §11.1）：
-#: Win→windows-amd64、Ubuntu→ubuntu-amd64、MacOS→macos-arm64。
+#: Win→windows-amd64、Ubuntu→ubuntu-amd64、MacOS→macos-aarch64（架构词统一 aarch64，issue #287）。
 OS_LABELS: dict[str, str] = {
     "OS:Win": "windows-amd64",
-    "OS:MacOS": "macos-arm64",
+    "OS:MacOS": "macos-aarch64",
     "OS:Ubuntu": "ubuntu-amd64",
 }
 
@@ -119,14 +119,14 @@ ASSET_FORMATS = {
 # 也统一到 `*-amd64` 之后，两张表**内容完全相同** ⇒ 合并进上面的 `OS_LABELS`，
 # 从结构上杜绝「同一平台两套叫法」再次分叉。
 
-#: 原生线「全部腿」（#165 §三：`ubuntu-amd64` / `windows-amd64` / `macos-arm64` × 现有 JDK）。
+#: 原生线「全部腿」（#165 §三：`ubuntu-amd64` / `windows-amd64` / `macos-aarch64` × 现有 JDK）。
 #: 与 DesktopNative.yml / CliNative.yml 的**静态矩阵逐条对应**；`OS:*` 只按平台收窄
 #: （该平台的 jdk25 / jdk27 两条腿都在内）。
 NATIVE_LEGS: dict[str, list[tuple[str, str, int]]] = {
     # (runner, label, jdk)
     "ubuntu-amd64": [("ubuntu-latest", "ubuntu-amd64", 25), ("ubuntu-latest", "ubuntu-amd64", 27)],
     "windows-amd64": [("windows-latest", "windows-amd64", 25), ("windows-latest", "windows-amd64", 27)],
-    "macos-arm64": [("macos-latest", "macos-arm64", 25)],
+    "macos-aarch64": [("macos-latest", "macos-aarch64", 25)],
 }
 
 #: 原生线资产名（#165 §八）：镜像包 + 同名族的独立报告包（报告包是 dev 线既有产物，快照一并带上）。
@@ -136,7 +136,7 @@ NATIVE_ASSET_FORMATS = {
 }
 
 #: 原生腿标签 → 平台中文名（写进 run 摘要，验收 12 要求摘要写明「限定平台：Windows」）。
-NATIVE_PLATFORM_NAMES = {"windows-amd64": "Windows", "macos-arm64": "macOS", "ubuntu-amd64": "Ubuntu"}
+NATIVE_PLATFORM_NAMES = {"windows-amd64": "Windows", "macos-aarch64": "macOS", "ubuntu-amd64": "Ubuntu"}
 
 #: 两条线各用各的评论标记：JVM 线用 `aha-snapshot`，原生线用 `aha-snapshot-native`。
 #: **必须分开**：原生标签事件若不认领就罢了，一旦认领却写同一个标记，就会把另一条线的
@@ -249,7 +249,7 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
 
 def _os_word(platform: str) -> str:
     """平台标签 → `/snapshot` 命令里的词（两条线共用一套标签，见 issue #215）。"""
-    return {"windows-amd64": "win", "macos-arm64": "macos", "ubuntu-amd64": "ubuntu"}[platform]
+    return {"windows-amd64": "win", "macos-aarch64": "macos", "ubuntu-amd64": "ubuntu"}[platform]
 
 
 def build_version(baseline: str, pr: int, now: datetime) -> str:

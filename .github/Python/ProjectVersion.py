@@ -30,7 +30,7 @@
     python3 .github/Python/ProjectVersion.py --self-test         # 自检：版本号格式的正 / 反例（--resolve <值> 的边界）
 
 `--self-test` 把「版本号格式放宽到哪、放宽到什么程度为止」变成**可重复执行的断言**
-（验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `static-guards` 作业每次
+（验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `StaticGuard` 作业每次
 PR 都跑一遍——否则这条验收只是一次性人工动作，改坏了没人知道。
 
 边界：`--verify` 的五处一致性校验仍以 **3 段基线**为准（`version` 文件与产物文件名的比对

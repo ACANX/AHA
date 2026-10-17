@@ -20,7 +20,7 @@
 
 ## 最小动作
 
-把 `DesktopDesign.md` §2/§3、`Build.yml`、`Release.yml` 的平台集合对齐（ubuntu-amd64 / windows-amd64 / macos-arm64）。
+把 `DesktopDesign.md` §2/§3、`Build.yml`、`Release.yml` 的平台集合对齐（ubuntu-amd64 / windows-amd64 / macos-aarch64；架构词已在 issue #287 统一）。
 
 ## 验收标准
 

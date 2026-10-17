@@ -30,13 +30,17 @@ import sys
 DEFAULT_MATRIX: list[dict] = [
     {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 25, "upload_cli": True},
     {"os": "windows-latest", "label": "windows-amd64", "jdk": 25, "upload_cli": False},
-    {"os": "macos-latest", "label": "macos-arm64", "jdk": 25, "upload_cli": False},
+    {"os": "macos-latest", "label": "macos-aarch64", "jdk": 25, "upload_cli": False},
     {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 27, "upload_cli": True},
     {"os": "windows-latest", "label": "windows-amd64", "jdk": 27, "upload_cli": False},
-    {"os": "macos-latest", "label": "macos-arm64", "jdk": 27, "upload_cli": False},
+    {"os": "macos-latest", "label": "macos-aarch64", "jdk": 27, "upload_cli": False},
 ]
 LEG_FIELDS = {"os", "label", "jdk", "upload_cli"}
-PLATFORM_LABELS = ("ubuntu-amd64", "windows-amd64", "macos-arm64")
+PLATFORM_LABELS = ("ubuntu-amd64", "windows-amd64", "macos-aarch64")
+
+#: 历史写法（2026-10-17 之前 macOS 的架构段写作 arm64）：
+#: 旧调用方传进来时归一化为新名，避免「一改标签就报 label 不合法」（issue #287）。
+LEGACY_LABELS = {"macos-arm64": "macos-aarch64"}
 SUPPORTED_JDKS = (25, 27)
 
 
@@ -69,6 +73,9 @@ def parse_matrix(raw: str | None) -> list[dict]:
             )
         if not str(leg["os"]).strip():
             raise MatrixError(f"第 {index} 条腿的 os 为空")
+        # 历史写法归一化（issue #287）：只改值，不改字段
+        if leg["label"] in LEGACY_LABELS:
+            leg["label"] = LEGACY_LABELS[leg["label"]]
         if leg["label"] not in PLATFORM_LABELS:
             raise MatrixError(
                 f"第 {index} 条腿的 label {leg['label']!r} 不在 JVM 线允许的取值里（{list(PLATFORM_LABELS)}）"
@@ -100,9 +107,11 @@ SELF_TEST_CASES: list[tuple[str, bool, str]] = [
     ("not json", False, "非法 JSON"),
     ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":25}]', False, "缺 upload_cli 字段"),
     ('[{"os":"ubuntu-latest","label":"linux-x64","jdk":25,"upload_cli":true}]', False,
-     "label 不是现行取值（linux-x64）—— 两条线已统一为 ubuntu-amd64 / windows-amd64 / macos-arm64"),
+     "label 不是现行取值（linux-x64）—— 两条线已统一为 ubuntu-amd64 / windows-amd64 / macos-aarch64"),
     ('[{"os":"ubuntu-latest","label":"ubuntu-x64","jdk":25,"upload_cli":true}]', False,
      "旧的 JVM 叫法（ubuntu-x64）已被 ubuntu-amd64 取代（2026-10-15 与原生线统一，issue #215）"),
+    ('[{"os":"macos-latest","label":"macos-arm64","jdk":25,"upload_cli":false}]', True,
+     "历史写法 macos-arm64 被归一化为 macos-aarch64（读取兼容，issue #287）"),
     ('[{"os":"ubuntu-latest","label":"ubuntu-amd64","jdk":26,"upload_cli":true}]', False, "jdk 越界"),
     ('[{"os":"","label":"ubuntu-amd64","jdk":25,"upload_cli":true}]', False, "os 为空"),
 ]

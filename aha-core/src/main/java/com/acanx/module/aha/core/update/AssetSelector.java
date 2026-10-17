@@ -183,7 +183,7 @@ public final class AssetSelector {
             return false;
         }
         boolean platformOk = kind.hasPlatform()
-                ? platform.value().equals(contractAsset.platformTag())
+                ? platform.matches(contractAsset.platformTag())
                 : contractAsset.platformTag() == null;
         return platformOk && contractAsset.jdk() == ChannelContract.DEFAULT_JDK;
     }
@@ -234,7 +234,7 @@ public final class AssetSelector {
             }
             ChannelContract.Asset contractAsset = parsed.get();
             boolean platformOk = kind.hasPlatform()
-                    ? platform.value().equals(contractAsset.platformTag())
+                    ? platform.matches(contractAsset.platformTag())
                     : contractAsset.platformTag() == null;
             if (platformOk && contractAsset.version().equals(release.version())
                     && contractAsset.jdk() != ChannelContract.DEFAULT_JDK) {

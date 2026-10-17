@@ -49,7 +49,7 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 `.cmd` 不得使用括号转义（与 `if` 块混用会让 CMD 报 `. was unexpected at this time.`）、
 以及把 `Dist/` 下**被跟踪的手写入口**也纳入检查（`Dist/` 整体是构建输出目录，原本被整体跳过）。
 
-**CI**：`Build.yml` 的 `native-update-script` 作业用 runner 自带的 pwsh 真跑
+**CI**：`Build.yml` 的 `NativeUpdateScript` 作业用 runner 自带的 pwsh 真跑
 `Dist/UpdateNative.ps1 -Kind Cli -List`——变量名大小写冲突、批处理括号转义这类坑
 **运行期才暴露**，静态检查看不见。
 
@@ -116,11 +116,11 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 
 | 名称 | 形态 | 出处 |
 |---|---|---|
-| release tag | `V<基线>.<构建号>-aha-desktop-native` | `DesktopNative.yml` 的 `native-publish` |
-| 构建号 | PR 号补零到 5 位，如 `00040` | `DesktopNative.yml` 的 `native-version`（`printf '%05d'`） |
+| release tag | `V<基线>.<构建号>-aha-desktop-native` | `DesktopNative.yml` 的 `NativePublish` |
+| 构建号 | PR 号补零到 5 位，如 `00040` | `DesktopNative.yml` 的 `NativeVersion`（`printf '%05d'`） |
 | 镜像包 | `AHA-Desktop-Native-<版本>-<平台标签>-jdk<JDK>.zip` | `DesktopNative.yml` 的「改名为发布用资产名」 |
 | 报告包 | 同名 + `-Report` 后缀 | 同上的独立报告包（脚本**不取**） |
-| 平台标签 | `windows-amd64` / `ubuntu-amd64` / `macos-arm64` | `DesktopNative.yml` 的 `native-image` matrix |
+| 平台标签 | `windows-amd64` / `ubuntu-amd64` / `macos-aarch64` | `DesktopNative.yml` 的 `native-image` matrix |
 | JDK 轴 | `jdk25`（基线）/ `jdk27`（试验） | 同上的 matrix |
 
 脚本侧的两个断言与之对应：
@@ -164,7 +164,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 
 这是本脚本最容易被忽略、也最容易让用户「刚看到新版本却下载失败」的一点：
 
-- release **先建后传**：`native-publish` 先创建 release，再挂资产；
+- release **先建后传**：`NativePublish` 先创建 release，再挂资产；
 - 三条腿**并发**：`native-image` 的 ubuntu / windows / macOS 各自构建，先编完的先上传。
 
 于是在新版本出现后的几分钟里，「最新 tag 存在，但缺本平台的包」是常态。脚本因此按
@@ -287,7 +287,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 ## 10. 已知限制
 
 - `atom` / `page` 路径没有 sha256 digest，只能靠 `size` 与 zip 自身的 CRC 兜底；
-- 未在 macOS 上实测（选择逻辑与平台无关，但 `macos-arm64` 标签未验证）；
+- 未在 macOS 上实测（选择逻辑与平台无关，但 `macos-aarch64` 标签未验证）；
 - 可执行文件**内部**的版本号与文件名/包名无关（`DesktopNativeDesign.md` 第 7 节 `N-4`），
   脚本只能校验「装的是哪个包」，不能校验「跑起来自报哪个版本」；
 - 未做限流后的重试与退避：`auto` 会退到 `atom`，对当前使用频率足够；
