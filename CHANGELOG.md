@@ -220,6 +220,13 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **`CheckScripts.py` 不再把「刚构建出来的 `Dist/AhaCli.*`」当成被忽略的源码（issue #262，2026-10-17）**：
+  `check_ignored_sources()` 用 `git ls-files --others --ignored` 找「被 `.gitignore` 吃掉、却被装配描述符
+  按名字引用」的文件。包根扁平化（#217/#218）之后 assemblies 会把**受跟踪**的 `bin/AhaCli.sh` /
+  `bin/AhaCli.bat` 铺到 `Dist/` 根，而 `Dist/` 整体被忽略 ⇒ `clean verify` **之后**的检查必然假红两条
+  （干净检出上不出现，所以本机一直绿；`dev` 上的 `Gate` 自 2026-10-15 起一直红，修完 #260 才轮到它）。
+  修法只加一条白名单：**同名文件在仓库别处受跟踪 ⇒ 视为构建产物**，不判红；只在被忽略目录里存在、
+  仓库别处没有同名文件的手写脚本（`Dist/apply-update.cmd` 那种形态）**仍照旧判红**（已用反向用例钉住）。
 - **`ProjectVersion.py --verify` 的产物名判定修掉假红（issue #260，2026-10-17）**：包根扁平化
   （#217/#218）之后 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**，而校验用
   「文件名以 `artifactId-` 开头」判定「是不是本项目的版本化产物」——根聚合工程的 artifactId 恰好是
