@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.31.1
+**文档版本**：v1.31.2
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-17
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.31.2 | 2026-10-17 | 发布流水线三处加固（发版前审计）：① 打包作业在生成 `AHA-PACKAGE.json` 后**立即 `verify` 回读**（清单错了在发布前就红，而不是用户升级时才撞「校验和不符」）；② `checksums` 作业新增**资产齐全自证**——期望 CLI + 三平台桌面端共 4 份 zip，缺任何一份即失败并在 Job Summary 点名（原来「只出了部分平台」也会绿着把发布页生成出来）；③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路（`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）钉死 | @cnxnc |
 | v1.31.1 | 2026-10-17 | §2 的「一致性校验」补一句口径：产物名版本段**只比对带版本段的产物**（`<artifactId>-<版本>…`）；包根扁平化后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` 不带版本号、不参与该比对（版本由包内 `AHA-PACKAGE.json` 承载），跳过项写进校验日志。修的是 `ProjectVersion.py` 被根聚合 artifactId 前缀碰撞后的**假红**（`dev` 上 Gate 自 2026-10-15 起一直红，issue #260） | @cnxnc |
 | v1.31.0 | 2026-10-16 | 口径 6 更新：桌面端**默认通道已由临时值 `beta` 改回 `stable`**（issue #252 / TD-00019），并写明原生形态因 Stable 暂不发原生包、应用内升级仍走 `beta` / `alpha` | @ACANX / CNXNC |
 | v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
@@ -120,6 +121,15 @@
    派发它（GitHub 防递归的**官方例外**，issue #238），派发 ref 固定为 `main` —— 见 4.2。
    手工补触发的方法（派发失败 / 资产重来）同样见 4.2
 6. 合回 `dev`，删除 `release/*` 分支
+
+**发布前的两条自证（2026-10-17 起）**：
+
+1. **清单先写后验**：每个打好的 zip 生成 `AHA-PACKAGE.json` 之后立刻 `PackageManifest.py verify` 回读，
+   清单与包内容不一致就在这里失败 —— 不会等到用户下载后、「应用内升级」时报「校验和不符」；
+2. **资产齐全**：`checksums` 作业在挂 `SHA256SUMS` 之前断言「CLI + 三平台桌面端共 4 份 zip」都在，
+   缺任何一份即失败并在 Job Summary 点名。应用内升级是按平台取件的，缺哪个平台哪类用户就升不了。
+   这条挡的是「**部分发布**」：`release` 与 `desktop` 是并列作业，任一成功本作业就跑起来，
+   以前缺资产也会绿着把发布页生成出来。
 
 ### 2.1 快照包（pre-release）：与正式发布彻底隔离
 

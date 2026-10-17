@@ -313,6 +313,13 @@
   见 `Docs/DevLog/20261013-09.md`。
 
 ### 修复
+- **发版流水线三处加固（2026-10-17，发版前审计）**：① 打好的每个 zip 在生成 `AHA-PACKAGE.json` 后
+  **立即 `verify` 回读** —— 清单若生成有误，在发布前就红，而不是等用户下载后、「应用内升级」时撞
+  「校验和不符」；② `checksums` 作业新增**资产齐全自证**（期望 CLI + 三平台桌面端共 4 份 zip，
+  缺任何一份即失败并在 Job Summary 点名）—— 原来「只出了部分平台」也会绿着把发布页生成出来；
+  ③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路
+  （`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）
+  钉死：这条链路一旦被改坏，表现是「发布页只有 tag、没有发行包，而 CI 全绿」。
 - **`CheckScripts.py` 不再把「刚构建出来的 `Dist/AhaCli.*`」当成被忽略的源码（issue #262，2026-10-17）**：
   `check_ignored_sources()` 用 `git ls-files --others --ignored` 找「被 `.gitignore` 吃掉、却被装配描述符
   按名字引用」的文件。包根扁平化（#217/#218）之后 assemblies 会把**受跟踪**的 `bin/AhaCli.sh` /
