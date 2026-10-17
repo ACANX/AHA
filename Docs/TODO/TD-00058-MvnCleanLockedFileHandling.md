@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00058
 > 标题：`mvn clean` 无法删除被占用文件（Windows）
-> 状态：☐ 未开始
-> 跟踪 Issue：[#84](https://github.com/ACANX/AHA/issues/84)
+> 状态：⏸ 待决策（[#285](https://github.com/ACANX/AHA/issues/285)）
+> 跟踪 Issue：[#285](https://github.com/ACANX/AHA/issues/285)（本任务的决策单）
 > 所属主题：[TD-00013](TD-00013-EngineeringAndDocHygiene.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -30,3 +30,4 @@
 
 - 所属主题：[TD-00013](TD-00013-EngineeringAndDocHygiene.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#84](https://github.com/ACANX/AHA/issues/84)
+- 决策单：[#285](https://github.com/ACANX/AHA/issues/285)（挂 V0.2.0）

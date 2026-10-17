@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00041
 > 标题：依赖治理：Enforcer / ArchUnit 引入与否
-> 状态：☐ 未开始
-> 跟踪 Issue：[#82](https://github.com/ACANX/AHA/issues/82)
+> 状态：⏸ 待决策（[#277](https://github.com/ACANX/AHA/issues/277)）
+> 跟踪 Issue：[#277](https://github.com/ACANX/AHA/issues/277)（本任务的决策单）
 > 所属主题：[TD-00011](TD-00011-CoreContractAndArchGovernance.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -30,3 +30,4 @@
 
 - 所属主题：[TD-00011](TD-00011-CoreContractAndArchGovernance.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#82](https://github.com/ACANX/AHA/issues/82)
+- 决策单：[#277](https://github.com/ACANX/AHA/issues/277)（挂 V0.2.0）

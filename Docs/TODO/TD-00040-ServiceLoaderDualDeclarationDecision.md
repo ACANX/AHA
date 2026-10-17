@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00040
 > 标题：`ServiceLoader` 双声明：拍板三选一并落地
-> 状态：☐ 未开始
-> 跟踪 Issue：[#82](https://github.com/ACANX/AHA/issues/82)
+> 状态：⏸ 待决策（[#276](https://github.com/ACANX/AHA/issues/276)）
+> 跟踪 Issue：[#276](https://github.com/ACANX/AHA/issues/276)（本任务的决策单）
 > 所属主题：[TD-00011](TD-00011-CoreContractAndArchGovernance.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -30,3 +30,4 @@
 
 - 所属主题：[TD-00011](TD-00011-CoreContractAndArchGovernance.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#82](https://github.com/ACANX/AHA/issues/82)
+- 决策单：[#276](https://github.com/ACANX/AHA/issues/276)（挂 V0.2.0）

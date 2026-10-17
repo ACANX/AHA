@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00031
 > 标题：渲染缺口逐项结论：图片 / 语法高亮 / OSC 8 / 单元格换行
-> 状态：☐ 未开始
-> 跟踪 Issue：[#73](https://github.com/ACANX/AHA/issues/73)
+> 状态：⏸ 待决策（[#274](https://github.com/ACANX/AHA/issues/274)）
+> 跟踪 Issue：[#274](https://github.com/ACANX/AHA/issues/274)（本任务的决策单）
 > 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -35,3 +35,4 @@
 
 - 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#73](https://github.com/ACANX/AHA/issues/73)
+- 决策单：[#274](https://github.com/ACANX/AHA/issues/274)（挂 V0.2.0）

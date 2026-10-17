@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00055
 > 标题：记忆存储载体选型（表 / MD / 混合）
-> 状态：☐ 未开始
-> 跟踪 Issue：[#83](https://github.com/ACANX/AHA/issues/83)
+> 状态：⏸ 待决策（[#283](https://github.com/ACANX/AHA/issues/283)）
+> 跟踪 Issue：[#283](https://github.com/ACANX/AHA/issues/283)（本任务的决策单）
 > 所属主题：[TD-00012](TD-00012-MemoryCapability06.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -30,3 +30,4 @@
 
 - 所属主题：[TD-00012](TD-00012-MemoryCapability06.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#83](https://github.com/ACANX/AHA/issues/83)
+- 决策单：[#283](https://github.com/ACANX/AHA/issues/283)（挂 V0.2.0）

@@ -2,8 +2,8 @@
 
 > 待办编号：TD-00030
 > 标题：表格数据行之间是否补水平分割线（先拍板再实现）
-> 状态：☐ 未开始
-> 跟踪 Issue：[#73](https://github.com/ACANX/AHA/issues/73)
+> 状态：⏸ 待决策（[#273](https://github.com/ACANX/AHA/issues/273)）
+> 跟踪 Issue：[#273](https://github.com/ACANX/AHA/issues/273)（本任务的决策单）
 > 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)
 > 创建日期：2026-10-17
 > 最后更新：2026-10-17
@@ -34,3 +34,4 @@
 
 - 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#73](https://github.com/ACANX/AHA/issues/73)
+- 决策单：[#273](https://github.com/ACANX/AHA/issues/273)（挂 V0.2.0）
