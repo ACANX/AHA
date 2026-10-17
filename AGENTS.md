@@ -32,13 +32,42 @@
   `./mvnw ... clean test`、`./mvnw ... verify`、`mvn ...`，以及任何等价的构建 / 测试动作
   （包括加 `-pl <模块> -am`、加 `-Djacoco.skip=true` 的「快检查」变体）；
 - 提交 / 推送前本地**只允许**跑静态检查脚本：
-  `python3 bin/Check{Changed,Docs,Skills,Scripts}.py`；
+  `python3 bin/Check{Changed,Docs,Skills,Scripts,Theme}.py`；
+- **主题色只有一个手写来源**：改界面颜色请改
+  `aha-desktop/src/main/java/com/acanx/module/aha/desktop/view/Palette.java`，
+  再跑 `python3 bin/GenThemeCss.py` 重新生成两份补丁表
+  （模板在 `aha-desktop/src/theme/aha-theme-*.template.css`，带 `%角色%` 占位符）。
+  直接手改 `.../view/css/aha-theme-*.css` 会被 `bin/CheckTheme.py` 打回（issue #153）：
+  那两份是**生成物**，不手改——理由（为何不用 CSS 变量）见两份 CSS 头部与 `TS-2610-035`；
 - 需要实测数字（用例数、覆盖率）时，**从 CI 的 `Build` / `Gate` 日志取**，不要在本机重跑；
 - **不要**因为「改了 POM / `module-info` / 影响覆盖率口径 / 想先确认能不能编译」
   就本地补跑——直接推送，看 CI 结果；
 - 唯一例外：用户**明确要求**本地跑，或 CI 不可用且用户确认。
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8 节。
+
+---
+
+## 🧱 Agent 执行域（能力剥离，issue #70）
+
+上面那条不只靠约定，还有**执行域兜底**：`bin/AgentSandbox.sh` 用 Linux 命名空间（bubblewrap）
+把命令放进一个**没有本地构建能力**的域里执行 —— 域内 `/mnt`（Windows 盘）不可见、宿主 JDK 目录
+被盖成空目录、`mvn` / `mvnw` / `java` / `javac` / `gradle` 都是拒绝桩（命中即退出码 `97`，
+并提示「去看 PR 的 CI checks」）。**工作区文件一个都不改**，所以 git 看不到任何虚假变更。
+
+```bash
+./bin/AgentSandbox.sh -- <命令>        # 在 Agent 域内执行（默认当前目录；--repo <目录> 可指定）
+./bin/AgentSandbox.sh --print-plan     # 只打印生效的 bwrap 参数（取证 / 排障）
+python3 bin/CheckAgentBoundary.py      # 自证：域内确实没构建能力，且隔离失效时它会变红
+```
+
+- **Agent 侧**：本地构建 / 测试不在域内做（也做不了）——改完推送，看 PR 的 checks；
+- **人类开发者不受影响**：直接用 `./mvnw`，不需要进这个域，也不需要任何额外配置；
+- **不覆盖**：Windows 侧原生启动的工具（OpenCode / DSH 等）在命名空间之外，见 issue #70 的 P2；
+- **尚未启用 shell 自动进域**（PATH shim / `~/.bashrc` 包装）：属**仓库外**的机器配置，
+  待 ACANX 决定后由人安装；在此之前用上面的命令显式进入；
+- 设计见 [AgentExecutionBoundaryDesign.md](Docs/Design/AgentExecutionBoundaryDesign.md)；
+  CI 卡点是 `Gate.yml` 的「Agent 执行边界自证」一步（隔离一被改坏，自证立刻变红）。
 
 ---
 
@@ -69,8 +98,8 @@ python3 bin/CheckChanged.py
 ```bash
 ./mvnw -pl aha-cli exec:java
 # 或（需先执行 ./mvnw clean package 生成 Dist/）
-Dist/bin/Aha.sh chat         # Linux / macOS
-Dist\bin\Aha.bat chat        # Windows
+Dist/AhaCli.sh chat          # Linux / macOS
+Dist\AhaCli.bat chat         # Windows
 ```
 
 ### 运行测试
@@ -130,6 +159,13 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 就应该是一条 Issue。写法与命令见技能
 [issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
 
+**关闭时（强制）**：先补一条关闭评论，写明**相关修复 PR / 提交**、**关闭理由**
+（现象是否消除；是根治还是缓解；若为缓解，指名根因由**哪条 Issue** 继续跟踪）与
+**可复核的验收依据**（命令与输出、测试运行编号 / 用例数、日志行、产物）——三要素缺一不可，
+**不得只写「已完成」**；仍需跟踪的后续项必须先把承接的 Issue 开好，不允许「关了就没下文」。
+依赖人工判断的项（真机观感、平台行为）要明说「以 ACANX 的判断为准」。
+关闭须经 ACANX 授权；细则与评论模板见技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md)。
+
 **理由**：`TODO.md` 定位是「暂存区」，条目消化完即标记废弃或删除，长期问题放进去
 会被后续条目淹没而遗忘；Issue 有编号、状态、可被引用与检索，才能让「直到解决」有闭环。
 
@@ -138,7 +174,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 ### 排障 / 事故类事项的留痕
 
 排障 / 事故类事项写一篇 [Docs/Troubleshooting/](Docs/Troubleshooting/) 下的
-`TS-yyyyMM-大驼峰英文标题.md`（模板：[TS-Template.md](Docs/Troubleshooting/TS-Template.md)），
+`TS-yyMM-NNN-英文词序.md`（模板：[TS-Template.md](Docs/Troubleshooting/TS-Template.md)），
 必备「现象 / 排查过程（含取证）/ 根因 / 修复 / 验证 / 教训 / 涉及文件」各节
 （见 `DocumentationSpec.md` §4）。需要长期跟踪时另开 Issue。
 
@@ -155,7 +191,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | 何时写 | 写哪里 | 命名与规范入口 |
 |---|---|---|
 | 完成一个功能 / 改动 / 修复 | `Docs/DevLog/` | `yyyyMMdd-HH.md` → [README](Docs/DevLog/README.md)（含模板） |
-| 排查完一个问题 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyyyMM-大驼峰英文标题.md` → [README](Docs/Troubleshooting/README.md) + [TS-Template.md](Docs/Troubleshooting/TS-Template.md) |
+| 排查完一个问题 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyMM-NNN-英文词序.md` → [README](Docs/Troubleshooting/README.md) + [TS-Template.md](Docs/Troubleshooting/TS-Template.md) |
 | 产生一个本轮不做的待办 | `Docs/TODO/`（+ 长期跟踪开 Issue） | `TD-PPPPP-大驼峰英文标题.md` → [README](Docs/TODO/README.md) |
 | 需要长期跟踪的遗留问题 / 待决策 / 需人工执行 | **GitHub Issue**（并在 `Docs/TODO/` 登记） | 技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md) |
 | 认定「做不到 / 已暂缓」 | `Docs/PLAN.md`（只追加结论，不追加待办） | `DocumentationSpec.md` §4 |
@@ -203,9 +239,11 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [ModuleConvention.md](Docs/DevSpec/ModuleConvention.md) - 模块约定
 - [DocumentationSpec.md](Docs/DevSpec/DocumentationSpec.md) - 文档规范
 - [BuildSpec.md](Docs/DevSpec/BuildSpec.md) - 构建规范
+- [GitHubActionsSpec.md](Docs/DevSpec/GitHubActionsSpec.md) - GitHub Actions 规范（工作流命名 / 触发 / 权限 / 留痕）
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范
 - [YamlFieldSpec.md](Docs/DevSpec/YamlFieldSpec.md) - YAML 字段规范
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
+- [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) - Issue 管理规范（开单 / 状态 / 关闭）
 - [BranchStrategy.md](Docs/DevSpec/BranchStrategy.md) - 分支策略
 - [CodeReviewChecklist.md](Docs/DevSpec/CodeReviewChecklist.md) - 评审清单
 - [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) - 发布流程
@@ -233,6 +271,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [DesktopNativeDesign.md](Docs/Design/DesktopNativeDesign.md) - 桌面端原生镜像（试验性，`aha-desktop-native` + `DesktopNative.yml`）
 - [DesktopNativeUpdateDesign.md](Docs/Design/DesktopNativeUpdateDesign.md) - 原生镜像版本更新脚本（`Script/Python/DesktopNativeVersionUpdate.py`）
 - [CliNativeDesign.md](Docs/Design/CliNativeDesign.md) - CLI 原生镜像（试验性，`aha-cli-native` + `CliNative.yml`）
+- [DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md) - **桌面端应用内升级**（通道契约、服务层职责、换装协议与计划文件、界面与配置键、安全模型、**验证记录**）
 
 ## 用户指南
 
@@ -242,12 +281,16 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [BuildGuide.md](Docs/Guide/BuildGuide.md) - 构建指南
 - [VersionBumpGuide.md](Docs/Guide/VersionBumpGuide.md) - **版本切换指南**（操作步骤 / 检查清单 / 常见问题快速处置 / 应急预案；规范见 `ReleaseProcess.md`）
 - [CommandCheatsheet.md](Docs/Guide/CommandCheatsheet.md) - 常用命令速查（编译 / 更新 / 解压 / 启动；落地为 `Dist/README.commands.md`）
+- [AppUpdateGuide.md](Docs/Guide/AppUpdateGuide.md) - **应用内升级使用指南**（界面步骤 / 命令行入口 / 失败排查 / 平台支持范围；设计见 `DesktopAutoUpdateDesign.md`）
+- [SnapshotSelfTestGuide.md](Docs/Guide/SnapshotSelfTestGuide.md) - **快照自测留痕使用指南**（`/snapshot-assert` 的完整用法与端到端示例；规范见 `ReleaseProcess.md` §2.2）
 - [ConfigurationGuide.md](Docs/Guide/ConfigurationGuide.md) - 配置指南
 - [ProviderSetupGuide.md](Docs/Guide/ProviderSetupGuide.md) - 供应商设置
 - [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) - 工具使用
 - [ExtensionAuthoringGuide.md](Docs/Guide/ExtensionAuthoringGuide.md) - 扩展开发
 - [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) - 排错指南
 - [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) - 原生渲染诊断手册（真机取证步骤：跑原生包与 JVM 模式、收集诊断日志、对照判据）
+- [GraalVMInActionsGuide.md](Docs/Guide/GraalVMInActionsGuide.md) - **GitHub Actions 里的 GraalVM 参考**（Action 输入速查、发行版与版本选择、native-image 参数定法与「四类清单」闭环、权威查询入口含 `native-image --help-extra` 等本地自证命令、症状→参数对照表）
+- [PlanWritingGuide.md](Docs/Guide/PlanWritingGuide.md) - **方案文档编写参考**（较大方案变更 / 新特性的文档体例；参考性，非强制）
 
 ## 待办与计划
 
@@ -256,7 +299,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 - **GitHub Issue** — 遗留事项、待决策项、需人工 / 平台执行的事项（总览 #86）
 - [Docs/TODO/README.md](Docs/TODO/README.md) — 待办清单与进度看板；待办详情为同目录的 `TD-PPPPP-*.md`（每轮工作结束前扫一遍）
-- [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyyyMM-标题.md`）
+- [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyMM-NNN-英文词序.md`）
 - [Docs/DevLog/](Docs/DevLog/) — 已完成事项的开发记录（`yyyyMMdd-HH.md`，规范见该目录 README）
 - [TODO.md](Docs/TODO.md) — 历史待办与调整项（冻结，仅供追溯）
 - [PLAN.md](Docs/PLAN.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）
@@ -279,6 +322,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | `graalvm-reachability-metadata` | 原生镜像的元数据登记（反射 / JNI / 资源 / 初始化）：发现 → 登记 → 验证 → 守卫 | [SKILL.md](.agents/skills/graalvm-reachability-metadata/SKILL.md) |
 | `issue-tracking` | 遗留事项 / 待决策 / 需人工执行的事项用 Issue 跟踪：判定、写法与命令 | [SKILL.md](.agents/skills/issue-tracking/SKILL.md) |
 | `doc-recording` | 三类过程记录的时机与写法（待办 TD / 开发日志 DevLog / 排查记录 TS）：写什么、怎么命名、登记与自检 | [SKILL.md](.agents/skills/doc-recording/SKILL.md) |
+| `code-review` | 代码审查（含 PR 自审、多轮复核）：命令取证替代读代码印象、P0–P3 判级、逃逸链（为什么 CI 全绿而功能不可用）、复核「已修」、残余归属与真机验收项 | [SKILL.md](.agents/skills/code-review/SKILL.md) |
 
 ## 常用命令
 

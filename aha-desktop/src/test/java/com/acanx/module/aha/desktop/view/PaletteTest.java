@@ -43,6 +43,23 @@ class PaletteTest {
     }
 
     @Test
+    void darkContentSurfacesMatchThePageWhileLightKeepsWhiteInputs() {
+        Palette.setTheme(Theme.DARK);
+        assertThat(Palette.CONTROL_INNER)
+                .as("暗色：内容面（输入框 / 文本域 / 列表 / 滚动容器）与页底同色（issue #153）")
+                .isEqualTo(Palette.BASE);
+        assertThat(Palette.RAISED_BACKGROUND)
+                .as("暗色：抬起控件（按钮 / 菜单 / 弹层）仍比页底亮一档，保留层次")
+                .isNotEqualTo(Palette.BASE);
+
+        Palette.setTheme(Theme.LIGHT);
+        assertThat(Palette.CONTROL_INNER)
+                .as("亮色：白底输入框是既有观感（本轮未报问题，不动）")
+                .isEqualTo("#FFFFFF");
+        assertThat(Palette.RAISED_BACKGROUND).isEqualTo("#FFFFFF");
+    }
+
+    @Test
     void lightThemeIsAReadableTableNotTheDarkOne() {
         Palette.setTheme(Theme.LIGHT);
 
@@ -134,7 +151,7 @@ class PaletteTest {
         // 也不得出现任何变量查表或 CSS 函数——暗色下一片黑字就是变量查表失败造成的
         // （声明里查不到值 → CSS 丢掉整条声明 → 回落 modena 默认黑）。
         for (String theme : List.of("light", "dark")) {
-            String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
+            String path = sheetPath(theme);
             try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
                 assertThat(in).as("主题补丁样式表必须在 classpath 上：%s", path).isNotNull();
                 String css = new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -172,8 +189,22 @@ class PaletteTest {
      * @return 文件内容
      * @throws IOException 读取失败
      */
+    /**
+     * 主题名 → 样式表路径（路径集中在 {@link UiResources}）。
+     *
+     * @param theme {@code light} 或 {@code dark}
+     * @return 绝对 classpath 路径
+     */
+    private static String sheetPath(String theme) {
+        return switch (theme) {
+            case "light" -> UiResources.THEME_LIGHT_CSS;
+            case "dark" -> UiResources.THEME_DARK_CSS;
+            default -> throw new IllegalArgumentException("未知主题：" + theme);
+        };
+    }
+
     private static String stylesheet(String theme) throws IOException {
-        String path = "/com/acanx/module/aha/desktop/view/aha-theme-" + theme + ".css";
+        String path = sheetPath(theme);
         try (InputStream in = PaletteTest.class.getResourceAsStream(path)) {
             assertThat(in).as("补丁表必须在 classpath 上：%s", path).isNotNull();
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);

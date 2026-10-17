@@ -82,7 +82,7 @@ aha
 
 ## 4. 启动脚本
 
-`bin/Aha.sh`、`bin/Aha.bat` 通过 `--module-path` 加载模块。
+`AhaCli.sh`、`AhaCli.bat`（issue #218 起平铺在包根）以 `java -jar aha-cli.jar` 启动单体 jar。
 
 ## 5. 实现现状（0.1.0）
 

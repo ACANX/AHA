@@ -12,6 +12,9 @@ import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
+import com.acanx.module.aha.core.update.UpdatePaths;
+import com.acanx.module.aha.core.update.UpdateResult;
+import com.acanx.module.aha.core.update.UpdateService;
 import com.acanx.module.aha.core.service.AgentServiceFactory;
 import com.acanx.module.aha.desktop.chat.ChatController;
 import com.acanx.module.aha.desktop.chat.DesktopToolApprover;
@@ -24,6 +27,7 @@ import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
+import com.acanx.module.aha.desktop.view.UpgradePane;
 import com.acanx.module.aha.desktop.view.SystemTheme;
 import com.acanx.module.aha.desktop.view.Theme;
 import com.acanx.module.aha.desktop.view.DesktopSettings;
@@ -129,10 +133,67 @@ public final class AhaDesktopApp extends Application {
      * <p><strong>必须等 JavaFX 起来之后调用</strong>：{@code Font} / {@code Screen} 的静态
      * 初始化会去拿 toolkit，在 {@code main} 里碰它们会与 {@code launch} 抢初始化。</p>
      */
+    /**
+     * 打开设置面板，并把**装载失败**说给用户听。
+     *
+     * <p>为什么要兜：设置面板的 FXML 是「点了才装载」，失败时抛在 JavaFX 线程上 ——
+     * 用户的体验是「点了设置，什么都没发生」。而原生镜像下的装载失败（反射 / 资源类）
+     * 恰恰只会在**运行期**暴露，编译与 JVM 冒烟都看不见（2026-10-16 真机自测）。</p>
+     *
+     * @param shell 壳（把提示写进消息流）
+     * @param open  打开动作
+     */
+    private static void openSettingsSafely(DesktopShell shell, Runnable open) {
+        try {
+            open.run();
+        } catch (RuntimeException failure) {
+            LOG.warn("设置面板打不开", failure);
+            shell.appendNotice("设置面板打不开：" + failure.getMessage()
+                    + "（详情见日志；可先直接改 ~/.aha/settings.properties）");
+        }
+    }
+
+    /**
+     * 上次换装收尾结果 → 一句话（没有可说的返回 {@code null}）。
+     *
+     * <p>结论文案交给 {@link UpdateResult#summary()}（界面不自己拼），这里只补两件它不知道的事：
+     * ① 成功但计划里没有可用拉起命令时，helper 会把「请手动启动」写进 {@code reason}；
+     * ② 写了计划、helper 却没自报启动（回执也不存在）—— 这一条以前是**静默**的
+     * 「App 关了、什么都没发生」。</p>
+     *
+     * @param report 启动收尾报告
+     * @return 给用户看的一句话；无需提示时为 {@code null}
+     */
+    static String startupNotice(UpdateService.StartupReport report) {
+        if (report.result().isPresent()) {
+            UpdateResult result = report.result().get();
+            String extra = result.ok() && result.reason() != null && !result.reason().isBlank()
+                    ? "（" + result.reason() + "）" : "";
+            return "上次换装结果：" + result.summary() + extra + "（日志：~/.aha/update/update.log）";
+        }
+        if (report.swapInFlight()) {
+            return "上次换装可能还在进行（暂存与备份本次不动，也不动它的计划文件）；"
+                    + "换装结束后下次启动会给出结果。";
+        }
+        if (report.helperNeverRan()) {
+            return "上次写过换装计划，但换装程序没有启动 —— 可能被安全策略拦下了，"
+                    + "也可能只是「只暂存没执行」；安装目录未改动。";
+        }
+        if (report.warning() != null) {
+            return "启动收尾有情况：" + report.warning();
+        }
+        return null;
+    }
+
     private static void logRenderingDiagnostics() {
         LOG.info("渲染诊断：属性 prism.order={} prism.lcdtext={} prism.text={} glass.platform={}",
                 property("prism.order"), property("prism.lcdtext"), property("prism.text"),
                 property("glass.platform"));
+        // 上面的 prism.lcdtext 只说明「值是多少」，这一行说明「这个值是谁设的」：
+        // 原生包默认改成灰度是我们的临时缓解（issue #44 / #48），不是在骗自己「本来就如此」。
+        LOG.info("渲染诊断：原生文本灰度默认 {}；开关 {}={}",
+                NativeRenderDefaults.decision(), NativeRenderDefaults.GREYSCALE_DEFAULT_SWITCH,
+                property(NativeRenderDefaults.GREYSCALE_DEFAULT_SWITCH));
         LOG.info("渲染诊断：JavaFX 版本={} JVM={}", property("javafx.runtime.version"),
                 System.getProperty("java.vm.name", "<未知>"));
 
@@ -227,6 +288,20 @@ public final class AhaDesktopApp extends Application {
         DesktopShell shell = new DesktopShell(dispatcher, stage::close, this::configSummary);
         shell.setConfigSummary(configSummary());
 
+        // 上次换装的收尾（2026-10-16 审查 P1-5）：**读回执** + 清理暂存与旧备份。
+        // 为什么必须有这段：这两件事此前在生产代码里没有任何调用点 —— 回执从不展示
+        // （升级成功/失败/已回滚用户都不知道）、`pkg.zip` 与解包副本永不清理（每次升级或
+        // 失败白占 50–110 MB）、`Update.BackupKeep` 成了死配置。
+        // 放虚拟线程上做（可能要删上百 MB），结果回界面线程显示。
+        Thread.ofVirtual().name("aha-update-startup").start(() -> {
+            UpdateService.StartupReport report = new UpdateService(UpdatePaths.defaultPaths())
+                    .onStartup(UpdateService.runningVersion(), settings.backupKeep());
+            String notice = startupNotice(report);
+            if (notice != null) {
+                dispatcher.dispatch(() -> shell.appendNotice(notice));
+            }
+        });
+
         // Agent 服务：与 CLI 用同一个工厂、同一份配置；工具授权走桌面端弹窗
         DesktopToolApprover approver = new DesktopToolApprover(
                 (toolName, permission, arguments, alreadyAllowed) -> askApproval(
@@ -273,12 +348,24 @@ public final class AhaDesktopApp extends Application {
                 LOG.info("系统配色变化，跟随系统主题生效：{}", resolved.label());
             }
         });
-        shell.onOpenSettings(() -> new SettingsDialog(
-                settings,
-                this::configSummary,
-                () -> shell.openProviderDialogForSettings(),
-                shell::applyTheme,
-                shell::fontSize).show(stage));
+        // 设置面板（两个 tab：界面 / 升级）。升级 tab 的换装动作要**主动退出**进程——
+        // 正在运行的进程换不掉自己的文件（issue #51 §4.5）：由它拉起 helper，然后退出，
+        // 剩下的交给 helper（等本进程退出 → 替换 → 自证 → 重新拉起 → 写回执）。
+        UpgradePane upgradePane = new UpgradePane(settings, dispatcher, () -> {
+            // 真正给用户看的提示在升级页的状态行上（"正在替换并重启…"）；这里再 append 一条
+            // 只会随着 System.exit 一起消失，改为只留日志（2026-10-16 第二轮审查 P3）。
+            LOG.info("换装已拉起，正在退出：~/.aha/update/update.log");
+            stage.close();
+            System.exit(0);
+        }, null);
+        SettingsDialog settingsDialog = new SettingsDialog(settings, this::configSummary,
+                () -> shell.openProviderDialogForSettings(), shell::applyTheme, shell::fontSize,
+                upgradePane);
+        // 装载失败不要在 JavaFX 线程上抛未捕获异常（那样用户点「设置」只会「什么也没发生」）——
+        // 2026-10-16 真机自测就撞到过：FXML 里一个枚举属性让原生镜像装载失败，界面上一点提示都没有。
+        // 现在兜住并把原因说出来（完整栈仍在日志里）。
+        shell.onOpenSettings(() -> openSettingsSafely(shell, () -> settingsDialog.show(stage)));
+        shell.onCheckUpdate(() -> openSettingsSafely(shell, () -> settingsDialog.showUpgradeTab(stage)));
 
         ChatController controller = new ChatController(shell, service,
                 new SessionConfig(activeModel(modelStore), null, null),
@@ -326,7 +413,14 @@ public final class AhaDesktopApp extends Application {
         // 先建骨架、再建桥接：渲染动作就是把值写进底栏的状态标签（在 UI 线程执行）
         FxBridge<String> bridge = new FxBridge<>(dispatcher, shell.statusLabel()::setText);
 
+        // 注意：FXML 的装载已经挪进 DesktopShell 的构造器（loadView），**失败标记也印在那里**。
+        // 这里**故意不再包一圈 try/catch 打印失败标记**——buildRoot() 现在只是取字段
+        // （`return rootNode;`），包在它外面的 catch 会被静态分析判为死代码而删掉，
+        // 标记连字符串一起从产物里消失（实测，见 TS-2610-032 第三轮）。
+        // 「守卫写在证不出会抛的位置，等于没有守卫。」
         Parent root = shell.buildRoot();
+        System.out.println("[ui-fxml-loaded] desktop-shell.fxml");
+        System.out.flush();
         // 构建期用的是「当时」的色表：这里幂等地再刷一次，保证所有登记过的节点与当前色表一致。
         // 原生镜像里出现过「部分节点停在构建期主题」的混合状态——底色一套、文字另一套（issue #49），
         // 这一步把「构建期取值」这个不确定性直接抹掉。
@@ -547,6 +641,28 @@ public final class AhaDesktopApp extends Application {
      * @param args 参数
      */
     public static void main(String[] args) {
+        // 启动第一件事：把「这次跑的到底是哪一版」打到 stdout。
+        //
+        // 为什么要走 stdout、而不只用日志：日志的 console appender 级别是 ERROR，
+        // INFO 级的版本行在真机控制台上根本看不见——而排障时第一句要问的就是「你跑的是哪一版」。
+        //
+        // 版本必须带**构建号**（如 0.1.3.00134）：同一条 dev 分支会因 PR 不同构建出几十个包，
+        // 只报基线版本（0.1.3）无法定位到具体哪一个。
+        //
+        // 标记用**纯 ASCII**、且显式 flush：
+        //   ① 冒烟可能在中文 Windows（GBK）下跑，中文会乱码；
+        //   ② 重定向到文件时 System.out 不自动刷，标记会丢（TS-2610-003 的教训）。
+        // 它同时是原生冒烟的**正面断言**落点：见到它，才说明程序真的走到了启动路径。
+        System.out.println("[aha-version] version=" + AppVersion.buildVersion()
+                + " baseline=" + AppVersion.version()
+                + " prerelease=" + AppVersion.isPreRelease());
+        System.out.flush();
+
+        // 临时缓解措施（issue #44 / #48，非最终方案）：原生镜像内默认关闭 LCD 次像素合成。
+        // prism.lcdtext 只在 PrismFontFactory 静态初始化时读取一次，必须早于工具包启动；
+        // 开关、回退与「为什么是临时措施」见 NativeRenderDefaults 的类注释。
+        NativeRenderDefaults.applyIfNativeImage();
+
         // 排查 issue #48（原生镜像与 JVM 模式的字体渲染不一致）：
         // 让 JavaFX 自己把渲染管线打出来（"Prism pipeline name = …"）。
         // 用户交上来的启动日志里就带着答案，不必再让谁去改代码加日志；

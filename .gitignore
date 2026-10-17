@@ -6,6 +6,13 @@ target/
 Dist/*
 dist/*
 !Dist/README.commands.md
+# 一键更新原生包的两个 Windows 入口与它们的 PowerShell 实现（issue #156）：
+# 它们与 README 一样属于**手写源文件**，不是构建产物，所以要跟着仓库走；
+# 其余 Dist/ 内容（exe / zip / 状态文件）仍全部忽略。
+!Dist/Update*.cmd
+# 自更新换装入口（issue #51）：被 dist-desktop.xml / dist-native.xml 打进包，必须跟踪
+!Dist/apply-update.cmd
+!Dist/*.ps1
 
 aha-desktop-*.zip
 pom.xml.tag
@@ -68,3 +75,5 @@ AHA_HOME/
 # ── Python 检查脚本的缓存 ───────────────────────────────────
 __pycache__/
 *.pyc
+# 快照判定脚本的输入（工作流在 runner 上生成；本地仿真也会留下同名文件）
+/changed-files.txt

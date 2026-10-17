@@ -4,7 +4,7 @@ description: 测试编写与执行：单元测试 / 集成测试与覆盖率由 
 license: GPL-3.0-or-later
 compatibility: 需要 JDK 25；使用 JUnit 5；测试运行于 module-path，故不可依赖 jdk.httpserver 等未声明模块；本地不执行 Maven。
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
   owner: ACANX
 ---
 

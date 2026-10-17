@@ -30,6 +30,8 @@
 -R:MaxHeapSize=1g
 -H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin)$
 -H:IncludeResources=META-INF/services/.*
+-H:IncludeResources=sun/text/resources/LineBreakIteratorData
+-H:IncludeResources=.*\.icu$
 --initialize-at-run-time=org.sqlite
 --initialize-at-run-time=org.apache.logging.log4j.core.config
 --initialize-at-run-time=org.apache.logging.log4j.core.util

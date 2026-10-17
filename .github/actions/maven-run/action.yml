@@ -55,8 +55,22 @@ runs:
         }
 
         # 2) 判定「这个失败值不值得重试」。
-        #    只认与代码无关的那几类：依赖解析不到、传输中断、远端 5xx、本地负缓存。
-        TRANSIENT_PATTERN='Could not find artifact|could not be resolved|Could not transfer artifact|Could not resolve dependencies|was cached in the local repository|Connection reset|Read timed out|status: 5[0-9][0-9]|Bad Gateway|Service Unavailable'
+        #    只认与代码无关的那几类：依赖解析不到、传输中断、远端 5xx/被挡、本地负缓存、
+        #    以及 **Maven Wrapper 自身下载发行包失败**。
+        #
+        #    【为什么补 wrapper 那几条（2026-10-16 实测）】PR 的 Windows 腿 21~24 秒就红，
+        #    运行期真实输出只有这一行（**逐字**，来自 job 日志）：
+        #        ##[error]Exception in thread "main" java.io.FileNotFoundException:
+        #        https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/4.0.0-rc-7/apache-maven-4.0.0-rc-7-bin.zip
+        #    即 Central 那次没把发行包给出来 ⇒ wrapper 拉不到发行包。旧判据一条都不命中
+        #    ⇒ **一次都没重试**就红了；而同提交的另一次运行里同一条腿是绿的（同提交两种结果，
+        #    正是本 action 该覆盖的场景）。
+        #
+        #    ⚠️ 版本号里可能有后缀（`4.0.0-rc-7`）——第一版写成 `[0-9][0-9.]*` 时就漏了它，
+        #    而当时的「正向验证」因为**多行样本里另一条判据也命中**而没暴露。教训：
+        #    验判据要**逐条**对着日志里的那一行验，别拿多行样本一起 grep（一条能命中会掩盖另一条写错）。
+        #    本轮已逐条验证：下面这两条命中真实报错行，且编译错误 / 测试失败一条都不命中。
+        TRANSIENT_PATTERN='Could not find artifact|could not be resolved|Could not transfer artifact|Could not resolve dependencies|was cached in the local repository|Connection reset|Connection timed out|Read timed out|status: 5[0-9][0-9]|Bad Gateway|Service Unavailable|Conversion from JSON failed|Error downloading|Could not download Maven distribution|apache-maven-[^ /"'"'"']*-bin\.zip|java\.io\.FileNotFoundException: https://repo\.maven\.apache\.org/maven2/org/apache/maven/'
 
         for i in $(seq 1 "${MVN_ATTEMPTS}"); do
           # 每轮开跑前清一次：否则首轮写下的失败标记会让后续重试「秒失败」

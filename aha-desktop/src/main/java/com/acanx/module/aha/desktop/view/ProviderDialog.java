@@ -4,8 +4,11 @@ import com.acanx.module.aha.core.config.ModelConfig;
 import com.acanx.module.aha.core.config.ModelConfigStore;
 import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -28,6 +31,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -60,73 +64,218 @@ import java.util.Map;
  */
 public final class ProviderDialog {
 
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.PROVIDER_DIALOG_FXML;
+
+    /**
+     * 分区标题样式（fxml 里只放文案，样式统一在控制器）。
+     *
+     * <p>刻意用方法而不是 {@code static final} 常量：常量在类加载时就把颜色冻住了，
+     * 切主题后不会变（2026-10-14 实测的「供应商 部分组件颜色不跟着切」）。</p>
+     */
+    private static String sectionTitleStyle() {
+        return "-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: " + Palette.FOCUS_BORDER + ";";
+    }
+
+    /** 底部提示文案：较长且含换行，留在 Java 里 setText。 */
+    private static final String HINT_TEXT = """
+            改密钥的三种方式（推荐前两种，直接写文件是明文）：
+              1) 环境变量  AHA_API_KEY_<供应商ID大写>      例如 AHA_API_KEY_DEEPSEEK
+              2) 密钥库    aha secret set <供应商ID>
+              3) 上面的 API Key 字段（会写入 Model.yml，明文保存）""";
+
     private final ModelConfigStore store;
 
+    // ── FXML 注入的部件 ──────────────────────────────────────────────────────
+    // 字段名必须与 provider-dialog.fxml 的 fx:id 一一对应；原生镜像下这些**私有字段**
+    // 由 FXMLLoader 反射写入，因此 ProviderDialog 的字段必须登记进 reachability-metadata。
+
+    /** 对话框内容根（VBox）。 */
+    @FXML
+    private VBox root;
+
+    /** 滚动区（内容一多，对话框会长过屏幕，「新增」按钮会被切在屏幕外）。 */
+    @FXML
+    private ScrollPane scroll;
+
+    @FXML
+    private VBox content;
+
+    /** 左列表 + 右两区所在的那一行。 */
+    @FXML
+    private HBox body;
+
+    @FXML
+    private VBox leftColumn;
+
+    @FXML
+    private VBox rightColumn;
+
+    @FXML
+    private Label editSectionTitle;
+
+    @FXML
+    private GridPane editGrid;
+
+    @FXML
+    private Label createSectionTitle;
+
+    @FXML
+    private GridPane createGrid;
+
+    @FXML
+    private Label hintLabel;
+
+    @FXML
     private ListView<String> list;
 
+    @FXML
     private Label status;
 
     /** 「新增」区自己的反馈行：错误必须显示在按钮旁边，否则等于没提示。 */
+    @FXML
     private Label createStatus;
 
     private String activeId;
 
     // ---- ① 编辑区（改已有供应商） ----
+    @FXML
     private Label editIdLabel;
 
+    @FXML
     private ChoiceBox<String> editAdapter;
 
+    @FXML
     private TextField editBaseUrl;
 
+    @FXML
     private TextField editModel;
 
+    @FXML
     private MenuButton editModelPresets;
 
-    /** 编辑区五档输入（档位名 → 输入框）。 */
+    @FXML
+    private HBox editModelRow;
+
+    @FXML
+    private TextField editTierUltra;
+
+    @FXML
+    private TextField editTierPro;
+
+    @FXML
+    private TextField editTierStandard;
+
+    @FXML
+    private TextField editTierFlash;
+
+    @FXML
+    private TextField editTierFallback;
+
+    /** 编辑区五档输入（档位名 → 输入框），由 {@link #setTierInputs} 按枚举顺序装配。 */
     private final Map<ModelTier, TextField> editTiers = new LinkedHashMap<>();
 
+    @FXML
     private ChoiceBox<String> editDefaultTier;
 
+    @FXML
     private PasswordField editApiKey;
 
+    @FXML
     private TextField editApiKeyPlain;
 
+    @FXML
+    private Button editKeyToggle;
+
+    @FXML
+    private HBox editKeyRow;
+
+    @FXML
     private TextField editTimeout;
 
+    @FXML
     private TextField editRetries;
 
+    @FXML
+    private HBox editActions;
+
+    @FXML
     private Button editSave;
 
+    @FXML
     private Button setDefault;
 
+    @FXML
     private Button remove;
 
     // ---- ② 新增区（加一个新供应商，字段与按钮完全独立） ----
+    @FXML
+    private HBox presetRow;
+
+    @FXML
     private ComboBox<String> presetBox;
 
+    @FXML
+    private Button usePreset;
+
+    @FXML
     private TextField newId;
 
+    @FXML
     private ChoiceBox<String> newAdapter;
 
+    @FXML
     private TextField newBaseUrl;
 
+    @FXML
     private TextField newModel;
 
+    @FXML
     private MenuButton newModelPresets;
+
+    @FXML
+    private HBox newModelRow;
+
+    @FXML
+    private TextField newTierUltra;
+
+    @FXML
+    private TextField newTierPro;
+
+    @FXML
+    private TextField newTierStandard;
+
+    @FXML
+    private TextField newTierFlash;
+
+    @FXML
+    private TextField newTierFallback;
 
     /** 新增区五档输入（档位名 → 输入框）。 */
     private final Map<ModelTier, TextField> newTiers = new LinkedHashMap<>();
 
+    @FXML
     private ChoiceBox<String> newDefaultTier;
 
+    @FXML
     private PasswordField newApiKey;
 
+    @FXML
     private TextField newApiKeyPlain;
 
+    @FXML
+    private Button newKeyToggle;
+
+    @FXML
+    private HBox newKeyRow;
+
+    @FXML
     private TextField newTimeout;
 
+    @FXML
     private TextField newRetries;
 
+    @FXML
     private Button create;
 
     /**
@@ -148,7 +297,7 @@ public final class ProviderDialog {
         dialog.setTitle("供应商配置");
         dialog.setHeaderText("查看与修改供应商（保存后写回 " + store.path() + "）");
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        dialog.getDialogPane().setContent(buildBody(dialog, onChanged));
+        dialog.getDialogPane().setContent(loadView(onChanged));
         // 主题必须铺到对话框：Dialog 有自己的场景根，不继承主窗口样式
         ThemePaint.dialog(dialog.getDialogPane());
         dialog.getDialogPane().setPrefWidth(1280);
@@ -166,8 +315,55 @@ public final class ProviderDialog {
         dialog.showAndWait();
     }
 
-    private VBox buildBody(Dialog<ButtonType> dialog, Runnable onChanged) {
-        list = new ListView<>();
+    /**
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>与 {@code DesktopShell} 同款：本类既是对话框状态的持有者，也是它的 **FXML 控制器**
+     * （{@code setController(this)}）。这样现有方法（含包内可见的测试接口）一个都不用改，
+     * 而「长什么样」搬进了 {@code provider-dialog.fxml}。</p>
+     *
+     * <p>装载失败时打 ASCII 标记并显式 flush。注意**标记必须印在真的会执行到的那个 catch 里**
+     * ——TS-2610-032 第三轮的教训：守卫写在「证不出会抛」的位置，会被静态分析当死代码
+     * 连同字符串一起删掉，看起来像守卫、实际什么也不做。</p>
+     *
+     * @param onChanged 配置变化后的回调
+     * @return 对话框内容根节点
+     */
+    private Parent loadView(Runnable onChanged) {
+        FXMLLoader loader = new FXMLLoader(ProviderDialog.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        Parent loaded;
+        try {
+            loaded = loader.load();
+        } catch (IOException e) {
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            throw new IllegalStateException("供应商对话框界面装载失败：" + FXML_VIEW, e);
+        }
+        wireView(onChanged);
+        return loaded;
+    }
+
+    /** 把注入的节点接起来：样式、事件、监听（原来在建节点时顺手做的那些）。 */
+    private void wireView(Runnable onChanged) {
+        // 主题必须铺到对话框：Dialog 有自己的场景根，不继承主窗口样式
+        ThemePaint.themedForever(root, Palette::dialogTheme);
+
+        content.setSpacing(8);
+        content.setPadding(new Insets(6));
+        ThemePaint.themedForever(content, Palette::dialogTheme);
+
+        scroll.setFitToWidth(true);
+        ThemePaint.themedForever(scroll, Palette::dialogTheme);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        body.setSpacing(14);
+        leftColumn.setSpacing(6);
+        rightColumn.setSpacing(10);
+        HBox.setHgrow(rightColumn, Priority.ALWAYS);
+
+        status.setStyle("-fx-font-size: 12px; -fx-text-fill: " + Palette.SUCCESS + ";");
+
         list.setPrefWidth(360);
         list.setPrefHeight(400);
         list.setCellFactory(view -> new ListCell<>() {
@@ -196,87 +392,37 @@ public final class ProviderDialog {
             }
         });
 
-        status = new Label();
-        status.setStyle("-fx-font-size: 12px; -fx-text-fill: " + Palette.SUCCESS + ";");
+        ThemePaint.themedForever(editSectionTitle, ProviderDialog::sectionTitleStyle);
+        ThemePaint.themedForever(createSectionTitle, ProviderDialog::sectionTitleStyle);
 
-        VBox right = new VBox(10,
-                sectionTitle("① 编辑已选中的供应商"),
-                buildEditGrid(onChanged),
-                new Separator(),
-                sectionTitle("② 新增供应商（独立于上面的编辑）"),
-                buildCreateGrid(dialog, onChanged),
-                new Separator(),
-                hint());
-        HBox.setHgrow(right, Priority.ALWAYS);
+        hintLabel.setText(HINT_TEXT);
+        hintLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");
 
-        HBox body = new HBox(14, new VBox(6, status, list), right);
-        VBox content = new VBox(8, body);
-        content.setPadding(new Insets(6));
-        ThemePaint.themed(content, Palette.dialogTheme());
-
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.setFitToWidth(true);
-        ThemePaint.themed(scroll, Palette.dialogTheme());
-        VBox root = new VBox(scroll);
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-        ThemePaint.themed(root, Palette.dialogTheme());
-        return root;
-    }
-
-    private static Label sectionTitle(String text) {
-        Label label = new Label(text);
-        label.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: "
-                + Palette.FOCUS_BORDER + ";");
-        return label;
+        wireEditGrid(onChanged);
+        wireCreateGrid(onChanged);
     }
 
     // ---------------------------------------------------------------- ① 编辑
 
-    private GridPane buildEditGrid(Runnable onChanged) {
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(6);
+    /** ① 编辑区：给注入的控件装配选项、样式与动作。 */
+    private void wireEditGrid(Runnable onChanged) {
+        editGrid.setHgap(10);
+        editGrid.setVgap(6);
 
-        editIdLabel = new Label("（未选择）");
         editIdLabel.setStyle("-fx-text-fill: " + Palette.FOREGROUND + ";");
-        editAdapter = new ChoiceBox<>();
         editAdapter.getItems().addAll(ProviderForm.ADAPTERS);
-        editBaseUrl = new TextField();
         editBaseUrl.setPrefWidth(460);
-        editModel = new TextField();
         editModel.setPrefWidth(360);
-        editModelPresets = new MenuButton("候选");
         editModelPresets.setPrefWidth(96);
-        editApiKey = new PasswordField();
-        editApiKey.setPrefWidth(400);
-        editApiKeyPlain = new TextField();
-        editTimeout = new TextField();
-        editRetries = new TextField();
-
-        editSave = new Button("保存修改");
-        setDefault = new Button("设为默认");
-        remove = new Button("删除");
-
-        int row = 0;
-        grid.addRow(row++, new Label("供应商 ID"), editIdLabel);
-        grid.addRow(row++, new Label("适配器"), editAdapter);
-        grid.addRow(row++, new Label("基础地址"), editBaseUrl);
-        grid.addRow(row++, new Label("默认模型"), new HBox(6, editModel, editModelPresets));
-        for (ModelTier tier : ModelTier.strongestFirst()) {
-            TextField field = new TextField();
-            field.setPrefWidth(360);
-            field.setPromptText(tier == ModelTier.STANDARD ? "必填档" : "可选，留空回退 Standard");
-            editTiers.put(tier, field);
-            grid.addRow(row++, new Label("  档位 " + tier.configName()), field);
-        }
-        editDefaultTier = new ChoiceBox<>();
+        editModelRow.setSpacing(6);
+        setTierInputs(editTiers, editTierUltra, editTierPro, editTierStandard,
+                editTierFlash, editTierFallback);
         editDefaultTier.getItems().addAll(tierNames());
         editDefaultTier.setValue(ModelTier.STANDARD.configName());
-        grid.addRow(row++, new Label("默认档位"), editDefaultTier);
-        grid.addRow(row++, new Label("API Key"), keyRow(editApiKey, editApiKeyPlain));
-        grid.addRow(row++, new Label("超时（秒）"), editTimeout);
-        grid.addRow(row++, new Label("重试次数"), editRetries);
-        grid.add(new HBox(8, editSave, setDefault, remove), 0, row, 2, 1);
+        editApiKey.setPrefWidth(400);
+        wireKeyRow(editApiKey, editApiKeyPlain, editKeyToggle);
+        editKeyRow.setSpacing(8);
+        editActions.setSpacing(8);
 
         editSave.setOnAction(event -> {
             String id = list.getSelectionModel().getSelectedItem();
@@ -328,7 +474,6 @@ public final class ProviderDialog {
                 onChanged.run();
             });
         });
-        return grid;
     }
 
     private void loadForEdit(String id) {
@@ -357,63 +502,37 @@ public final class ProviderDialog {
 
     // ---------------------------------------------------------------- ② 新增
 
-    private GridPane buildCreateGrid(Dialog<ButtonType> dialog, Runnable onChanged) {
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(6);
+    /** ② 新增区：给注入的控件装配选项、样式与动作（与①完全独立）。 */
+    private void wireCreateGrid(Runnable onChanged) {
+        createGrid.setHgap(10);
+        createGrid.setVgap(6);
 
-        presetBox = new ComboBox<>();
         presetBox.getItems().add("（自定义）");
         presetBox.getItems().addAll(ProviderForm.knownProviders());
         presetBox.setValue("（自定义）");
-        Button usePreset = new Button("套用预设");
+        presetRow.setSpacing(8);
 
-        newId = new TextField();
         newId.setPromptText("例如 MyGateway");
-        newAdapter = new ChoiceBox<>();
         newAdapter.getItems().addAll(ProviderForm.ADAPTERS);
         newAdapter.setValue(ProviderForm.ADAPTERS[0]);
-        newBaseUrl = new TextField();
         newBaseUrl.setPromptText("https://…");
         newBaseUrl.setPrefWidth(460);
-        newModel = new TextField();
         newModel.setPrefWidth(360);
         newModel.setPromptText("模型名，如 deepseek-chat");
-        newModelPresets = new MenuButton("候选");
         newModelPresets.setPrefWidth(96);
-        newApiKey = new PasswordField();
-        newApiKey.setPrefWidth(400);
-        newApiKeyPlain = new TextField();
-        newTimeout = new TextField("60");
-        newRetries = new TextField("2");
-
-        create = new Button("新增");
-
-        int row = 0;
-        grid.addRow(row++, new Label("套用预设"), new HBox(8, presetBox, usePreset));
-        grid.addRow(row++, new Label("供应商 ID"), newId);
-        grid.addRow(row++, new Label("适配器"), newAdapter);
-        grid.addRow(row++, new Label("基础地址"), newBaseUrl);
-        grid.addRow(row++, new Label("默认模型"), new HBox(6, newModel, newModelPresets));
-        for (ModelTier tier : ModelTier.strongestFirst()) {
-            TextField field = new TextField();
-            field.setPrefWidth(360);
-            field.setPromptText(tier == ModelTier.STANDARD ? "必填档" : "可选，留空回退 Standard");
-            newTiers.put(tier, field);
-            grid.addRow(row++, new Label("  档位 " + tier.configName()), field);
-        }
-        newDefaultTier = new ChoiceBox<>();
+        newModelRow.setSpacing(6);
+        setTierInputs(newTiers, newTierUltra, newTierPro, newTierStandard,
+                newTierFlash, newTierFallback);
         newDefaultTier.getItems().addAll(tierNames());
         newDefaultTier.setValue(ModelTier.STANDARD.configName());
-        grid.addRow(row++, new Label("默认档位"), newDefaultTier);
-        grid.addRow(row++, new Label("API Key"), keyRow(newApiKey, newApiKeyPlain));
-        grid.addRow(row++, new Label("超时（秒）"), newTimeout);
-        grid.addRow(row++, new Label("重试次数"), newRetries);
-        createStatus = new Label();
+        newApiKey.setPrefWidth(400);
+        wireKeyRow(newApiKey, newApiKeyPlain, newKeyToggle);
+        newKeyRow.setSpacing(8);
+        newTimeout.setText("60");
+        newRetries.setText("2");
+
         createStatus.setStyle("-fx-font-size: 12px; -fx-text-fill: " + Palette.MUTED + ";");
         createStatus.setWrapText(true);
-        grid.addRow(row++, new Label("结果"), createStatus);
-        grid.add(create, 0, row, 2, 1);
 
         // 预设只影响「新增」区，不碰上面的编辑区——两者互不影响
         usePreset.setOnAction(event -> {
@@ -444,7 +563,6 @@ public final class ProviderDialog {
             createOk("已新增 " + id + "，已写入 " + store.path());
             onChanged.run();
         });
-        return grid;
     }
 
     /**
@@ -500,15 +618,16 @@ public final class ProviderDialog {
     /**
      * 密钥输入行：默认打码，点「显示」切到明文。
      *
+     * <p>三个控件（打码框 / 明文框 / 按钮）由 fxml 提供，这里只负责接线。</p>
+     *
      * @param masked 打码输入框
      * @param plain  明文输入框
-     * @return 一行控件
+     * @param toggle 「显示 / 隐藏」按钮
      */
-    private static HBox keyRow(PasswordField masked, TextField plain) {
+    private static void wireKeyRow(PasswordField masked, TextField plain, Button toggle) {
         plain.setVisible(false);
         plain.setManaged(false);
         plain.setPrefWidth(masked.getPrefWidth());
-        Button toggle = new Button("显示");
         toggle.setOnAction(event -> {
             boolean showPlain = !plain.isVisible();
             if (showPlain) {
@@ -524,17 +643,31 @@ public final class ProviderDialog {
         });
         masked.textProperty().addListener((obs, old, now) -> plain.setText(now));
         plain.textProperty().addListener((obs, old, now) -> masked.setText(now));
-        return new HBox(8, masked, plain, toggle);
     }
 
-    private Label hint() {
-        Label label = new Label("""
-                改密钥的三种方式（推荐前两种，直接写文件是明文）：
-                  1) 环境变量  AHA_API_KEY_<供应商ID大写>      例如 AHA_API_KEY_DEEPSEEK
-                  2) 密钥库    aha secret set <供应商ID>
-                  3) 上面的 API Key 字段（会写入 Model.yml，明文保存）""");
-        label.setStyle("-fx-font-size: 11px; -fx-text-fill: " + Palette.MUTED + ";");
-        return label;
+    /**
+     * 按 {@link ModelTier#strongestFirst()} 的顺序把 fxml 里的档位输入框装进映射表。
+     *
+     * <p><strong>档位行在 fxml 里是写死的</strong>（Ultra / Pro / Standard / Flash / Fallback）：
+     * 它是产品级设定，写在界面上整张表单一眼可读。为防「枚举改了、fxml 忘了改」这种口径分裂，
+     * 这里做一次**硬校验**：数量不符直接抛，而不是静默少一两档。</p>
+     *
+     * @param target 目标映射（编辑区 / 新增区各一份）
+     * @param fields fxml 里的档位输入框，顺序需与枚举一致
+     */
+    private static void setTierInputs(Map<ModelTier, TextField> target, TextField... fields) {
+        ModelTier[] tiers = ModelTier.strongestFirst();
+        if (tiers.length != fields.length) {
+            throw new IllegalStateException("档位数与界面不一致：ModelTier 有 " + tiers.length
+                    + " 档，provider-dialog.fxml 给了 " + fields.length
+                    + " 个输入框——改枚举时要同步改 fxml");
+        }
+        for (int i = 0; i < tiers.length; i++) {
+            fields[i].setPrefWidth(360);
+            fields[i].setPromptText(tiers[i] == ModelTier.STANDARD
+                    ? "必填档" : "可选，留空回退 Standard");
+            target.put(tiers[i], fields[i]);
+        }
     }
 
     /**

@@ -12,6 +12,481 @@
 
 （暂无）
 
+## [0.1.3] - 2026-10-17
+
+### 新增
+- **桌面端应用内升级（issue #51，2026-10-16）**：设置面板里多一个「升级」tab，可选通道、检查更新、看版本列表、升级 / 降级；下载 → 校验 → 由外部 helper 换装 → 自动重启。
+  - **三通道**：`Stable`（正式发版，当前还没有带资产的正式发版）/ `Beta`（dev 最新合并，**默认**）/ `Alpha`（PR 试包，7 天有效期，首次切换需确认）；
+  - **契约只有一处**：通道 ↔ tag ↔ 资产名定义在 `ReleaseProcess.md` §3.5，PowerShell / Python / Java 三处实现逐字一致由守卫钉住；
+  - **不静默**：缺本平台资产时明确报错并列出该版本**实际资产**（不退到更旧版本）；「没有校验和」与「校验和不符」分开表达，后者**不落地**；降级要二次确认并提示用户数据不回滚；
+  - **换装由外部 helper 完成**（正在运行的进程换不掉自己的文件）：App 写计划 → 拉起 helper → 主动退出，helper 等它退出后备份 → 替换 → 逐文件按清单哈希自证 → 重新拉起 → 写回执；失败自动回滚并仍尝试拉起旧版本；
+  - 命令行兜底入口：`AhaDesktop.bat --update-to <版本> [--yes] [--check]`；
+  - **平台范围**：本期只实现并只验证 Windows；Linux / macOS 仍可检查更新，升级按钮置灰并给手动取件指引；
+  - 设计与验证记录：[Docs/Design/DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md)；用法：[Docs/Guide/AppUpdateGuide.md](Docs/Guide/AppUpdateGuide.md)。
+- **发布资产的两份契约文件（issue #51 §6，2026-10-16）**：四种包形态的每个 zip 现在都在**包根**带一份 [`AHA-PACKAGE.json`](Docs/DevSpec/ReleaseProcess.md)（`kind` / `version` / `platform` / `jdk` + 每个文件的 `path` / `sha256` / `size`），每个 release 都带 `SHA256SUMS`（每个 zip 一行）。
+  - **为什么**：应用内升级要靠它知道「哪些文件属于这个包」「新包删掉了哪些旧文件」，并在解压后**逐文件**核对大小与哈希；发布页校验和则覆盖「下载是否被截断 / 传输是否被篡改」。
+  - **只有一份实现**：`.github/Python/PackageManifest.py`（四条出包线都调它，避免各写一段 shell 后漂移 —— 漂移的表现是「某个通道的包永远校验不过」，静默且难查）；
+  - **硬闸口**：打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）一律失败，不写进清单；缺清单的包在原生线上**不让发布**；
+  - `Release.yml` 的校验和由**单独的收尾作业**生成：两个并列作业各自直传资产，各写一份会互相覆盖，得到「只列了一半资产」的校验和；
+  - **守卫**：`bin/CheckScripts.py` 新增 `check_release_channel_contract()`，把「通道 ↔ tag ↔ 资产名」的契约钉在 **PowerShell / Python / Java 三处逐字一致**（正向 + 两次反向注入验证）。
+- **部署前验证：非阻塞质量验证工作流（issue #166，2026-10-16）**：把「**部署前应当自测、但还不宜直接进合并卡点**」的
+  通用验证 / 断言集中到一个独立工作流 [`.github/workflows/PreDeployVerify.yml`](.github/workflows/PreDeployVerify.yml)，
+  **每次 PR 推送自动跑**（`opened` / `synchronize` / `reopened`），也可手动触发（`workflow_dispatch`）。
+  - **留痕**：commit status **`predeploy-verify`** + 幂等 PR 评论（验证对象 / 结论 / 执行人 / 时间 / 对应提交）+ Job Summary；
+  - **非阻塞**：**不进**必需检查 ⇒ 缺它 / 失败**都不拦合并**；成熟后把它加进 required 即成为卡点，**机制不改**；
+  - **失败不静默**：失败也打 `failure` status、也留痕评论（`if: always()`），作业同时变红；
+  - **0 token**：验证项全在本地进程里跑，不做任何模型往返；
+  - **验证项**（跑在**真实构建产物**上，定义在 `bin/PreDeployVerify.py` 的 `CHECKS`——**加一项 = 加一个函数**）：
+    V1 产物能起 / V2 `--help` 列得出全部子命令 / V3 `tool list` / V4 `tool invoke file-read` **真的读到文件** /
+    V5 `provider list` + `model show` / V6 全程无 `UnsatisfiedLinkError`；
+  - **守卫**：`bin/CheckScripts.py` 新增 `check_pre_deploy_verify_contract()`，断言**触发（三事件 + 手动）/ 触发层不过滤 / 权限 / 失败也留痕（`if: always()`）/ status 名与规范一致 / 脚本自检已接线**；
+  - **与 §2.2 的分工**：`/snapshot-assert` 承载「机器验不了、必须人看」的项（快照包真机观感），本工作流承载「机器能验、只是还不敢卡点」的项。
+- **CLI 控制台编码自动协商（issue #235，2026-10-16）**：Windows 控制台按代码页解释字节，`1252` / `936` 下中文会变成 `?`、像素风启动标志退化为纯 ASCII 线框。现改为：程序启动时（任何输出之前）经 FFM 调 `SetConsoleOutputCP(65001)` / `SetConsoleCP(65001)`，并重建 `System.out` / `System.err` 为 UTF-8。**仅当标准输出真的连着控制台**（`GetConsoleMode` + `System.console()`）才改，**管道 / 重定向 / CI 一律不动**，退出时恢复原代码页；失败静默回退到原有的「探测 + 提示 + 降级」。新增 `tty/WindowsConsole.java`、`tty/ConsoleEncoding.java`，`tty/OutputEncoding.java` 与 `AhaCli` 接入。
+- **PR 快照包（pre-release 试包）全线上线（2026-10-15）**：给**未合并**的 PR 出可下载的试包，把自测提前到合并之前。
+  - **出包**：4 个触发标签 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli`（**粘性**：标签在则每次 push 重出，移除即停）+ `/snapshot <目标> [平台…]` 评论命令（一次性、大小写不敏感、仅写权限账号生效）+ `workflow_dispatch`；`OS:Win` / `OS:MacOS` / `OS:Ubuntu` 收窄到单平台（不能单独使用）；只改 `Docs/**` 的 PR 不出包，除非**新打**触发标签（显式请求）。
+  - **载体与命名**：**每个目标一条** pre-release，tag = `V<基线>.<PR 补零 5 位>.<北京时间戳>-AHA-<目标>-SNAPSHOT`；目标词 `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**）；`Release.yml` 增加负向过滤 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`，避免快照触发正式发版。
+  - **本地取件**：`Dist/UpdateDesktopNativeSnapshot.cmd` / `Dist/UpdateCliNativeSnapshot.cmd`（原生）与 `Dist/UpdateSnapshot.ps1 -Kind jvm`（JVM）——零配置（不需要 token / `gh` / Python）、无参数 = 最近一次、状态独立记在 `Dist/.aha-snapshot.json`；原生桌面端取件会把 exe **替换**到启动器同目录（旧版留 `.bak`、下载前探占用），`-NoInstall` 可只取件。
+  - **自动清理**：`SnapshotCleanup.yml` 在 PR 关闭 / 合并后**异步**回收（另有每日兜底与手动触发）；同一 PR 同一目标保留最近 3 条、有效期 7 天（按发布页 `created_at`）；安全阀只删严格匹配的快照 tag，正式发版与 dev 线 tag 不碰。
+  - **守卫**：`.github/snapshot-paths.yml` 是触发标签与 A/B/C 路径清单的**单一来源**；`SnapshotPlan.py` / `SnapshotCleanup.py` / `SnapshotComment.py` 均可本地 `--self-test`；`SnapshotComment.py` 只对瞬时 API 错误做有界重试。
+- **一键更新原生包（2026-10-13，issue #156 / TD-00015）**：
+  ① `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`——Windows 双击即把最新原生包
+  取到 `Dist/`（依次探测 `py -3` / `python` / `python3`，找不到时给出下载指引）；
+  ② **CLI 原生包首次有自动取件能力**（`Script/Python/CliNativeVersionUpdate.py`），与桌面端
+  **同构**且不写第二份逻辑：引擎抽成 `Script/Python/NativeVersionUpdate.py`，两种包只在
+  `KINDS` 表里差五项（tag 后缀 / 资产前缀 / 可执行文件名 / 状态文件名 / 帮助里展示的用法），
+  新增第三种原生包 = 表里加一行；历史命令名 `DesktopNativeVersionUpdate.py` **保持可用**
+  （现为薄壳）。实测：本机取到 `V0.1.3.00154-aha-cli-native`，`version` 输出 `AHA 0.1.3.00154`。
+  ③ **网络层两条路（2026-10-13 追加）**：Windows 上若本机 Python 的 HTTPS **硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、进程内 `try/except` 捕不到），
+  `auto` 会用**子进程**探一次并自动改用系统 `curl.exe`（系统 TLS）；也可用
+  `--downloader auto|urllib|curl` 显式指定。详见 `TS-2610-036`。
+  ④ **Windows 一键入口改为 PowerShell 原生实现（2026-10-13 晚）**：真机双击报
+  `no OPENSSL_Applink`（本机 Python 的 OpenSSL 硬失败，进程被直接终结、进程内捕不到）⇒
+  `Dist/UpdateNative.ps1` 用 `Invoke-RestMethod` / `Invoke-WebRequest` 走 .NET Schannel TLS，
+  **完全不经过 Python**，也**不需要用户装 Python**（与姊妹项目 LegionFanControl 同一做法）；
+  Python 路径（POSIX）保留并带 `--downloader` 兜底。两套实现的命名契约由 `bin/CheckScripts.py`
+  断言逐字一致；同时补上 `.ps1` 的 UTF-8 BOM 规则、批处理「不得用括号转义」规则，
+  并修正「`Dist/` 被整体跳过、里面两个 `.cmd` 从未被检查」的守卫缺口。
+  Windows 侧已在 PowerShell 7.6.7 下**实跑**验证（安装 / 幂等 / `.bak` / 状态文件 / 两个错误分支），
+  `Build.yml` 新增 `native-update-script` 作业把这一跑搬进 CI（真机复测前先在 CI 拦住同类坑）。
+  背景见 `TS-2610-036`。
+  整体另见 TD-00015 与 `Docs/Design/DesktopNativeUpdateDesign.md`。
+
+### 文档
+- **新增《GitHub Actions 规范》（2026-10-16）**：新增 [`Docs/DevSpec/GitHubActionsSpec.md`](Docs/DevSpec/GitHubActionsSpec.md)——约束工作流文件的**写法**（命名 / 触发 / 权限 / 结论与留痕 / 守卫），与 `BuildSpec.md`（门禁分层）/ `ReleaseProcess.md`（发布链路）分工；同时把工作流**命名**统一为**大驼峰**（`Snapshot Assert` → `SnapshotAssert`、`PreDeploy Verify` → `PreDeployVerify`；文件名 `snapshot-cleanup.yml` → `SnapshotCleanup.yml`），并接入 `bin/CheckScripts.py::check_workflow_names()`（文件名 / `name:` / 两者一一对应三条一起断言）。
+- **GraalVM / GitHub Actions 参考文档（2026-10-15，issue #28）**：新增 [`Docs/Guide/GraalVMInActionsGuide.md`](Docs/Guide/GraalVMInActionsGuide.md)——六层可配置面、Action 输入速查（**逐项抄自 `action.yml`**）、发行版与版本语法、native-image 参数定法与「四类清单」闭环、【**权威查询入口**】含 `native-image --help-extra` 等本地自证命令与逐个实测过的官方链接、症状→参数对照表、本仓库落地位置索引；`BuildGuide.md` / 两条原生设计文档 / 原生技能 `SKILL.md` / `AGENTS.md` 同步交叉引用。
+- **快照包文档补齐（2026-10-15）**：`BuildSpec.md` 新增 §11「快照产物（PR 试包）」（载体与命名硬约定、路径清单单一来源、生命周期与清理安全阀、与门禁的关系）；`BuildGuide.md` §3.3 补全原生线并更正取件口径；`ReleaseProcess.md` 新增 §2.1（快照与正式发布的隔离）；`CommandCheatsheet.md` §7 同步更正；新增 TS 记录 `[TS-2610-039](Docs/Troubleshooting/TS-2610-039-Artifact-Anonymous-Download-401.md)`。
+- **原生镜像取件工具：实现方案定稿与文档对齐（2026-10-14，issue #156）**：
+  `Docs/Design/DesktopNativeUpdateDesign.md` 改为权威口径（v1.2.0）——标题与定位不再限桌面端，
+  新增§0.1「两套实现，一份契约」、§0.2「Windows 侧验证记录」、§0.3「演变要闻」；
+  `DesktopNativeDesign.md` / `BuildGuide.md` / `NativeRenderDiagnosticsGuide.md` /
+  `AHA-Design-V1.md` 同步为「Windows 双击 `.cmd`（无需 Python）+ POSIX Python」。
+- **Troubleshooting 32 篇档案补齐四节必备项（2026-10-13，issue #128，选项 C）**：
+  按姊妹项目 `TroubleShootingDocSpec.md`，排查档案有**四节不得缺**——
+  「结论分层 / 观测数据 / 排除项 / 未决问题」。本仓 32 篇（`TS-2610-001`~`032`）此前
+  **一篇都没有**（四节覆盖度实测 **0/32**）。本轮：
+  ① 32 篇逐篇以**文末补入块**补齐四节（形式统一、不带章序号，避免与各档案既有编号冲突）；
+  ② `TS-Template.md` 同步补上（新档案照着模板写，模板不合规会复制缺陷）；
+  ③ `DocumentationSpec.md` **新增 §5「TS 档案正文骨架」**（v1.23.0），写清写法与
+  「不回溯改写 12 节骨架」的取舍；
+  ④ `bin/CheckDocs.py` 新增 **`[TS 档案必备章节检查]`**——写入规范而无人执行等于没写，
+  这条现在是机器强制的（临时改掉某篇的「排除项」标题，检查如期失败并点名）。
+
+  补入内容**全部来自档案原文**（数字、命令、日志、结论、遗留项逐条搬运并分类），
+  **没有新增任何未经记录的事实**；档案本身就没保留的，**如实写成缺口**
+  （「原档案未保留原始输出」「本机无该环境」「当时未验证」）——
+  这正是四节里「未定位」与「未决问题」的意义：把**没做完的部分显式留痕**，而不是被读成「已解决」。
+
+  两处口径订正：篇数是 **32** 而非 31（命名规范化后又新增了 `TS-2610-032`）；
+  规范落点是 **§5** 而非原以为的 §4（§4 已是「更新制度」，且被 `AGENTS.md` 与
+  `IssueTrackingSpec.md` 引用，不得重编号）。
+
+### 变更
+- **Agent 执行边界落地：本地「没有构建能力」从约定变成执行域约束（issue #70，2026-10-17）**：
+  `bin/AgentSandbox.sh` 用 Linux 命名空间（bubblewrap）把命令放进受限执行域——域内 `/mnt`（Windows 盘）
+  不可见、宿主 JDK 目录逐个盖成空目录、`mvn` / `mvnw` / `java` / `javac` / `gradle` 全是拒绝桩
+  （命中即退出码 `97` 并提示「去看 PR 的 CI checks」）；**工作区文件一个都不改**，git 看不到虚假变更。
+  - 启动器修正与实际增强：`--repo` 由**占位改为真生效**（`bwrap --chdir`）、新增 `--print-plan` 取证、
+    仓库位于 `/mnt` 时直接拒绝（含 `/mnt` 自身——这条是自证脚本抓出来的）、JDK 隐藏改为
+    「静态清单 + 从 `java` 真实路径反推」并加「必须真含 `bin/java`、不许盖过浅目录」两条护栏；
+    三份 JDK 清单先 `readlink -f` **归一 / 去重 / 只留最浅根**——同一个 JDK 常有互为符号链接的多条路径
+    （CI 上 `/usr/lib/jvm/temurin-25-jdk-amd64` → `/opt/hostedtoolcache/.../x64`），对同一目录 tmpfs 两次
+    会让整个域起不来（这条是自证**在 CI 上首次运行时**抓出来的，本机复现不了）；
+  - 新增自证 `bin/CheckAgentBoundary.py`（20 条断言）：域内构建入口全部被拦、`/mnt` 不可见、
+    工作区不被改写、`git` / `gh` / `python3` 仍可用；**反向用例**保证「隔离失效时它会变红」；
+    非 Linux / 无 `bwrap` 时明确**跳过**（退出码 3）而不是判绿；
+  - 接入 `Gate.yml`（装 `bubblewrap` + 跑自证；Ubuntu 24.04 runner 需放开 AppArmor 对非特权
+    user namespace 的限制，已在步骤里说明并处理）；
+  - 变异验证（在 `/tmp` 副本上做）：分别拆掉 `/mnt` 隐藏、桩 PATH、`JAVA_HOME` 的 java 桩、
+    整个 bwrap，自证分别报出 2 / 3 / 2 / 6 条失败——不是「怎么写都绿」；
+  - 人类开发者**不受影响**（`./mvnw` 照常）；Windows 侧原生启动的工具（P2）与 shell 自动进域
+    （Q1，属仓库外机器配置）**未做**，见 issue #70 的分阶段表。
+- **应用内升级的默认通道改回 `Stable`（issue #252 / TD-00019，2026-10-16）**：此前默认 `Beta` 是
+  被现实逼出来的临时值（正式 release `0.1.0` / `V0.1.1` / `V0.1.2` 的资产数均为 0，默认 `Stable`
+  会让升级面板首屏就是空列表）。改回之后，「**从没选过通道**」的安装会跟着默认值走，**显式选过**
+  `Beta` / `Alpha` 的不受影响（`Update.Channel` 缺键不写盘）。
+  - **形态边界没变**：`Stable` 目前只发 JVM 形态的包（原生线的正式发布排在 1.x）⇒ 原生形态
+    （`AHA-Desktop-Native` / `AHA-Cli-Native`）在 `Stable` 通道列不出可升级版本，升级仍走 `Beta` / `Alpha`；
+  - **修掉一个让「跟随默认值」失效的坑**：升级面板渲染初始选中会触发通道切换监听器，把
+    `Update.Channel` 记成「用户显式设过」——只要打开过一次升级面板，该安装就再也不跟随代码默认值。
+    现在「设成当前有效值」不算显式选择，渲染初始选中也不再触发保存（`UpgradePane.applyingInitialChannel`）。
+  - 顺手把两处提示改成**可行动**：通道列不出内容时说「也可以切到「…」或「…」通道再看看」，
+    「本通道没有这种包」按通道契约**动态列出**可用通道（原来只写「见 issue #51 §2.1」）。
+- **自动打的 `V*` tag 现在会自动触发发布（issue #238，2026-10-16）**：此前 `Build.yml` 用
+  `GITHUB_TOKEN` 推 tag，因 GitHub 防递归**不会**触发下游工作流，于是 Release 页只有 tag、
+  没有发行包，只能由人删 tag 重推。现改用该规则的**官方例外** `workflow_dispatch`：`Build.yml`
+  的 tag 作业在**新建**出 tag 后用 `gh workflow run Release.yml --ref main -f tag=<TAG>` 派发发布
+  流程（权限补 `actions: write`），**不配置 PAT**。`Release.yml` 侧新增 `workflow_dispatch` 入参、
+  两条出包线显式 `checkout` 发布 tag、`action-gh-release` 显式 `tag_name`；`--ref main` 保证
+  `GITHUB_SHA` = `main` head = tag 指向的提交，`gate` / `compat` 与两条出包线都落在同一提交上。
+  幂等口径不变：tag 已存在时**跳过且不派发**；手工重建 tag 降为兜底。
+- **快照自测留痕：`snapshot-assert`（默认启用、默认不卡点；issue #166）**：PR 里发一条评论即可把
+  「这一版快照我按清单跑过了」记成 commit status，留痕（版本 / 平台 / JDK / 验证人 / 时间 / 对应 sha）落在 PR 评论里。
+  - 命令：`/snapshot-assert <版本> <平台> [jdk27] [+model]`（打 `success`）、
+    `/snapshot-assert-fail <版本> <平台> [jdk27] <原因>`（打 `failure`——失败也要可见）；平台词与快照出包同一套。
+    该前缀以 `/snapshot` 开头 ⇒ 另外三条命令式工作流的守卫里加了一条排除，避免它们对这条命令回「命令格式应为 …」。
+  - **默认不卡点**：`snapshot-assert` **不**进 required status checks，缺它不影响合并；要卡点由 ACANX 在分支保护里显式加入。
+  - **必测项一律 0 token**：清单（A1–A5 / B1–B4 / C1–C3）不含任何模型往返 —— 工具直调（`tool invoke`，绕过模型）
+    + 配置 / 本地命令 + 开窗观感即可覆盖「机器验不了」的那部分；需要真实 provider 请求的动作降级为**可选**（`+model`），
+    因为适配器没有本地 mock、任何真实对话都要花 token，而 token 由 owner 的 key 承担。
+  - 安全与失效：只认有写权限的账号；status 绑 PR 当时的 `head_sha`，PR 再 push 后旧验证自动失效；快照 tag 必须属于本 PR。
+  - **使用指南**：`Docs/Guide/SnapshotSelfTestGuide.md`（含端到端示例与常见拒绝处置）。
+  - 配套守卫：`bin/CheckScripts.py::check_snapshot_assert_contract()`（context / 触发守卫里的命令 / 三条工作流的排除 / `statuses: write` /
+    清单编号两处一致 / 必测行 token 必须为 0），清单原文见 `ReleaseProcess.md` §2.2。
+- **打包形态的静态守卫 + dev 线包体自证收紧（2026-10-15，issue #218 / #217）**：
+  `bin/CheckScripts.py` 新增 `check_package_layout()`（装配描述符不得再有 `dependencySet`、
+  `fileSet` 不得输出到 `bin/` 或 `lib/`、单体 jar 落地名不得带版本号、启动脚本不得回到
+  `--module-path`）与 `check_shade_attached()`（shade 必须显式 `shadedArtifactAttached=true`
+  + `shadedClassifierName=standalone`）—— 这四条各自对应一次真出过的问题（`lib/` 里同一份 jar
+  存两遍、fat jar 顶替主产物），而症状都是**静默**的（包照出、体积翻倍、某条链路拿到错包）。
+  同时把 `Release.yml` 的平台严格断言移植到 dev 线：桌面端包改为**按平台点名**本平台原生库
+  （`linux`⇒`libglass.so`、`win`⇒`glass.dll`、`mac-aarch64`⇒`libglass.dylib`）并禁止混进别的
+  平台的库（原来只判「原生库 > 0」）；CLI 补「任意深度的原生库 > 0」（CLI 无 JavaFX，
+  `sqlite-jdbc` / `jline` 的原生库在 `org/**` 下）。
+- **CLI JVM 便携包改为「包根平铺」，并修掉包内同一份 jar 存两遍**（2026-10-15，issue #218 / #217）：
+  `aha-cli-<版本>.zip` 里不再有 `lib/` 与 `bin/` —— 单体 jar 落到**包根**并**去掉版本号**
+  （固定叫 `aha-cli.jar`），启动脚本 **`AhaCli.sh` / `AhaCli.bat`** 也从 `bin/` 移到包根；
+  解压后直接 `AhaCli.bat`（或 `java -jar aha-cli.jar`）就能跑，两条线（CLI / 桌面端）形态一致。
+  启动脚本同时**改名对齐桌面端**：jar 叫 `aha-<模块>.jar` 时脚本叫 `Aha<模块>.{bat,sh}` ——
+  `aha-desktop.jar` ↔ `AhaDesktop.bat`，于是 `aha-cli.jar` ↔ **`AhaCli.bat` / `AhaCli.sh`**
+  （原 `Aha.bat` / `Aha.sh`）。
+  - **顺带修掉「里外重复」**：shade 出来的单体 jar 原先会**顶替项目主产物**，于是装配描述符的
+    `dependencySet`（`useProjectArtifact=true`）把它当「项目工件」又收进 `lib/` 一份 ——
+    包里同一个类存两遍，55MB（issue #217）；而且 `aha-cli-native` 那条线声明了对 `aha-cli`
+    的依赖，拿到的也是这个单体 jar，再叠上它自己拷的 runtime 依赖，classpath 上人人两份。
+    现在 shade 改为**附带产物**（`shadedArtifactAttached=true` + classifier `standalone`），
+    主产物保持普通 jar：装配描述符按 classifier 取单体 jar 铺成 `aha-cli.jar`，
+    原生镜像线拿到的仍是「模块 jar + 依赖 jar」。
+  - 启动脚本：源码检出处会在本目录、上一级与 `Dist/` 找 `aha-cli.jar`；都没有时自动解压
+    `Dist/aha-cli-*.zip`，**旧形态的包（`bin/` + `lib/`）会被点名拒绝**并给出处置办法
+    （不必再靠「找不到主类」之类的二次报错去猜）。
+  - 这条也把 issue #217 收掉：`lib/` 不再产生，自然不存在「fat jar 覆盖模块化 jar」。
+
+- **JVM 便携包取件：新增「平铺到落地根」，并修掉「静默退回旧版本」（2026-10-15，issue #218）**：
+  `Dist\UpdateDesktopJvm.cmd` / `Dist\UpdateCliJvm.cmd` 取件后，把该版解压到
+  `Dist\desktop-jvm\<版本>\`（**暂存**），再把**去版本号**的入口**复制**到 `Dist\` 根
+  （桌面端 `aha-desktop.jar` / `AhaDesktop.bat` / `AhaDesktop.sh`，CLI 侧为 `aha-cli.jar`）——
+  于是命令**与版本无关**：`Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar` 直接可用，
+  换版本不必改任何一处；`-NoInstall` 可只解压不做平铺。
+  - **同时修掉一个会误导人的行为**：目标资产缺失时脚本原先**静默退回更旧的 release**
+    （实测：最新版缺 Windows/jdk25 那条腿的资产，于是退到 `00216` 那个 `bin/` + `lib/` 的旧包，
+    看起来就像「新版本不支持 fat jar」）。现在**只看最新一版**，缺资产即报错并列出该版实际有哪些资产；
+    真要退旧版必须显式说出口（`-AllowOlder`，或 `-Tag` 指定版本）。
+  - **暂存目录用完即清**：平铺成功后把 `Dist\desktop-jvm\` / `Dist\cli-jvm\` 删掉 ——
+    否则同一个包在 `Dist/` 里存两遍（桌面端 25 MB、CLI 55 MB）；想翻包内容加 `-KeepExtract`。
+    快照取件同理：原生快照把 exe 装进落地根后，那份解压目录也会清掉（exe 已就位、zip 留着、
+    旧版有 `.bak`）；JVM 快照没有可安装的 exe，解压目录本身就是要跑的东西，**保留**。
+- **桌面端 JVM 便携包改为「包根平铺」形态（2026-10-15，issue #218）**：包内不再有 `lib/` 与 `bin/` ——
+  包根只有 `aha-desktop.jar`（单体 jar：本项目模块 + 全部运行时依赖 + **本平台** OpenJFX 的类与
+  原生库，原生库在运行期由 JavaFX 自己从 jar 取出并缓存）、`AhaDesktop.sh` / `AhaDesktop.bat` 与
+  三个文档。jar 名**去版本号**，启动脚本与用户命令因此与版本无关（换版本不改任何一处）。
+  单体 jar 的入口是新增的 `AhaDesktopLauncher`——它**不继承** `javafx.application.Application`，
+  只把 `main` 转发给 `AhaDesktopApp.main`；主类一旦继承 `Application`，JVM 启动器在 `java -jar`
+  下会直接报「JavaFX runtime components are missing」。
+  - 配套：`Script/Python/DesktopDistBuild.py` / `DesktopDistExtract.py` 的自证与落地判据同步改为
+    平铺形态（并清掉上一版 `lib/` + `bin/` 的遗留文件，CLI 的 `bin/Aha.*` 与 `aha-cli-*.jar` 不动）；
+    `bin/AhaDesktop.*` 改为定位 `aha-desktop.jar`（脚本同目录或上一级），源码检出处仍自动解压
+    `Dist/aha-desktop-*.zip`；工作流的桌面端自证改为「包根平铺 + 单体 jar 内必含 JavaFX 类与
+    本平台原生库 + 不得含 `module-info.class`」。
+  - 顺带把 upstream 的修法固化进规范：用 shade 一律 `shadedArtifactAttached=true` +
+    `shadedClassifierName`，**不得**让 fat jar 顶替项目主产物（issue #217 的实测教训；
+    原生镜像线依赖 `aha-desktop` 的模块化 jar）。
+- **主题色收敛为「一处手写色源」（2026-10-14，issue #153）**：两份主题补丁表从「手抄字面色号」
+  变成**生成物**——`bin/GenThemeCss.py` 把 `aha-desktop/src/theme/*.template.css` 里的
+  `%角色%` 代入 `Palette.java` 的色表；`bin/CheckTheme.py` 重新生成一遍并**逐字节比对**，
+  另加一条「两份模板的角色序列必须完全一致」（同一控件在两主题下必须用同一个**角色**上色）。
+  顺带把四道静态门禁（`CheckDocs` / `CheckSkills` / `CheckScripts` / `CheckTheme`）挂进
+  `Build.yml` 新增的 `static-guards` 作业——它们此前只在 `Gate.yml` 里跑，而 Gate
+  **不覆盖对 `dev` 的 PR**，于是「写入规范而无人执行等于没写」在 dev 分支上重演。
+  **纯搬运**：两份表各 **58** 处色号生成前后**逐值一致**（与 `git HEAD` 版本去注释后比对），
+  观感零变化。为什么不照最初的 A 方案改用 CSS 变量：issue #49 第四轮已证伪
+  （原生镜像下自定义 color 查表失败会丢掉整条声明），两份 CSS 的头部注释就写着这条结论。
+  详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
+
+- **补齐界面路径的自动化覆盖（2026-10-13，issue #144）**：FXML 化四批期间反复暴露同一个缺口——
+  静态对账只管「fxml 自身写对没有」、原生冒烟只管「界面在原生包里装起来没有」，而
+  **装起来之后的交互**在 CI 上从未执行过。两项改动：
+
+  1. `Build.yml` 新增**可选作业** `ui-smoke`（Linux + Xvfb）真开窗口跑 `AhaDesktopSmokeTest`
+     ——那套断言（三栏折叠三条路、Enter 发送、工具卡片、会话列表）其实早就写好了，
+     只是被 `@EnabledIfSystemProperty("aha.ui.tests")` 关着。按 `BuildSpec` §7，
+     它是 `continue-on-error` 的：**不进必需检查、不挡合并**，失败以红叉 + Job Summary 暴露。
+  2. `DesktopNative.yml` 增加**带路径过滤**的 `pull_request` 触发（只碰 `aha-desktop/**`、
+     `aha-desktop-native/**`、`pom.xml`、该工作流自身时才跑）：让「原生包能不能起」
+     **在合并前**可见。**PR 事件下不发布**——否则会在尚未合并时往发布页推预发行包、
+     留下无人认领的 tag；制品仍走 Actions artifact。
+
+  见 `Docs/DevLog/20261013-16.md`；规范同步到 `BuildSpec.md` §8.1（v1.29.0）、
+  `DesktopNativeDesign.md` §4.1，`TS-2610-032` §6 的「仍存在的盲区」标注为已补齐。
+- **界面静态资源按类型分目录（2026-10-13）**：`aha-desktop` 的静态资源由「与 Java 类同包的平面
+  目录」改为 `view/fxml/`（7 个骨架）/ `view/css/`（2 份主题表）/ `view/image/`（logo.png）。
+  **Java 类与包名不变**，因此 `module-info` 的 `opens`、native-image 的资源白名单（按扩展名匹配）
+  与打包描述符**都不用改**。同时新增 `view/UiResources.java` 把 10 条路径集中到一处
+  （原先散在 7 个控制器 + `ThemePaint` + `LogoImage`），以后调目录只改它；
+  新增 `UiResourcesTest`：**真的去 classpath 取一次**每条路径——这是白名单对账拦不住的那一半
+  （它按扩展名匹配，路径写错也照样命中）。见 `Docs/DevLog/20261013-15.md`。
+- **其余四个对话框迁到 FXML（2026-10-13，批次 4，最后一批）**：`SettingsDialog`（设置）/ 
+  `ApprovalDialog`（授权）/ `OutputDialog`（输出）/ `ToolListDialog`（工具列表）共 521 行、
+  33 处手写控件迁到各自的 `*-dialog.fxml`，四个类改作 FXML 控制器。决定按钮（复制 / 关闭 /
+  拒绝 / 本次允许 / 本会话始终允许）是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  `FxmlViewChecks` 再添两条：**fxml 必须是良构 XML**（JDK 解析器，无需 JavaFX 工具包）
+  与**扫元素前剔除 XML 注释**（修掉注释里 `List<T>` 造成的假阳性）。
+  元数据新增 4 条（控制器字段注入）。见 `Docs/DevLog/20261013-14.md`。
+- **日志面板迁到 FXML（2026-10-13，批次 3）**：`LogPanel`（240 行 / 9 处手写控件）的结构迁到
+  `log-panel.fxml`，本类改作 FXML 控制器；工具栏（级别过滤 / 刷新 / 复制 / 清空 / 统计行）与
+  只读日志区在 fxml 里一眼可见。「关闭」仍是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  本批是第一次真正复用批次 2 抽出的 `FxmlViewChecks`——并把「节点 id 必须来自公开常量」
+  也搬进助手，主窗口与日志面板共用。元数据新增 1 条（`LogPanel` 控制器字段注入）。
+  见 `Docs/DevLog/20261013-13.md`。
+- **供应商对话框迁到 FXML（2026-10-13，批次 2）**：`ProviderDialog`（617 行 / 61 处手写控件）
+  的界面结构迁到 `provider-dialog.fxml`，两个 `GridPane` 的全部行由 `GridPane.rowIndex`
+  定位；本类改作 FXML 控制器（`setController(this)`），接线收敛到
+  `wireView` / `wireEditGrid` / `wireCreateGrid` / `wireKeyRow`。
+  档位（`ModelTier` 的 5 档）写进 fxml 以保证表单可读，并用**两道守卫**防「枚举改了、
+  fxml 忘了改」：控制器里的数量硬校验 + `ProviderDialogFxmlTest` 的三向静态对账。
+  同时把批次 1 写的 5 条 FXML 对账抽成可复用的 `FxmlViewChecks`（批次 3 / 4 直接复用）。
+  元数据新增 7 条（`ProviderDialog` 控制器字段、`ChoiceBox` / `ComboBox` / `MenuButton` /
+  `PasswordField` / `Separator` / `GridPane`）。见 `Docs/DevLog/20261013-12.md`。
+- **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
+  状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
+  `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
+  冒烟测试按 id 的 `lookup` 全部照旧。新增 `javafx-fxml` 依赖（父 POM 的
+  `dependencyManagement` 一并登记）。原生镜像侧：`.fxml` 并入 `-H:IncludeResources`
+  扩展名白名单（**刻意不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像、
+  触发运行期 `defineClass` 而启动即崩），并按「**按声明类登记**」的规律补齐反射元数据
+  （`FXMLLoader` / `FXML` / 各控件与布局 / StAX 实现，并把 `Node` / `Parent` / `Region` /
+  `Pane` / `Control` / `Labeled` 升级为 `allDeclared*`）。自证：`NativeImageMetadataTest`
+  新增 FXML 用例，新增 `DesktopShellFxmlTest`（fx:id ↔ 字段 / id ↔ 常量 / 资源白名单
+  三向对账，不启 JavaFX）；启动时打印 ASCII 正面标记 `[ui-fxml-loaded]` /
+  `[ui-fxml-load-failed]`（带 flush）。参考姊妹项目 `TS-2610-003`（FXML 重构后
+  原生包启动即崩的两层踩坑）。见 `Docs/DevLog/20261013-11.md`。
+- **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
+  的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
+  不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。
+  补齐此前硬编码的 3 个插件版本（`compiler` / `surefire` / `jar`），`jacoco.version` →
+  `jacoco.plugin.version`，删除未使用的 `testfx.version`（`D-04` 已定案不引入 TestFX），
+  并在 `dependencyManagement` 补登记 `picocli-codegen`。规范见 `BuildSpec.md` §7。
+  见 `Docs/DevLog/20261013-10.md`。
+- **原生桌面端文本渲染临时缓解（issue #44 / #48）**：真机像素对照确认原生包**丢失了 LCD 次像素抗锯齿**
+  （退化为灰度，笔画发虚、偏细；彩色边缘像素为 JVM 的 1/18.4，暗像素反而多 67%）。
+  新增 `NativeRenderDefaults`，在**原生镜像内**默认写入 `prism.lcdtext=false`（改走灰度）；
+  JVM 版不受影响。用户可随时回退：`-Dprism.lcdtext=…` 直接指定渲染属性、
+  或用 `-Daha.desktop.nativeTextGreyscale=false` 关掉本默认值；命令行与日志诊断
+  （`渲染诊断：原生文本灰度默认 …`）已同步。
+  **这是临时措施、不是根治**——成因指向 DirectWrite 渲染参数在 closed-world 下读不到
+  （与 #60 同源），上游修复或补上参数读取后应删除本类与调用点。
+  见 `Docs/DevLog/20261013-08.md` 与 `TS-2610-030-Native-Font-Rendering-Diff.md` §6。
+- **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
+  `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
+  （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
+  跳过、不采用**。
+  理由：① 避免引入第三种发行形态及其安装器 / 签名 / 公证维护面；② 「免装 JDK」已由原生镜像覆盖，
+  且更彻底；③ 现有两种形态可沿用同一套产物名自证与完整性自证链路。
+  口径见 `ReleaseProcess.md` §3.3；受影响的文档已同步（`BuildSpec.md` / `AHA-Design-V1.md` /
+  `DesktopDesign.md` / `DesktopNativeDesign.md` / `TD-00007` / `TD-00009`）。
+- **排查档案（TS）命名规范收敛（2026-10-13）**：`Docs/Troubleshooting/` 下 31 篇档案由
+  `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，
+  对齐姊妹项目 LegionFanControl 的 `TroubleShootingDocSpec.md`）；序号按原索引登记顺序重编
+  （`001`~`031`），全仓引用、各档案 H1 编号、`bin/CheckDocs.py` 命名正则与
+  `DocumentationSpec.md` §1 / `Docs/Troubleshooting/README.md` §1 同步。
+  正文骨架的对齐另开 issue [#128](https://github.com/ACANX/AHA/issues/128)。
+  见 `Docs/DevLog/20261013-09.md`。
+
+### 修复
+- **发版流水线三处加固（2026-10-17，发版前审计）**：① 打好的每个 zip 在生成 `AHA-PACKAGE.json` 后
+  **立即 `verify` 回读** —— 清单若生成有误，在发布前就红，而不是等用户下载后、「应用内升级」时撞
+  「校验和不符」；② `checksums` 作业新增**资产齐全自证**（期望 CLI + 三平台桌面端共 4 份 zip，
+  缺任何一份即失败并在 Job Summary 点名）—— 原来「只出了部分平台」也会绿着把发布页生成出来；
+  ③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路
+  （`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）
+  钉死：这条链路一旦被改坏，表现是「发布页只有 tag、没有发行包，而 CI 全绿」。
+- **`CheckScripts.py` 不再把「刚构建出来的 `Dist/AhaCli.*`」当成被忽略的源码（issue #262，2026-10-17）**：
+  `check_ignored_sources()` 用 `git ls-files --others --ignored` 找「被 `.gitignore` 吃掉、却被装配描述符
+  按名字引用」的文件。包根扁平化（#217/#218）之后 assemblies 会把**受跟踪**的 `bin/AhaCli.sh` /
+  `bin/AhaCli.bat` 铺到 `Dist/` 根，而 `Dist/` 整体被忽略 ⇒ `clean verify` **之后**的检查必然假红两条
+  （干净检出上不出现，所以本机一直绿；`dev` 上的 `Gate` 自 2026-10-15 起一直红，修完 #260 才轮到它）。
+  修法只加一条白名单：**同名文件在仓库别处受跟踪 ⇒ 视为构建产物**，不判红；只在被忽略目录里存在、
+  仓库别处没有同名文件的手写脚本（`Dist/apply-update.cmd` 那种形态）**仍照旧判红**（已用反向用例钉住）。
+- **`ProjectVersion.py --verify` 的产物名判定修掉假红（issue #260，2026-10-17）**：包根扁平化
+  （#217/#218）之后 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**，而校验用
+  「文件名以 `artifactId-` 开头」判定「是不是本项目的版本化产物」——根聚合工程的 artifactId 恰好是
+  `aha`，于是 `aha-cli.jar` 命中前缀 `aha-`，被判成「`aha` 的产物但没有版本段」，报
+  `❌ 产物文件名中的版本段：Dist/aha-cli.jar（版本段 未识别）`。后果是 `dev` 上的 `Gate`
+  自 2026-10-15 起**一直红**（`Gate` 是 `main` 的必需检查 ⇒ 任何合 `main` 的 PR 都被挡住）。
+  三处收口：① `collect_artifact_ids()` 不再把根聚合工程（`<packaging>pom</packaging>`，不出产物）
+  计入前缀表；② `extract_version()` 要求版本段**紧跟** artifactId（`match` 而非 `search`），
+  于是「以 `artifactId-` 开头但后面不是版本号」的扁平产物按「不带版本号」跳过，并写进校验日志
+  （`…；跳过 N 个不带版本号的产物（如 Dist/aha-cli.jar）`）；③ `--self-test` 增补 8 条产物名判定
+  用例（含 `aha-cli.jar` / `aha-cli-native.jar` / `aha-0.1.3.jar` 三个反例），正反例一起跑。
+  真实漂移仍会被抓（`aha-cli-0.1.2.jar`、`aha-core/target/aha-core-0.1.2.jar` 均判红，已在
+  `/tmp` 副本上前后对比验证）。
+- **原生形态的应用内升级被误拦（issue #51，2026-10-16 真机追问）**：上一轮为修「原生 exe 下错包」，我顺手加了一层「原生形态不支持自更新」的门，理由是「原生包不在升级通道里」。**实测该理由不成立**：原生线有自己的 tag（`V<版本>-aha-desktop-native`）与资产（`AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`），都在 `ChannelContract` 里；`supports()` 只排除「原生包 + Stable 通道」（原生线还没发正式版）；换装与重启机制与 JVM 同构（包内清单 + helper 随包分发 + `restartCommand()` 返回 exe）。真正缺的只有**形态判定**（原生 exe 被判成 JVM 形态 —— 那是真 bug，已修）。处理：**撤掉那层门**，原生形态恢复走同一条升级链路；新增正向用例 `UpdateServiceTest#prepareSwapPlansToReplaceTheNativeExecutable`（此前这条路径零覆盖：计划里要出现 exe 的替换动作、`restart` 指向 exe）；文档 / TS-2610-047 / TD-00022 / #247 的结论一并更正。真机验收项：**替换正在运行的 exe** 后能否自动重启到新版本。
+- **升级 tab：「升级」按钮一直是灰的、选中版本也不变（issue #51，2026-10-16 真机反馈）**：这其实是**门生效时的预期行为** —— 换装成功后回不来的形态（原生镜像、只剩单体 jar、非 Windows）宁可不换，所以 `onSelectionChanged` 遇到门生效就直接置灰并 `return`，**选中任何一行都不会变可点**。问题出在**说明看不见**：原因只写在底部那行**灰色**状态文字里，用户把它当成了按钮故障。修复：门生效时在内容区上方显示一条**加粗、常显**的提示（`aha.upgrade.notice`），写出原因并明确「版本列表只是让你看看有哪些版本」；版本列表占位符改成同一口径；「检查更新」仍可用（便于浏览版本）这一既有决定保留。另按门的**性质**分：**原生镜像形态**下连「检查更新」与通道单选项一起禁用（升级通道里只有 JVM 线资产，列出来也装不了、还会诱导去点升级）；**其它门**（POSIX 未实现 / 只剩单体 jar）仍保留列表以便据此手动取件。冒烟断言补齐（提示可见 + 占位；非原生门下「检查更新」仍可用不被顺手改掉）。教训写进设计文档：**置灰必须配看得见的原因**。
+- **CI：Maven Wrapper 下载发行包瞬时失败不重试（2026-10-16 实测）**：PR 的 Windows 腿 21 秒就红，报 `Conversion from JSON failed with error: Invalid character after parsing property name` + `java.io.FileNotFoundException: …/apache-maven-4.0.0-rc-7-bin.zip` —— 那次 Central 返回的不是元数据（被挡 / 挑战页），wrapper 拉不到发行包；而 `.github/actions/maven-run` 的瞬时失败判据一条都不命中 ⇒ **一次都没重试**直接失败，**同一个提交的另一次运行里同一条腿是绿的**（同一提交两种结果，正是该 action 要覆盖的场景）。修复：判据补 `Exception in thread "main" java.io.FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/…`、`apache-maven-<版本>-bin.zip`（**版本号可能带后缀，如 `4.0.0-rc-7`**）以及 wrapper 其它措辞（`Conversion from JSON failed` / `Error downloading` / `Could not download Maven distribution` / `Connection timed out`）。**第一版判据写错了**：`apache-maven-[0-9][0-9.]*-bin\.zip` 匹配不到带后缀的版本，而当时的「正向验证」因为多行样本里**另一条判据也命中**而没暴露 —— 现改为**逐条**对着日志里那一行验证（命中真实报错行；编译错误与测试失败一条都不命中，真失败仍立刻失败）。规范同步 `BuildSpec.md` v1.46.0 §8.1 的判别表（含这两条教训）。
+- **原生镜像的 exe 把自己认成 JVM 便携包 ⇒ 点升级去下 JVM 包、exe 自己没变（issue #51，2026-10-16 真机）**：原生镜像里 `getProtectionDomain().getCodeSource()` **不是 null**，它指向**运行中的 exe 自己**；而形态判定用的是「code source 是不是**普通文件**」⇒ `jarBased=true`。触发条件正是最普通的那种用法：安装根里同时有（先前取来的）`aha-desktop.jar` 与（后来放进去的）`AhaDesktopNative.exe`，两种形态并存时必现；资产前缀由形态决定 ⇒ 必然挑到 JVM 包。修复：① `InstallLayout` 先看 GraalVM 运行期属性 `org.graalvm.nativeimage.imagecode`（非空即原生），且 `of(Path)` 只把 **`.jar`** 文件认成 JVM 便携包；② 能力门新增**原生镜像**一条并**排在平台那条之前**（在 Linux/macOS 上不该只被告知「只在 Windows 上实现」），界面与 CLI 在**下载前**置灰并说明「到发布页取原生包手动覆盖」；③ `UpdateService.prepareSwap` 加同一道兜底。真正实现原生自更新另立 [#247](https://github.com/ACANX/AHA/issues/247)（TD-00022）。排查记录：[TS-2610-047](Docs/Troubleshooting/TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md)。
+- **快照取件缺「平铺到 `Dist\` 根」这一步（issue #244，2026-10-16 真机）**：双击 `Dist\UpdateDesktopJvmSnapshot.cmd`
+  能下载、能解压，但 `aha-desktop.jar` 与启动脚本躺在 `Dist\<资产名>\` 子目录里，`Dist\` 根下什么都没有 ——
+  「取件」只完成一半，还得手工进去搬。而正式版取件（`UpdateJvm.ps1`）一直是「解压 → 平铺到落地根」，
+  同一个动作两种结果。修复：新增 `Dist/UpdateInstall.ps1`（平铺步骤，**先探测再动手**：目标被占用时落地根一个字节都不改），
+  `UpdateSnapshot.ps1` 对 JVM 线（桌面端 / CLI）平铺到 `-Out` 根并把被覆盖的既有文件备份为 `<名字>.bak`，
+  铺好后清理暂存目录（新增 `-KeepExtract`；`-NoInstall` 仍是「只取件」）。
+  验证方式：**取一次件即可确认**（真机，见 issue #244 的验收清单）—— 不为此在每次构建里加自测步骤。
+- **设置面板观感与可用性三处（issue #51，2026-10-16 真机反馈）**：① **通道区收成一行** —— 标题文案改为「版本发布通道」（原「（决定从哪条发布线取版本）」多余），并与三个单选项同一行：标题在左、选项在右；② **「当前版本」行支持复制版本号** —— 该行由 `Label` 换成只读 `TextArea`（可拖选 + Ctrl/Cmd+C），右键另有直达入口「复制版本号」（只复制版本号本身）与「复制选中 / 全选」；③ **设置面板宽高可调** —— `Dialog` 默认不可缩放，版本列表一长只能在固定小块里滚动；现在放开缩放，并让根 VBox 与 `TabPane` 的 max 一并放开、`TabPane` 在根里 `vgrow`，做到「拉大窗口 ⇒ 版本列表跟着长」（最小 480 × 360，窗口大小暂不记忆）。冒烟断言分别钉住：标题文案与「同处一行」、当前版本行是只读 `TextArea` 且能整行选中 + 有「复制版本号」入口、对话框 `isResizable()` 与 `tabs.getMaxHeight() == Double.MAX_VALUE`。
+- **原生包（`AhaDesktopNative.exe`）点「检查更新」抛 `UnsupportedFeatureError: Record components not available for record class ReleaseInfo`（issue #51，2026-10-16 真机）**：Jackson 反序列化 record 时要读它的 **record components**（`Class.getRecordComponents()`），而原生镜像（closed-world）要求**构建期**就把该 record 的访问器登记好 —— `core.update` 下的 DTO 一条都没登记，于是「检查更新」在原生包里必崩；而 **JVM 版、单测、CI 冒烟全都跑在 JVM 上**（反射可用），三方全绿，藏住了这个依赖。修复：把 `core.update` 下**全部 21 个 record / enum** 逐条登记进两个原生包的 `reachability-metadata.json`（桌面端与 CLI 共用 `aha-core`，两边都要）；新增守卫 `NativeImageMetadataTest#everyUpdateRecordAndEnumIsRegisteredForReflection`（同时扫源码与两份元数据，新增 record 忘了登记就在 Build/Gate 阶段变红，已做反向注入验证）。
+- **升级结果那行文字选不中也复制不出来（issue #51，2026-10-16 真机复测）**：上一轮的做法是「给 `Label` 加右键菜单」，真机反馈**还是选不中、也复制不出来** —— 菜单这一层不符合「想选中一段文字」的直觉。修复：升级页「升级」按钮下方那行状态信息由 `Label` 换成**只读 `TextArea`**，可以直接拖选，选中按 Ctrl/Cmd+C 即复制；右键菜单保留但降为次要入口，规则改为「有选中就复制选中，没选中则整条」，并新增「全选」。教训写进设计文档：**要能选中就换控件，给不可选中的控件加菜单解决不了问题**。
+- **从较旧的安装升级时报「安装根里没有换装 helper（该包不完整，无法自更新）」（issue #51，2026-10-16 真机实测）**：换装脚本（`apply-update.cmd` / `AhaApplyUpdate.ps1`）是**随包分发**的，所以新包里一定带着；但程序只从「安装根」（正在运行的那一版）里找 —— 如果那一版是 helper 随包分发之前打的包（真机就是 10161957 → 10162016 这个组合），安装根里什么都没有，于是报错，而**锅被扣在一个其实完整的新包上**（已核对包内容：两个脚本都在包根），升级也卡死。修复：`installHelpers` 改成**先看新包、再看安装根**，从任意旧安装升级都能走通；文案也改准确（列出两处路径 + 「请手动覆盖安装一次」），不再说「该包不完整」。
+- **界面上报错复制不出来（issue #51，2026-10-16 真机反馈）**：JavaFX 里**非可编辑**的 `TextArea` 没有默认右键菜单（默认菜单只给可编辑控件），而 `Label` 既不能选中也没有菜单 ⇒ 日志区的右键、升级页状态行里那句失败信息、消息流里的报错，都只能靠按钮或手打。修复：四处加右键复制 —— 日志面板文本区（复制选中 / 复制全部 / 全选，另加 Ctrl/Cmd+C）、升级页状态行（复制这条信息；另附一键复制「版本 / 形态 / 平台 / 通道 / 状态 / 日志位置」）、消息流每条消息「复制这条」、滚动区「复制全部消息」；消息流的文字收集收敛成 `DesktopShell#collectText` 一份实现（界面复制与冒烟断言共用，避免两边读法不一致）。
+- **应用内升级下载失败：「跳转目标的主机不在白名单 release-assets.githubusercontent.com」（issue #51，2026-10-16 真机实测）**：GitHub 把发布资产换到了新的 CDN 主机（`objects.githubusercontent.com` → `release-assets.githubusercontent.com`），而白名单只列了旧的那个 ⇒ 用户点升级后直接失败在跳转白名单上。修复：改成「显式主机 + **GitHub 资产 CDN 域名 `*.githubusercontent.com` 的子域**」两条规则（该域名归 GitHub 所有，放行子域不会把包交给第三方；只补一个主机名的话，下次 CDN 换名又会坏在用户那里），并把错误信息写成可行动的（写明允许范围 + 建议手动下载）。mock 服务器给不出真实跳转，所以规则本身由单测钉住（含 `githubusercontent.com.evil.com` 这类相似域名的反例）。
+- **升级面板：切换通道后「检查更新」点不动 + 通道区没有标题/紧贴 tab（issue #51，2026-10-16 真机反馈）**：打开设置面板会自动检查一次，检查期间「检查更新」置灰；用户这期间换通道后，要等**旧通道那次检查**跑完（网络慢时最多 30 秒）才能再点，看起来就是「卡住了」。修复：切通道（或开始换装）**立刻作废在飞的检查并解禁按钮**（`UpgradePane.checkGeneration`，旧结果直接丢弃，不会用旧通道的列表盖住新通道）；收尾放进 `finally`（`busy` 卡住一次用户就再也点不动）；检查期间显示进度条并明说「最多等 30 秒」。观感：通道区加标题（`aha.upgrade.channel.title`，「发布通道（决定从哪条发布线取版本）」）、三个单选项各给 id，内容区加内边距与行距 —— 原来那行紧贴 tab 标题，也看不出三个选项是干什么的。
+- **桌面端应用内升级：清理判据升级为「进程号 + 文件年龄」两道（issue #51，2026-10-16）**：启动收尾原本靠「标记文件的修改时间在 10 分钟内」猜「换装还在不在跑」——猜错成「不在跑」就会删掉换装正用的文件（大包 + 慢盘 + 杀毒扫描超过 10 分钟时）。现在：① helper 把自己的进程号写进 `helper-started`，启动收尾直接问系统「这个进程还活着吗」（准确，不用猜）；② `StagingArea` 加**年龄下限 10 分钟**：比这更新的文件/目录一律不删，残留下次启动再清（**这正是「升级完不立刻删 `.zip`」的通用化**）；③ 老格式标记（只有时间戳）按新鲜度兜底；④ 硬顶 6 小时，避免进程号被复用后残留永远清不掉。界面会把「有不到 10 分钟的残留刻意没动」如实说出来。
+- **桌面端应用内升级：第二轮代码审查的 P1/P2 优化（issue #51，2026-10-16）**：按第二轮审查逐条修：
+  - **P1 启动收尾会把「正在进行的换装」清掉**：`onStartup` 每次启动都无条件清其它版本暂存与旧备份 —— 用户在换装那几秒里再启动一次 App，就会删掉 helper 正要用解包目录（报「新包里没有这个文件」，把锅甩给包），`BackupKeep=0` 时还会删掉回滚基准。修复：先判「有没有换装在飞」（计划在 + 启动标记是 10 分钟内写的 + 还没回执）⇒ 什么都不删、连计划也不删，只把这件事说出来；标记过期才按残留清理并如实报告；
+  - **P1 `restart` 契约与 jar 兜底不一致**：计划里 `restart` 的语义是「每个元素 = 一个可执行文件」，而兜底塞的是 `[java, -jar, jar]` —— 过不了绝对路径校验，计划根本写不出来（上一轮只修了「第一个元素不绝对」，还写了个只断言列表形状的测试把它固化了）。修复：**删掉兜底**，改用安装形态门（`UpdateLauncher.unsupportedReason(layout)`）在下载前拦住「只剩单体 jar」的布局——宁可不换，也不换完不回来；
+  - **P2 清理计数是编的**：以前固定 `+1`，什么都没清也说「清理 1 个暂存目录」；`StartupReport.warning` 在生产代码里没人用。修复：`StagingArea.clear` 返回「真的删了没有」，计数如实，`warning` 写进消息流；
+  - **P2 helper 用完不消失**：文档 §8.2 第 5 项的验收口径是「两个 helper 文件消失」，而 `.cmd` 是正在运行的批处理、删不掉。修复：启动收尾补刀删掉两个 helper 与 `helper-started` 标记；
+  - **P2 一键入口从没被真跑过**：`native-update-script` 在 ubuntu 的 pwsh 上，`%~dp0` / `%~1` / 退出码传递零覆盖。修复：自测脚本新增「经 `Dist/apply-update.cmd` 换装」用例，并在 Windows 腿上真跑一遍（顺带覆盖 Windows PowerShell 5.1 的 BOM / 编码路径）；
+  - **P2 helper 无条件信任计划**：Java 侧有 `PathSafety`，但 helper 读的是 JSON、不经过 Java。修复：helper 自己校验（路径必须绝对、动作必须落在安装根内、拒绝 `..`），自测新增「动作逃出安装根 ⇒ 拒绝」用例；
+  - **P2 守卫自身有洞也会误报**：`check_repo_script_steps_have_checkout()` 跳过以 `run:` 开头的行 ⇒ **单行** `run: python3 …` 漏检；反过来 `echo "… python3 bin/CheckDocs.py …"` 会误报。修复：剥掉 `- run:` / `run:` 前缀后只看命令本身，排除 `echo` / `printf` / YAML 键，并删掉死条件；
+  - **产品级问题（CI 的 Windows 腿抓到）**：helper（`cmd → powershell 5.1`）里用 `Get-FileHash` 算哈希，而**调用者**（自测、或用户从 pwsh 7 控制台起 App）留下的 `PSModulePath` 会让 5.1 加载不到 `Microsoft.PowerShell.Utility` ⇒ 报「不是 cmdlet」⇒ 逐文件自证失败 ⇒ 回滚（回滚把失败兜住了，但一次本该成功的换装变成了失败）。修复：改用 .NET（`SHA256.Create()` + 流）算哈希，helper 不再依赖调用者的 PowerShell 环境；
+  - **P3**：并发换装加互斥（`prepareSwap` 拒绝第二个 helper）；退出前那句 `appendNotice` 看不到 → 改为只记日志；`helperNeverRan` 文案区分「只暂存没执行」；`.part` 不再是「可续传」而是排查现场（重试重新下载）；「切回上一版」记入 `TD-00021`。
+- **桌面端原生镜像：设置面板打不开（FXML 里的枚举属性，2026-10-16 真机自测）**：`settings-dialog.fxml` 的 TabPane 写了 `tabClosingPolicy="UNAVAILABLE"`。JVM 上没问题（`FXMLLoader` 用反射转换枚举、反射可用），但原生镜像属 closed-world：该类型未登记在 `reachability-metadata.json`，转换直接抛 `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`，用户点「设置」**什么都没发生**。修复：枚举改为在 Java 里设（`SettingsDialog#wireTabs`）；新增守卫 `NativeImageMetadataTest#fxmlNeverSetsEnumValuedAttributes`（扫全部 `.fxml`，出现「大写枚举值」即失败并给出改法）；并把「设置面板装载失败」兜住 → 在消息流里说明原因，不再是一条未捕获异常；规则写进 `DesktopNativeDesign.md` R12。
+- **桌面端应用内升级：代码审查后的 P0/P1 修复（issue #51，2026-10-16）**：对 PR #243 做了一次全量自查，发现**功能实际不可用而门禁全绿**，逐条修复：
+  - **P0 换装入口根本没进仓库**：`Dist/apply-update.cmd` 被 `.gitignore` 的 `Dist/*` 吃掉（`git add -A` 静默跳过、`git status` 干净），因此打出来的包里没有它，应用内升级在「复制 helper」这一步**必然失败**。修复：`.gitignore` 放行该文件、文件本体改为**纯 ASCII + CRLF**（中文注释移出）、`maven-assembly` 的静默跳过由**新守卫**接住；
+  - **P0 原生包不带 helper**：`dist-native.xml` 只打「exe + README + 参数 + 许可证」，于是「Windows 原生形态自更新」这条路**注定失败**（它正是 §8.2 第 9 项待验内容）。修复：原生包也把两个 helper 铺到包根；
+  - **P0 守卫缺口（会再犯）**：新增 `check_update_helper_packaging()`（两条发行线都要收 helper、helper 必须存在**且被 git 跟踪**、Java 与 PowerShell 的「已启动」标记名逐字一致）、`check_repo_script_steps_have_checkout()`（作业调仓库脚本必须先 checkout）、并扩展 `check_ignored_sources()` 识别「**被 .gitignore 忽略却被装配描述符 / 工作流按名字引用**」的文件；每条都做了**正向 + 反向注入**验证；
+  - **P1 失败静默**：① helper 自证失败分支的回滚没包 `try/catch` —— 回滚一抛异常整个脚本就崩，不写回执也不重启；② App 拉起 helper 后**不等它起来**就退出，helper 被安全策略拦下时用户看到的是「App 关了、什么都没发生」。修复：helper 第一件事写 `~/.aha/update/helper-started`，App 等它出现（默认 20s）才退出，等不到就留在前台报错（新错误码 `UPDATE_HELPER_NOT_STARTED`）；
+  - **P1 回执与清理没有调用点**：`consumeLastResult()` / `cleanupAfterSwap()` 在生产代码里从未被调用 —— 回执从不展示、`pkg.zip` 与解包副本（每份 50–110 MB）永不清理、`Update.BackupKeep` 是死配置。修复：新增 `UpdateService.onStartup()`，桌面端启动时在虚拟线程里收尾并把结果告诉用户（新增 `AhaDesktopSmokeTest#startupShowsTheLastSwapResultAndCleansStaging` 真验证）；
+  - **P1 能力门挡得太晚**：Linux / macOS（POSIX 换装脚本尚未实现，见 TD-00020）与原生形态，界面允许走完「检查 → 下载 → 解包」才报「该包不完整」，把锅甩给包。修复：`UpdateLauncher.unsupportedReason()` + 界面**下载前**置灰并说明；
+  - **P1 计划校验自相矛盾**：`UpdatePlan` 要求拉起命令是绝对路径，而 `InstallLayout` 的兜底是裸 `java` ⇒ 在「只有 jar」的布局上自更新直接不可用。修复：兜底改用 `<java.home>/bin/java[.exe]`；
+  - **P2**：`startSwap` 只 catch `UpdateException`（其它异常会让界面永久 busy）、`prepareSwap` 先写计划再装 helper（失败留残计划）、重定向允许 `https → http` 降级、`COPY_ATTRIBUTES` 可能把只读属性带到落地文件、「未提供校验和」没有照实告知；
+  - **CI 修复**：`native-publish` / `cli-native-publish` / `build-publish` 三个发布作业**没有 checkout** 却调用 `PackageManifest.py`，CI 报 `No such file or directory`；
+  - **新增真实行为测试**：`Script/PowerShell/HelperSelfTest.ps1` 在临时目录里真跑换装 helper 的失败路径与成功路径（此前只有「写没写出来」的静态检查）；
+  - 契约与验证记录同步：[DesktopAutoUpdateDesign.md](Docs/Design/DesktopAutoUpdateDesign.md) v1.1.0（§4.4 握手与收尾、§5.4 能力门、§8.1/§8.2）、[ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) v1.30.0 §3.6、[BuildSpec.md](Docs/DevSpec/BuildSpec.md) v1.45.0。
+
+- **`/snapshot-assert` 永远找不到 tag + PR 留痕评论 403（issue #166 实测）**：取发布页 tag 的 jq 表达式写成了 `.[].tagName`（GitHub 的字段是 `tag_name`），结果恒为空 ⇒ 命令总是被当成「发布页上没有对应 tag」拒绝，status 与留痕都产生不了（PR #233 实测）。修为 `--jq '.[].tag_name'`。
+  同一轮实测还查明**写 PR 评论的权限**：只给 `issues: write` 时 `POST /repos/{}/issues/{}/comments` 仍然 **403**（`Resource not accessible by integration`）—— GITHUB_TOKEN 对 **PR 对话**的写权限要 `pull-requests: write`。`SnapshotAssert.yml` 与新的 `PreDeployVerify.yml` 一并补齐（后者首次运行实测：status 成功、评论 403；补齐后正常）。
+- **CLI 原生镜像 `--help` 退出码非 0（issue #117，2026-10-16）**：三平台一致失败——`--help` 渲染 picocli 用法表格时经 `BreakIterator` 读 JDK 的 `sun/text/resources/LineBreakIteratorData`，而该资源**没有扩展名**，按扩展名的 `-H:IncludeResources` 正则匹不上，缺了就在运行期抛 `InternalError: Can't load sun/text/resources/LineBreakIteratorData`（**构建全绿、`--version` 正常**，故三平台一致而非平台差异）。照桌面端的既有做法，给两份 CLI 参数文件（JDK 25 基线 + JDK 27 变体）补上该资源与 `.*\.icu$`；结论登记进 `BuildSpec.md` §10.2 与 `CliNativeDesign.md` §4.3 / R3。
+- **原生 exe 里输入框的轮廓线丢失（issue #229，2026-10-15）**：只在 **原生镜像编出的 exe** 里，切换主题后对话输入框的轮廓线不见了 —— 而内容面底色按 #153 的口径与页底**同色**，轮廓线一没就分不出输入框的范围（JVM 模式正常）。根因：轮廓线此前**完全依赖 CSS**，而原生镜像下 modena 那些带 `derive()` / `linear-gradient()` 的规则会**整条声明被丢弃**（`TS-2610-029`）；`ThemePaint` 的属性 API 兜底只覆盖背景与文字，**边框漏在覆盖范围之外**。
+  - 修复：`ThemePaint` 新增 `paintBorder()`，把 `-fx-border-color`（+ 宽度 / 圆角，缺省 1 / 3）落到 `Region.setBorder(...)`；三处同类控件（对话输入框、会话搜索框、日志面板文本域）的内联样式补上轮廓线（值取自补丁样式表，JVM 下外观不变）。约定：样式串没写边框就不动现有边框，写 `transparent` / `none` 才清空。
+  - 断言：冒烟测试读输入框**实际生效的** `Region.getBorder()`，断言颜色为 `Palette.BORDER` 且**跟着主题换**。
+  - 记录见 [`TS-2610-046`](Docs/Troubleshooting/TS-2610-046-Input-Outline-Lost-In-Native.md)（含结论分层 / 观测数据 / 排除项 / 未决问题）。
+- **下拉列表里当前项「看不见，也没完全隐藏」（issue #227，2026-10-15）**：ComboBox 展开后，**当前值那一行**是白底白字（真机截图：三个选项里中间一行只有背景没有文字）。根因是** CSS 特异性失衡**：基面规则 `.list-view > .virtual-flow > .clipped-container > .sheet > .list-cell` 是 **5 个类**，把 `.list-cell:filled:selected`（1 类 + 2 伪类）的强调色背景盖掉了；而选中态**文字**色来自更具体的 `.list-cell:filled:selected .text`（4）却能生效 ⇒ 亮色主题下基面底色与 `ON_ACCENT` 同为 `#FFFFFF`，两者同色。
+  - 修复：两份主题模板的状态规则**加上与基面完全相同的选择器前缀**（同特异性时后者胜），弹出层再加一层 `.combo-box-popup > …` 留余量；通用规则保留。
+  - 新守卫：`bin/CheckTheme.py` 第 8 项 `check_state_rules_not_shadowed()` —— 对每一条设背景色的基面规则，要求存在**类路径完全相同**的状态规则（更深的规则不能代表普通列表，反向验证 2/1 处如期被拦下）。
+  - 新断言：`AhaDesktopSmokeTest#listSelectionSurfaceIsReadableInBothThemes` —— 真开列表，读选中格**实际画出来的**背景色与 `.text` 填充色，断言分别为 `FOCUS_BORDER` / `ON_ACCENT` 且**不相同**（亮 / 暗各一次）。
+  - **原生包自测确认（2026-10-15，ACANX）**：下拉列表当前项正常显示（强调色底 + 白字）——
+    这次的 CSS 特异性问题在原生镜像下同样按 CSS 规则生效，无需额外补属性 API 兜底。
+  - 为什么现在才暴露：会话列表单元格是**在 Java 里显式上色**的（`DesktopShell.SessionCell` → `ThemePaint.themed`），不过 CSS；下拉列表是第一个「颜色完全交给样式表」的 `ListView`。记录见 [`TS-2610-045`](Docs/Troubleshooting/TS-2610-045-Selected-Row-Invisible-By-Css-Specificity.md)。
+- **桌面端切主题后日志区与输入框底色不跟着变（issue #153 复现，2026-10-15）**：根因是**可见底色由
+  皮肤内部节点绘制**（`TextArea` 的 `.content`、`ScrollPane` 的 `.viewport` / `.corner`），而
+  上色逻辑只作用于**控件本体**（`setStyle` + 属性 API），内部基面此前只依赖补丁样式表 ——
+  于是「切换时本体换了、基面停在旧色」，而重启整棵重建又正常。
+  **ACANX 实测对照：JVM 包正常、只有原生镜像包复现** ⇒ 范围钉死在「原生镜像下样式表对内部节点的
+  热替换/查表不可靠」（同 `TS-2610-028` 家族），也说明本体走属性 API 那条路两边都可靠。
+  修法：`ThemePaint` 新增 `SKIN_SURFACE_SELECTORS` + `applySkinSurfaces()`，把同一份底色用属性 API
+  也写到内部基面上（延后一帧、先 `applyCss()`）；`install()` 的样式表清理改为按文件名删掉非当前主题的
+  补丁表（URL 形式不一致时原先删不掉，会留下两份、切回旧主题获胜的是旧那份）。
+  回归断言：冒烟测试在切亮/暗后直接读 `.content` 的实际背景色比对 `Palette.CONTROL_INNER`；
+  `bin/CheckTheme.py` 新增守卫，代码清单与两份表漂移即红。
+- **切主题后输入框 / 对话框组件的颜色不跟着变（2026-10-14，issue #153）**：颜色是**内联在样式串里**的，
+  换色表不会自动影响已建节点 ⇒ 主窗口靠 `DesktopShell.restylers` 登记重刷，但主窗口之外与
+  「一次性上色」的路径**不在重刷范围内**。本轮查出四类并存漏洞：① `static final String` 样式常量
+  （常量在**类加载时**求值，颜色被**冻死**——重开对话框也还是旧色）——
+  `ProviderDialog.SECTION_TITLE_STYLE` / `SettingsDialog.MUTED_STYLE` / `NOTE_STYLE` /
+  `ApprovalDialog.SECTION_STYLE`；② 对话框内容用 `ThemePaint.themed(node, Palette.dialogTheme())`
+  这种**已求值字符串**一次性上色；③ 打开中的对话框**场景**不换样式表；
+  ④ `ThemePaint.apply()` 的 API 兜底缺 `-fx-control-inner-background`（输入类控件的底色来源）。
+  修法：`ThemePaint` 新增 `onThemeChange` / `refreshAll` / 对话框面板登记表（弱引用）/
+  `themedForever(node, supplier)`；`DesktopShell.applyTheme` 调 `refreshAll`；
+  4 个静态常量→按需求值；对话框内容与日志 `stats` 登记重刷；`apply()` 补上那一条兜底。
+  **并加机器守卫**：`bin/CheckTheme.py` 第 6 项禁止 `static final String` 里出现 `Palette.`
+  （反向验证：注入一个 `BAD_STYLE` 即被点名）。详见 `TS-2610-038`。
+- **原生桌面 exe 的 `OS Information:` 报 `Windows 8.0 build 9200`（2026-10-14，issue #151）**：
+  机理不是「读错字段」——`GetVersionEx` / `GetVersion` 家族在**没有 Windows 10 兼容清单**的
+  可执行文件里一律返回 **6.2.9200**（Windows 的既定兼容性行为，与真实版本无关）；`java.exe`
+  自带清单所以 JVM 模式正常，GraalVM 生成的 exe 默认没有。修法：新增
+  `aha-desktop-native/src/native/app.manifest`（只声明 Win10 / 11 的 `supportedOS`，**纯 ASCII**
+  ——mt.exe 是旧式 MS 工具，不给编码留赌注），Windows 腿用
+  `-H:NativeLinkerOption=/MANIFEST:EMBED` + `…/MANIFESTINPUT:<绝对路径>` 嵌进 exe；
+  「平台专属」由 Maven 表达（`native-windows-manifest` profile 只改一个属性，非 Windows 用
+  只有注释的空档参数文件），Linux / macOS 腿不受影响。两个坑记进 `TS-2610-037`：
+  ① **清单路径必须绝对**——native-image 以**它自己的构建临时目录**（`%TEMP%\SVM-…`）为
+  工作目录调链接器，相对路径会被解析到那里（第一次尝试因此让 Windows 原生构建整条失败）；
+  ② 那次失败被步骤级 `continue-on-error` 藏住（`conclusion=success` 而 `outcome=failure`），
+  CI 全绿而清单自证与 OS 断言**全被跳过**——有容错的步骤必须看 outcome。
+  CI 新增两道门禁：**清单自证**（从 zip 里的 exe 搜 Win10 GUID）+ 冒烟断言
+  （`Windows version 8.0 build 9200` 出现即失败、必须命中 `Windows version 10.`，
+  并要求先打印 `OS Information:` 以免空过）。真机复核待 ACANX。
+- **暗色下日志区 / 对话输入框的底色与其他页面、对话框不一致（2026-10-13，issue #153）**：
+  根因**不是**色号漂移（实测两份主题补丁表选择器 **42/42 一致**、色号 **0 个野生**），
+  而是 **一个常量承担了两种语义**：`CONTROL_INNER` 同时用于「内容面」（输入框 / 文本域 / 列表 /
+  滚动容器）与「抬起控件」（按钮 / 菜单 / 弹层），于是**大块内容面**在暗色下也亮着一档。
+  有意思的是两主题的感知差几乎相同（ΔL\* 暗 **3.45** / 亮 **3.81**），但深色底上这一档被放大感知
+  ⇒ 只有暗色被报上来。修复：**按角色拆开**——内容面对齐页底（`CONTROL_INNER` 暗色 → `#1E1E1E` = `BASE`），
+  新增 `RAISED_BACKGROUND`（`#252526`）给抬起控件；**亮色不动**（未报问题）。
+  同时把 `DesktopDesign.md` §11.6 早就写下的「**不允许硬编码颜色**」变成机器强制：
+  新增 `bin/CheckTheme.py`（Gate 里跑）——两份表的选择器 / 属性集合必须一致，
+  且每个色号必须属于该主题的色表；注入野生色号或单边删选择器都会如期失败。详见 `TS-2610-035`。
+- **原生镜像 OS / D3D 驱动信息全零（2026-10-13，issue #60）**：`prism.verbose` 打印的
+  `Windows version 0.0 build 0`、`Driver null, version 0.0.0.0`、`Device : ven_0000, dev_0000, subsys_00000000`、
+  `Max Multisamples supported: 0` —— 根因不是「注册表 / WMI 读不到」，而是 **native 按名回写字段**：
+  `D3DPipeline.printDriverInformation()` 调 native `nGetDriverInformation(int, D3DDriverInformation)`，
+  由 `prism_d3d.dll` 用 `GetFieldID` 按名回写该对象的字段，而 `com.sun.prism.d3d.D3DDriverInformation`
+  及其字段在**两份元数据里都是 0 条登记** ⇒ 回写不发生、字段保持 Java 默认值（0 / null）=
+  日志里那组全零（`getOsVersion()` 的拼接格式逐字吻合）。属 #35 / #37 / #39 同族。
+  修复：`jni-config.json` 登记该类的 `allDeclared*`（85 → **86** 条）；
+  `NativeImageMetadataTest` 加断言（15 → **16** 条）；工作流 ⑧b 加 `require_jni`；
+  **Windows GUI 冒烟加可判别断言**：必须打印 `OS Information:`，且不得出现 `Windows version 0.0 build 0`
+  （改前必然出现 ⇒ 真前/后对照，不是空过断言）。**已实测验证**（PR #150 的 Windows 腿）：改前
+  `Driver null, version 0.0.0.0` / `ven_0000, dev_0000` ⇒ 改后
+  `Driver d3d10warp.dll, version 10.0.26100.33438` / `Pixel Shader version 3.0` / `ven_1414, dev_008C` /
+  `Max Multisamples supported: 4`（`1414` = Microsoft、WARP 软件设备 ⇒ 印证 CI runner 无硬件 GPU，
+  且**驱动那一组字段也已回写成功**）。⚠ 遗留两点：① 驱动取值需真机对照；
+  ② OS 版本虽不再是 `0.0`，但取到 `Windows 8.0 build 9200`——`GetVersionEx` 无 Win10 兼容清单时的
+  兼容性撒谎（同日志驱动版本 `10.0.26100.33438` 证明真实版本远高于此）。详见 `Docs/Troubleshooting/TS-2610-034`。
+- **原生元数据：Windows 手势 / 拖放两条补登记，并纠正 issue #125 的成因判断（2026-10-13）**：
+  核验后确认 **「`reflection` 段缺 `WinGestureSupport` / `WinDnDClipboard`」在本仓库不是缺陷**——
+  JavaFX 25 的 win jar 里**没有任何 Java 代码 `Class.forName` 它们**（`javap -p -c` 对
+  `WinWindow` / `WinApplication` 实测 **0 处命中**），全 jar 常量池里唯一引用来自 **`glass.dll`**，
+  属 native 侧查找，其正确归宿 `jni-config.json` **早已登记**（自 issue #39 起有测试断言守卫）；
+  本仓库 CI 的 Windows 腿真启动原生 exe 20 秒（run `38389103313`），stderr 315 B 内
+  **无**这两条异常。仍补两条反射登记（473 → **475**）：让这两个类**确定进镜像**、不依赖静态可达链
+  （`WinGestureSupport` 在 Java 侧零引用），并对齐姊妹工程按**反射段**生成清单的口径。
+  另补三道守卫：`NativeImageMetadataTest` 新断言 + `DesktopNative.yml` 步骤 ⑧ `require_meta` ×2、
+  步骤 ⑧b `require_jni` ×2。完整排查与反证见 `Docs/Troubleshooting/TS-2610-033`。
+- **FXML 骨架在原生包里启动即崩（2026-10-13）**：`desktop-shell.fxml` 漏写 `<?import?>`，原生包双击后抛
+  `LoadException: BorderPane is not a valid type.`——而 `Build`、原生构建、GUI 冒烟**三方全绿**。
+  修了三层：① 补 15 个 `<?import?>`；② 新增**静态对账**（元素类型名必须能在 import 表里找到；
+  对改前的文件跑同一条规则，15 个类型全部命中）；③ 把原生 GUI 冒烟从「进程存活 20 秒」改为
+  **正面断言**——必须命中 `[aha-version]` 与 `[ui-fxml-loaded]`、不得出现 `[ui-fxml-load-failed]`、
+  不得在 20 秒内以非 0 退出。另修：`javafx-fxml` 传递进来的 `javafx-controls` 无分类器空壳未排除
+  （**306 字节**，而工作流原先的 `-size 0` 判据抓不到），已收紧为 `-size -2k`。
+  见 `TS-2610-032-FXML-Missing-Import-And-Smoke-Blind-Spot.md`。
+- **启动即输出全量版本（含构建号）**：`main` 的第一件事打印
+  `[aha-version] version=0.1.3.00134 baseline=0.1.3 prerelease=true`（纯 ASCII + 显式 flush）。
+  走 stdout 而不是日志，是因为 console appender 级别为 ERROR，INFO 级的版本行在真机控制台上看不见
+  ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
+
 ## [0.1.2] - 2026-10-09
 
 ### 变更
@@ -71,7 +546,7 @@
   `buildVersion()` / `isPreRelease()`；`DesktopNative.yml` 与 `CliNative.yml` 在构建时传
   `-Daha.build.version=<a.b.c.PPPPP>`（正式发版不传，等于基线版本，不做强制）。
   展示点：桌面端「关于」与启动日志、CLI 启动页顶栏、`/help`、`aha version` / `--version`。
-  详见 `Docs/Troubleshooting/TS-202610-BuildVersionPreRelease.md`。
+  详见 `Docs/Troubleshooting/TS-2610-027-Build-Version-Pre-Release.md`。
 - **桌面端原生镜像（试验性）**：新增 `aha-desktop-native` 模块与 `.github/workflows/DesktopNative.yml`，
   把 `aha-desktop` 的 JVM 产物再编译成 GraalVM native-image 二进制（win / linux / macos，解压即可双击运行）。
   定位是「验证线」：正式交付仍是 JVM 模式。
@@ -200,7 +675,7 @@
   另补一层「文字兜底」覆盖 `.label` / `.cell` / `.menu-item > .label` 等全部文字载体，
   并单独处理 **`Text` 节点（走 `-fx-fill`）**。守卫 `PaletteTest` 新增两条：两表声明里不得含
   变量查表与 CSS 函数、两表必须真的不同（暗 `#E4E4E4` / 亮 `#1F1F1F`）。
-  详见 `Docs/Troubleshooting/TS-202610-DarkTextCssPatchFailure.md`。
+  详见 `Docs/Troubleshooting/TS-2610-031-Dark-Text-CSS-Patch-Failure.md`。
 - **原生桌面镜像字体渲染与 JVM 模式不一致（issue #48）——本轮先做诊断**：真机报原生包的字发虚、
   字形偏细，明显不如 JVM 模式锐利。本轮把「原生包到底走的哪条路」变成可观测的事实：
   ① 实测 `V0.1.1.00055` 的 **Ubuntu 原生包**（本机 WSLg 可跑），确认原生镜像里 JavaFX 的原生库
@@ -216,7 +691,7 @@
   诊断代码已先在本地 JVM 模式实跑：`字体实现工厂` 在 Windows 上应为 DirectWrite 的
   `DWFactory`、非 Windows / 无 DirectWrite 时为内置 FreeType 的 `FTFactory`——**两边若不同，
   即说明字形栅格化走了另一条路**，这正是「笔画偏细、发虚」最可能的解释。
-  详见 `Docs/Troubleshooting/TS-202610-NativeFontRenderingDiff.md`。
+  详见 `Docs/Troubleshooting/TS-2610-030-Native-Font-Rendering-Diff.md`。
 - **原生桌面镜像渲染诊断的操作手册与收集脚本（issue #48）**：把「真机上各跑一次原生包与
   JVM 模式、把同样的几行日志拿出来对照」落成可照做的材料——新增
   `Docs/Guide/NativeRenderDiagnosticsGuide.md`（步骤、日志位置、判定表、诊断行含义、常见问题）
@@ -231,7 +706,7 @@
   JavaFX 默认（modena）背景，只靠根节点的 looked-up color 传不到位。修法：`theme()` 去缓存、
   每次按当前色表现算；`applyTheme` 逐个节点异常隔离（一个失败不中断整屏重刷）；搜索框、输入框、
   会话单元格、菜单栏、中栏滚动区改为显式套主题。守卫 `PaletteTest` 新增一条，
-  钉住「切换后样式串立即反映新色表」。详见 `Docs/Troubleshooting/TS-202610-DarkModeControlColors.md`。
+  钉住「切换后样式串立即反映新色表」。详见 `Docs/Troubleshooting/TS-2610-026-Dark-Mode-Control-Colors.md`。
 - **原生桌面镜像主题残留的第二轮修复（issue #49）**：上一轮合入后真机仍报「暗色下左栏文字深色、
   亮色下供应商对话框底色深色」。经 build-report 核对（`modena.css` 已随镜像打包）与 JVM 探针
   验证（`Label` / `Button` / `Menu` / `DialogPane` 两套主题下均正确）后确认：问题只在原生镜像
@@ -246,7 +721,7 @@
   搜索框、输入框、状态栏、菜单栏与 7 个对话框全部覆盖）；搜索框 / 输入框再补显式
   `-fx-background-color`，并在 `buildRoot()` 之后幂等重刷一次主题。
   另补回一处漏合并：状态栏版本标签改用 `AppVersion.buildVersion()`。
-  `PaletteTest` 新增两条守卫。详见 `Docs/Troubleshooting/TS-202610-ThemeLookupTableFailure.md`。
+  `PaletteTest` 新增两条守卫。详见 `Docs/Troubleshooting/TS-2610-028-Theme-Lookup-Table-Failure.md`。
 - **原生桌面镜像输入框 / 下拉框 / 按钮 / 滚动条背景发黑（issue #49 第三轮）**：亮色与暗色下，
   文本输入框、「发送」按钮、下拉选择框与会话列表滚动条的背景都是黑的，且与主题切换无关。
   查 `modena.css` 确认根因：这些控件的 `-fx-background-color` 写成 `derive(...)` /
@@ -256,7 +731,7 @@
   `HOVER_BACKGROUND` / `SCROLL_TRACK` / `SCROLL_THUMB` / `ON_ACCENT`，并把 modena 依赖的中间量
   （`-fx-body-color` / `-fx-text-box-border` / `-fx-outer-border` / `-fx-box-border` …）全换成字面量。
   守卫 `PaletteTest` 新增三条：主题样式串与补丁表均不得含 CSS 函数、亮色下控件面色必须为浅色、
-  补丁表必须在 classpath 上。详见 `Docs/Troubleshooting/TS-202610-ModenaCssFunctionFailure.md`。
+  补丁表必须在 classpath 上。详见 `Docs/Troubleshooting/TS-2610-029-Modena-CSS-Function-Failure.md`。
 - **原生桌面镜像主题不跟随系统、切主题有残留、暗色标题对比度不足（issue #44）**：原生桌面端能开窗后暴露四类界面问题，本次修掉三类确定性缺陷。
   ① **默认主题恒为暗色**：`SystemTheme.prefersDark()` 在系统配色读取失败或尚未就绪时一律回退暗色；
   改成三级回退（明确配色 → 系统背景色亮度 → 亮色），并新增 `SystemTheme.onColorSchemeChanged`，
@@ -268,7 +743,7 @@
   改用默认深色文字；现统一走 `themed(...)` 登记。
   遗留：**原生镜像与 JVM 模式的字体清晰度 / 字体差异**未解决，已另开 **issue #48** 长期跟踪
   （`Docs/TODO.md` 的 `N-24` 只作索引），需真机对比渲染管线后才能定位。
-  详见 `Docs/Troubleshooting/TS-202610-ThemeNotFollowingSystem.md`。
+  详见 `Docs/Troubleshooting/TS-2610-025-Theme-Not-Following-System.md`。
 - **原生桌面镜像能开窗但控件画不出：Prism 效果 peer 的动态类名未登记（issue #41）**：修完 #35/#37/#39 后原生桌面端首次进到 GUI，
   但渲染到第一个用阴影效果的控件时反复报 `Could not create peer LinearConvolveShadow for renderer
   com.sun.scenario.effect.impl.prism.ps.PPSRenderer`，界面无控件可画。根因与 #35 同源：
@@ -278,7 +753,7 @@
   **未登记 peer 本身**。修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
   过滤 abstract 后把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`（340 → 439 条）。
   守卫 `NativeImageMetadataTest` 11 → 12 条（已反向验证），产物自证第 ⑧ 条补 peer 检查。
-  详见 `Docs/Troubleshooting/TS-202610-PrismEffectPeerMissing.md`。
+  详见 `Docs/Troubleshooting/TS-2610-023-Prism-Effect-Peer-Missing.md`。
 - **原生桌面镜像 Windows 启动即崩：平台子类的 JNI 成员查找未登记（issue #39）**：修完 #37（JNI 可达**类**）后，
   真机在 `WinWindow.<clinit>` 报 `NoSuchMethodError:
   com.sun.glass.ui.win.WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。根因：`WinWindow._initIDs` 用
@@ -288,13 +763,13 @@
   native 源码里所有 `Get*ID` 的**目标类**，把 Windows / macOS 的平台实现类逐类补进
   `jni-config.json`（62 → 85 条），并顺带补上 `Class.forName` 现查的 `WinDnDClipboard` / `EventLoop`。
   守卫 `NativeImageMetadataTest` 10 → 11 条（已反向验证），产物自证第 ⑧b 条补 4 项。
-  详见 `Docs/Troubleshooting/TS-202610-WinWindowJniMemberMissing.md`。
+  详见 `Docs/Troubleshooting/TS-2610-022-Win-Window-JNI-Member-Missing.md`。
 - **原生桌面镜像启动即 segfault：JNI 可达类未注册（issue #37）**：修完 #35（JavaFX 启动链路反射）后，
   真机在 Glass 初始化处报 `NoClassDefFoundError: java/lang/Runnable`，随后段错误。
   根因是 native-image 只允许「JNI accessible」的类被 `FindClass` 查到——反射元数据解决「类可达」，
   不解决「JNI 可达」。修法：新增 `jni-config.json`（62 个类，来自对 openjfx 三平台 native 源码
   506 个文件里所有 `FindClass` 的静态扫描），并在单测与产物自证里加守卫。
-  详见 `Docs/Troubleshooting/TS-202610-JniFindClassSegfault.md`。
+  详见 `Docs/Troubleshooting/TS-2610-021-JNI-Find-Class-Segfault.md`。
 - **原生镜像管线两个跨平台缺陷（run 37744912968）**：
   ① macOS 腿的产物自证里 `$bin（` 被 bash 当成变量名 → `set -u` 下
   `bin（: unbound variable` 退出，步骤 outputs 丢失，下游改名/上传被静默跳过——
@@ -423,7 +898,7 @@
 - **覆盖率门禁自证**：新增 `bin/ReportCoverage.py` 并在 `Gate.yml` 的 verify 之后执行，
   把各模块与合计覆盖率写进日志；此前 JaCoCo 的 `check` 通过时不出声，日志上与「没配门禁」
   无法区分（判定仍由 `jacoco:check` 独家执行，脚本只报数、阈值读自 `pom.xml`）
-- **开发日志**：新增 `Docs/Troubleshooting/TS-202610-CoverageGateInvisible.md`，记录门禁静默这一问题的核实方法
+- **开发日志**：新增 `Docs/Troubleshooting/TS-2610-002-Coverage-Gate-Invisible.md`，记录门禁静默这一问题的核实方法
   （配置检查 + 抬阈值使其失败一次）与结论
 - **开发日志目录**：新增 `Docs/DevLog/`，排障与事故按 `DevLog-YYYYmmdd-HH.md` 留痕
   （必备背景 / 排障过程与修复链 / 最终验证结果 / 关键教训 / 涉及文件清单五节）；

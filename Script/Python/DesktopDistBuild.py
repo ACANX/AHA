@@ -2,14 +2,16 @@
 r"""AHA 桌面端 JVM 便携包一键构建（源码 -> Dist/aha-desktop-<版本>-<平台>.zip）。
 
 桌面端的 Maven assembly（`aha-desktop/src/assembly/dist-desktop.xml`）在 `package`
-阶段把 `bin/` + `lib/` 打成 zip 落到项目根的 `Dist/`。手工敲要记住一串参数：
+阶段把**单体 jar + 启动脚本 + 三个文档**平铺打成 zip 落到项目根的 `Dist/`
+（issue #218 起不再有 `lib/` 与 `bin/`）。手工敲要记住一串参数：
 
     ./mvnw -pl aha-desktop -am package -DskipTests -Djacoco.skip=true
 
-本脚本把这条命令固定下来，并在构建后**自证产物**——zip 里必须含 aha-desktop 模块、
-**3 个本平台 OpenJFX jar** 与两个启动脚本（`bin/AhaDesktop.sh` / `.bat`）。
+本脚本把这条命令固定下来，并在构建后**自证产物**——包根必须有去版本号的单体 jar
+`aha-desktop.jar` 与两个启动脚本（`AhaDesktop.sh` / `AhaDesktop.bat`），且单体 jar 内
+含 JavaFX 类、含**本平台 OpenJFX 原生库**、不含 `module-info.class`。
 「构建成功但包是空的 / 少装了一个平台原生库」会在这一步当场失败，
-而不是等到用户双击启动才暴露（与 `Release.yml` 的便携包自证同一判据）。
+而不是等到用户双击启动才暴露。
 
 用法（Windows）：
 
@@ -46,11 +48,48 @@ ZIP_GLOB = "aha-desktop-[0-9]*.zip"
 #: 文档 / 帮助里统一展示的用法（Windows 路径分隔符）。
 USAGE_CMD = r"python3 Script\Python\DesktopDistBuild.py"
 
-#: 便携包里必须存在的 OpenJFX 工件个数（本平台三件套：base / graphics / controls）。
-EXPECTED_JAVAFX_JARS = 3
+#: 上一版（lib/ + bin/ 形态）的判据，仅用于识别「是不是拿错了旧包」。
+LEGACY_JAVAFX_JARS = 3
 
-#: 启动脚本（zip 内路径）。
-LAUNCHER_ENTRIES = ("bin/AhaDesktop.sh", "bin/AhaDesktop.bat")
+#: 单体 jar 在包内的落地名（去版本号，issue #218）。
+FATJAR_ENTRY = "aha-desktop.jar"
+
+#: 启动脚本（zip 内路径，平铺在包根）。
+LAUNCHER_ENTRIES = ("AhaDesktop.sh", "AhaDesktop.bat")
+
+#: OpenJFX 原生库的名字特征（Windows / Linux / macOS 三种命名都在内）。
+#: 判据刻意不看「有任意 .dll」——sqlite-jdbc 等也带原生库，那样会漏掉 JavaFX 缺失。
+FX_NATIVE_HINTS = ("glass", "prism", "javafx_font", "decora", "javafx_iio")
+
+
+def fatjar_problems(archive, entry: str) -> list[str]:
+    """检查单体 jar **内部**：含 JavaFX 类、含本平台 OpenJFX 原生库、不含 module-info。
+
+    OpenJFX 的原生库就在 javafx-graphics 分类器 jar 的根部，运行期由 JavaFX 自己从 jar
+    取出并缓存（`NativeLibLoader.loadLibraryFromResource`），所以「jar 里有没有它」是可判的：
+    少了它，用户双击启动只会看到「JavaFX runtime components are missing」。
+    """
+    import io
+
+    problems: list[str] = []
+    with archive.open(entry) as handle:
+        payload = io.BytesIO(handle.read())
+    try:
+        with zipfile.ZipFile(payload) as jar:
+            inner = jar.namelist()
+    except zipfile.BadZipFile:
+        return [f"{entry} 不是有效的 jar"]
+
+    if "javafx/application/Application.class" not in inner:
+        problems.append(f"{entry} 内含不到 JavaFX 类（javafx/application/Application.class）")
+    natives = [name for name in inner if name.endswith((".dll", ".so", ".dylib"))]
+    fx_natives = [name for name in natives if any(hint in Path(name).name.lower() for hint in FX_NATIVE_HINTS)]
+    if not fx_natives:
+        problems.append(f"{entry} 内没有本平台 OpenJFX 原生库（glass / prism / javafx_font 等）")
+    if "module-info.class" in inner:
+        problems.append(f"{entry} 不应含 module-info.class")
+    return problems
+
 
 
 class BuildError(Exception):
@@ -159,26 +198,29 @@ def built_zip(dist: Path, started_at: float, classifier: str) -> Path:
 
 
 def verify_zip(path: Path) -> tuple[list[str], list[str]]:
-    """打开 zip 自证内容；返回 (jar 列表, 问题列表)。
+    """打开 zip 自证内容；返回 (条目列表, 问题列表)。
 
-    判据与 `Release.yml` 的便携包完整性自证对齐：项目模块齐全、本平台 OpenJFX 恰好 3 个、
-    两个启动脚本都在。多一个 OpenJFX jar 通常意味着空壳 jar 混进了包（module path 上会
-    变成重名自动模块），因此这里用「恰好 3 个」而不是「至少 3 个」。
+    判据是 issue #218 的**平铺**形态：包根一个去版本号的单体 jar + 两个启动脚本，没有
+    `lib/`、没有 `bin/`；单体 jar 内必须含 JavaFX 类与本平台原生库。旧形态（`lib/` 里
+    恰好 3 个 OpenJFX jar）单独点名，便于「拿错包」时一眼看出原因。
     """
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
-    jars = [name for name in names if name.startswith("lib/") and name.endswith(".jar")]
-    desktop = [name for name in jars if Path(name).name.startswith("aha-desktop-")]
-    javafx = [name for name in jars if Path(name).name.startswith("javafx-")]
-    problems: list[str] = []
-    if not desktop:
-        problems.append("缺 aha-desktop 模块 jar")
-    if len(javafx) != EXPECTED_JAVAFX_JARS:
-        problems.append(f"本平台 OpenJFX jar 应为 {EXPECTED_JAVAFX_JARS} 个，实际 {len(javafx)} 个")
-    for entry in LAUNCHER_ENTRIES:
-        if entry not in names:
-            problems.append(f"缺启动脚本 {entry}")
-    return jars, problems
+        problems: list[str] = []
+        if FATJAR_ENTRY not in names:
+            problems.append(
+                f"缺单体 jar {FATJAR_ENTRY}（包内应为平铺形态）"
+                f"{'——包里出现 lib/ 旧形态' if any(n.startswith('lib/') for n in names) else ''}"
+            )
+        else:
+            problems.extend(fatjar_problems(archive, FATJAR_ENTRY))
+        for entry in LAUNCHER_ENTRIES:
+            if entry not in names:
+                problems.append(f"缺启动脚本 {entry}")
+        legacy = [name for name in names if name.startswith(("lib/", "bin/"))]
+        if legacy:
+            problems.append(f"不应再有 lib/ 或 bin/（实际 {len(legacy)} 项，如 {legacy[0]}）")
+    return names, problems
 
 
 def format_size(num: int) -> str:
@@ -205,10 +247,10 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     archive = built_zip(dist, started_at, classifier)
-    jars, problems = verify_zip(archive)
+    names, problems = verify_zip(archive)
     print(f"\n产物：{archive}")
     print(f"大小：{format_size(archive.stat().st_size)}")
-    print(f"包内 jar：{len(jars)} 个（含本平台 OpenJFX {sum('javafx-' in Path(n).name for n in jars)} 个）")
+    print(f"包内条目：{len(names)} 个（平铺：{FATJAR_ENTRY} + {' + '.join(LAUNCHER_ENTRIES)} + 文档）")
     if problems:
         for problem in problems:
             print(f"  [不合格] {problem}", file=sys.stderr)

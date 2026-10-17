@@ -38,8 +38,8 @@
 | --- | --- | --- | --- |
 | JPMS 模块路径目录（`Dist/`） | 需 JVM、可调优 | `aha-cli-<版本>.zip` | ✅ 已实现 |
 | 桌面端便携包（按平台） | 需 JDK 25 | `aha-desktop-<版本>-<系统>-<架构>.zip` | ✅ 流水线已就位 |
-| native-image 单文件 | 免 JVM、启动快 | 平台可执行文件 | ☐ 未开工 |
-| `jpackage` 安装包 | 普通用户 | MSI / DEB / DMG | ☐ 见桌面端交付 Issue |
+| native-image 单文件 | 免 JVM、启动快 | 平台可执行文件 | ✅ 流水线已就位（试验性，随 `dev` push 出包并发布预发行） |
+| ~~`jpackage` 安装包~~ | — | — | ❌ **已决策跳过、不采用**（2026-10-09，见 `ReleaseProcess.md` §3.3） |
 
 ## 验收标准
 

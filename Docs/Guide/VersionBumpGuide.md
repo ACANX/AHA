@@ -1,9 +1,9 @@
 # 版本切换指南
 
-**文档版本**：v1.2.0
+**文档版本**：v1.6.0
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-09
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -16,6 +16,10 @@
 | v1.0.0 | 2026-10-09 | 初始版本：操作步骤、改动清单、检查清单、常见问题快速处置、应急预案、历史教训与维护约定 | @ACANX / CNXNC |
 | v1.1.0 | 2026-10-09 | §2.3 一次性命令改用 `versions:set-property -Dproperty=revision`；注明 P3（#95）后 POM 侧版本源收敛为 1 处、`AppVersion` 已解耦，§2.1 清单为历史口径 | @ACANX / CNXNC |
 | v1.2.0 | 2026-10-09 | P5（#97）：§2 改动清单由 14 处降为 **1 处**（根目录 `version` 文件，其余由 `VersionBump` / `VersionDistribute.py` 分发）；§2.3 改为「一键分发 + 手工应急」；§3 步骤与 §4 检查清单按新口径重写（一致性校验项保留）；§5 第 1/2/3/8 项更新 | @ACANX / CNXNC |
+| v1.3.0 | 2026-10-09 | §5 新增第 10 条：版本切换 PR 上为什么没有 `Gate` / `Compat` 的 checks（触发范围只覆盖 `main`，而 PR base 是 `dev`）与处置 | @ACANX / CNXNC |
+| v1.4.0 | 2026-10-09 | 验证路径口径调整（F12 方案变更）：§2.2 补「验证时机」（PR 上不跑 checks，验证归口到合并后的 `dev` 流水线）；§5 第 6 条的处置去掉 PAT、改为「手工重建 tag」；第 10 条按「不配 PAT」口径重写 | @ACANX / CNXNC |
+| v1.5.0 | 2026-10-09 | `G-06` 收口：§5 第 4 条与 §6.5 的「0.1.0 裸 tag」示例更新为**已处置**（已补指向同一提交 `9138847` 的别名 tag `V0.1.0`，`CHANGELOG` 链接不再 404） | @ACANX / CNXNC |
+| v1.6.0 | 2026-10-16 | §5 第 6 条：自动打的 `V*` tag **已能自动触发发布**（issue #238）——`Build.yml` 用 `workflow_dispatch`（防递归规则的**官方例外**）派发 `Release.yml`，无需 PAT；手工重建 tag 降为兜底，新增「直接手工派发」做法 | @ACANX / CNXNC |
 
 ---
 
@@ -54,7 +58,7 @@
 | 4 处文档版本声明（`README.md` / `AGENTS.md` / `AHA-Design-V1.md` / `ReferenceGuide.md`） | 分发脚本（按**声明行**精确匹配，不碰历史叙述） |
 
 > 收敛前的历史口径（10 处版本号源 + 4 处文档声明，以及「只改根 POM 静默产出旧版本」的教训）
-> 见 §7 与 [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)。
+> 见 §7 与 [TS-2610-006-Version-Bump-Missed-Modules.md](../Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md)。
 
 ### 2.1 权威源：根目录 `version`
 
@@ -67,6 +71,12 @@ version            # 一行纯文本，如 0.1.3（不带 SNAPSHOT；预发行�
 在 Actions 里触发 **`VersionBump`**（`workflow_dispatch`，输入新版本号）。它按
 「解析目标版本 → 分发到根 POM 的 `<revision>` 与文档声明 → 自检 → 开 PR」执行，
 PR 分支为 `chore/bump-<版本>`、base 为 `dev`。
+
+> **验证时机（重要）**：这个 PR 上**不会**跑 `Build` / `Gate` / `Compat`——`GITHUB_TOKEN`
+> 推的提交不触发下游 workflow，且 `Gate` / `Compat` 的 `pull_request` 只覆盖
+> `main` / `release/**`。PR 侧的正确性由 workflow 自身的「自检」步骤保证；**真正的验证在
+> 合并到 `dev` 之后**：`Build` + `BuildJVMArtifacts` / `CliNative` / `DesktopNative` 会随
+> `push` 自动开跑（不受 token 限制）。本仓库**不为此配置 PAT**。
 
 本地等价命令（Agent 也用这条，不跑 Maven）：
 
@@ -134,7 +144,7 @@ python3 .github/Python/ProjectVersion.py --verify
 ### 4.3 合并之后
 
 - [ ] `dev` 出包线（`BuildJVMArtifacts` / `DesktopNative` / `CliNative`）产物名带新版本
-- [ ] CLI `version` 输出新版本（`Dist/bin/Aha.sh version`）
+- [ ] CLI `version` 输出新版本（`Dist/AhaCli.sh version`）
 - [ ] 若本次是**发布**，另按 `ReleaseProcess.md` §1 的发布前检查执行
 
 ## 5. 常见问题快速处置
@@ -144,12 +154,13 @@ python3 .github/Python/ProjectVersion.py --verify
 | 1 | 构建 **BUILD SUCCESS**，但产物名 / 反应堆仍是旧版本 | `version` 文件与根 POM 的 `<revision>` 不一致；或子模块 `<parent><version>` 被写死 | 跑 `python3 .github/Python/ProjectVersion.py --verify` 定位，再按 §2.2 补跑分发脚本 |
 | 2 | `aha --version` 仍报旧版本 | 同上；`version.properties` 取的是**模块**的 `project.version` | 同 1 |
 | 3 | 文档里还能搜到旧版本 | 声明行未更新；或它本来就是**历史标注** | 先按 §4.2 判断：历史叙述里的旧版本号是合法内容；确属声明行未更新时，补跑分发脚本 |
-| 4 | `CHANGELOG` 的版本链接 404 | tag 实际写法与文档约定不符（历史 0.1.0 是裸 `0.1.0`，约定是 `V*`） | 用 `git ls-remote --tags origin` 核实真实 tag 再改链接；别名 tag 见 Issue #85 |
+| 4 | `CHANGELOG` 的版本链接 404 | tag 实际写法与文档约定不符 | 用 `git ls-remote --tags origin` 核实真实 tag 再改链接。**历史例外已处置**：0.1.0 已补指向同一提交（`9138847`）的别名 tag `V0.1.0`，两种写法都可用（见 §6.5） |
 | 5 | 推送 tag 时提示已存在 | 同版本 tag 已打过 | `Build.yml` 的 tag 作业**幂等跳过**，属正常；需重打见 `ReleaseProcess.md` §4.1 |
-| 6 | 自动打的 `V*` tag 没触发发布 | `GITHUB_TOKEN` 推送的 tag 不触发下游工作流（GitHub 防递归） | 手工触发 `Release.yml`，或改用 PAT（`ReleaseProcess.md` §4.2） |
+| 6 | 自动打的 `V*` tag 没触发发布 | `GITHUB_TOKEN` 推送的 tag 不触发下游工作流（GitHub 防递归） | **已自动化（issue #238）**：`Build.yml` 的 tag 作业在**新建出 tag** 后用 `workflow_dispatch`（该规则的**官方例外**）派发 `Release.yml`（`gh workflow run Release.yml --ref main -f tag=V<版本>`），无需 PAT。**派发失败才需兜底**：优选直接手工派发（**ref 必须选 `main`**），或手工重建 tag（删除后由人重推）；两者详见 `ReleaseProcess.md` §4.2 |
 | 7 | 发版 PR 卡在必需检查 / 审批 | 分支规则集要求（审批数、`Gate`/`Compat` 必需检查、`last_push_approval`） | 见 `ReleaseProcess.md` §4.2 与 Issue #85 |
 | 8 | 两个原生模块版本没跟上 | 历史问题：旧清单漏了后加模块 | 已消除——子模块统一写 `${revision}`，分发脚本**动态扫描 POM** 并断言数量 ≥ 9（新增模块自动覆盖） |
 | 9 | 构建号没注入（GUI 只显示基线版本） | 工作流的 `command: >-` 折叠块里写了 `#` 注释，把参数吞掉 | 注释移出折叠块（`ReleaseProcess.md` 第 2 节「构建版本」） |
+| 10 | 版本切换 PR 上**没有** `Build` / `Gate` / `Compat` 的 checks | `GITHUB_TOKEN` 推的提交不触发下游 workflow；`Gate` / `Compat` 的 `pull_request` 又只覆盖 `main` / `release/**`，而版本切换 PR 的 base 是 `dev` | **这是本仓库的既定做法（不配 PAT）**：PR 侧由 `VersionBump` 的自检步骤把关，验证在**合并到 `dev` 后**由 `Build` + `BuildJVMArtifacts` / `CliNative` / `DesktopNative` 自动完成（走 `push` 事件，不受 token 限制）。合并后到 Actions 看这几条结果即可 |
 
 ## 6. 应急预案
 
@@ -186,9 +197,11 @@ git checkout -- .          # 丢弃工作区改动，重新按 §2 执行
 
 ### 6.5 tag 与约定不符（历史遗留）
 
-例：0.1.0 的实际 tag 是裸 `0.1.0`，而约定是 `V*`。
+**现成范例（已处置，2026-10-09）**：0.1.0 的原始 tag 是裸 `0.1.0`，而约定是 `V*`——
+补了一个指向**同一提交**（`9138847`）的 `V0.1.0` 别名 tag 后，两种写法都可用，
+`CHANGELOG` 的 `releases/tag/V0.1.0` 链接不再 404。
 
-处置选项：① 补一个指向**同一提交**的 `V0.1.0` 别名 tag（最省事，两写法都可用）；
+处置选项：① 补一个指向**同一提交**的**别名 tag**（最省事，两写法都可用——见上例）；
 ② 在 `CHANGELOG` 中明确写出兼容策略。**不要**删除原 tag——已发布的引用会失效。
 
 ### 6.6 需要回滚一个已合并的版本切换
@@ -201,7 +214,7 @@ git revert <切换提交的 SHA>      # 生成反向提交，保留历史
 
 ## 7. 历史教训（必读）
 
-来自 [TS-202610-VersionBumpMissedModules.md](../Troubleshooting/TS-202610-VersionBumpMissedModules.md)，
+来自 [TS-2610-006-Version-Bump-Missed-Modules.md](../Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md)，
 每一条都对应上面的某处处置：
 
 1. **「只改一处」的规范必须实测一遍再相信**——判定依据是反应堆的 `Building <模块> <版本>` 行与产物名，不是读 POM；

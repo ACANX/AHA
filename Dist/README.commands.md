@@ -26,16 +26,21 @@
 |---|---|---|
 | 编译桌面端便携包 | `python3 Script\Python\DesktopDistBuild.py` | `python3 Script/Python/DesktopDistBuild.py` |
 | 解压并更新 `Dist/` | `python3 Script\Python\DesktopDistExtract.py` | `python3 Script/Python/DesktopDistExtract.py` |
-| 下载最新桌面端原生镜像 | `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
-| 启动桌面端（Dist 版） | `Dist\bin\AhaDesktop.bat` | `./Dist/bin/AhaDesktop.sh` |
+| 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击，无需 Python）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
+| 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击，无需 Python）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
+| 下载最新**桌面端 JVM 便携包** | `Dist\UpdateDesktopJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-desktop-<版本>-<平台>.zip` |
+| 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
+| 启动桌面端（Dist 版） | `Dist\AhaDesktop.bat` | `./Dist/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
-| 启动 CLI（Dist 版） | `Dist\bin\Aha.bat` | `./Dist/bin/Aha.sh` |
+| 启动 CLI（Dist 版） | `Dist\AhaCli.bat` | `./Dist/AhaCli.sh` |
 | 启动**桌面端原生镜像** | `Dist\aha-desktop-native.exe` | `./Dist/aha-desktop-native` |
 | 启动 **CLI 原生镜像** | `Dist\aha-cli-native.exe` | `./Dist/aha-cli-native` |
 | 按变更跑检查 | `python3 bin\CheckChanged.py` | `python3 bin/CheckChanged.py` |
 
-> `bin\AhaDesktop.*` / `bin/AhaDesktop.sh` 在源码根运行时，若没有 `lib/`，会自动挑本平台的
-> `Dist/aha-desktop-*.zip` 解压后再启动；无需先手动解压。
+> 桌面端自 issue #218 起是**包根平铺**形态（单体 jar `aha-desktop.jar` + 启动脚本），
+> 不再有 `lib/` 与 `bin/`。`bin\AhaDesktop.*` / `bin/AhaDesktop.sh` 在源码根运行时，
+> 若同目录（或上一级）找不到 `aha-desktop.jar`，会自动挑本平台的 `Dist/aha-desktop-*.zip`
+> 解压后再启动；无需先手动解压。
 
 ## 2. 桌面端（JVM 便携包）
 
@@ -65,21 +70,53 @@ python3 Script\Python\DesktopDistExtract.py --dry-run
 python3 Script\Python\DesktopDistExtract.py --no-prune
 ```
 
-效果：把 zip 里的 `lib/`、`bin/` 铺进 `Dist/`，清掉上一版桌面端独占 jar
-（`aha-desktop-*.jar` / `javafx-*.jar`），完成后 `Dist\bin\AhaDesktop.bat` 即可用。
-共享依赖与 `aha-cli-*.jar` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
+效果：把 zip 里**平铺**的 `aha-desktop.jar` 与两个启动脚本铺进 `Dist/`，并清掉上一版
+（`lib/` + `bin/` 形态）的遗留文件（`lib/aha-desktop-*.jar`、`lib/javafx-*.jar`、
+`bin/AhaDesktop.*`），完成后 `Dist\AhaDesktop.bat` 即可用。
+属于 CLI 的 `aha-cli.jar` 与 `Aha.*` 不受影响，所以 `Dist/` 同时保留 CLI 用法。
 
 ### 2.3 启动桌面端
 
 ```bat
-Dist\bin\AhaDesktop.bat          :: 用 Dist\lib（需先执行 2.2 或 2.1+解压）
-bin\AhaDesktop.bat               :: 源码根：没有 lib 时自动解压便携包
+Dist\AhaDesktop.bat              :: 跑 Dist\aha-desktop.jar（需先执行 2.2 或 2.1+解压）
+bin\AhaDesktop.bat               :: 源码根：找不到单体 jar 时自动解压便携包
 ```
 
 ```bash
-./Dist/bin/AhaDesktop.sh
+./Dist/AhaDesktop.sh
 ./bin/AhaDesktop.sh
 ```
+
+### 2.4 从发布页一键取件（dev 线，Windows）
+
+```bat
+Dist\UpdateDesktopJvm.cmd                :: 取下最新的桌面端 JVM 便携包（dev 线的 V<版本>-aha-jvm）
+Dist\UpdateDesktopJvm.cmd -List          :: 列出最近几版
+Dist\UpdateDesktopJvm.cmd -Jdk 27        :: 取 JDK 27 变体
+Dist\UpdateDesktopJvm.cmd -DryRun        :: 只预览：会下载哪个包、解压到哪里
+```
+
+```bat
+Dist\UpdateDesktopJvm.cmd -NoInstall     :: 只解压到版本目录，不平铺到 Dist\
+Dist\UpdateDesktopJvm.cmd -KeepExtract   :: 平铺后保留暂存目录（默认自动清掉）
+```
+
+落地（**平铺到落地根**；暂存目录用完即清）：
+
+| 位置 | 内容 |
+|---|---|
+| `Dist\`（落地根） | 该版的**去版本号**入口一份：`aha-desktop.jar`、`AhaDesktop.bat`、`AhaDesktop.sh`（**复制**，不是移动）|
+| `Dist\desktop-jvm\` | 解压出来的**暂存**目录（含历次取件留下的旧版本子目录）。平铺成功后**整个删掉** —— 同一个包在 `Dist/` 里存两遍没意义（桌面端 25 MB、CLI 55 MB），旧版本子目录更是纯占地；要保留加 `-KeepExtract` |
+
+于是「当前装的是哪一版」记在 `Dist\.aha-desktop-jvm.json`，而命令**与版本无关**：
+`Dist\AhaDesktop.bat`（或 `java -jar Dist\aha-desktop.jar`）永远指向最近一次取件的那一版。
+
+> 与 `UpdateDesktopNative.cmd` 的区别：那个取的是**原生包**（一个 exe，**覆盖安装**）；
+> JVM 包是「**单体 jar + 启动脚本**」，做法是「解压到暂存目录 → 把入口**复制**到落地根
+> → 删掉暂存目录」，不存在「替换某个文件」。
+> 另外：**最新一版缺本平台资产时脚本会报错，不会悄悄给一个更旧的包** ——
+> 需要退旧版请显式用 `-AllowOlder` 或 `-Tag`。
+> 而**旧形态的包**（包根没有单体 jar、只有 `bin/` + `lib/`）**平铺不了**，脚本会明确提示。
 
 ## 3. CLI（JVM 发行目录）
 
@@ -90,16 +127,16 @@ mvnw.cmd -pl aha-cli -am package -DskipTests     :: 只出 CLI
 mvnw.cmd clean package                           :: 全量（CLI + 桌面端 zip）
 ```
 
-产物：`Dist\bin\` + `Dist\lib\`（JPMS 模块路径）。
+产物：`Dist\aha-cli.jar` + `Dist\AhaCli.bat` / `Dist\AhaCli.sh`（**包根平铺**，无 `bin/`、无 `lib/`）。
 
 ### 3.2 启动 / 运行
 
 ```bat
-Dist\bin\Aha.bat                    :: 进入对话（等价 aha chat）
-Dist\bin\Aha.bat run 用一句话介绍 AHA
-Dist\bin\Aha.bat provider list
-Dist\bin\Aha.bat tool list
-Dist\bin\Aha.bat version
+Dist\AhaCli.bat                     :: 进入对话（等价 aha chat）
+Dist\AhaCli.bat run 用一句话介绍 AHA
+Dist\AhaCli.bat provider list
+Dist\AhaCli.bat tool list
+Dist\AhaCli.bat version
 ```
 
 从源码直接跑（不用先出包）：
@@ -110,11 +147,34 @@ mvnw.cmd -pl aha-cli exec:java -Dexec.args="version"
 mvnw.cmd -pl aha-cli exec:java -Dexec.args="provider list"
 ```
 
+### 3.3 从发布页一键取件（dev 线，Windows）
+
+```bat
+Dist\UpdateCliJvm.cmd                :: 取下最新的 CLI JVM 便携包（**平台无关**，只有一份）
+Dist\UpdateCliJvm.cmd -Jdk 27        :: 取 JDK 27 变体
+Dist\UpdateCliJvm.cmd -List          :: 列出最近几版
+```
+
+落地：`Dist\aha-cli.jar` + `Dist\AhaCli.sh` / `Dist\AhaCli.bat`（与桌面端同一机制：
+先解压到暂存目录用于取入口，平铺成功后把 `Dist\cli-jvm\` 清掉；`-KeepExtract` 可保留）。
+
 ## 4. 原生镜像（试验性，免 JDK）
+
+> Windows 一键入口是 **PowerShell 原生实现**（`Dist\UpdateNative.ps1`，由 `Dist\Update*.cmd` 调用），
+> **不需要 Python**；POSIX 用 Python 版（`Script/Python/{Desktop,Cli}NativeVersionUpdate.py`，功能更多：
+> 多源发现 / 断点续传）。两者的命名契约由 `bin/CheckScripts.py` 断言一致。
 
 ### 4.1 桌面端原生镜像
 
-**取件（脚本，推荐）**：
+**取件（一键，Windows 双击）**：
+
+```bat
+Dist\UpdateDesktopNative.cmd            :: 双击即可（PowerShell 实现，不需要 Python）
+Dist\UpdateDesktopNative.cmd -List      :: 列出最近版本（也可写 --list）
+Dist\UpdateDesktopNative.cmd -DryRun    :: 只预览（也可写 --dry-run）
+```
+
+**取件（脚本）**：
 
 ```bat
 python3 Script\Python\DesktopNativeVersionUpdate.py            :: 下载并装到 Dist\aha-desktop-native.exe
@@ -154,7 +214,17 @@ Dist\aha-desktop-native.exe                                     :: 双击或命�
 ### 4.2 CLI 原生镜像
 
 发布页资产名为 `AHA-Cli-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`，包内是可执行文件
-`aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。**目前没有自动取件脚本，需手动下载解压**：
+`aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。
+
+**取件（一键，Windows 双击 / 脚本）**（与桌面端同构；`-List` / `-DryRun` / `-Tag` / `-Jdk` 都可用）：
+
+```bat
+Dist\UpdateCliNative.cmd                                        :: 双击：装到 Dist\aha-cli-native.exe
+python3 Script\Python\CliNativeVersionUpdate.py                 :: 等价命令行
+python3 Script\Python\CliNativeVersionUpdate.py --list          :: 看有哪些版本
+```
+
+**取件（手动：下载 zip → 解压出 exe → 放到 `Dist/`）**：
 
 ```bat
 :: Windows
@@ -167,7 +237,7 @@ unzip -j -o '<zip>' aha-cli-native -d Dist/
 chmod +x Dist/aha-cli-native
 ```
 
-**启动**（子命令与 `Dist\bin\Aha.bat` 一致，无需 JDK）：
+**启动**（子命令与 `Dist\AhaCli.bat` 一致，无需 JDK）：
 
 ```bat
 Dist\aha-cli-native.exe                                         :: 进入对话（等价 aha chat）
@@ -208,18 +278,90 @@ python3 bin\CheckChanged.py --dry-run  :: 只打印计划
 
 ```
 Dist/
-├── bin/                    Aha.bat / Aha.sh、AhaDesktop.bat / AhaDesktop.sh
-├── lib/                    JPMS 模块路径（CLI 与桌面端共用）
+├── aha-cli.jar             CLI 单体 jar（自 issue #218 起：包根平铺，名字不带版本号）
+├── AhaCli.bat / .sh        CLI 启动脚本（平铺在 Dist 根，不再有 bin\ 子目录）
+├── aha-desktop.jar         桌面端单体 jar（解压 / 取件后落在这里；脚本只认这个名字，与版本无关）
+├── AhaDesktop.bat / .sh    桌面端启动脚本（同上，平铺在 Dist 根，不再有 bin\ 子目录）
+├── desktop-jvm/            取件时的**暂存**目录（平铺成功后自动删掉，见 §2.4）
+├── cli-jvm/                CLI 取件时的暂存目录（同上；`-KeepExtract` 才留）
+├── .aha-desktop-jvm.json   桌面端 JVM 取件状态（当前是哪一版、平铺了哪些入口）
+├── .aha-cli-jvm.json       CLI JVM 取件状态（同上）
+├── .aha-snapshot.json      JVM **快照** 的取件状态（见 §7）
 ├── aha-desktop-<版本>-<平台>.zip      桌面端便携包
 ├── aha-desktop-native-*.zip           桌面端原生镜像包
 ├── aha-desktop-native.exe             桌面端原生镜像（更新脚本或手动解压落在这里）
-├── aha-cli-native.exe                 CLI 原生镜像（手动从发布页 zip 取出）
+├── aha-cli-native.exe                 CLI 原生镜像（一键脚本或手动从发布页取出）
+├── UpdateDesktopNative.cmd            一键更新桌面端原生镜像（双击；调同目录的 UpdateNative.ps1，无需 Python）
+├── UpdateCliNative.cmd                一键更新 CLI 原生镜像（同上）
+├── UpdateNative.ps1                  上述两个入口的 PowerShell 实现（UTF-8 with BOM）
+├── UpdateDesktopJvm.cmd               一键取件桌面端 JVM 便携包（dev 线；调同目录的 UpdateJvm.ps1）
+├── UpdateCliJvm.cmd                   一键取件 CLI JVM 便携包（dev 线；同上）
+├── UpdateJvm.ps1                     上述两个入口的 PowerShell 实现（UTF-8 with BOM）
+├── UpdateInstall.ps1                 「把包铺到落地根」的安装步骤（由 UpdateSnapshot.ps1 点源；可离线自测）
+├── UpdateDesktopJvmSnapshot.cmd       一键取件桌面端 JVM **快照**（= UpdateSnapshot.ps1 -Kind desktop-jvm）
+├── UpdateCliJvmSnapshot.cmd           一键取件 CLI JVM **快照**（= -Kind cli-jvm）
 ├── README.md               项目 README（由 CLI assembly 复制）
 └── README.commands.md      本速查（由 DesktopDistExtract.py 刷新）
 ```
 
-- `Dist/` 是**本地构建输出目录**，已在 `.gitignore` 中忽略；其中 `.md`、`bin/*`、`lib/*.jar` 会被
+- `Dist/` 是**本地构建输出目录**，已在 `.gitignore` 中忽略；其中 `.md`、`aha-cli.jar`、以及**旧形态遗留**的 `bin/*`、`lib/*.jar` 会被
   `mvnw clean` 删掉（见 `aha-cli/pom.xml` 的 `maven-clean-plugin` 配置），由 `mvnw clean package`
   重建；本速查会随之一并重新写回，不需要手动维护。
 - 依赖升级后旧 jar 可能残留，JPMS 下同名模块出现两个版本会直接 `FindException`：
   桌面端独占 jar 由 `DesktopDistExtract.py` 清理，CLI 侧用 `mvnw clean package` 重新生成。
+
+## 7. 快照包（PR 试包）
+
+**快照包 = 给尚未合并的 PR 出的试包**（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)，
+实现见 #171 / #172 / #173 / #174）。它们挂在发布页的 pre-release 上，tag 形如
+`V0.1.3.00184.10141900-AHA-Cli-JVM-SNAPSHOT`，默认保留 **7 天**（PR 关闭或合并后由清理工作流删除）。
+
+**自测留痕（合并前的可选检查，`snapshot-assert`）**：在 PR 里发评论即可打标（**默认启用、默认不卡点**）：
+
+```text
+/snapshot-assert <版本> <平台> [jdk27] [+model]        :: 必测清单通过（打 success）——平台 Win / MacOS / Ubuntu
+/snapshot-assert-fail <版本> <平台> [jdk27] <原因>    :: 自测失败（打 failure，失败也要可见）
+```
+
+必测清单（A1–A5 / B1–B4 / C1–C3）**一律 0 token**：工具直调 + 配置/本地命令 + 开窗观感即可，
+不含任何模型往返；需要真实 provider 请求的动作是**可选**（命令末尾加 `+model` 声明）。
+清单原文与口径见 `Docs/DevSpec/ReleaseProcess.md` §2.2；**完整用法与端到端示例**见 `Docs/Guide/SnapshotSelfTestGuide.md`。
+
+**取件（一键，Windows 双击 / 脚本）**：
+
+```bat
+Dist\UpdateDesktopNativeSnapshot.cmd           :: 原生桌面包快照：取最近一次（自动挑本机平台）
+Dist\UpdateCliNativeSnapshot.cmd               :: 原生 CLI 包快照：取最近一次
+Dist\UpdateDesktopNativeSnapshot.cmd -List     :: 列出快照（版本号 / 目标 / 剩余天数）
+Dist\UpdateDesktopNativeSnapshot.cmd -Pr 188   :: 取某个 PR 的快照
+Dist\UpdateDesktopNativeSnapshot.cmd -DryRun   :: 只预览：会下载哪个包、解压到哪里
+Dist\UpdateDesktopNativeSnapshot.cmd -Force    :: 已取过同一版也重新下载
+Dist\UpdateDesktopNativeSnapshot.cmd -NoInstall :: 只取件、不安装（原生桌面端默认会替换 exe）
+Dist\UpdateDesktopJvmSnapshot.cmd           :: JVM 桌面包快照：取最近一次（= -Kind desktop-jvm）
+Dist\UpdateCliJvmSnapshot.cmd               :: JVM CLI 包快照：取最近一次（= -Kind cli-jvm）
+Dist\UpdateDesktopJvmSnapshot.cmd -NoInstall :: 只取件：只解压到 Dist\<资产名>\，不平铺到 Dist\ 根
+Dist\UpdateDesktopJvmSnapshot.cmd -KeepExtract :: 平铺后保留解压目录（默认会清掉；zip 始终保留）
+Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种目标共用，引擎直调）
+```
+
+特点：
+
+- **零配置**：不需要 `GH_TOKEN`、不需要 `gh`、不需要 Python（全程 PowerShell / .NET）；
+- **取完就能就地启动**（issue #244）：JVM 便携包（桌面端 / CLI）解压后把**包根内容平铺到 `Dist\`** ——
+  `Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`（CLI 是 `Dist\aha-cli.jar`、`Dist\AhaCli.bat`）直接双击就能跑，
+  与 `Dist\UpdateDesktopJvm.cmd`（正式版取件）同一口径；**本机平台的原生包**则把包里的 exe
+  替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，下载前先探测占用）。
+  两种都**先备份被覆盖的既有文件**为 `<名字>.bak`，铺好之后解压目录会被清掉（`-KeepExtract` 可保留）；
+  `-NoInstall` = 只取件：只解压到 `Dist\<资产名>\`，不平铺、不动任何既有文件；
+- **独立状态**：记在 `Dist\.aha-snapshot.json`，不读写 `.aha-desktop-native.json` / `.aha-cli-native.json`；
+- 平台自动识别：两条线**共用一套平台词**，取 `windows-amd64`（ARM64 机器取 `windows-arm64`）。
+
+**让 PR 出快照包**（两种方式）：
+
+| 方式 | 用法 | 特点 |
+|---|---|---|
+| 触发标签 | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | **粘性**：标签在则每次 push 重出；移除即停 |
+| PR 评论命令 | `/snapshot <target> [os ...]` | **一次性**；大小写不敏感 |
+
+平台收窄：再打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu`（**不能单独使用**）。
+只改 `Docs/**` 的 PR 不会出包（属 B 组），除非**新打**触发标签（显式请求）。

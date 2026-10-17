@@ -57,11 +57,22 @@ public final class Palette {
     /** 分隔线。 */
     public static String BORDER = "#3A3A3A";
 
-    /** 主题底色（{@code -fx-base}）。 */
+    /** 主题底色（{@code -fx-base}）：页面 / 对话框的底。 */
     public static String BASE = "#1E1E1E";
 
-    /** 控件内部底色（{@code -fx-control-inner-background}）。 */
-    public static String CONTROL_INNER = "#252526";
+    /**
+     * **内容面**底色（输入框 / 文本域 / 列表 / 滚动容器），即 {@code -fx-control-inner-background}。
+     *
+     * <p>口径（issue #153）：内容面**与 {@link #BASE} 同色**。暗色下曾用 {@code #252526}
+     * （比页底亮一档），而「亮一档」在**深色背景上被放大感知**（两主题的感知差其实相当：
+     * 暗色 ΔL*=3.45、亮色 ΔL*=3.81，但深底上肉眼更容易看出），看起来像「另一套主题」。</p>
+     *
+     * <p>可点 / 浮层的「抬起控件」改用 {@link #RAISED_BACKGROUND} 保留层次。</p>
+     */
+    public static String CONTROL_INNER = "#1E1E1E";
+
+    /** 抬起控件底色（按钮 / 菜单 / 下拉弹层）：比页底亮一档，表达「可点 / 浮层」。 */
+    public static String RAISED_BACKGROUND = "#252526";
 
     /** 悬浮态底色（按钮 / 列表项 hover）。 */
     public static String HOVER_BACKGROUND = "#2D2D2D";
@@ -166,7 +177,8 @@ public final class Palette {
         FOCUS_BORDER = "#AF87FF";
         BORDER = "#3A3A3A";
         BASE = "#1E1E1E";
-        CONTROL_INNER = "#252526";
+        CONTROL_INNER = "#1E1E1E";
+        RAISED_BACKGROUND = "#252526";
         HOVER_BACKGROUND = "#2D2D2D";
         SCROLL_TRACK = "#1E1E1E";
         SCROLL_THUMB = "#4A4A4A";
@@ -194,6 +206,7 @@ public final class Palette {
         BORDER = "#C8C8C8";
         BASE = "#F4F4F4";
         CONTROL_INNER = "#FFFFFF";
+        RAISED_BACKGROUND = "#FFFFFF";
         HOVER_BACKGROUND = "#E4E4E4";
         SCROLL_TRACK = "#F0F0F0";
         SCROLL_THUMB = "#B8B8B8";

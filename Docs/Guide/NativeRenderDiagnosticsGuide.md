@@ -1,9 +1,9 @@
 # 原生渲染诊断操作手册
 
-**文档版本**：v1.0.1
+**文档版本**：v1.0.3
 **状态**：冻结
 **生效日期**：2026-10-09
-**最后更新**：2026-10-09
+**最后更新**：2026-10-13
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -15,6 +15,8 @@
 |---|---|---|---|
 | v1.0.0 | 2026-10-09 | 初始版本：原生包与 JVM 模式各跑一次、收集渲染诊断并对照的步骤（issue #48） | @ACANX / CNXNC |
 | v1.0.1 | 2026-10-09 | 更正 JVM 模式的 `--add-opens` 目标：必须写应用具名模块 `com.acanx.module.aha.desktop`，`ALL-UNNAMED` 对 `--module` 启动无效（issue #48） | @ACANX / CNXNC |
+| v1.0.2 | 2026-10-13 | 新增「原生文本灰度默认」诊断行；补原生包临时缓解（`NativeRenderDefaults`）的开关与回退方式（issue #44 / #48） | @ACANX / CNXNC |
+| v1.0.3 | 2026-10-15 | 更正 `--add-opens` 口径：桌面端改为单体 jar（classpath）启动后脚本**不再带**该开关，未命名模块本就不受限；模块路径启动仍需它（issue #218）| @ACANX / CNXNC |
 
 ---
 
@@ -27,7 +29,7 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 本手册给出可照做的步骤；**拿到数据后怎么判**见第 6 节的判定表。
 
 - 跟踪载体：issue #48
-- 调研过程与证据链：[TS-202610-NativeFontRenderingDiff.md](../Troubleshooting/TS-202610-NativeFontRenderingDiff.md)
+- 调研过程与证据链：[TS-2610-030-Native-Font-Rendering-Diff.md](../Troubleshooting/TS-2610-030-Native-Font-Rendering-Diff.md)
 
 ## 2. 前提
 
@@ -42,7 +44,7 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 
 | 项目 | 做法 |
 |---|---|
-| 原生包 | 从 Releases 下载 `AHA-Desktop-Native-<版本>-windows-amd64-jdk25.zip` |
+| 原生包 | **双击 `Dist\UpdateDesktopNative.cmd`**（自动取最新本平台包，无需 Python）；也可从 Releases 手动下载 `AHA-Desktop-Native-<版本>-windows-amd64-jdk25.zip` |
 | 解压位置 | 任意目录，例如 `E:\AHA-Native\`（**记住它**，日志就在它下面） |
 | JVM 模式 | 源码检出的仓库根（`bin\AhaDesktop.bat` 会自动解压 `Dist\aha-desktop-*.zip`） |
 | 收集脚本 | 仓库内 `Script/Python/CollectRenderDiagnostics.py`（见 4.3） |
@@ -87,10 +89,11 @@ bin\AhaDesktop.bat
 
 同样等窗口出现、跑十几秒再关闭；日志在**仓库根**的 `Log\AHA.log`。
 
-> `AhaDesktop.bat` / `AhaDesktop.sh` 已经带上
-> `--add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop`。
-> 少了它，`com.sun.javafx.font` 这个**非导出包**会被模块系统拒绝，
-> 「字体实现工厂」一项只会打「不可用」，对照就**少一条关键证据**。
+> 桌面端自 issue #218 起以**单体 jar**（`java -jar aha-desktop.jar`）启动，启动脚本里
+> **不再需要** `--add-opens javafx.graphics/com.sun.javafx.font=…`：classpath 模式下应用与
+> JavaFX 同处**未命名模块**，`com.sun.javafx.font` 这个非导出包本来就不受限。
+> （若以模块路径 `--module-path lib` 启动，那条开关仍然必要，否则模块系统会拒绝该非导出包，
+> 「字体实现工厂」一项只会打「不可用」，对照就**少一条关键证据**。）
 >
 > 目标必须写**应用的具名模块**：桌面端以 `--module` 启动，应用是具名模块，
 > 写 `ALL-UNNAMED` 不会给它任何授权（真机上会打「不可用」）。
@@ -118,6 +121,7 @@ Prism pipeline init order: es2 sw
 Prism pipeline name = com.sun.prism.es2.ES2Pipeline
 Loaded library /libprism_es2.so from resource
 渲染诊断：属性 prism.order=<默认> prism.lcdtext=<默认> prism.text=<默认> glass.platform=<默认>
+渲染诊断：原生文本灰度默认 已按原生镜像默认写入 prism.lcdtext=false（灰度抗锯齿）；开关 aha.desktop.nativeTextGreyscale=<默认>
 渲染诊断：JavaFX 版本=25+29 JVM=Substrate VM
 渲染诊断：默认字体 族=System 名称=System Regular 字号=13.0 可用字体族数=11
 渲染诊断：字体实现工厂=com.sun.javafx.font.directwrite.DWFactory
@@ -144,6 +148,7 @@ Loaded library /libprism_es2.so from resource
 | 行 | 含义 |
 |---|---|
 | `渲染诊断：属性` | 我们**显式设置**的渲染属性；打 `<默认>` 表示没插手 |
+| `渲染诊断：原生文本灰度默认` | 本项目的**临时缓解措施**（`NativeRenderDefaults`）的判定结果，加 `aha.desktop.nativeTextGreyscale` 的实际取值——它回答的是「`prism.lcdtext` 这个值到底是谁设的」（issue #44 / #48） |
 | `渲染诊断：JavaFX 版本 / JVM` | 先排除「两边版本不同」这一干扰项 |
 | `渲染诊断：默认字体` | 族 / 全名 / 字号 / **可用字体族数**——字体枚举是否退化 |
 | `渲染诊断：字体实现工厂` | `WinFontFactory`（DirectWrite）/ `FTFactory`（内置 FreeType）等 |
@@ -157,13 +162,29 @@ Loaded library /libprism_es2.so from resource
 （诊断是 INFO 级）。
 
 **`字体实现工厂=不可用（InaccessibleObjectException）`？**
-JVM 模式下没带 `--add-opens`，或目标写错。用仓库的 `bin\AhaDesktop.bat`（已带），或自行加上
+只有以**模块路径**（`--module-path lib` + `--module com.acanx.module.aha.desktop/…`）启动时才
+需要，开关是
 `--add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop`
-——目标必须是**应用的具名模块**；写 `ALL-UNNAMED` 对以 `--module` 启动的具名模块无效。
-原生包里没有这层模块限制，正常能打出来。
+——目标必须是**应用的具名模块**；写 `ALL-UNNAMED` 对具名模块无效。
+桌面端自 issue #218 起默认以**单体 jar**（classpath）启动，启动脚本已不带该开关、也**不需要**它
+（应用与 JavaFX 同处未命名模块，非导出包本就不受限）；原生包同样没有这层模块限制。
 
 **日志文件很大？**
 不用管，脚本只取最后一次启动的片段。
+
+**原生包的文字还是发虚，或者我想回到 JVM 那样的锐利？**
+原生包默认改走了**灰度抗锯齿**（`NativeRenderDefaults` 的临时缓解，见 issue #44 / #48）；
+它与 JVM 模式的**次像素**渲染本来就不是同一观感——它消除的是「发虚、发糊」，不是「逐像素一致」。
+回退有两种粒度：
+
+```bat
+:: 只这一次运行退回 JavaFX 默认（Windows 即 LCD 次像素）
+aha-desktop-native.exe -Dprism.lcdtext=true
+:: 关掉本默认值本身（等同未打本改动）
+aha-desktop-native.exe -Daha.desktop.nativeTextGreyscale=false
+```
+
+当前到底生效在哪一档，看日志里的 `渲染诊断：原生文本灰度默认 …；开关 …=…` 一行即可。
 
 **`Log\AHA.log` 不存在？**
 先确认是从哪个目录启动的 —— 日志路径相对**启动目录**；再查是否设了 `AHA_HOME`

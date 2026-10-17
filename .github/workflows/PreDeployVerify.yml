@@ -1,0 +1,156 @@
+name: PreDeployVerify
+
+# 非阻塞的质量验证工作流（issue #166；2026-10-16 需求校准后重新实现）。
+#
+# ── 定位 ────────────────────────────────────────────────────────────────────
+# 把「**部署前应当自测、但还不宜直接进合并卡点**」的通用验证 / 断言集中到一处，
+# **每次 PR 推送后自动跑**，结论留痕（commit status + 幂等评论），**失败不拦合并**。
+#
+#    目标形态：PR 合并前的质量卡点（quality gate）
+#    当前阶段：时机不成熟 —— 验证项、稳定性、误报都还在演进，先「自动跑 + 不卡点」
+#    核心不变式：失败**不影响合并**，但**必须可见**（status + 留痕评论，不静默）
+#
+# ── 四条口径 ────────────────────────────────────────────────────────────────
+#   * 触发：`pull_request` 的 opened / synchronize / reopened（＝每次 PR 推送）+ `workflow_dispatch`。
+#     **刻意不在触发层加 `paths:` 过滤**：触发层丢事件是**静默**的（2026-10-15 实测 PR #203），
+#     而本条要求「每次 PR 推送都会自动跑」。
+#   * 非阻塞：**不进** `required status checks` ⇒ 缺它 / 失败都不影响合并。要卡点只需把下面
+#     `context=predeploy-verify` 加进分支保护 —— **机制本身不改**（升级路径，见 ReleaseProcess.md §2.3）。
+#   * 失败可见：无论验证结果如何，都打 status **并**留痕评论（`if: always()`），不做静默跳过。
+#   * 0 token：验证项全在本地进程里跑，不做任何模型往返（需要 provider 请求的动作不属本组）。
+#
+# ── 与常规 CI 的分工 ────────────────────────────────────────────────────────
+# **不替代**常规 CI：构建 / 单元测试 / 冒烟 / 静态门禁照旧由 `Build` 与 `Gate` 负责。
+# 这里只承载「应当自测、但还不敢卡点」的那一类 —— 目前是**真实产物上的 CLI 命令面端到端**
+# （见 `bin/PreDeployVerify.py` 的 V1–V6）。验证项可增删：加一项 = 加一个函数。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # 顶层 permissions 会**覆盖**仓库默认权限，漏一项就是 403（现有工作流注释里记着这个坑）
+  statuses: write      # 打 commit status（本工作流的结论载体）
+  # 写 PR 评论走的是 issues 接口（`POST /repos/{}/issues/{}/comments`），
+  # 但**只给 `issues: write` 实测是 403**：GITHUB_TOKEN 对 **PR 对话**的写权限落在
+  # pull-requests 作用域上。2026-10-16 实测：本工作流第一次运行 status 成功、评论 403
+  # （`Resource not accessible by integration`）；补齐后评论正常。
+  pull-requests: write
+  issues: write
+
+concurrency:
+  # 同一 PR 连续 push 时取消上一轮：验证的是**当前 head**，旧 run 的结论没有意义。
+  # （本工作流没有「显式请求」类的人工入口，所以不需要按事件类别分组。）
+  group: predeploy-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  predeploy-verify:
+    name: 部署前验证（非阻塞）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # 隔离配置目录由 `bin/PreDeployVerify.py` 自己在子进程里设（它建临时目录）——
+      # **不能**写在这里：job 级 `env` 不允许 `runner` 上下文（只允许 github / inputs /
+      # matrix / needs / secrets / strategy / vars），写了这个工作流文件会被判为无效。
+      MARKER: <!-- predeploy-verify -->
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: 验证脚本的自检（脚本自带断言，不需要产物）
+        # 与 static-guards 里跑 `ProjectVersion.py --self-test` 同一口径：
+        # 报告渲染 / 编号唯一性这类「改坏了也照样跑」的地方，先钉住
+        run: python3 bin/PreDeployVerify.py --self-test
+
+      - name: 构建 CLI 产物（验证跑在**真实产物**上，不是源码）
+        # 走统一入口：清失败标记 + 只对瞬时故障重试
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B -pl aha-cli -am package
+            -DskipTests -Djacoco.skip=true
+
+      - name: 跑部署前验证
+        id: verify
+        # 验证未通过不能带走后面的「打标 + 留痕」——结论必须先落下来
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python3 bin/PreDeployVerify.py \
+            --jar Dist/aha-cli.jar \
+            --out "${RUNNER_TEMP}/predeploy.md" \
+            --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: 打 commit status（context=predeploy-verify）
+        # 失败也要打 —— 而且打的是 failure，不是「什么都不打」
+        if: always()
+        env:
+          OUTCOME: ${{ steps.verify.outcome }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${OUTCOME}" = "success" ]; then
+            state=success
+            desc="部署前验证通过（0 token）"
+          else
+            state=failure
+            desc="部署前验证未通过（详见 PR 评论）"
+          fi
+          gh api -X POST "repos/${REPO}/statuses/${SHA}" \
+            -f state="${state}" \
+            -f context=predeploy-verify \
+            -f description="${desc}" \
+            -f target_url="https://github.com/${REPO}/actions/runs/${{ github.run_id }}" >/dev/null
+          echo "已打 status：${state} / ${desc} / ${SHA}"
+
+      - name: 幂等回写留痕评论（对象 / 结论 / 执行人 / 时间 / 提交）
+        # 只在 PR 上留痕；手动触发没有 PR，结论看 Job Summary
+        if: always() && github.event_name == 'pull_request'
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          OUTCOME: ${{ steps.verify.outcome }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/predeploy.md"
+          body="${RUNNER_TEMP}/predeploy-body.md"
+          {
+            echo "${MARKER}"
+            echo "### 部署前验证（非阻塞）"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 对象 | 本 PR 的 CLI 构建产物（\`Dist/aha-cli.jar\`）|"
+            echo "| 执行人 / 时间 | @${ACTOR} / $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M %z') |"
+            echo "| 对应提交 | \`${SHA}\` |"
+            echo "| 触发 | \`${EVENT}\`（step outcome=\`${OUTCOME}\`）|"
+            echo
+            if [ -s "${report}" ]; then
+              cat "${report}"
+            else
+              echo "（验证未执行：构建或前置步骤未成功，step outcome=\`${OUTCOME}\`）"
+            fi
+            echo
+            echo '> 本工作流**不进**必需检查 —— 失败**不拦合并**，但必须被看见。'
+            echo '> 要卡点由 ACANX 把 `predeploy-verify` 加进分支保护（见 `ReleaseProcess.md` §2.3）。'
+          } > "${body}"
+          python3 .github/Python/SnapshotComment.py \
+            --repo "${REPO}" --pr "${PR}" --marker "${MARKER}" < "${body}"
+
+      - name: 未过时让作业变红（非必需检查，不影响合并）
+        # 「失败必须可见」的最后一道：status 与评论已落下，这里只负责让这次运行本身是红的
+        if: always() && steps.verify.outcome != 'success'
+        run: |
+          echo "::error::部署前验证未通过 —— 这是**非阻塞**检查，不拦合并；结论见 Job Summary 与 PR 评论。"
+          exit 1

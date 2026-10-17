@@ -63,7 +63,10 @@ jobs:
             echo "pr=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # 注意命名空间：findtext('version') 会静默返回 None，版本号会变空
+          # 注意命名空间：findtext('version') 会静默返回 None，版本号会变空。
+          # 这段内联解析是**给独立的下游项目**用的（它们没有 AHA 自己的脚本）。
+          # AHA 本仓库的流水线已收敛为唯一入口：.github/Python/ProjectVersion.py --resolve
+          # （issue #94）；在 AHA 仓库里不要再复制这段解析。
           base=$(python3 -c "import xml.etree.ElementTree as ET; r = ET.parse('pom.xml').getroot(); print(next(e.text for e in r if e.tag.endswith('version')).strip())")
           pr="${INPUT_PR:-}"
           if [ -z "$pr" ]; then

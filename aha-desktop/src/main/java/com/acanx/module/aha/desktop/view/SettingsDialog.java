@@ -1,30 +1,42 @@
 package com.acanx.module.aha.desktop.view;
 
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
 
+import java.io.IOException;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * 设置面板：主题、字号、默认模型入口（{@code GUIDesign.md} 第 4.5 节「⚙ 设置」）。
+ * 设置面板：两个 tab ——「界面」（主题 / 字号 / 默认模型）与「升级」（issue #51 §3.1）。
  *
  * <p>改动**立即生效并立即保存**：设置面板里没有「应用」按钮——用户改完主题看不到变化，
  * 还得去找一个确定键，是没必要的摩擦。存不下来只记日志，不影响本次使用。</p>
  *
  * <p>门槛上的取舍：设计稿里的「记忆策略」「身份文件查看 / 编辑」还没有对应实现，
- * 因此**不放进面板**（放一个点了没反应的项比少一个功能更糟）。这里只写真实可用的三块。</p>
+ * 因此**不放进面板**（放一个点了没反应的项比少一个功能更糟）。这里只写真实可用的几块。</p>
+ *
+ * <p>升级 tab 的内容由 {@link UpgradePane} 程序化构建：那条状态机（检查 → 列表 → 确认 →
+ * 下载 → 校验 → 暂存 → 换装）有自己的类，本对话框只负责把它放进 tab。</p>
  *
  * @since 0.2.0
  */
@@ -39,6 +51,19 @@ public final class SettingsDialog {
     /** 默认模型入口 id。 */
     public static final String MODEL_ID = "aha.settings.model";
 
+    /** 「界面」tab 的 id（契约见 issue #51 §3.1）。 */
+    public static final String INTERFACE_TAB_ID = "aha.settings.tab.interface";
+
+    /** 承载两个 tab 的 TabPane 的 id（冒烟测试按它取 tab 列表：tab 不是节点，不能用节点查找）。 */
+    public static final String TABS_ID = "aha.settings.tabs";
+
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.SETTINGS_DIALOG_FXML;
+
+    /** 辅助说明的样式（设置名与底部三段说明）。 */
+
+    /** 每行设置下方那行小字（字号略小）。 */
+
     private final DesktopSettings settings;
 
     private final Supplier<String> configSummary;
@@ -49,21 +74,93 @@ public final class SettingsDialog {
 
     private final java.util.function.IntConsumer onFontSize;
 
+    /** 升级 tab 的内容（独立类，避免本对话框膨胀）。 */
+    private final UpgradePane upgradePane;
+
+    // ── FXML 注入的部件 ──────────────────────────────────────────────────────
+
+    @FXML
+    private VBox root;
+
+    @FXML
+    private TabPane tabs;
+
+    @FXML
+    private Tab interfaceTab;
+
+    @FXML
+    private Tab upgradeTab;
+
+    @FXML
+    private GridPane grid;
+
+    /** 左侧设置名（原来由 `row(...)` 逐行套 MUTED 色）。 */
+    @FXML
+    private Label themeKey;
+
+    @FXML
+    private Label fontKey;
+
+    @FXML
+    private Label modelKey;
+
+    /** 右侧「控件 + 说明」那一列（原来逐行 setHgrow）。 */
+    @FXML
+    private VBox themeBox;
+
+    @FXML
+    private VBox fontBox;
+
+    @FXML
+    private VBox modelBox;
+
+    @FXML
+    private ComboBox<Theme> theme;
+
+    @FXML
+    private ComboBox<Integer> font;
+
+    @FXML
+    private HBox modelRow;
+
+    @FXML
+    private Button model;
+
+    @FXML
+    private Label themeNote;
+
+    @FXML
+    private Label fontNote;
+
+    @FXML
+    private Label modelNote;
+
+    @FXML
+    private Label pathLabel;
+
+    @FXML
+    private Label configLabel;
+
+    @FXML
+    private Label todoLabel;
+
     /**
      * @param settings           设置（读写并持久化）
      * @param configSummary      配置摘要（显示当前配置来源）
      * @param openProviderDialog 打开供应商配置的动作（「默认模型」入口）
      * @param onTheme            主题变更回调
      * @param onFontSize         字号变更回调
+     * @param upgradePane        升级 tab 的内容（{@code null} 时该 tab 显示可读说明，不留空页）
      */
     public SettingsDialog(DesktopSettings settings, Supplier<String> configSummary,
                           Runnable openProviderDialog, Consumer<Theme> onTheme,
-                          java.util.function.IntConsumer onFontSize) {
+                          java.util.function.IntConsumer onFontSize, UpgradePane upgradePane) {
         this.settings = settings;
         this.configSummary = configSummary == null ? () -> "" : configSummary;
         this.openProviderDialog = openProviderDialog == null ? () -> { } : openProviderDialog;
         this.onTheme = onTheme == null ? theme -> { } : onTheme;
         this.onFontSize = onFontSize == null ? size -> { } : onFontSize;
+        this.upgradePane = upgradePane;
     }
 
     /**
@@ -79,8 +176,114 @@ public final class SettingsDialog {
                 new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE));
         ThemePaint.dialog(dialog.getDialogPane());
         dialog.getDialogPane().setPrefWidth(620);
+        dialog.getDialogPane().setMinWidth(480);
+        dialog.getDialogPane().setMinHeight(360);
+        // 宽高可调（2026-10-16 真机反馈）：`Dialog` 默认**不可缩放** —— 版本列表一长，就只能
+        // 在那个固定的小块里滚动，看不全也拖不动。放开缩放还不够：默认的 max 跟着 pref 走
+        // （窗户拉大了内容不变），所以同时把根 VBox 与 TabPane 的 max 放开、让 TabPane 在根里
+        // 吃掉多余高度；Tab 内容（`UpgradePane` 的 VBox）本来就把版本列表 vgrow 到 ALWAYS，
+        // 于是「拉大窗口 ⇒ 版本列表跟着长」。
+        dialog.setResizable(true);
+        Region content = (Region) loadView();
+        content.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        tabs.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(content);
+        return dialog;
+    }
 
-        ComboBox<Theme> theme = new ComboBox<>();
+    /**
+     * 打开设置面板。
+     *
+     * @param owner 父窗口，可为 {@code null}
+     */
+    public void show(Window owner) {
+        Dialog<ButtonType> dialog = build();
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+        dialog.showAndWait();
+    }
+
+    /**
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>装载失败时打 ASCII 标记并显式 flush——标记必须印在**真的会执行到**的 catch 里
+     * （TS-2610-032 第三轮）。</p>
+     *
+     * @return 内容根节点
+     */
+    private Parent loadView() {
+        FXMLLoader loader = new FXMLLoader(SettingsDialog.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        Parent loaded;
+        try {
+            loaded = loader.load();
+        } catch (IOException e) {
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            throw new IllegalStateException("设置面板界面装载失败：" + FXML_VIEW, e);
+        }
+        wireView();
+        wireTabs();
+        return loaded;
+    }
+
+    /** 两个 tab：id 按 §3.1 的契约设好；升级 tab 的内容交给 {@link UpgradePane}。 */
+    private void wireTabs() {
+        // 关闭按钮的可见性在 **Java 里设，不写在 FXML 里**：原生镜像下 FXMLLoader 转换枚举
+        // 属性值走反射（BeanAdapter），未登记的类型会抛
+        // `Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy` —— 2026-10-16
+        // 真机自测踩到（点「设置」直接打不开），而 JVM 版与 CI 冒烟全绿（JVM 反射可用）。
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        interfaceTab.setId(INTERFACE_TAB_ID);
+        upgradeTab.setId(UpgradePane.ID_TAB);
+        if (upgradePane == null) {
+            upgradeTab.setContent(new Label("升级面板未接线（内置说明：可在 ~/.aha/update/ 查看日志）。"));
+        } else {
+            upgradeTab.setContent(upgradePane.build());
+        }
+    }
+
+    /**
+     * 打开设置并**直接切到升级 tab、自动检查一次**（帮助菜单「检查更新」入口，§3.1）。
+     *
+     * @param owner 父窗口，可为 {@code null}
+     */
+    public void showUpgradeTab(Window owner) {
+        Dialog<ButtonType> dialog = build();
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+        tabs.getSelectionModel().select(upgradeTab);
+        if (upgradePane != null) {
+            upgradePane.checkNow();
+        }
+        dialog.showAndWait();
+    }
+
+    /** 把注入的节点接起来：样式、选项、监听与文案。 */
+    private void wireView() {
+        root.setSpacing(ShellLayout.GAP);
+        root.setPadding(new Insets(4));
+
+        grid.setHgap(ShellLayout.GAP);
+        grid.setVgap(ShellLayout.GAP);
+        // 三行都是「左列设置名 + 右列 VBox(控件, 说明)」；右列吃掉剩余宽度。
+        // 每一列都要显式套色：不能只靠根节点的 looked-up colors，否则暗色下对比度不足
+        // （issue #44 / #49 的老症状）。
+        for (Label key : List.of(themeKey, fontKey, modelKey)) {
+            ThemePaint.themedForever(key, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+        }
+        for (VBox box : List.of(themeBox, fontBox, modelBox)) {
+            box.setSpacing(2);
+            GridPane.setHgrow(box, Priority.ALWAYS);
+        }
+        for (Label note : List.of(themeNote, fontNote, modelNote)) {
+            ThemePaint.themedForever(note, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
+        }
+        modelRow.setAlignment(Pos.CENTER_LEFT);
+
         theme.setId(THEME_ID);
         theme.getItems().setAll(Theme.values());
         theme.setValue(settings.theme());
@@ -101,7 +304,6 @@ public final class SettingsDialog {
             onTheme.accept(now);
         });
 
-        ComboBox<Integer> font = new ComboBox<>();
         font.setId(FONT_ID);
         for (int size = DesktopSettings.MIN_FONT_SIZE;
                 size <= DesktopSettings.MAX_FONT_SIZE; size++) {
@@ -117,64 +319,22 @@ public final class SettingsDialog {
             onFontSize.accept(now);
         });
 
-        Button model = new Button("打开供应商配置…");
         model.setId(MODEL_ID);
         model.setOnAction(event -> openProviderDialog.run());
 
-        GridPane grid = new GridPane();
-        grid.setHgap(ShellLayout.GAP);
-        grid.setVgap(ShellLayout.GAP);
-        int row = 0;
-        row = row(grid, row, "主题", theme,
-                "「跟随系统」按操作系统的浅色 / 深色偏好解析");
-        row = row(grid, row, "字号", font, "默认 13px");
-        HBox modelRow = new HBox(model);
-        modelRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        row = row(grid, row, "默认模型", modelRow, "供应商与模型在同一个对话框里改");
-
-        Label config = new Label(configSummary.get());
-        config.setWrapText(true);
-        config.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        Label todo = new Label("记忆策略、身份文件查看 / 编辑：0.2 后续"
-                + "（现在改身份请直接编辑 ~/.aha/AHA.md 或项目的 AHA.md）");
-        todo.setWrapText(true);
-        todo.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-
-        Label path = new Label(settings.path() == null
+        pathLabel.setText(settings.path() == null
                 ? "设置文件：不可用（未取到用户目录）"
                 : "设置文件：" + settings.path());
-        path.setWrapText(true);
-        path.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
+        pathLabel.setWrapText(true);
+        ThemePaint.themedForever(pathLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
-        VBox content = new VBox(ShellLayout.GAP, grid, path, config, todo);
-        content.setPadding(new Insets(4));
-        dialog.getDialogPane().setContent(content);
-        return dialog;
-    }
+        configLabel.setText(configSummary.get());
+        configLabel.setWrapText(true);
+        ThemePaint.themedForever(configLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
 
-    /**
-     * 打开设置面板。
-     *
-     * @param owner 父窗口，可为 {@code null}
-     */
-    public void show(Window owner) {
-        Dialog<ButtonType> dialog = build();
-        if (owner != null) {
-            dialog.initOwner(owner);
-        }
-        dialog.showAndWait();
-    }
-
-    private static int row(GridPane grid, int index, String label, javafx.scene.Node control,
-                          String hint) {
-        Label key = new Label(label);
-        key.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        Label note = new Label(hint);
-        note.setStyle("-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
-        VBox right = new VBox(2, control, note);
-        grid.add(key, 0, index);
-        grid.add(right, 1, index);
-        GridPane.setHgrow(right, Priority.ALWAYS);
-        return index + 1;
+        todoLabel.setText("记忆策略、身份文件查看 / 编辑：0.2 后续"
+                + "（现在改身份请直接编辑 ~/.aha/AHA.md 或项目的 AHA.md）");
+        todoLabel.setWrapText(true);
+        ThemePaint.themedForever(todoLabel, () -> "-fx-text-fill: " + Palette.MUTED + ";");
     }
 }

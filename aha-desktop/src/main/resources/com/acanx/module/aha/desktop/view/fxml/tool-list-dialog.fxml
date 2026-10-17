@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    工具列表对话框的界面骨架（批次 4 / issue #137）。
+
+    ⚠️ 这是本批**收益最小的一个**：内容完全由数据驱动——每个工具一行 `名称 · 权限`，
+    行数与内容都来自 `Supplier<List<ToolDescriptor>>`，静态结构只剩一个 VBox。
+    放进 fxml 只为四者口径一致（结构与文案在 fxml、数据与行为在 Java），
+    真正的价值在另外三个对话框。
+-->
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:id="box"/>

@@ -1,9 +1,9 @@
 # 构建指南
 
-**文档版本**：v1.10.0
+**文档版本**：v1.18.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-09
+**最后更新**：2026-10-15
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,9 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.18.0 | 2026-10-16 | §3.3 快照取件的落地行为更正：JVM 便携包（桌面端 / CLI）改为**平铺到 `Dist\` 根**（原先只解压到 `Dist\<资产名>\`，取完还要手工搬），与正式版取件同一口径；补 `-NoInstall` / `-KeepExtract`（issue #244）| @ACANX / CNXNC |
+| v1.17.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
+| v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
 | v1.0.0 | 2026-10-06 | 由 `Docs/DevSpec/BuildGuide.md` 拆分而来，承接其中的操作步骤；合并原排错指南中的构建期问题 | @ACANX |
 | v1.1.0 | 2026-10-06 | 新增构建发行包（`Dist/`）说明 | @ACANX |
 | v1.2.0 | 2026-10-06 | 新增「运行中的 AHA 锁定 `Dist/lib` 导致 assembly 失败」排错项 | @ACANX |
@@ -25,8 +28,14 @@
 | v1.9.0 | 2026-10-07 | §5 补终端查看覆盖率汇总的方式（`bin/ReportCoverage.py`）并说明门禁静默、脚本只报数不判定 | @ACANX |
 | v1.10.0 | 2026-10-09 | §3.1.1 新增桌面端便携包的一键构建与更新脚本（`Script/Python/DesktopDistBuild.py`、`DesktopDistExtract.py`）与命令速查 `Docs/Guide/CommandCheatsheet.md`（落地为 `Dist/README.commands.md`，随 `mvn package` 重建） | @ACANX |
 | v1.11.0 | 2026-10-09 | 明确 Agent 不在本地执行 Maven 编译 / 测试，以 PR 的 CI checks 为准；§3.2 自查说明区分「人类开发者」与「Agent」 | @ACANX |
+| v1.12.0 | 2026-10-14 | 新增 §3.3「快照包（PR 试包）」：触发方式（标签 / 平台限定 / `/snapshot` 命令）、产物命名（`V<快照版本>-AHA-<目标>-SNAPSHOT` + `AHA-Desktop-JVM-…` / `AHA-Cli-JVM-…`）、变更分类 A/B/C 与清单单一来源、清理与本地取件（issue #165 / #171） | @cnxnc |
+| v1.13.0 | 2026-10-14 | §3.3 的「本地取件」补上真实命令与行为（`Dist\UpdateSnapshot.cmd`：零配置、不覆盖文件、独立状态文件；见 #173 / S5），并指向 `Dist/README.commands.md` §7 | @cnxnc |
+| v1.13.2 | 2026-10-14 | §3.3 本地取件的启动器按目标拆分（`Dist\UpdateDesktopNativeSnapshot.cmd` / `Dist\UpdateCliNativeSnapshot.cmd`；原通用 `UpdateSnapshot.cmd` 删除），PR 评论里的取件提示同步（ACANX）| @cnxnc |
+| v1.13.1 | 2026-10-14 | §3.3 的指引改为指向**源文件** `Docs/Guide/CommandCheatsheet.md`（此前误指生成物 `Dist/README.commands.md`；该副本会被 assembly / 取件脚本覆盖） | @cnxnc |
 
 ---
+| v1.15.0 | 2026-10-15 | §3 桌面端启动命令改为包根平铺形态（`Dist/AhaDesktop.bat` / `./Dist/AhaDesktop.sh`），CLI 仍走 `Dist/bin/`（issue #218）| @ACANX / CNXNC |
+| v1.14.0 | 2026-10-15 | §3.3 补全原生线（触发标签补齐 4 个、一个目标一条工作流）；更正「不覆盖任何文件」的过期口径——原生桌面端取件会**替换 exe**（旧版留 `.bak`，`-NoInstall` 可只取件）| @cnxnc |
 
 ## 1. 适用范围
 
@@ -73,6 +82,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 > 原生镜像包**不在默认构建里**：它们分别需要 `-Pdesktop-native` / `-Pcli-native`
 > 与 GraalVM 的 `native-image`，详见 [DesktopNativeDesign.md](../Design/DesktopNativeDesign.md)
 > 与 [CliNativeDesign.md](../Design/CliNativeDesign.md)。
+>
+> **Action 该怎么写、参数该怎么定、去哪查权威资料**：见 [GraalVMInActionsGuide.md](GraalVMInActionsGuide.md)。
 
 ```bash
 ./mvnw clean package
@@ -80,16 +91,16 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 
 ```
 Dist/
-├── bin/     Aha.sh、Aha.bat
-├── lib/     JPMS 模块路径（本项目模块 + 全部运行时依赖）
+├── aha-cli.jar              单体 jar（全部依赖都在里面，名字不带版本号）
+├── AhaCli.sh、AhaCli.bat    启动脚本（`java -jar aha-cli.jar`）
 ├── README.md、LICENSE、CHANGELOG.md
 ```
 
 验证：
 
 ```bash
-./Dist/bin/Aha.sh version     # Linux / macOS
-Dist\bin\Aha.bat version      # Windows
+./Dist/AhaCli.sh version  # Linux / macOS
+Dist\AhaCli.bat version   # Windows
 ```
 
 由 `maven-assembly-plugin` 与 `aha-cli/src/assembly/dist.xml` 驱动。
@@ -114,23 +125,25 @@ python3 Script/Python/DesktopDistExtract.py
 ```
 
 - `DesktopDistBuild.py`：以 `./mvnw -pl aha-desktop -am package -DskipTests -Djacoco.skip=true`
-  出包，并**自证产物**——包内必须有 aha-desktop 模块、**恰好 3 个**本平台 OpenJFX jar
-  与两个启动脚本；“构建成功但包是空的 / 少了平台原生库”会当场失败。
+  出包，并**自证产物**——包根必须有去版本号的单体 jar `aha-desktop.jar` 与两个启动脚本
+  （`AhaDesktop.sh` / `AhaDesktop.bat`），且单体 jar 内含 JavaFX 类与**本平台** OpenJFX
+  原生库、不含 `module-info.class`；“构建成功但包是空的 / 少了平台原生库”会当场失败。
   加 `--with-tests` 可先跑测试，加 `--clean` 可先清理。
 - `DesktopDistExtract.py`：默认取**本平台最新**的包（也可用 `--zip` 指定），先解压到暂存目录、
-  全部成功后再落地，并清掉 `lib/` 里上一版桌面端独占的 jar（`aha-desktop-*.jar` / `javafx-*.jar`）
-  ——不清会让 JPMS 模块路径上出现同一模块的两个版本（`java.lang.module.FindException`）。
-  共享依赖与仅属于 CLI 的 `aha-cli-*.jar` 不受影响，因此 `Dist/` 可同时保留 CLI 与桌面端用法。
+  全部成功后再落地，并清掉上一版（`lib/` + `bin/` 形态）的遗留文件（`lib/aha-desktop-*.jar`、
+  `lib/javafx-*.jar`、`bin/AhaDesktop.*`）——不清就会与平铺形态的新入口并存，
+  让人分不清哪个才是当前形态（issue #218）。
+  属于 CLI 的 `aha-cli.jar` 与 `Aha.*` 不受影响，因此 `Dist/` 可同时保留 CLI 与桌面端用法。
 
 更新后直接运行：
 
 ```bat
-Dist\bin\AhaDesktop.bat          # Windows
-Dist\bin\Aha.bat version          # CLI 仍可用
+Dist\AhaDesktop.bat              # Windows（桌面端：包根单体 jar）
+Dist\AhaCli.bat version           # CLI 同样平铺在 Dist\ 根
 ```
 
 ```bash
-./Dist/bin/AhaDesktop.sh          # Linux / macOS
+./Dist/AhaDesktop.sh              # Linux / macOS（桌面端：包根单体 jar）
 ```
 
 命令速查：`Dist/README.commands.md`（源文件 `Docs/Guide/CommandCheatsheet.md`）把编译 / 更新 /
@@ -138,8 +151,10 @@ Dist\bin\Aha.bat version          # CLI 仍可用
 `DesktopDistExtract.py` 刷新——因此 `mvn clean` 删掉 `Dist/*.md` 后会自动重建，不需手动维护。
 
 两个脚本都不做质量门禁：门禁（`clean verify`、覆盖率、CI）仍由 Maven 与 `Gate.yml` 负责，
-它们只负责「把包做出来并铺到该在的位置」。同族的原生镜像取件脚本见
-[DesktopNativeUpdateDesign.md](../Design/DesktopNativeUpdateDesign.md)。
+它们只负责「把包做出来并铺到该在的位置」。同族的原生镜像取件入口见
+[DesktopNativeUpdateDesign.md](../Design/DesktopNativeUpdateDesign.md)：Windows 双击
+`Dist\UpdateDesktopNative.cmd`（PowerShell，无需 Python），POSIX 用
+`Script/Python/{Desktop,Cli}NativeVersionUpdate.py`。
 
 ### 3.2 按变更范围选择检查
 
@@ -198,6 +213,55 @@ mvn -B clean verify            # 用本机的 Maven 3.9.x；CI 由 Compat.yml �
 
 何时**必须**跑完整 `verify` 见 [BuildSpec.md](../DevSpec/BuildSpec.md) 第 8 节。
 CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没必要省。
+
+### 3.3 快照包（PR 试包：先出包再合并）
+
+给**尚未合并**的 PR 出一版可下载的 JVM 便携包，把自测提前到合并之前
+（方案与验收见 [issue #165](https://github.com/ACANX/AHA/issues/165)，实施见 #171 / #172 / #173 / #174）。
+**两条线都已上线**：JVM 线由 `SnapshotJVM.yml` 负责；原生线**一个目标一条工作流**（`DesktopNative.yml` / `CliNative.yml`），一次出该目标的全部腿，可用 `OS:*` 收窄到单平台。
+
+**触发方式**
+
+| 方式 | 用法 | 生效范围 |
+|---|---|---|
+| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | 打上后每次 push 都重出；移除标签即停 |
+| 平台限定标签 | 同时打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu` | 收窄到单平台；**不能单独使用** |
+| PR 评论命令（一次性） | `/snapshot <target> [os ...]` | 大小写不敏感；仅对仓库有写权限的账号生效 |
+
+未打任何触发标签时，四类目标都不出包。
+
+**产物**
+
+| 项 | 值 |
+|---|---|
+| 发布页 tag 与名称 | `V<快照版本>-AHA-<目标>-SNAPSHOT`（**每个目标一条** pre-release，不进 `releases/latest`） |
+| 快照版本 | `<基线>.<PR 号补零 5 位>.<MMddHHmm（北京时间）>` |
+| 桌面包 | `AHA-Desktop-JVM-<版本>-<平台>-jdk25.zip` |
+| CLI 包 | `AHA-Cli-JVM-<版本>-<平台>-jdk25.zip` |
+| 平台标签 | `ubuntu-amd64`（构建与冒烟**只验过 Ubuntu 24.04**，其他发行版未验证）/ `windows-amd64` |
+| JDK | **只有 25**（快照线不产 JDK 27 包；dev 线才有 JDK 27） |
+
+**变更分类**：改动路径决定「本次要不要出包」——A 组（影响产物）与 C 组（未列到的一切）**出包**，
+B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因；清单是
+`.github/snapshot-paths.yml`（单一来源，由 `bin/CheckScripts.py` 守住一致性）。
+**只改文档的 PR 不会出包**，除非新打了触发标签（此时属显式请求，照出）。
+判定逻辑在 `.github/Python/SnapshotPlan.py`，可本地跑 `--self-test`。
+
+**清理**：同一 PR 的快照保留最近 3 条、有效期 7 天；PR 关闭或合并后自动删除
+（`SnapshotCleanup.yml`，见 #174）。
+
+**本地取件**（零配置：不需要 token / `gh` / Python）：
+
+```bat
+Dist\UpdateDesktopNativeSnapshot.cmd [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生桌面端
+Dist\UpdateCliNativeSnapshot.cmd     [-List] [-Pr <N>] [-DryRun] [-Force] [-NoInstall]   :: 原生 CLI
+Dist\UpdateSnapshot.ps1 -Kind jvm    [-List] [-Pr <N>] [-Out <目录>] [-Force] [-DryRun] [-NoInstall] [-KeepExtract]  :: JVM 便携包（两种目标共用）
+```
+
+行为差异（**别弄混**）：**原生桌面端**目标会把包里的 exe 替换到启动器同目录（旧版先备份为 `<名字>.exe.bak`，
+下载前先探测占用）；**JVM 便携包**目标把包根内容**平铺到 `-Out`**（默认 `Dist\`，被覆盖的既有文件先备份为 `<名字>.bak`），
+取完件就能就地启动（issue #244）；加 `-NoInstall` 则两者都只取件、只解压到 `Dist\<资产名>\`，不动任何既有文件。
+状态一律记在 `Dist\.aha-snapshot.json`，与原生取件的 `.aha-desktop-native.json` / `.aha-cli-native.json` 互不干扰。
 
 ## 4. 单模块构建
 
@@ -260,14 +324,14 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 | `ServiceLoader` 找不到工具 / 适配器 | classpath 模式下 `module-info` 的 `provides` 不生效 | 同时提供 `META-INF/services` 文件（JPMS 与 classpath 双兼容） |
 | `FAIL_ON_NULL_FOR_PRIMITIVES` | Jackson 3 默认拒绝 `null` → `int` | `ConfigLoader` 显式 `disable`，或契约字段改用包装类型 |
 | `SQLITE_CANTOPEN` | 数据库父目录不存在 | `SqliteMemoryStore.init()` 先 `Files.createDirectories` |
-| `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.version` |
+| `Unsupported class file major version` | JaCoCo 版本落后于 JDK | 升级父 POM 的 `jacoco.plugin.version` |
 | `Coverage checks have not been met` | 覆盖率低于门禁阈值 | 补测试；确有必要排除时需登记理由（见 `BuildSpec.md` 第 6 节） |
 | Maven 4 报语法错误 | 使用了 Maven 4 专有语法 | 改回 Maven 3.9.x 兼容写法（见 `BuildSpec.md` 第 5 节） |
-| `Failed to create assembly: Problem copying files : .../Dist/lib/xxx.jar` | **有进程占着 `Dist/lib` 下的 jar**（或 `Dist/bin` 目录）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `Dist/`」的占用者清单与处置 |
+| `Failed to create assembly: Problem copying files : .../Dist/aha-cli.jar` | **有进程占着 `Dist/aha-cli.jar`**（旧工作区里还可能是 `Dist/lib` 下的 jar）。Windows 不允许覆盖被占用的文件；Linux 可以 unlink 已打开文件，故只在 Windows / WSL 访问 Windows 盘时出现 | 见下方「关于 `Dist/`」的占用者清单与处置 |
 
 > **关于 `Dist/`**：发行包输出到**项目根**的 `Dist/`（而非 `target/`），因此 `./mvnw clean`
 > **不会**删除它。已存在的 `Dist/` 本身**不影响构建**（assembly 会覆盖同名文件）；
-> 只有其中的文件（或 `Dist/bin` 目录）被别的进程占用时才会失败。
+> 只有其中的文件（平铺后的 `Dist/aha-cli.jar`；旧工作区里还可能是 `Dist/bin` 目录）被别的进程占用时才会失败。
 >
 > 实测过的三种占用者，**第一种最常见，也最容易被误判成「AHA 还开着」**：
 >
@@ -275,7 +339,7 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 > |---|---|---|
 > | **IDEA 的 Maven server** | Windows 侧命令行含 `org.jetbrains.idea.maven.server.RemoteMavenServer36`；长期驻留，不会自己退出 | `taskkill /PID <pid> /F`。IDEA 需要时会自动重启该辅助进程；必要时在 IDEA 里执行一次「Reload Maven Project」 |
 > | 运行中的 AHA 会话 | `java.exe` 命令行含 `com.acanx.module.aha.cli` | 关闭 `chat` 会话（会话已持久化，可用 `aha chat --session <id>` 续接） |
-> | 把 `Dist/bin` 当工作目录的终端窗口 | 文件都能改，但删**目录**报 `The process cannot access the file` | 关闭该终端窗口 |
+> | 把 `Dist/` 当工作目录的终端窗口（旧工作区里的 `Dist/bin` 同理） | 文件都能改，但删**目录**报 `The process cannot access the file` | 关闭该终端窗口 |
 >
 > 定位（Windows 侧，从 WSL 同样可执行）：
 >
@@ -290,7 +354,7 @@ python3 bin/ReportCoverage.py        # 各模块 + 合计的行/分支覆盖率
 > WSL 的 `rm -rf` / `mv` 对 9p 上的目录常报 `Permission denied`，属已知限制。
 >
 > **注意 IDEA 会自动重生这个进程**：项目里有文件变化（尤其 `pom.xml`）时，IDEA 会重新导入
-> Maven 项目，于是辅助进程又起来、又把 `Dist/lib` 锁上。实测连续两轮都出现这种情况。
+> Maven 项目，于是辅助进程又起来、又把 `Dist/aha-cli.jar` 锁上。实测连续两轮都出现这种情况。
 > 因此**打包 / 发版前先结束它、并避免在 IDE 里触发重新导入**；结束后的窗口期内完成构建最省事。
 >
 > **不要**用 `-Dassembly.skipAssembly=true` 绕过：那会跳过发行包组装，`Dist/` 停在旧版本，
@@ -349,3 +413,4 @@ git push -u origin dependa
 | [TestingSpec.md](../DevSpec/TestingSpec.md) | 测试层级与覆盖率要求 |
 | [TroubleshootingGuide.md](TroubleshootingGuide.md) | 运行时与配置问题排错 |
 | [GettingStarted.md](GettingStarted.md) | 环境准备与首次运行 |
+| [GraalVMInActionsGuide.md](GraalVMInActionsGuide.md) | GitHub Actions 中的 GraalVM：Action 输入、参数定法与权威查询入口 |

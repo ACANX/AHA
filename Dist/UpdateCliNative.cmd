@@ -1,0 +1,94 @@
+@echo off
+rem ==========================================================================
+rem  AHA - one-click update of the CLI native image (Windows)
+rem
+rem  Windows-native, no Python required: this launcher only calls
+rem      Dist\UpdateNative.ps1 -Kind Cli
+rem  which talks to the GitHub release page through PowerShell / .NET
+rem  (Schannel TLS), so a broken Python install cannot break the update.
+rem
+rem  Usage:
+rem    UpdateCliNative.cmd                    update to the newest build
+rem    UpdateCliNative.cmd -List              list recent versions   (--list works too)
+rem    UpdateCliNative.cmd -DryRun            preview only, no download (--dry-run)
+rem    UpdateCliNative.cmd -Force             reinstall even if already newest
+rem    UpdateCliNative.cmd -Tag V0.1.3.00157-aha-cli-native
+rem    UpdateCliNative.cmd -Jdk 27            JDK branch, default 25
+rem
+rem  Chinese documentation: README.commands.md in this directory, section 4.2.
+rem
+rem  Conventions - both are enforced by bin/CheckScripts.py:
+rem    * this file stays ASCII-only with CRLF line endings;
+rem    * it deliberately uses NO parenthesised if-blocks: labels plus goto only.
+rem      Mixing if-blocks with caret-escaped parentheses is a known CMD trap and
+rem      broke an earlier revision of this launcher - see bin/CheckScripts.py.
+rem ==========================================================================
+
+setlocal
+rem This file is committed in <repo>\Dist\ together with UpdateNative.ps1.
+cd /d "%~dp0"
+
+rem Absolute path: never let a same-named program on PATH shadow PowerShell.
+set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+set "PS1=%~dp0UpdateNative.ps1"
+
+if not exist "%PS1%" goto missing
+if not exist "%PS_EXE%" goto nops
+
+rem Remember whether this looks like a double-click with no arguments: only then pause.
+set "NOARGS=1"
+if not "%~1"=="" set "NOARGS="
+
+rem Translate the Python-style option spellings; pass everything else through.
+set "ARGS="
+:collect
+if "%~1"=="" goto run
+set "ONE=%~1"
+if /i "%ONE%"=="--list" set "ONE=-List"
+if /i "%ONE%"=="--dry-run" set "ONE=-DryRun"
+if /i "%ONE%"=="--force" set "ONE=-Force"
+if /i "%ONE%"=="--jdk" set "ONE=-Jdk"
+if /i "%ONE%"=="--tag" set "ONE=-Tag"
+if /i "%ONE%"=="--platform" set "ONE=-Platform"
+set "ARGS=%ARGS% %ONE%"
+shift
+goto collect
+
+:run
+echo Checking the latest release on GitHub, please wait...
+echo.
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -Kind Cli %ARGS%
+rem Read the exit code right away - the next command would overwrite errorlevel.
+set "RC=%errorlevel%"
+echo.
+if not "%RC%"=="0" goto failed
+echo [DONE] See the messages above. A previous build, if any, is kept as .bak.
+goto finish
+
+:failed
+echo [FAILED] exit code %RC% - see the message above for the reason.
+echo Common causes: no network, GitHub rate limit, or the target file is running.
+
+:finish
+if not defined NOARGS goto done
+pause
+
+:done
+exit /b %RC%
+
+:missing
+echo.
+echo [ERROR] Not found: %PS1%
+echo Keep UpdateCliNative.cmd and UpdateNative.ps1 together in Dist.
+echo Clone the repository again from https://github.com/ACANX/AHA
+echo.
+pause
+exit /b 1
+
+:nops
+echo.
+echo [ERROR] Windows PowerShell not found: %PS_EXE%
+echo This launcher needs Windows PowerShell 5.1, shipped with Windows 10 and 11.
+echo.
+pause
+exit /b 1

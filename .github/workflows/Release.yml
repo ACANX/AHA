@@ -7,6 +7,31 @@ on:
       # ref 过滤是大小写敏感的，两种都列上，手工用 `v0.1.0` 或 `V0.1.0` 都能触发。
       - 'V*'
       - 'v*'
+      # 快照包也落在 `V*` 家族（`V<版本>-AHA-<目标>-SNAPSHOT`，见 SnapshotJVM.yml 与 issue #165），
+      # 但**绝不能**触发正式发版流程：负向模式按顺序在后，把 `-SNAPSHOT` 排除掉。
+      # 实测风险：不加这两行时，每次出快照都会跑一遍完整的正式发版流程。
+      - '!V*-SNAPSHOT'
+      - '!v*-SNAPSHOT'
+
+  # 自动打的 tag 由 `GITHUB_TOKEN` 推送，**不会**触发上面的 `push: tags`（GitHub 防递归）。
+  # 但 `workflow_dispatch` 是该规则的**官方例外**：`Build.yml` 的 tag 作业在成功打完 tag 后，
+  # 用 `gh workflow run Release.yml --ref main -f tag=<TAG>` 把本工作流派发起来（issue #238）。
+  #
+  # 【为什么必须带 `--ref main`】`workflow_dispatch` 的 `GITHUB_SHA` 是**所派发 ref 的最新提交**，
+  # 用默认分支（`dev`）派发会让整个 run 落在 dev 上——`gate` / `compat` 与两条出包线的 checkout
+  # 都会取到 dev，与「发行包必须由自身跑过门禁的构建产出」冲突。带 `--ref main` 后
+  # `GITHUB_SHA` = `main` head = tag 指向的提交，各处 checkout 默认即正确。
+  #
+  # 【发布 tag 怎么取】下面统一写 `inputs.tag || github.ref_name`：`push` 事件走 `ref_name`
+  # （就是 tag），派发走入参。用 `||` 而**不是** `!= ''` 之类的比较——GitHub 表达式对不同类型
+  # 做宽松比较时会折算成数字（`null` / `''` / `false` 都折算为 0），`push` 事件下 `inputs`
+  # 整个不存在，那类写法会静默给出错误结论（issue #213 的实测教训）。
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（形如 V0.1.3）；`Build.yml` 自动派发时传入'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -29,7 +54,11 @@ jobs:
     needs: [gate, compat]
     runs-on: ubuntu-latest
     steps:
+      # 显式检出**发布 tag**而不用默认的 `github.sha`：`workflow_dispatch` 下 `github.ref` 是分支，
+      # 靠默认值会取到分支头部（issue #238）。push tag 事件下两者本就是同一个提交。
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -44,23 +73,47 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f Dist/bin/Aha.sh
-          test -d Dist/lib
-          # 版本从产物名读，作为唯一来源（不复制版本字面量）
-          cli_jar=$(ls Dist/lib/aha-cli-*.jar)
-          version=$(basename "$cli_jar" .jar)
-          version=${version#aha-cli-}
+          # 版本从**唯一读取入口**取（issue #93 / #94）：平铺后包内 jar 名不含版本号，
+          # 「从产物名读版本」那条路没有了，改用各工作流共用的版本读取点。
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
           target="aha-cli-${version}.zip"
+          # 包内形态（issue #218）：平铺 —— 单体 jar + 启动脚本 + 文档，全在包根。
           # 先在临时目录里打，再移进 Dist/：
           #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
-          #   * 只列 bin/ lib/ 与三个文档，将来 Dist/ 里再放别的产物也不会被误收。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" bin lib README.md LICENSE CHANGELOG.md)
+          #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
+          #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
+          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
           mv -- "${RUNNER_TEMP}/${target}" Dist/
           # 产物统一落 Dist/：仓库根只放源码与文档
           ls -lh "Dist/${target}"
+          # 包内自证：不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
+          entries="${RUNNER_TEMP}/cli-release-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "Dist/${target}" > "$entries"
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
+            exit 1
+          fi
+          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
+          echo "CLI 包：Dist/${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/${target}" --kind cli-jvm --version "${version}" --jdk 25
+          # 写完立刻回读校验（先写后验，只差一次 zip 读取）：清单若生成有误，
+          # 用户下载后才在升级时撞「校验和不符」——那是发布出去之后才发现，代价最高。
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+            --zip "Dist/${target}" --kind cli-jvm --version "${version}"
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
+          # `tag_name` 必须显式指定：该 action 默认按 `github.ref` 找 release，而 `workflow_dispatch`
+          # 下 `github.ref` 是分支（`refs/heads/main`），会指向错误对象（issue #238）。
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: Dist/aha-cli-*.zip
 
   # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
@@ -71,7 +124,7 @@ jobs:
       # 一条腿失败不要取消其余：三个平台的包是并列的交付物，缺哪一个都要看得见。
       fail-fast: false
       matrix:
-        # jpackage 不能交叉编译，JavaFX 原生库也按平台分类器发布
+        # JavaFX 原生库按平台分类器发布
         # （见 DesktopDesign.md 第 5 节），所以每个平台只能由自己的 runner 产出。
         #
         # `label` 同时是作业名与下载文件名的组成部分，供用户辨认
@@ -81,17 +134,20 @@ jobs:
         # 静静挂到 release 页面。
         include:
           - os: ubuntu-latest
-            label: linux-x64
+            label: ubuntu-amd64
             expected: linux
           - os: windows-latest
-            label: windows-x64
+            label: windows-amd64
             expected: win
           - os: macos-latest
             label: macos-arm64
             expected: mac-aarch64
     runs-on: ${{ matrix.os }}
     steps:
+      # 同 CLI 作业：显式检出发布 tag（`workflow_dispatch` 下 `github.ref` 是分支）
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -144,40 +200,93 @@ jobs:
           target="Dist/aha-desktop-${version}-${LABEL}.zip"
           mv -- "${files[0]}" "$target"
           size=$(du -h "$target" | cut -f1)
-          jars=$("$JAVA_HOME/bin/jar" tf "$target" | grep -c '^lib/javafx' || true)
-          echo "发布产物：${target}（${size}，含本平台 OpenJFX jar $jars 个）"
+          # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
+          # **根级**的原生库（libglass.so / glass.dll / libglass.dylib…），故按根级计数。
+          natives=$("$JAVA_HOME/bin/jar" tf "$target" | grep -Ec '^[^/]+\.(dll|so|dylib)$' || true)
+          echo "发布产物：${target}（${size}，含本平台 OpenJFX 原生库 $natives 个）"
 
-      - name: 便携包完整性自证（模块图 + 关键文件）
+      - name: 便携包完整性自证（平铺入口 + 单体 jar + 本平台原生库）
+        # 这一步在 issue #218 之前是「模块图自证」：那时包是 lib/+bin/ 的 JPMS 目录形态，
+        # 判据是「用一个不存在的主类触发模块图解析，出现 FindException 即缺依赖」。
+        # 平铺形态下没有模块路径了，改判「包内实际有什么」——入口是否平铺、单体 jar 的
+        # Main-Class 是否是转发类、里面是否真的带了本平台（且只是本平台）的 OpenJFX 原生库。
         shell: bash
+        env:
+          EXPECTED: ${{ matrix.expected }}
+          LABEL: ${{ matrix.label }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # 用「一个不存在的主类」触发模块图解析：
-          #   - 依赖齐全 → 只会报 “Could not find or load main class …__CompletenessProbe__”
-          #   - 缺依赖   → 启动阶段就报 FindException（模块未找到）
-          # 实测 `java --validate-modules` **不能**当这个判据：抽掉 aha-core 后它照样退出 0、
-          # 一字不说（已在本地做过反向对照）。
-          zip_path="$(pwd)/$(ls Dist/aha-desktop-[0-9]*.zip)"
-          tmp=$(mktemp -d)
-          (cd "$tmp" && "$JAVA_HOME/bin/jar" xf "$zip_path")
+          work="$RUNNER_TEMP/desktop-release-check"
+          rm -rf "$work"; mkdir -p "$work"
+          cp -- "$(ls Dist/aha-desktop-[0-9]*.zip)" "$work/pkg.zip"
+          entries="$work/entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
 
-          n_jfx=$(ls "$tmp"/lib/javafx-*.jar | wc -l)
-          if [ "$n_jfx" -ne 3 ]; then
-            echo "::error::期望 3 个本平台 OpenJFX jar，实际 $n_jfx 个"
+          # ① 不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::桌面端包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
             exit 1
           fi
-          ls "$tmp"/lib/aha-desktop-*.jar >/dev/null
-          test -f "$tmp/bin/AhaDesktop.sh"
-          test -f "$tmp/bin/AhaDesktop.bat"
+          # ② 三个入口都平铺在包根
+          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
 
-          out=$("$JAVA_HOME/bin/java" --module-path "$tmp/lib" \
-                --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.__CompletenessProbe__ 2>&1 || true)
-          if grep -q FindException <<<"$out"; then
-            echo "::error::便携包模块图不完整（缺依赖）：$out"
+          # ③ 单体 jar 自证：Main-Class = 转发类、无 module-info、含 JavaFX 类
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-desktop.jar )
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-desktop.jar META-INF/MANIFEST.MF )
+          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
+          if [ "$main" != "com.acanx.module.aha.desktop.AhaDesktopLauncher" ]; then
+            echo "::error::单体 jar 的 Main-Class 应为 AhaDesktopLauncher（不继承 Application 的转发类），实际：${main:-<空>}"
             exit 1
           fi
-          echo "模块图完整（${out}）"
-          echo "包内：本平台 OpenJFX $n_jfx 个，lib/ 共 $(ls "$tmp"/lib/*.jar | wc -l) 个 jar"
+          fat="$work/fat-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/aha-desktop.jar" > "$fat"
+          if grep -qx 'module-info.class' "$fat"; then
+            echo "::error::单体 jar 不得含 module-info.class"; exit 1
+          fi
+          if ! grep -q '^javafx/application/Application.class$' "$fat"; then
+            echo "::error::单体 jar 内含不到 JavaFX（javafx/application/Application.class）"; exit 1
+          fi
+
+          # ④ 本平台原生库：按平台点名 + 不允许混进别的平台
+          #    （JavaFX 的原生库在 jar **根级**；sqlite-jdbc 那种全平台包在 org/sqlite/native/ 下，
+          #     按根级过滤即可把它们排除在外。）
+          case "$EXPECTED" in
+            win)         want="glass.dll";      ext="dll" ;;
+            linux)       want="libglass.so";    ext="so" ;;
+            mac-aarch64) want="libglass.dylib"; ext="dylib" ;;
+            *)           echo "::error::未知平台分类器：$EXPECTED"; exit 1 ;;
+          esac
+          if ! grep -qx "$want" "$fat"; then
+            echo "::error::单体 jar 内没有本平台（${EXPECTED}）的 ${want} —— 运行时会报缺 JavaFX 运行时"
+            exit 1
+          fi
+          root_natives=$(grep -Ec '^[^/]+\.(dll|so|dylib)$' "$fat" || true)
+          same_ext=$(grep -Ec "^[^/]+\.${ext}$" "$fat" || true)
+          if [ "$same_ext" -eq 0 ]; then
+            echo "::error::本平台（${EXPECTED}）原生库数量为 0（期望 .${ext}）"; exit 1
+          fi
+          other=$(grep -E '^[^/]+\.(dll|so|dylib)$' "$fat" | grep -v "\.${ext}$" || true)
+          if [ -n "$other" ]; then
+            echo "::error::单体 jar 内混进了别的平台的原生库："
+            echo "$other" | head -5
+            exit 1
+          fi
+          echo "单体 jar：Main-Class=${main}，本平台（${EXPECTED}）原生库 ${same_ext}/${root_natives} 个，无 module-info"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 版本从**唯一读取入口**取（issue #93 / #94），不从产物名里反推。
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
+            --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" --kind desktop-jvm \
+            --version "${version}" --platform "${LABEL}"
 
       - name: 打印本平台解析到的 OpenJFX 工件（自证）
         shell: bash
@@ -186,4 +295,79 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
+          # 同 CLI 作业：显式指定 tag（dispatch 下 `github.ref` 是分支）
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: Dist/aha-desktop-[0-9]*.zip
+
+  # ── 收尾：发布页校验和（SHA256SUMS）──────────────────────────────────────────
+  # 为什么要单开一个作业：CLI 与桌面端是**并列**的两个作业，各自直接往同一个 release 上传资产。
+  # 若让它们各自写一份 SHA256SUMS，后写的那份会覆盖先写的，结果是一份「只列了一半资产」
+  # 的校验和 —— 比没有更坏（用户会以为没列的那些不用核）。所以在这里统一下载已发布资产、
+  # 一次性生成完整清单再挂上去（issue #51 §4.3 第①层 / §6）。
+  checksums:
+    name: 发布页校验和（SHA256SUMS）
+    needs: [release, desktop]
+    # 任一作业成功就要出校验和：已经挂在发布页上的资产必须能核对（部分平台失败也要有）。
+    # 全都失败 / 被取消时不出——那时发布页上根本没有资产可核。
+    if: >-
+      always() && (needs.release.result == 'success' || needs.desktop.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: 下载本 tag 已发布的资产
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          # 只取 zip：SHA256SUMS 自身不在清单里（否则自指），重复执行时也不会把自己加进去
+          gh release download "${TAG}" --pattern '*.zip' --dir assets
+          ls -lh assets
+
+      - name: 资产齐全自证（缺任何一个平台的包就判失败，不允许「部分发布」静默变绿）
+        # 为什么要有这一步：`release` 与 `desktop` 是并列作业，任一成功本作业就会跑起来
+        # （`if: always() && (… || …)`）。于是「只出了 CLI 包 / 只出了两个平台」时，
+        # 发布页照样会生成、`SHA256SUMS` 照样会挂上 —— 而应用内升级按平台取件，
+        # 用户那边看到的是「该版本没有本平台可用的包」。这种「部分发布」不能靠人盯。
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          expected=(
+            "aha-cli-${version}.zip"
+            "aha-desktop-${version}-ubuntu-amd64.zip"
+            "aha-desktop-${version}-windows-amd64.zip"
+            "aha-desktop-${version}-macos-arm64.zip"
+          )
+          missing=()
+          for name in "${expected[@]}"; do
+            [ -f "assets/${name}" ] || missing+=("${name}")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::${TAG} 的发布资产不齐（缺 ${#missing[@]} 份）：${missing[*]}"
+            {
+              echo "### ❌ 发布资产不齐 —— ${TAG}"
+              echo
+              echo "缺 ${#missing[@]} 份（应用内升级按平台取件，缺哪份哪类用户就升不了）："
+              printf -- '- `%s`\n' "${missing[@]}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          echo "资产齐全：${#expected[@]} 份（CLI + 三平台桌面端）"
+      - name: 生成并挂上 SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir assets
+          # --clobber：重复发版（同一 tag 重跑）时覆盖旧的校验和，而不是报错退出
+          gh release upload "${TAG}" assets/SHA256SUMS --clobber

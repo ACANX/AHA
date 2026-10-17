@@ -11,6 +11,8 @@ module com.acanx.module.aha.desktop {
     requires com.acanx.module.aha.common;
 
     requires javafx.controls;
+    // FXML：桌面端界面骨架（desktop-shell.fxml）由 FXMLLoader 装载
+    requires javafx.fxml;
     requires javafx.graphics;
 
     requires org.slf4j;
@@ -19,4 +21,11 @@ module com.acanx.module.aha.desktop {
     requires org.apache.logging.log4j.core;
 
     exports com.acanx.module.aha.desktop;
+
+    // FXMLLoader 要反射写入控制器的 @FXML 字段（DesktopShell 在 view 包里，不对外导出），
+    // 所以那个包必须对 javafx.fxml 开放。
+    // 走 classpath 启动时这个声明不起作用（JVM 便携包就是 classpath），
+    // 走 module path 时它是必需项——不写就会 “package javafx.fxml is not visible”
+    // 或运行期 InaccessibleObjectException。
+    opens com.acanx.module.aha.desktop.view to javafx.fxml;
 }

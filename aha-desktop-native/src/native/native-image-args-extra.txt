@@ -1,0 +1,13 @@
+# 平台专属参数的「空档」默认值（issue #151）。
+#
+# pom 会给 native-image 传两个参数文件：
+#   @src/native/native-image-args.txt           共享参数（唯一的开关来源，迭代只改它）
+#   @${native.image.extra.argsfile}             平台专属参数（默认就是本文件）
+#
+# 本文件内容全是注释，等于什么都不加；Windows 腿由 pom 的
+# native-windows-manifest profile 改指到 native-image-args-windows.txt
+# （那里才是「给 exe 嵌 Windows 10 兼容清单」的两条链接器参数）。
+#
+# 之所以这样绕一层：平台专属这件事交给 Maven 表达（属性 + 按 OS 激活的 profile），
+# 共享参数文件就仍然是跨平台可用的。若把 Windows 专属的链接器参数直接写进共享文件，
+# Linux / macOS 腿会**直接链接失败**。

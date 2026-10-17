@@ -2,8 +2,11 @@ package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -14,6 +17,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
+
+import java.io.IOException;
 
 /**
  * 「查看全部」输出的对话框。
@@ -31,9 +36,26 @@ public final class OutputDialog {
     /** 复制按钮 id。 */
     public static final String COPY_ID = "aha.output.copy";
 
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.OUTPUT_DIALOG_FXML;
+
     private final String title;
 
     private final String text;
+
+    // ── FXML 注入的部件 ──────────────────────────────────────────────────────
+
+    @FXML
+    private VBox root;
+
+    @FXML
+    private TextArea area;
+
+    @FXML
+    private HBox bottom;
+
+    @FXML
+    private Label hintLabel;
 
     /**
      * @param title 标题
@@ -62,23 +84,7 @@ public final class OutputDialog {
         dialog.getDialogPane().setPrefWidth(900);
         dialog.getDialogPane().setPrefHeight(680);
         ThemePaint.dialog(dialog.getDialogPane());
-
-        TextArea area = new TextArea(text);
-        area.setId(AREA_ID);
-        area.setEditable(false);
-        area.setWrapText(false);
-        area.setStyle("-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
-                + "-fx-font-size: 12px;");
-
-        Label hint = new Label("文本可选中，也可直接 Ctrl+C。");
-        hint.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        HBox bottom = new HBox(hint);
-        bottom.setAlignment(Pos.CENTER_LEFT);
-        bottom.setPadding(new Insets(4, 0, 0, 0));
-
-        VBox content = new VBox(6, area, bottom);
-        VBox.setVgrow(area, Priority.ALWAYS);
-        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setContent(loadView());
 
         // 点「复制」不关闭对话框：搬走内容后往往还要回来对照原文
         Button copyButton = (Button) dialog.getDialogPane().lookupButton(copy);
@@ -88,6 +94,46 @@ public final class OutputDialog {
             dialog.setHeaderText(header(Clipboards.copy(text)));
         });
         dialog.showAndWait();
+    }
+
+    /**
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>装载失败时打 ASCII 标记并显式 flush——标记必须印在**真的会执行到**的 catch 里
+     * （TS-2610-032 第三轮）。</p>
+     *
+     * @return 内容根节点
+     */
+    private Parent loadView() {
+        FXMLLoader loader = new FXMLLoader(OutputDialog.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        Parent loaded;
+        try {
+            loaded = loader.load();
+        } catch (IOException e) {
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            throw new IllegalStateException("输出对话框界面装载失败：" + FXML_VIEW, e);
+        }
+        wireView();
+        return loaded;
+    }
+
+    /** 把注入的节点接起来：样式与文本。 */
+    private void wireView() {
+        root.setSpacing(6);
+
+        area.setId(AREA_ID);
+        area.setText(text);
+        area.setEditable(false);
+        area.setWrapText(false);
+        area.setStyle("-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
+                + "-fx-font-size: 12px;");
+        VBox.setVgrow(area, Priority.ALWAYS);
+
+        bottom.setAlignment(Pos.CENTER_LEFT);
+        bottom.setPadding(new Insets(4, 0, 0, 0));
+        hintLabel.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
     }
 
     /**

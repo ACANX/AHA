@@ -51,15 +51,15 @@ AHA 的长期目标是成为**可独立承担研发工作的 Agent Harness**。
 ./mvnw clean package                  # Linux / macOS
 mvnw.cmd clean package                # Windows
 
-Dist/bin/Aha.sh init                  # 交互式初始化
-Dist\bin\Aha.bat init
+Dist/AhaCli.sh init               # 交互式初始化
+Dist\AhaCli.bat init
 ```
 
 非交互（脚本 / CI）：
 
 ```bash
-Dist\bin\Aha.bat init --provider DeepSeek --api-key sk-xxx
-Dist\bin\Aha.bat init --no-input
+Dist\AhaCli.bat init --provider DeepSeek --api-key sk-xxx
+Dist\AhaCli.bat init --no-input
 ```
 
 初始化生成 `~/.aha/Model.yml` 与数据目录，无需手工编写配置文件。
@@ -70,16 +70,16 @@ Dist\bin\Aha.bat init --no-input
 在工作目录下直接运行即可进入交互（无需子命令）：
 
 ```bash
-Dist/bin/Aha.sh              # Linux / macOS
-Dist\bin\Aha.bat             # Windows
+Dist/AhaCli.sh           # Linux / macOS
+Dist\AhaCli.bat          # Windows
 ```
 
 启动时在右侧打印 Logo（宽终端为像素风，窄终端自动降级为线框风，可用 `--logo` 指定），
 并显示供应商、模型、端点、工作目录、项目根与会话 ID。也可显式指定子命令：
 
 ```bash
-Dist/bin/Aha.sh chat
-Dist\bin\Aha.bat run "用一句话介绍 AHA"
+Dist/AhaCli.sh chat
+Dist\AhaCli.bat run "用一句话介绍 AHA"
 ```
 
 会话内可用 `/help`、`/model`、`/memory`、`/context`、`/compact` 等命令，
@@ -89,8 +89,8 @@ Dist\bin\Aha.bat run "用一句话介绍 AHA"
 
 ```
 Dist/
-├── bin/     Aha.sh、Aha.bat
-└── lib/     JPMS 模块路径（本项目模块 + 全部运行时依赖）
+├── aha-cli.jar    单体 jar（含全部运行时依赖，名字不带版本号）
+└── AhaCli.bat / .sh    启动脚本（平铺在包根）
 ```
 
 ## 技术栈
@@ -140,6 +140,8 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [ToolUsageGuide.md](Docs/Guide/ToolUsageGuide.md) | 工具使用与权限规则 |
 | [TroubleshootingGuide.md](Docs/Guide/TroubleshootingGuide.md) | 常见问题排查 |
 | [NativeRenderDiagnosticsGuide.md](Docs/Guide/NativeRenderDiagnosticsGuide.md) | 原生渲染诊断（真机取证步骤与判定表，issue #48） |
+| [PlanWritingGuide.md](Docs/Guide/PlanWritingGuide.md) | 方案文档编写参考（方案类文档的体例、写法要点、最小骨架） |
+| [WindowsTerminalAndShellGuide.md](Docs/Guide/WindowsTerminalAndShellGuide.md) | Windows 终端 / Shell / 编码与脚本选型（含真机判定命令与 AHA 约定） |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
 其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、
