@@ -39,7 +39,7 @@ class ChannelContractTest {
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
                 BUILD, "windows-amd64", 25)).isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
-                BUILD, "macos-arm64", 27)).isEqualTo("aha-desktop-0.1.3.00242-macos-arm64-jdk27.zip");
+                BUILD, "macos-aarch64", 27)).isEqualTo("aha-desktop-0.1.3.00242-macos-aarch64-jdk27.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
                 BUILD, null, 25)).isEqualTo("aha-cli-0.1.3.00242.zip");
         assertThat(ChannelContract.assetName(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
@@ -141,7 +141,7 @@ class ChannelContractTest {
                 new Case(ReleaseChannel.STABLE, UpdateKind.CLI_JVM, BASELINE, null, 25),
                 new Case(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, BUILD, "ubuntu-amd64", 27),
                 new Case(ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, BUILD, "ubuntu-amd64", 25),
-                new Case(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD, "macos-arm64", 25),
+                new Case(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD, "macos-aarch64", 25),
                 new Case(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM, SNAPSHOT, "windows-amd64", 25),
                 new Case(ReleaseChannel.ALPHA, UpdateKind.CLI_NATIVE, SNAPSHOT, "ubuntu-amd64", 25));
 

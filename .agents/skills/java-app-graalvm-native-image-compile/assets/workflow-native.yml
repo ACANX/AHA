@@ -92,7 +92,7 @@ jobs:
         include:
           - { os: ubuntu-latest,  label: linux-x64,   platform: linux,      jdk: '25', experimental: false }
           - { os: windows-latest, label: windows-x64, platform: win,        jdk: '25', experimental: false }
-          - { os: macos-latest,   label: macos-arm64, platform: mac-aarch64, jdk: '25', experimental: false }
+          - { os: macos-latest,   label: macos-aarch64, platform: mac-aarch64, jdk: '25', experimental: false }
           # 实验腿：失败只标注自己（它是数据点，不是交付物）
           - { os: windows-latest, label: windows-x64, platform: win,        jdk: '27', experimental: true }
     runs-on: ${{ matrix.os }}

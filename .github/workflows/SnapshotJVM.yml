@@ -88,7 +88,7 @@ defaults:
 
 jobs:
   # ── 1. 判定：该不该出、出哪几个目标与平台、版本号、评论正文 ───────────────────
-  plan:
+  Plan:
     name: Plan
     runs-on: ubuntu-latest
     # 评论触发的：只认 `/snapshot` 开头的评论，其它评论一律不理会（否则每条评论都起一次 run）。
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 算出 PR 号（三种触发方式各自取法）
+      - name: ResolvePullRequestNumber
         id: pr
         env:
           EVENT: ${{ github.event_name }}
@@ -135,7 +135,7 @@ jobs:
           echo "pr=${pr}" >> "$GITHUB_OUTPUT"
           echo "PR #${pr}"
 
-      - name: 取本 PR 的改动清单
+      - name: FetchChangedFiles
         id: files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -147,7 +147,7 @@ jobs:
           echo "改动文件数：$(wc -l < changed-files.txt)"
           head -5 changed-files.txt || true
 
-      - name: 判定（逻辑在 .github/Python/SnapshotPlan.py）
+      - name: RunSnapshotPlan
         id: plan
         env:
           EVENT: ${{ github.event_name }}
@@ -243,41 +243,43 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── 2. 构建与打包：复用 dev 线的实现（不复制一套）────────────────────────────
-  build:
-    name: build（复用 BuildJVMArtifacts）
-    needs: plan
-    if: needs.plan.outputs.should_build == 'true'
+  Build:
+    name: Build
+    needs: Plan
+    if: needs.Plan.outputs.should_build == 'true'
     uses: ./.github/workflows/BuildJVMArtifacts.yml
     with:
-      pr: ${{ needs.plan.outputs.pr }}
-      version: ${{ needs.plan.outputs.version }}
-      matrix: ${{ needs.plan.outputs.matrix }}
+      pr: ${{ needs.Plan.outputs.pr }}
+      version: ${{ needs.Plan.outputs.version }}
+      matrix: ${{ needs.Plan.outputs.matrix }}
       # 载体由本工作流决定（挂 snapshot-pr<N>），因此让 dev 线那边**不要**发布。
       publish: false
 
   # ── 3. 发布到 pre-release `snapshot-pr<N>`（#165 §七 路线 A）────────────────
-  publish:
-    name: publish（按目标挂 pre-release）
-    needs: [plan, build]
+  Publish:
+    name: Publish
+    needs:
+      - Plan
+      - Build
     # `always()` 是为了「上游失败也让 publish 跑一次以给出明确结论」；
     # 但**被并发取消**的 run 必须排除：取消时发布只会留下半成品，且会把 PR 检查染红
     # （实测：连续 push + 改标签让前一个 run 被取消，publish/comment 因 always() 启动后被取消，
     #  在 PR 上显示为失败）。因此统一加 `!cancelled()`。
     if: >-
       always() && !cancelled()
-      && needs.plan.outputs.should_build == 'true' && needs.build.result == 'success'
+      && needs.Plan.outputs.should_build == 'true' && needs.Build.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: 下载构建制品
+      - name: DownloadArtifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
 
-      - name: 规范资产名（#165 §八：AHA-JVM-<版本>-<平台>-jdk25.zip）
+      - name: NormalizeAssetNames
         id: rename
         env:
-          VERSION: ${{ needs.plan.outputs.version }}
-          TARGETS: ${{ needs.plan.outputs.targets }}
+          VERSION: ${{ needs.Plan.outputs.version }}
+          TARGETS: ${{ needs.Plan.outputs.targets }}
         run: |
           set -euo pipefail
           find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
@@ -302,13 +304,13 @@ jobs:
             exit 1
           fi
 
-      - name: 按目标创建 / 更新 pre-release（tag = V<版本>-AHA-<目标>-SNAPSHOT）
+      - name: UpsertPreRelease
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ needs.plan.outputs.pr }}
-          VERSION: ${{ needs.plan.outputs.version }}
-          RELEASES: ${{ needs.plan.outputs.releases }}
+          PR: ${{ needs.Plan.outputs.pr }}
+          VERSION: ${{ needs.Plan.outputs.version }}
+          RELEASES: ${{ needs.Plan.outputs.releases }}
         run: |
           set -euo pipefail
           # 判定脚本已给出「每个目标一条 tag」的清单（含该目标应有的资产名）。
@@ -337,26 +339,28 @@ jobs:
           done < "$RUNNER_TEMP/groups.tsv"
 
   # ── 4. 回写 PR 评论（**幂等**：同一条评论反复编辑，见 #165 §六）──────────────
-  comment:
-    name: comment（幂等回写 PR 评论）
-    needs: [plan, publish]
+  Comment:
+    name: Comment
+    needs:
+      - Plan
+      - Publish
     # 即使构建失败也要回写（评论要能反映「本次没出包 / 失败了」）；没有 PR 号则无事可做。
     # `!cancelled()`：被并发取消的 run 不回写（否则会把 PR 检查染红，且评论内容是过期的）。
     if: >-
-      always() && !cancelled() && needs.plan.outputs.pr != ''
-      && needs.plan.outputs.owns_comment != 'false'
+      always() && !cancelled() && needs.Plan.outputs.pr != ''
+      && needs.Plan.outputs.owns_comment != 'false'
     runs-on: ubuntu-latest
     steps:
       # 要跑仓库里的脚本，先检出（评论作业此前不需要工作区，现在需要）。
       - uses: actions/checkout@v7
 
-      - name: 回写 PR 评论（幂等；逻辑与瞬时重试都在 .github/Python/SnapshotComment.py）
+      - name: UpsertPullRequestComment
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ needs.plan.outputs.pr }}
+          PR: ${{ needs.Plan.outputs.pr }}
           MARKER: <!-- aha-snapshot -->
-          BODY: ${{ needs.plan.outputs.comment }}
+          BODY: ${{ needs.Plan.outputs.comment }}
         run: |
           set -euo pipefail
           # 定位「自己那条」评论（按标记）→ 有就 PATCH、没有就 POST；503/429/超时**有界重试**。

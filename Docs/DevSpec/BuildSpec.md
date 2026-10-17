@@ -1,6 +1,6 @@
 # 构建规范
 
-**文档版本**：v1.48.0
+**文档版本**：v1.49.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-17
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.49.0 | 2026-10-17 | §8.1 按 issue [#287](https://github.com/ACANX/AHA/issues/287) 改写：矩阵**展开为逐腿静态作业**（`BuildWindowsLatestWrapper` / `BuildUbuntuLatestWrapper` / `BuildUbuntuLatestSystem` / `BuildMacOSLatestWrapper`、`BuildMvnArtifact*` 六腿、`NativeImage*` / `CliNativeImage*` 各五腿），必需检查名改为静态名；平台标签统一 `macos-aarch64`（读取兼容 `macos-arm64`） | @cnxnc |
 | v1.48.0 | 2026-10-17 | 引用同步：快照路径清单更名为 `SnapshotPaths.yml`（原 `snapshot-paths.yml`）——`.github/` 下 AHA 自有 YAML 统一大驼峰，见 `GitHubActionsSpec.md` §2.2（issue [#270](https://github.com/ACANX/AHA/issues/270)） | @cnxnc |
 | v1.47.0 | 2026-10-17 | §8 与 Agent 执行域衔接（issue [#70](https://github.com/ACANX/AHA/issues/70)）：本地「没有构建能力」改由执行域兜底 —— `bin/AgentSandbox.sh`（bwrap：无 JDK / 无 Maven / 无 `/mnt`，命中拒绝桩退出码 97）+ `bin/CheckAgentBoundary.py` 自证（含反向用例，隔离失效即红），自证挂 `Gate.yml`；变更范围表新增一行 | @cnxnc |
 | v1.46.1 | 2026-10-17 | §6 覆盖率门禁的「排除项」引用改为指向**权威登记处** `TestingSpec.md` §3.2（issue [#120](https://github.com/ACANX/AHA/issues/120) / `A-07`）。核对结论：原引用「设计文档第十二部分 3.3」**指向确实存在**（`AHA-Design-V1.md` 第十二部分有 `### 3.3 覆盖率排除项`），失准的只是**口径**——那份表与 `TestingSpec.md` §3.2、根 POM 的 `jacoco` `excludes` 已漂移（桌面端一行还写着「0.2 实现」）。现改为规范单点登记，设计文档反向指回 | @cnxnc |
@@ -278,10 +279,10 @@ POM 语法必须兼容 Maven 3.9.x：
     因此它的 `outputDirectory` 保持仓库根，由描述符自己铺出 `Dist/…`；
     CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`（直接在 `Dist/` 内写会把归档自身收进去）
 - **可选管线的作业不得进必需检查（强制）**：
-  适用于**独立的可选工作流**（`DesktopNative.yml` 的 `native-image` / `native-publish`、`CliNative.yml`）与**必需工作流里的可选作业**（`Build.yml` 的 `ui-smoke`）。
+  适用于**独立的可选工作流**（`DesktopNative.yml` 的 `native-image` / `NativePublish`、`CliNative.yml`）与**必需工作流里的可选作业**（`Build.yml` 的 `UISmoke`）。
   `DesktopNative.yml` 另有一条：**PR 事件下不发布**——它现在也监听 `pull_request`（其 `pull_request` 触发器**不再**按路径过滤，见 §11.2）
   往发布页推预发行包、留下无人认领的 tag；制品仍走 Actions artifact，PR 页面可取。
-  注意 `ui-smoke` 与独立可选工作流的**容错层级不同**：它在作业级 `continue-on-error`（作业绿、摘要留真相），因为它是「同一份必需检查里的一个可选作业」，红叉会被误读成
+  注意 `UISmoke` 与独立可选工作流的**容错层级不同**：它在作业级 `continue-on-error`（作业绿、摘要留真相），因为它是「同一份必需检查里的一个可选作业」，红叉会被误读成
   「必需检查挂了」；而独立可选工作流按下面的步骤级容错处理。
 - **（原表述，仍适用于独立可选工作流）**：
   试验性 / 非交付物管线（如 `DesktopNative.yml`、`CliNative.yml`）的作业名**不得**写进分支保护的必需检查，
@@ -347,10 +348,10 @@ POM 语法必须兼容 Maven 3.9.x：
 | 原生线的清单步骤**不**共用「改名」步骤的 `continue-on-error` | 缺清单的包对升级器就是不合格的，宁可这条腿红，也不要静默出一个不合格的包 |
 | `Release.yml` 的 `SHA256SUMS` 由单独收尾作业生成 | 两个并列作业各自写一份会互相覆盖，得到「只列了一半资产」的校验和（比没有更坏） |
 | 生成 / 校验实现**只有一份** | 各写一段 shell 必然漂移，而漂移的表现是「某个通道的包永远校验不过」，静默且难查 |
-| `.github/Python/PackageManifest.py --self-test` 进 `static-guards` | 与 `ProjectVersion.py --self-test` 同一口径：这类「放宽了也不会立刻暴露」的边界要在提 PR 时就暴露 |
+| `.github/Python/PackageManifest.py --self-test` 进 `StaticGuard` | 与 `ProjectVersion.py --self-test` 同一口径：这类「放宽了也不会立刻暴露」的边界要在提 PR 时就暴露 |
 | 桌面端两条线的包都必须带换装 helper | 应用内升级靠随包的 `apply-update.cmd` + `AhaApplyUpdate.ps1`；缺了就在「复制 helper」那一步失败 —— 而 `maven-assembly` 对匹配不到的 `<include>` **静默跳过**，只写描述符不算数（`ReleaseProcess.md` §3.6） |
-| helper 的行为由 `Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑 | 它是整条升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查；现在在临时目录里跑失败路径与成功路径（`Build.yml` 的 `native-update-script` 作业） |
-| 调用仓库内脚本的作业必须先 `checkout` | `check_repo_script_steps_have_checkout()`：`native-publish` / `cli-native-publish` / `build-publish` 只下载制品、不检出仓库，直接调 `PackageManifest.py` 会报 `No such file or directory`（本地永远复现不出来） |
+| helper 的行为由 `Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑 | 它是整条升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查；现在在临时目录里跑失败路径与成功路径（`Build.yml` 的 `NativeUpdateScript` 作业） |
+| 调用仓库内脚本的作业必须先 `checkout` | `check_repo_script_steps_have_checkout()`：`NativePublish` / `CliNativePublish` / `BuildPublish` 只下载制品、不检出仓库，直接调 `PackageManifest.py` 会报 `No such file or directory`（本地永远复现不出来） |
 
 > 通道 ↔ tag ↔ 资产名的契约由 `bin/CheckScripts.py` 的 `check_release_channel_contract()` 钉在
 > **PowerShell / Python / Java 三处逐字一致**（`check_native_update_parity()` 管前两处，该守卫补上 Java 这第三处）。
@@ -399,8 +400,8 @@ POM 语法必须兼容 Maven 3.9.x：
 
 | 层 | 工作流 | 触发 | 内容 |
 |---|---|---|---|
-| **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 作业 `build`：编译 + 单元测试（`clean test -Djacoco.skip=true`）；矩阵含 Windows 与 Linux（wrapper 与 system），外加一条**可选**的 macOS 腿。<br>作业 `ui-smoke`（**可选、非必需检查**）：Linux + Xvfb 真开窗口跑 `AhaDesktopSmokeTest`——静态对账只能证明「fxml 自身写对」，原生冒烟只能证明「界面装起来了」，而**装起来之后的交互**（三栏折叠三条路、Enter 发送、工具卡片、会话列表）此前在 CI 上从未执行 |
-| **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：按「平台 × JDK」矩阵构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版（`build-mvn-artifact` / `build-publish`）；JDK 轴为 25（基线，release=25）与 27（`-jdk27` 后缀，release=27，issue #65）；不影响 Build 快检查 |
+| **快检查** | `Build.yml` | 每次 `push` / `pull_request` | 编译 + 单元测试（`clean test -Djacoco.skip=true`），四条腿（一行一项）：<br>作业 `BuildWindowsLatestWrapper`（Windows + wrapper，**必需检查**）<br>作业 `BuildUbuntuLatestWrapper`（Ubuntu + wrapper，**必需检查**）<br>作业 `BuildUbuntuLatestSystem`（Ubuntu + system，**必需检查**）<br>作业 `BuildMacOSLatestWrapper`（macOS + wrapper，**可选**）<br>作业 `UISmoke`（**可选、非必需检查**）：Linux + Xvfb 真开窗口跑 `AhaDesktopSmokeTest`——静态对账只能证明「fxml 自身写对」，原生冒烟只能证明「界面装起来了」，而**装起来之后的交互**（三栏折叠三条路、Enter 发送、工具卡片、会话列表）此前在 CI 上从未执行 |
+| **dev JVM 构建** | `BuildJVMArtifacts.yml` | `push` → `dev` | 独立的 JVM 构建线（与 `DesktopNative.yml` / `CliNative.yml` 同构）：按「平台 × JDK」构建 `aha-desktop` 与 `aha-cli` 便携包并发布预发行版；六条腿（一行一项）：<br>作业 `BuildMvnArtifactUbuntuAmd64JDK25`<br>作业 `BuildMvnArtifactWindowsAmd64JDK25`<br>作业 `BuildMvnArtifactMacOSAarch64JDK25`<br>作业 `BuildMvnArtifactUbuntuAmd64JDK27`<br>作业 `BuildMvnArtifactWindowsAmd64JDK27`<br>作业 `BuildMvnArtifactMacOSAarch64JDK27`<br>汇总发布：作业 `BuildPublish`；JDK 轴为 25（基线，release=25）与 27（`-jdk27` 后缀，release=27，issue #65）；不影响 Build 快检查 |
 | **门禁** | `Gate.yml` | `pull_request` → `main` / `release/**`、**每周定期**、手动触发、发布前（`workflow_call`） | 先断言 Maven 版本与 Wrapper 配置一致，再跑完整 `./mvnw clean verify`（含覆盖率门禁 ≥ 70%）、文档检查、技能检查、脚本检查、像素标志一致性、重复率检查，并打印覆盖率实测值（`bin/ReportCoverage.py`） |
 | **兼容性** | `Compat.yml` | 与门禁相同（不含定期） | 固定补丁版本的 Maven 3.9.x 跑完整 `mvn clean verify` |
 
@@ -445,25 +446,28 @@ CI 全绿却零产物零报错（见 `Docs/Troubleshooting/TS-2610-014-Native-Sk
 - 验证一条门禁是否真的会拦，唯一可靠办法是**让它失败一次**（临时抬高阈值 → 看到
   `Rule violated` → 还原），只读配置只能证明「应该会拦」。
 
-**作业名是分支保护的契约（强制）**：GitHub 的必需检查按**作业名**匹配，而矩阵作业的名字
-会把矩阵的**全部键值**拼进去（`<作业名> (值1, 值2, …)`）。因此：
+**作业名是分支保护的契约（强制）**：GitHub 的必需检查按**作业名**匹配。issue #287 起，
+矩阵已**展开为逐腿静态作业**，所以作业名不再随矩阵值变化：
 
-- **必需腿的矩阵键不得增删**。曾经的一个真实事故：给每条腿补一个 `optional` 字段以求
-  「语义显式」，作业名随即从 `build (windows-latest, wrapper)` 变成
-  `build (windows-latest, wrapper, false)`，分支保护再也匹配不上，PR 页面上三条必需检查
-  永久停在 `Expected — Waiting for status to be reported`——看起来像 CI 卡住，实际是
-  名字对不上（见 `TODO.md` `F-08`）。
-- **可选腿的开关从已有键推导**（如按 `matrix.os` 判定），不新增专用键。
-- **`Gate.yml` / `Compat.yml` 的 `name:` 同样是契约**：job 级 `name:` 就是上报的检查名，
-  改动它等于改必需检查的名字。
-- 确需改名时，同一变更内必须同步更新分支保护，并在对应 Issue（当前
-  [#85](https://github.com/ACANX/AHA/issues/85)）中刷新验收清单。
+- **当前的必需检查**（dev / main ruleset，一行一项）：
+  - `BuildUbuntuLatestSystem`
+  - `BuildUbuntuLatestWrapper`
+  - `BuildWindowsLatestWrapper`
+- **不得随手改这些名字**：改名会让 PR 永久停在
+  `Expected — Waiting for status to be reported`（看起来像 CI 卡住，实际是名字对不上）。
+- **确需改名时的过渡顺序**：先把「旧名 + 新名」同时列进 ruleset 的 required（GitHub 允许列多项），
+  合并改名 PR，确认新名绿后再删旧名。
+- **`GateVerify` / `CompatVerify` 若要设成必需检查**，用这两个静态作业名（不再随矩阵变化）。
+- 历史教训保留：曾经给矩阵腿补一个 `optional` 字段，作业名从
+  `build (windows-latest, wrapper)` 变成 `build (windows-latest, wrapper, false)`，分支保护再也匹配不上；
+  这正是「显示名里不许出现表达式」的原因之一（见
+  `Docs/DevSpec/WorkflowDisplayNameSpec.md` §2.1）。
 
 **工作流的门不得与布尔字面量做宽松比较（强制）**：`push` 事件没有 `inputs` 上下文，`inputs.x` 读出来是 `null`；
 而 GitHub 表达式做宽松比较时把 `null`、`false`、`''` 都折算成数字 `0` ⇒ **`null != false` 求值为 `false`**
 —— 也就是说「**没传**」与「**传了 false**」变得无法区分，而这两者在门里通常是相反的意思。
 
-实测事故（issue [#213](https://github.com/ACANX/AHA/issues/213)，2026-10-15）：`BuildJVMArtifacts.yml` 的 `build-publish` 门
+实测事故（issue [#213](https://github.com/ACANX/AHA/issues/213)，2026-10-15）：`BuildJVMArtifacts.yml` 的 `BuildPublish` 门
 写作 `inputs.publish != false && inputs.publish != 'false'`，本意是「push / dispatch 默认发布，只有显式 false 才跳过」，
 实际让 **`push` 到 `dev` 的每一次发布都被静默跳过** —— dev 的 JVM 预发行包从 `2026-10-14 06:52` 起
 **4 天没发出去**，而 run 结论一直是 `success`（作业 `skipped` 不染红）。
@@ -644,7 +648,7 @@ native 侧的质量保证分**三层**：
 | 目标词 | `Desktop-JVM` / `Cli-JVM` / `Desktop-Native` / `Cli-Native`（**与资产前缀同序**） |
 | 快照版本 | `<基线>.<PR 号补零 5 位>.<MMddHHmm（北京时间）>`；基线来自根 `version` 文件 |
 | 资产名 | `AHA-<目标>-<快照版本>-<平台标签>-jdk<JDK>.zip`（原生线另出同族报告包） |
-| 平台标签 | **两条线统一为同一套**（2026-10-15，issue #215）：`ubuntu-amd64` / `windows-amd64` / `macos-arm64`（JVM 线快照只有前两个，且只有 JDK 25）|
+| 平台标签 | **两条线统一为同一套**（2026-10-15，issue #215）：`ubuntu-amd64` / `windows-amd64` / `macos-aarch64`（JVM 线快照只有前两个，且只有 JDK 25）|
 
 > **不可忘的一条**：该 tag 落在 `V*` 家族里，所以 `Release.yml` 的 tag 过滤**必须**保留负向模式
 > `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——否则每次出快照都会触发一遍完整的正式发版流程。
@@ -675,7 +679,7 @@ run 在 `03:07:47` 建立、被 `03:08:04` 的 `synchronize` 取消）。
 
 **且快照工作流的 `plan` 作业必须跳过 `push` 事件**（2026-10-15 新增）——
 `push: dev` 没有 PR 号，判定脚本会以「没能确定 PR 号」退出 1，把整次运行染红；
-而构建腿本就靠 `github.event_name == 'push'` 全量构建、`native-publish` 也照发 ⇒ 红叉纯属噪声。
+而构建腿本就靠 `github.event_name == 'push'` 全量构建、`NativePublish` 也照发 ⇒ 红叉纯属噪声。
 `plan` 的 `if` 必须含 `github.event_name != 'push'`（实测：自引入 `plan` 工作流起，
 每次合并到 `dev` 的两条原生线都因这里报错而红）。
 

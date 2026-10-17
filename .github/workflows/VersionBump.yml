@@ -32,8 +32,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  bump:
-    name: 分发并开 PR
+  Bump:
+    name: DispatchAndOpenPR
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -48,7 +48,7 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - name: 解析目标版本（唯一读取入口）
+      - name: ResolveTargetVersion
         id: v
         run: |
           VERSION=$(python3 .github/Python/ProjectVersion.py --resolve "${{ inputs.version }}")
@@ -56,10 +56,10 @@ jobs:
           echo "目标版本：${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: 分发到所有版本位置（POM / version 文件 / 代码常量 / 文档声明）
+      - name: DistributeVersionEverywhere
         run: python3 Script/Python/VersionDistribute.py --version "${{ steps.v.outputs.version }}"
 
-      - name: 自检（文档围栏 / 脚本编码行尾 / 版本读取）
+      - name: RunSelfChecks
         # 产物级的「五处一致」在合并到 dev 后由 Build / Gate 承担（见文件头「验证时机」）；
         # 这里刚分发完、尚未构建，读不到产物，故只做不依赖构建的检查。
         run: |
@@ -67,7 +67,7 @@ jobs:
           python3 bin/CheckScripts.py
           python3 .github/Python/ProjectVersion.py --resolve
 
-      - name: 说明验证时机（PR 上不跑 checks，合并到 dev 后自动验证）
+      - name: ExplainVerificationTiming
         run: |
           {
             echo "## 验证时机"
@@ -80,7 +80,7 @@ jobs:
             echo "2. **合并到 \`dev\` 后**自动触发的流水线：\`Build\` + \`BuildJVMArtifacts\` / \`CliNative\` / \`DesktopNative\`。"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: 开 PR（分支 chore/bump-<版本>，base dev）
+      - name: OpenPullRequest
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ github.token }}

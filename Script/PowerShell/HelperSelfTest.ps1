@@ -229,7 +229,7 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $escape.Base 'escape.txt'))
 Remove-Item -LiteralPath $escape.Base -Recurse -Force -ErrorAction SilentlyContinue
 
 # ── 用例 4（仅 Windows）：经「一键入口」apply-update.cmd 真跑一遍 ─────────────
-# 为什么单列：一键入口是 P0-1 的主角（曾经根本没进仓库），而 native-update-script
+# 为什么单列：一键入口是 P0-1 的主角（曾经根本没进仓库），而 NativeUpdateScript
 # 作业跑在 ubuntu 的 pwsh 上 —— `%~dp0` / `%~1` / 退出码传递从来没被执行过
 # （2026-10-16 第二轮审查 P2-③）。
 # 它还顺带验一件真机上真踩到的事：helper 由 cmd 拉起 powershell（5.1），而**本自测跑在

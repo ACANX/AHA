@@ -1,0 +1,62 @@
+name: BuildLeg
+
+# 可复用工作流：`Build.yml` 的一条「编译 + 单元测试」腿（issue #287）。
+#
+# 【为什么抽出来】作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），
+# 而矩阵要靠表达式区分腿。于是改成「每腿一个静态作业 + 共用这份 steps」：
+# 主工作流里每腿只有 6~8 行 `uses:` + `with:`，逻辑不复制。
+#
+# 【口径】一条腿 = 一个 runner + 一套 Maven（wrapper / system）。
+# 失败互不牵连（原矩阵的 `fail-fast: false` 语义由「独立作业」天然满足）。
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: runner 标签（如 windows-latest / ubuntu-latest / macos-latest）
+        type: string
+        required: true
+      maven:
+        description: 用哪套 Maven（wrapper = ./mvnw / system = 系统 mvn）
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  BuildLeg:
+    name: BuildLeg
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: RunHelperSelfTestOnWindows
+        # 【它补的是哪一段】一键入口 `apply-update.cmd` 是 P0-1 的主角（曾经根本没进仓库），
+        # 而 `NativeUpdateScript` 作业跑在 **ubuntu 的 pwsh** 上 —— `%~dp0` / `%~1` /
+        # 退出码传递从来没被执行过。自测脚本在 Windows 上会多跑一条「经 .cmd 换装」的用例，
+        # 同时在 Windows PowerShell 5.1 下真跑一遍 helper（BOM / 编码那条路径，2026-10-16
+        # 第二轮审查 P2-③）。
+        # 只在 Windows 跑：Linux 上那条用例自己会跳过，没必要重复跑一遍。
+        if: inputs.maven == 'wrapper' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./Script/PowerShell/HelperSelfTest.ps1
+
+      - name: TestWithWrapperMaven4
+        if: inputs.maven == 'wrapper'
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw -B clean test -Djacoco.skip=true
+      - name: TestWithSystemMaven
+        if: inputs.maven == 'system'
+        uses: ./.github/actions/maven-run
+        with:
+          command: mvn -B clean test -Djacoco.skip=true
+      - name: CompileSkillTemplates
+        if: inputs.maven == 'wrapper' && runner.os == 'Linux'
+        run: |
+          JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
+          javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
+            -d /tmp/skill-templates $(find .agents/skills -name '*.java')

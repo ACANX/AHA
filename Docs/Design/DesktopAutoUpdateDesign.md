@@ -316,8 +316,8 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 | 配置键与「缺键不写盘」 | `DesktopSettingsTest` |
 | 出包契约（清单 / 校验和 / 三处一致） | `.github/Python/PackageManifest.py --self-test`（正 5 反 11）、`check_release_channel_contract()` |
 | **换装 helper 真的在包里、也在仓库里** | `check_update_helper_packaging()`：两条发行线的装配描述符都要收 helper，且 helper 必须存在**且被 git 跟踪** —— v1.0.0 时 `Dist/apply-update.cmd` 被 `.gitignore` 吃掉，包里没有它，功能全废而门禁全绿 |
-| **helper 逻辑真跑过**（不只是「写没写」） | `Script/PowerShell/HelperSelfTest.ps1`（在 `Build.yml` 的 `native-update-script` 作业里跑）：临时目录里跑失败路径（缺清单 ⇒ 拒绝换装 + 写回执 + 写「已启动」标记 + 退出码 1）与成功路径（替换 + 删除 + 自证 + 回执 + 备份可还原） |
-| **调用仓库脚本的作业必须先 checkout** | `check_repo_script_steps_have_checkout()`（CI 实测：`native-publish` 没有 checkout 却调 `PackageManifest.py`，报 `No such file or directory`） |
+| **helper 逻辑真跑过**（不只是「写没写」） | `Script/PowerShell/HelperSelfTest.ps1`（在 `Build.yml` 的 `NativeUpdateScript` 作业里跑）：临时目录里跑失败路径（缺清单 ⇒ 拒绝换装 + 写回执 + 写「已启动」标记 + 退出码 1）与成功路径（替换 + 删除 + 自证 + 回执 + 备份可还原） |
+| **调用仓库脚本的作业必须先 checkout** | `check_repo_script_steps_have_checkout()`（CI 实测：`NativePublish` 没有 checkout 却调 `PackageManifest.py`，报 `No such file or directory`） |
 | **启动收尾与握手** | `UpdateServiceTest`：回执消费 + 暂存/备份清理 + `helperNeverRan` 判定 + 标记超时/出现 + 真拉起假 helper 的握手 |
 | **「被忽略却被引用」的文件** | `check_ignored_sources()` 扩展：`Dist/`、`Script/`、`bin/` 下本该手写的文件被 `.gitignore` 忽略、却被装配描述符或工作流按名字引用 ⇒ 直接红 |
 | 启动收尾在界面上真的接线 | `AhaDesktopSmokeTest#startupShowsTheLastSwapResultAndCleansStaging` |

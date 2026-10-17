@@ -134,14 +134,39 @@ class AssetSelectorTest {
 
     @Test
     void cliNativeHasMacosButDesktopNativeDoesNot() {
-        // 实查：`-aha-cli-native` 有 macos-arm64 的腿，`-aha-desktop-native` 没有（只出 ubuntu / windows）
+        // 实查：`-aha-cli-native` 有 macOS 的腿，`-aha-desktop-native` 没有（只出 ubuntu / windows）
         assertThat(AssetSelector.resolve(BETA_CLI_NATIVE.get(0), ReleaseChannel.BETA,
                 UpdateKind.CLI_NATIVE, MACOS_ARM)).isPresent();
         assertThatThrownBy(() -> AssetSelector.select(BETA_DESKTOP_NATIVE.get(0), ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_NATIVE, MACOS_ARM))
                 .isInstanceOf(UpdateException.class)
-                .hasMessageContaining("macos-arm64")
+                // 报错点名的是**本平台**的规范名（aarch64），不是资产名里的历史写法
+                .hasMessageContaining("macos-aarch64")
                 .hasMessageContaining("AHA-Desktop-Native-0.1.3.00242-windows-amd64-jdk25.zip");
+    }
+
+    @Test
+    void acceptsBothAarch64AndLegacyArm64Spellings() {
+        // 新产出一律 `macos-aarch64`；历史资产名 `macos-arm64` 仍要能选中（读取兼容，issue #287）。
+        String json = """
+                [
+                  {"tag_name": "V0.1.3.00244-aha-jvm", "prerelease": true, "draft": false, "assets": [
+                    {"name": "aha-desktop-0.1.3.00244-macos-aarch64.zip", "size": 1,
+                     "browser_download_url": "https://example.invalid/a.zip", "state": "uploaded"}]},
+                  {"tag_name": "V0.1.3.00243-aha-jvm", "prerelease": true, "draft": false, "assets": [
+                    {"name": "aha-desktop-0.1.3.00243-macos-arm64.zip", "size": 1,
+                     "browser_download_url": "https://example.invalid/b.zip", "state": "uploaded"}]}
+                ]
+                """;
+        List<ChannelRelease> candidates = ReleaseFilter.select(read(json),
+                ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM);
+
+        assertThat(AssetSelector.select(candidates.get(0), ReleaseChannel.BETA,
+                UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
+                .isEqualTo("aha-desktop-0.1.3.00244-macos-aarch64.zip");
+        assertThat(AssetSelector.select(candidates.get(1), ReleaseChannel.BETA,
+                UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
+                .isEqualTo("aha-desktop-0.1.3.00243-macos-arm64.zip");
     }
 
     @Test

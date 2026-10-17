@@ -1,0 +1,191 @@
+name: DesktopPackageLeg
+
+# 可复用工作流：`Release.yml` 的一条「桌面端 JVM 便携包」腿（issue #287）。
+#
+# 【为什么抽出来】作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），
+# 而矩阵要靠表达式区分腿。于是改成「每平台一个静态作业 + 共用这份 steps」。
+#
+# 【口径】一条腿 = 一个 runner + 一个平台分类器。每个 runner 只能产出自己平台的包
+# （JavaFX 原生库按平台分类器发布，见 DesktopDesign.md 第 5 节）。
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: runner 标签（ubuntu-latest / windows-latest / macos-latest）
+        type: string
+        required: true
+      label:
+        description: 平台标签（ubuntu-amd64 / windows-amd64 / macos-aarch64）
+        type: string
+        required: true
+      expected:
+        description: 本腿应当解析出的平台分类器（linux / win / mac-aarch64）
+        type: string
+        required: true
+      ref:
+        description: 要检出的 ref（发布 tag；`workflow_dispatch` 下不能靠 github.ref）
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  DesktopPackageLeg:
+    name: DesktopPackageLeg
+    runs-on: ${{ inputs.os }}
+    steps:
+      # 同 CLI 作业：显式检出发布 tag（`workflow_dispatch` 下 `github.ref` 是分支）
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: BuildAndVerify
+        # 同 CLI 作业：发行包必须由自身跑过门禁的构建产出。
+        uses: ./.github/actions/maven-run
+        with:
+          command: ./mvnw clean verify
+
+      - name: VerifyPlatformClassifier
+        shell: bash
+        env:
+          EXPECTED: ${{ inputs.expected }}
+          LABEL: ${{ inputs.label }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # 用 [0-9] 而不是 *：这样不会把 Dist/ 里可能存在的
+          # aha-desktop-native-<版本>-<jdk>.zip（原生镜像包）误当成桌面端 jar 包。
+          files=(Dist/aha-desktop-[0-9]*.zip)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
+            exit 1
+          fi
+          # 文件名形如 Dist/aha-desktop-<版本>-<平台分类器>.zip，先去掉目录前缀
+          rest="${files[0]#Dist/}"
+          rest="${rest#aha-desktop-}"; rest="${rest%.zip}"
+
+          # 分类器名里可能含 '-'（mac-aarch64 / linux-aarch64），
+          # 故先匹配更具体的，再匹配短的。
+          classifier=""
+          for c in linux-aarch64 mac-aarch64 win linux mac; do
+            case "$rest" in
+              *-"$c") classifier="$c"; version="${rest%-$c}"; break ;;
+            esac
+          done
+          if [ -z "$classifier" ]; then
+            echo "::error::无法从包名解析平台分类器：$rest"
+            exit 1
+          fi
+
+          echo "包名解析：版本=$version 分类器=$classifier"
+          if [ "$classifier" != "$EXPECTED" ]; then
+            echo "::error::平台不匹配：本腿（${LABEL}）期望 ${EXPECTED}，实际解析到 ${classifier}。"
+            echo "::error::runner 架构可能已变更，请核对调用方本文件的腿定义。"
+            exit 1
+          fi
+
+          target="Dist/aha-desktop-${version}-${LABEL}.zip"
+          mv -- "${files[0]}" "$target"
+          size=$(du -h "$target" | cut -f1)
+          # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
+          # **根级**的原生库（libglass.so / glass.dll / libglass.dylib…），故按根级计数。
+          natives=$("$JAVA_HOME/bin/jar" tf "$target" | grep -Ec '^[^/]+\.(dll|so|dylib)$' || true)
+          echo "发布产物：${target}（${size}，含本平台 OpenJFX 原生库 $natives 个）"
+
+      - name: VerifyPackageIntegrity
+        # 这一步在 issue #218 之前是「模块图自证」：那时包是 lib/+bin/ 的 JPMS 目录形态，
+        # 判据是「用一个不存在的主类触发模块图解析，出现 FindException 即缺依赖」。
+        # 平铺形态下没有模块路径了，改判「包内实际有什么」——入口是否平铺、单体 jar 的
+        # Main-Class 是否是转发类、里面是否真的带了本平台（且只是本平台）的 OpenJFX 原生库。
+        shell: bash
+        env:
+          EXPECTED: ${{ inputs.expected }}
+          LABEL: ${{ inputs.label }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          work="$RUNNER_TEMP/desktop-release-check"
+          rm -rf "$work"; mkdir -p "$work"
+          cp -- "$(ls Dist/aha-desktop-[0-9]*.zip)" "$work/pkg.zip"
+          entries="$work/entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
+
+          # ① 不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
+          if grep -Eq '^(lib|bin)/' "$entries"; then
+            echo "::error::桌面端包内不应再有 lib/ 或 bin/ 目录（issue #218）"
+            grep -E '^(lib|bin)/' "$entries" | head -5
+            exit 1
+          fi
+          # ② 三个入口都平铺在包根
+          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
+            if ! grep -qx "$f" "$entries"; then
+              echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
+            fi
+          done
+
+          # ③ 单体 jar 自证：Main-Class = 转发类、无 module-info、含 JavaFX 类
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-desktop.jar )
+          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-desktop.jar META-INF/MANIFEST.MF )
+          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
+          if [ "$main" != "com.acanx.module.aha.desktop.AhaDesktopLauncher" ]; then
+            echo "::error::单体 jar 的 Main-Class 应为 AhaDesktopLauncher（不继承 Application 的转发类），实际：${main:-<空>}"
+            exit 1
+          fi
+          fat="$work/fat-entries.txt"
+          "$JAVA_HOME/bin/jar" tf "$work/aha-desktop.jar" > "$fat"
+          if grep -qx 'module-info.class' "$fat"; then
+            echo "::error::单体 jar 不得含 module-info.class"; exit 1
+          fi
+          if ! grep -q '^javafx/application/Application.class$' "$fat"; then
+            echo "::error::单体 jar 内含不到 JavaFX（javafx/application/Application.class）"; exit 1
+          fi
+
+          # ④ 本平台原生库：按平台点名 + 不允许混进别的平台
+          #    （JavaFX 的原生库在 jar **根级**；sqlite-jdbc 那种全平台包在 org/sqlite/native/ 下，
+          #     按根级过滤即可把它们排除在外。）
+          case "$EXPECTED" in
+            win)         want="glass.dll";      ext="dll" ;;
+            linux)       want="libglass.so";    ext="so" ;;
+            mac-aarch64) want="libglass.dylib"; ext="dylib" ;;
+            *)           echo "::error::未知平台分类器：$EXPECTED"; exit 1 ;;
+          esac
+          if ! grep -qx "$want" "$fat"; then
+            echo "::error::单体 jar 内没有本平台（${EXPECTED}）的 ${want} —— 运行时会报缺 JavaFX 运行时"
+            exit 1
+          fi
+          root_natives=$(grep -Ec '^[^/]+\.(dll|so|dylib)$' "$fat" || true)
+          same_ext=$(grep -Ec "^[^/]+\.${ext}$" "$fat" || true)
+          if [ "$same_ext" -eq 0 ]; then
+            echo "::error::本平台（${EXPECTED}）原生库数量为 0（期望 .${ext}）"; exit 1
+          fi
+          other=$(grep -E '^[^/]+\.(dll|so|dylib)$' "$fat" | grep -v "\.${ext}$" || true)
+          if [ -n "$other" ]; then
+            echo "::error::单体 jar 内混进了别的平台的原生库："
+            echo "$other" | head -5
+            exit 1
+          fi
+          echo "单体 jar：Main-Class=${main}，本平台（${EXPECTED}）原生库 ${same_ext}/${root_natives} 个，无 module-info"
+          # ── 包内清单（issue #51 §6）────────────────────────────────────────
+          # 版本从**唯一读取入口**取（issue #93 / #94），不从产物名里反推。
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
+            --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
+            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" --kind desktop-jvm \
+            --version "${version}" --platform "${LABEL}"
+
+      - name: PrintOpenJfxArtifacts
+        shell: bash
+        run: ./mvnw -B -pl aha-desktop dependency:tree -Dincludes=org.openjfx
+
+      - name: UploadReleaseAssets
+        uses: softprops/action-gh-release@v3
+        with:
+          # 同 CLI 作业：显式指定 tag（dispatch 下 `github.ref` 是分支）
+          tag_name: ${{ inputs.ref }}
+          files: Dist/aha-desktop-[0-9]*.zip

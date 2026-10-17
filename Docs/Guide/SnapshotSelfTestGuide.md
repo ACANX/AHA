@@ -23,7 +23,7 @@
 
 PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**把结论记下来：
 
-- 打一条 commit status（名字就是 **`snapshot-assert`**）—— 将来可以（可选）作为合并卡点；
+- 打一条 commit status（名字就是 **`SnapshotAssert`**）—— 将来可以（可选）作为合并卡点；
 - 在 PR 上留一条**可复核的痕**：版本 / 平台 / JDK / 结论 / 验证人 / 时间 / 对应提交 / token 开销。
 
 三条口径（issue #166，ACANX 2026-10-15 定）：
@@ -31,7 +31,7 @@ PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**
 | 口径 | 含义 |
 |---|---|
 | **默认启用** | 工作流随仓库就位，发评论即可用 —— 不需要开关、不需要新标签 |
-| **默认不卡点** | `snapshot-assert` **不**在 required status checks 里；缺它**不影响**合并。要卡点见 §9 |
+| **默认不卡点** | `SnapshotAssert` **不**在 required status checks 里；缺它**不影响**合并。要卡点见 §9 |
 | **必测项 0 token** | 必测清单里**没有**任何模型往返（见 §4）；需要真实 provider 请求的动作是**可选**（`+model`）|
 
 > **不替代 CI**：PR 上的构建 / 冒烟 / 静态门禁照旧必须通过；这条机制只记录「人验过机器验不了的部分」。
@@ -69,7 +69,7 @@ PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**
 | `/snapshot-assert …` | `success` | `快照 <版本> @ <平台> jdk<JDK>：必测清单通过[（含模型往返）]` |
 | `/snapshot-assert-fail …` | `failure` | `快照 <版本> @ <平台> jdk<JDK>：自测失败（详见 PR 评论）` |
 
-`context` 固定为 `snapshot-assert`，`target_url` 指向留痕评论，绑定的提交是**发命令时 PR 的 `head_sha`**。
+`context` 固定为 `SnapshotAssert`，`target_url` 指向留痕评论，绑定的提交是**发命令时 PR 的 `head_sha`**。
 
 ## 4 必测清单（打标前请逐项过一遍）
 
