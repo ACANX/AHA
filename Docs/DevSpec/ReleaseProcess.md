@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.31.0
+**文档版本**：v1.31.1
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-16
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.31.1 | 2026-10-17 | §2 的「一致性校验」补一句口径：产物名版本段**只比对带版本段的产物**（`<artifactId>-<版本>…`）；包根扁平化后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` 不带版本号、不参与该比对（版本由包内 `AHA-PACKAGE.json` 承载），跳过项写进校验日志。修的是 `ProjectVersion.py` 被根聚合 artifactId 前缀碰撞后的**假红**（`dev` 上 Gate 自 2026-10-15 起一直红，issue #260） | @cnxnc |
 | v1.31.0 | 2026-10-16 | 口径 6 更新：桌面端**默认通道已由临时值 `beta` 改回 `stable`**（issue #252 / TD-00019），并写明原生形态因 Stable 暂不发原生包、应用内升级仍走 `beta` / `alpha` | @ACANX / CNXNC |
 | v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
 | v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
@@ -93,6 +94,9 @@
    - **一致性校验（强制）**：`python3 .github/Python/ProjectVersion.py --verify` 断言
      `version` 文件 / 根 POM `<revision>` / `version.properties` 的 `version` /
      产物名版本段 / `Build.yml` 的 tag 规则五处一致（已接入 `Gate.yml`）。
+     其中「产物名版本段」只比对**带版本段**的产物（`<artifactId>-<版本>…`）；包根扁平化后的
+     `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**、不参与该比对（版本由包内
+     `AHA-PACKAGE.json` 承载），被跳过的条目会写进校验日志，不会静默（issue #260）。
    - **验证时机**：版本切换 PR 上**不跑** `Build` / `Gate` / `Compat`——`GITHUB_TOKEN` 推的
      提交不触发下游 workflow，且后两者的 `pull_request` 只覆盖 `main` / `release/**`。
      验证由**合并到 `dev` 后**自动触发的流水线承担：`Build.yml`（`on: [push, pull_request]`）

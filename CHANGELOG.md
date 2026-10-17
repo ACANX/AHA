@@ -220,6 +220,19 @@
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
 ### 修复
+- **`ProjectVersion.py --verify` 的产物名判定修掉假红（issue #260，2026-10-17）**：包根扁平化
+  （#217/#218）之后 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**，而校验用
+  「文件名以 `artifactId-` 开头」判定「是不是本项目的版本化产物」——根聚合工程的 artifactId 恰好是
+  `aha`，于是 `aha-cli.jar` 命中前缀 `aha-`，被判成「`aha` 的产物但没有版本段」，报
+  `❌ 产物文件名中的版本段：Dist/aha-cli.jar（版本段 未识别）`。后果是 `dev` 上的 `Gate`
+  自 2026-10-15 起**一直红**（`Gate` 是 `main` 的必需检查 ⇒ 任何合 `main` 的 PR 都被挡住）。
+  三处收口：① `collect_artifact_ids()` 不再把根聚合工程（`<packaging>pom</packaging>`，不出产物）
+  计入前缀表；② `extract_version()` 要求版本段**紧跟** artifactId（`match` 而非 `search`），
+  于是「以 `artifactId-` 开头但后面不是版本号」的扁平产物按「不带版本号」跳过，并写进校验日志
+  （`…；跳过 N 个不带版本号的产物（如 Dist/aha-cli.jar）`）；③ `--self-test` 增补 8 条产物名判定
+  用例（含 `aha-cli.jar` / `aha-cli-native.jar` / `aha-0.1.3.jar` 三个反例），正反例一起跑。
+  真实漂移仍会被抓（`aha-cli-0.1.2.jar`、`aha-core/target/aha-core-0.1.2.jar` 均判红，已在
+  `/tmp` 副本上前后对比验证）。
 - **原生形态的应用内升级被误拦（issue #51，2026-10-16 真机追问）**：上一轮为修「原生 exe 下错包」，我顺手加了一层「原生形态不支持自更新」的门，理由是「原生包不在升级通道里」。**实测该理由不成立**：原生线有自己的 tag（`V<版本>-aha-desktop-native`）与资产（`AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`），都在 `ChannelContract` 里；`supports()` 只排除「原生包 + Stable 通道」（原生线还没发正式版）；换装与重启机制与 JVM 同构（包内清单 + helper 随包分发 + `restartCommand()` 返回 exe）。真正缺的只有**形态判定**（原生 exe 被判成 JVM 形态 —— 那是真 bug，已修）。处理：**撤掉那层门**，原生形态恢复走同一条升级链路；新增正向用例 `UpdateServiceTest#prepareSwapPlansToReplaceTheNativeExecutable`（此前这条路径零覆盖：计划里要出现 exe 的替换动作、`restart` 指向 exe）；文档 / TS-2610-047 / TD-00022 / #247 的结论一并更正。真机验收项：**替换正在运行的 exe** 后能否自动重启到新版本。
 - **升级 tab：「升级」按钮一直是灰的、选中版本也不变（issue #51，2026-10-16 真机反馈）**：这其实是**门生效时的预期行为** —— 换装成功后回不来的形态（原生镜像、只剩单体 jar、非 Windows）宁可不换，所以 `onSelectionChanged` 遇到门生效就直接置灰并 `return`，**选中任何一行都不会变可点**。问题出在**说明看不见**：原因只写在底部那行**灰色**状态文字里，用户把它当成了按钮故障。修复：门生效时在内容区上方显示一条**加粗、常显**的提示（`aha.upgrade.notice`），写出原因并明确「版本列表只是让你看看有哪些版本」；版本列表占位符改成同一口径；「检查更新」仍可用（便于浏览版本）这一既有决定保留。另按门的**性质**分：**原生镜像形态**下连「检查更新」与通道单选项一起禁用（升级通道里只有 JVM 线资产，列出来也装不了、还会诱导去点升级）；**其它门**（POSIX 未实现 / 只剩单体 jar）仍保留列表以便据此手动取件。冒烟断言补齐（提示可见 + 占位；非原生门下「检查更新」仍可用不被顺手改掉）。教训写进设计文档：**置灰必须配看得见的原因**。
 - **CI：Maven Wrapper 下载发行包瞬时失败不重试（2026-10-16 实测）**：PR 的 Windows 腿 21 秒就红，报 `Conversion from JSON failed with error: Invalid character after parsing property name` + `java.io.FileNotFoundException: …/apache-maven-4.0.0-rc-7-bin.zip` —— 那次 Central 返回的不是元数据（被挡 / 挑战页），wrapper 拉不到发行包；而 `.github/actions/maven-run` 的瞬时失败判据一条都不命中 ⇒ **一次都没重试**直接失败，**同一个提交的另一次运行里同一条腿是绿的**（同一提交两种结果，正是该 action 要覆盖的场景）。修复：判据补 `Exception in thread "main" java.io.FileNotFoundException: https://repo.maven.apache.org/maven2/org/apache/maven/…`、`apache-maven-<版本>-bin.zip`（**版本号可能带后缀，如 `4.0.0-rc-7`**）以及 wrapper 其它措辞（`Conversion from JSON failed` / `Error downloading` / `Could not download Maven distribution` / `Connection timed out`）。**第一版判据写错了**：`apache-maven-[0-9][0-9.]*-bin\.zip` 匹配不到带后缀的版本，而当时的「正向验证」因为多行样本里**另一条判据也命中**而没暴露 —— 现改为**逐条**对着日志里那一行验证（命中真实报错行；编译错误与测试失败一条都不命中，真失败仍立刻失败）。规范同步 `BuildSpec.md` v1.46.0 §8.1 的判别表（含这两条教训）。
