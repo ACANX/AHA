@@ -240,10 +240,32 @@ class ChannelContractTest {
     }
 
     @Test
-    void defaultChannelStaysBetaUntilStableShipsAssets() {
-        // issue #51 §10 D9：暂定 Beta；等首个带资产的正式发版落地后改回 STABLE
-        // （待办 TD-00019）。这条断言是**故意**钉住的：改默认值必须同时改 D9、README 与 TD，
+    void defaultChannelIsStable() {
+        // issue #252 / TD-00019：默认通道已由临时值 Beta 改回 STABLE（2026-10-16）。
+        // 这条断言是**故意**钉住的：改默认值必须同时改设计文档、用户指南与 TD，
         // 否则测试会红 —— 免得「改默认」被人忘掉或被顺手改掉。
-        assertThat(ReleaseChannel.DEFAULT).isEqualTo(ReleaseChannel.BETA);
+        assertThat(ReleaseChannel.DEFAULT).isEqualTo(ReleaseChannel.STABLE);
+        assertThat(ReleaseChannel.DEFAULT.key()).isEqualTo("stable");
+    }
+
+    @Test
+    void defaultChannelStillCannotServeNativeShapes() {
+        // 默认通道换了，**形态边界没换**：原生线还没发正式版 ⇒ 原生形态在默认通道用不了。
+        // 所以这条不仅断言「不支持」，还断言提示**给出了可切换的通道** ——
+        // 默认值落在 Stable 之后，原生装机的首屏就会碰到它（issue #252 的排期边界）
+        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.CLI_JVM)).isTrue();
+        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.DESKTOP_JVM)).isTrue();
+        assertThat(ChannelContract.supports(ReleaseChannel.DEFAULT, UpdateKind.DESKTOP_NATIVE))
+                .isFalse();
+    }
+
+    @Test
+    void missingAssetMessageSaysWhichChannelToSwitchTo() {
+        // 「不支持」必须落到「怎么办」：只说「没有这种包」等于把用户堵在墙前
+        assertThat(AssetSelectorTest.unsupportedMessage(UpdateKind.DESKTOP_NATIVE))
+                .contains("目前没有")
+                .contains("开发 Beta")
+                .contains("快照 Alpha")
+                .doesNotContain("「稳定 Stable」");   // 句首那句是被描述的通道，不算备选
     }
 }

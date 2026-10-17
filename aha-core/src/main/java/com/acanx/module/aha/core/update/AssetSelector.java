@@ -77,9 +77,12 @@ public final class AssetSelector {
     public static AssetInfo select(ChannelRelease release, ReleaseChannel channel, UpdateKind kind,
                                    PlatformTag platform) {
         if (!ChannelContract.supports(channel, kind)) {
+            // 「不支持」要落到**怎么办**上：只说「没有这种包」等于把用户堵在墙前，
+            // 尤其现在默认通道就是 Stable —— 原生形态装机会直接碰到这条（issue #252）
             throw new UpdateException(UpdateException.CODE_ASSET_MISSING,
                     channel.label() + " 通道目前没有 " + kind.targetWord() + " 的包"
-                            + "（正式发版只出 CLI 包与桌面端 JVM 包，见 issue #51 §2.1）");
+                            + "（正式发版只出 CLI 包与桌面端 JVM 包）。请切通道："
+                            + supportingChannels(kind));
         }
         // 带平台段的形态先看「这个平台有没有出过包」；不带平台段的形态（CLI JVM）与平台无关，跳过此判。
         if (kind.hasPlatform() && !platform.hasPublishedPackages()) {
@@ -88,6 +91,20 @@ public final class AssetSelector {
         }
         return resolve(release, channel, kind, platform)
                 .orElseThrow(() -> missing(release, channel, kind, platform));
+    }
+
+    /** 列出支持该形态的通道（按声明顺序），供「本通道没有这种包」的提示用。 */
+    private static String supportingChannels(UpdateKind kind) {
+        StringBuilder text = new StringBuilder();
+        for (ReleaseChannel channel : ReleaseChannel.values()) {
+            if (ChannelContract.supports(channel, kind)) {
+                if (text.length() > 0) {
+                    text.append('或');
+                }
+                text.append('「').append(channel.label()).append('」');
+            }
+        }
+        return text.toString();
     }
 
     /**

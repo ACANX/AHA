@@ -1,6 +1,6 @@
 # 桌面端应用内升级设计
 
-> **文档版本**：v1.3.3
+> **文档版本**：v1.3.5
 > **状态**：生效（Windows 侧已实现；Linux / macOS 的应用内升级**后置**，见 §1 边界）
 > **生效日期**：2026-10-16
 > **最后更新**：2026-10-16
@@ -12,6 +12,8 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.3.5 | 2026-10-16 | 修掉一个让「缺键不写盘」**形同虚设**的坑（真按「缺键不写盘」验收时发现的）：升级面板渲染初始选中会触发切换监听器，把 `Update.Channel` 记成「用户显式设过」⇒ 只要打开过一次面板，这个安装**再也不跟随代码默认值**。两处收口：① `DesktopSettings.updateChannel` 设成**当前有效值**不再算显式选择（值没变，没什么可记）；② 渲染初始选中时上锁（`UpgradePane.applyingInitialChannel`），既不记「选过」也不保存。补两条回归守卫：`DesktopSettingsTest.pickingTheDefaultValueDoesNotCountAsAnExplicitChoice` 与冒烟测试里「渲染不等于用户选择」 | @ACANX / CNXNC |
+| v1.3.4 | 2026-10-16 | **默认通道由临时值 `Beta` 改回 `Stable`**（issue #252 / TD-00019）：§2 与 §6 同步；改动能惠及老安装靠的是「缺键不写盘」（显式选过的不受影响）。**形态边界没变** —— `Stable` 目前只有 JVM 形态资产，所以顺手把两处提示改成**可行动**：`AssetSelector` 的「本通道没有这种包」按 `ChannelContract.supports` 动态列出可用通道，升级面板空列表补「也可以切到「…」或「…」通道再看看」；§8.2 新增真机项 14（老安装是否跟随默认值） | @ACANX / CNXNC |
 | v1.3.3 | 2026-10-16 | **更正并撤掉「原生镜像」那层门**：v1.3.1 加它时的理由是「原生包不在升级通道里」，实测**不成立** —— 原生线有自己的 tag（`V<版本>-aha-desktop-native`）与资产（`AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`），都在 `ChannelContract` 里；`supports()` 只排除「原生包 + Stable 通道」（原生线还没发正式版）；换装与重启与 JVM 同构（包内清单 + helper 随包分发 + `restartCommand()` 返回 exe）。真正缺的只有**形态判定**（原生 exe 曾被判成 JVM 形态，是真 bug，已修）。多拦一层的代价就是「升级按钮永远是灰的」（真机反馈）。新增正向用例 `prepareSwapPlansToReplaceTheNativeExecutable` 覆盖这条此前零覆盖的路径；真机验收项：替换正在运行的 exe 后能否自动重启到新版本 | @ACANX / CNXNC |
 | v1.3.2 | 2026-10-16 | 真机复测「升级按钮一直是灰的、选中版本也不变」：这是**门生效时的预期行为**（换装回不来的形态宁可不换），但原因只写在底部**灰色**状态行里，用户看成了 bug。修复观感：门生效时在内容区上方显示一条**加粗常显**的提示（`aha.upgrade.notice`，写出原因 + 「列表只是让你看看有哪些版本」），版本列表占位符同口径；「检查更新」仍可用这一既有决定保留。教训：**置灰必须配看得见的原因**，不能只靠一行小字 | @ACANX / CNXNC |
 | v1.3.1 | 2026-10-16 | 真机 bug：**原生镜像的 exe 把自己认成 JVM 便携包** ⇒ 点升级去下 JVM 包、exe 自己没变（`Dist\` 里两种形态并存时必现）。修复：① `InstallLayout.detect()` 先看 GraalVM 属性 `org.graalvm.nativeimage.imagecode`，且 code source **必须是 `.jar`** 才算 JVM 形态（原生镜像里 code source 指向 exe 自己，只判「是不是普通文件」会判错）；② 能力门新增**原生镜像**一条并排在平台那条之前；③ `prepareSwap` 加同一道兜底。真正实现原生自更新见 [#247]（TD-00022），排障记录 [TS-2610-047](../Troubleshooting/TS-2610-047-Native-Exe-Mistaken-For-Jvm-Package.md) | @ACANX / CNXNC |
@@ -62,8 +64,14 @@
 [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §3.5；三处实现（PowerShell / Python / Java）
 的一致性由 `bin/CheckScripts.py` 的 `check_release_channel_contract()` 钉住。
 
-**默认通道暂定 `Beta`**（D9）：Stable 当前没有可下包。这条默认值的落实机制见 §6 的「缺键不写盘」，
-配套待办 [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)。
+**默认通道是 `Stable`**（2026-10-16 由临时值 `Beta` 改回，issue [#252](https://github.com/ACANX/AHA/issues/252)）。
+当初暂定 `Beta` 的原因很具体：正式 release `0.1.0` / `V0.1.1` / `V0.1.2` 的资产数均为 0，
+默认取 `Stable` 会让升级面板首屏是个空列表。改回能惠及老安装靠的是 §6 的「缺键不写盘」——
+只有**用户显式选过**通道才落盘，所以「从没选过」的安装跟着代码默认值走。
+
+**形态边界没变**：`Stable` 目前只有 JVM 形态资产（原生线的正式发布排在 1.x），
+所以原生形态在默认通道列不出可升级版本 —— 界面和 CLI 都要说明原因并**指出可切换的通道**
+（`AssetSelector` 的「本通道没有这种包」提示按 `ChannelContract.supports` 动态列出可用通道）。
 
 ## 3. 服务层（`aha-core`，无 JavaFX 依赖）
 
@@ -262,13 +270,16 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 
 | 键 | 取值 | 默认 | 说明 |
 |---|---|---|---|
-| `Update.Channel` | `stable` / `beta` / `alpha` | `beta`（**暂定**） | 缺键取默认、**不主动写盘** ⇒ 将来改回 `stable` 会惠及「从没选过该键」的安装 |
+| `Update.Channel` | `stable` / `beta` / `alpha` | `stable` | 缺键取默认、**不主动写盘** ⇒ 2026-10-16 默认值由 `beta` 改回 `stable` 时，「从没选过该键」的安装跟着切了过来（显式选过的不受影响） |
 | `Update.CheckOnStartup` | `true` / `false` | `false` | 启动只**检查**，不自动下载 |
 | `Update.AlphaAcknowledged` | `true` / `false` | `false` | 首次切到 Alpha 的一次性确认 |
 | `Update.BackupKeep` | 整数 | `2` | 保留备份份数（0–10）；**启动收尾时生效**（v1.1.0 起真的会被读，此前是死配置） |
 | `Update.LastCheckAt` | ISO 时间 | — | 上次检查时间，**仅展示用，不参与决策** |
 
-实现要点（`DesktopSettings`）：只有**用户显式设过**的 `Update.*` 键才落盘；值写坏了不算「设过」。
+实现要点（`DesktopSettings`）：只有**用户显式设过**的 `Update.*` 键才落盘；值写坏了不算「设过」；
+**设成「当前有效值」也不算**（值没变，没什么可记的）—— 这条是 2026-10-16 补的：升级面板渲染初始选中会
+触发通道切换监听器，若不这样收口，「打开过一次面板」就会被记成「用户选过通道」，
+该安装从此**不再跟随代码默认值**（`UpgradePane.applyingInitialChannel` 同时给渲染这一步上锁）。
 `ReleaseChannel.of` 对不认识的值返回默认通道而不是 `null`，所以读盘与命令行解析都必须**回头比一次 key**。
 
 ## 7. 安全模型
@@ -331,6 +342,7 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 | 11 | 启动时清理真的生效 | 升级（或制造一次失败换装）后正常关闭再启动 | `~/.aha/update/<版本>/` 消失（不再白占 50–110 MB）；`backup/` 只留 `Update.BackupKeep` 份 | ⏳ |
 | 12 | 安装形态门（只剩单体 jar） | 直接 `java -jar aha-desktop.jar` 起，点「设置 → 升级」；再试一次 CLI `--update-to <版本> --yes` | 界面按钮**提前置灰**并说明「没有可用的启动脚本」；CLI **不下载**、明确拒绝、返回非 0 | ⏳ |
 | 13 | 换装中再启动一次 App 不许毁掉升级 | 点升级、App 退出后**立刻**再启动一次（趁 helper 还在换装） | 消息流出现「上次换装可能还在进行…」，`~/.aha/update/<新版本>/` 与 `backup/` **都没被删**；换装结束后下次启动给出回执 | ⏳ |
+| 14 | 默认通道 = `Stable`（老安装跟随） | 用一个**从没选过通道**的安装目录（`desktop.properties` 里没有 `Update.Channel`）打开「设置 → 升级」 | 通道选中「稳定 Stable」；若该通道还没有带资产的正式发版，列表为空但状态/空列表文案明确给出「也可切到「开发 Beta」或「快照 Alpha」」；显式选过 `Beta` 的老安装仍停在 `Beta` | ⏳ |
 
 采集方式（把结论与原始输出贴进 PR 评论）：
 

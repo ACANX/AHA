@@ -1,9 +1,9 @@
 # 待办事项清单（TODO）
 
-**文档版本**：v1.3.0
+**文档版本**：v1.3.1
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-16
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -125,7 +125,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00014](TD-00014-ManualAndExternalActions.md) | 分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布、真机走查 | ✅ 已完成（2026-10-16） | [#85](https://github.com/ACANX/AHA/issues/85)（**已关闭**） | 六项均有结论（G-02 / G-05 不做、G-03 已验、G-06 完成、0.1.1 结项、真机 7 项通过）；「tag 不触发 `Release.yml`」转 [#238](https://github.com/ACANX/AHA/issues/238)（TD-00018） |
 | [TD-00016](TD-00016-SingleSourceVersionBump.md) | 版本切换收敛为「改一行」：`${revision}` + 单一读取入口 + 一致性校验 | ☐ 未开始 | [#92](https://github.com/ACANX/AHA/issues/92)（父；子 [#93](https://github.com/ACANX/AHA/issues/93)~[#97](https://github.com/ACANX/AHA/issues/97)） | 含根因反思；分 5 阶段（P1 校验 → P2 读取收敛 → P3 `${revision}` → P4 分发器 → P5 文档） |
 | [TD-00017](TD-00017-TroubleshootingDocSkeletonAlignment.md) | Troubleshooting 排查档案正文对齐 TroubleShootingDocSpec 的**四节必备项** | ✅ 已完成（2026-10-13） | [#128](https://github.com/ACANX/AHA/issues/128)（**已关闭**） | 取**选项 C**：32 篇 + 模板补齐四节；规范新增 §5（+ §4 入口）；`CheckDocs.py` 新增机器检查 |
-| [TD-00019](TD-00019-DefaultChannelBackToStable.md) | 默认升级通道从 `Beta` 改回 `Stable` | ⏳ 待做（触发条件：出现带资产的正式发版） | [#252](https://github.com/ACANX/AHA/issues/252) | D9 的临时默认值（Stable 当时无可下包）；机制已就绪：`Update.Channel` **缺键不写盘**，所以改回默认值会惠及「从没选过该键」的安装；原载体 #51 已关闭，本单转由 #252 跟踪 |
+| [TD-00019](TD-00019-DefaultChannelBackToStable.md) | 默认升级通道从 `Beta` 改回 `Stable` | ✅ **已完成**（2026-10-17，PR [#255](https://github.com/ACANX/AHA/pull/255) → `1f10666`）；「`Stable` 通道能列出版本」依赖种子发版，转 [#238](https://github.com/ACANX/AHA/issues/238) 跟踪 | [#252](https://github.com/ACANX/AHA/issues/252) | D9 的临时默认值（Stable 当时无可下包）；机制已就绪：`Update.Channel` **缺键不写盘**，所以改回默认值会惠及「从没选过该键」的安装；原载体 #51 已关闭，本单转由 #252 跟踪 |
 | [TD-00022](TD-00022-NativeImageSelfUpdate.md) | 原生镜像（`AhaDesktopNative`）的应用内自更新 | ⏳ 待真机确认（唯一剩余项已登记 #122） | [#122](https://github.com/ACANX/AHA/issues/122) | 通道契约 / 资产选择 / 形态判定 / 包内清单与 helper / 换装计划 / 重启命令**逐层核对均已就绪**；我曾误判为「未实现」并多拦一层（表现为「升级按钮永远是灰的」），门已撤、正向用例已补；剩下的是**真机验一次「替换正在运行的 exe」**（`TS-2610-047` §4.1 记录了这次误判的更正）；#247 已随 PR #243 交付后关闭 |
 | [TD-00020](TD-00020-PosixUpdateHelper.md) | POSIX 换装 helper（Linux / macOS 的应用内升级） | ⏳ 待做 | [#250](https://github.com/ACANX/AHA/issues/250) | 服务层 / 计划 / 回执 / 握手都已平台无关，增量只在一个 `apply-update.sh`；现状是界面**提前置灰**并说明原因（2026-10-16 审查 P1-7 已修），功能本身仍缺；原载体 #51 已关闭，本单转由 #250 跟踪 |
 | [TD-00021](TD-00021-RollbackToPreviousVersion.md) | 回滚到上一版（界面入口） | ⏳ 待做 | [#251](https://github.com/ACANX/AHA/issues/251) | 备份与 `SwapPlan.rollback` 都已就绪，缺的是「让用户看得见、点得到」；入口必须照实说明 `Update.BackupKeep` 决定了能切回的范围（2026-10-16 第二轮审查 P3-⑤）；原载体 #51 已关闭，本单转由 #251 跟踪 |

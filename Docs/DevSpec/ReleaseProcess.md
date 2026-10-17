@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.30.0
+**文档版本**：v1.31.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-16
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.31.0 | 2026-10-16 | 口径 6 更新：桌面端**默认通道已由临时值 `beta` 改回 `stable`**（issue #252 / TD-00019），并写明原生形态因 Stable 暂不发原生包、应用内升级仍走 `beta` / `alpha` | @ACANX / CNXNC |
 | v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
 | v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
 | v1.28.0 | 2026-10-16 | 新增 §3.4「发布资产里的两份契约文件」：四种包形态的 zip 带包内清单 `AHA-PACKAGE.json`、每个 release 带 `SHA256SUMS`；生成/校验只有一份实现（`.github/Python/PackageManifest.py`），四条出包线都调它；`Release.yml` 新增收尾作业统一出完整校验和（issue #51 §6）| @ACANX / CNXNC |
@@ -440,8 +441,11 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
    **不得**退到更旧的版本（issue #210 的教训）；
 5. Stable 通道的 tag 形态与其余两条线的**预发行 tag 互不匹配**，因此正式发版不会被误当成 Beta；
 6. 桌面端的默认通道与配置键（`Update.Channel` 等）见
-   [DesktopAutoUpdateDesign.md](../Design/DesktopAutoUpdateDesign.md) §6；默认值改回 Stable 的触发条件
-   登记在 [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)。
+   [DesktopAutoUpdateDesign.md](../Design/DesktopAutoUpdateDesign.md) §6：**默认通道为 `stable`**
+   （2026-10-16 由临时值 `beta` 改回，issue [#252](https://github.com/ACANX/AHA/issues/252) /
+   [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)；改回能惠及老安装靠的是「缺键不写盘」）。
+   **原生形态例外**：Stable 暂不发原生包（原生线正式发布排在 1.x）⇒ 原生形态的应用内升级走
+   `beta` / `alpha` 通道。
 
 ### 3.6 发行包必须带换装 helper（桌面端两条线）
 

@@ -970,6 +970,17 @@ class AhaDesktopSmokeTest {
             Button action = (Button) byId(root, UpgradePane.ID_ACTION);
             TextArea status = (TextArea) byId(root, UpgradePane.ID_STATUS);
             RadioButton stable = (RadioButton) byId(root, UpgradePane.ID_CHANNEL_STABLE);
+            RadioButton beta = (RadioButton) byId(root, UpgradePane.ID_CHANNEL_BETA);
+
+            // 光是把面板渲染出来**不算**用户选过通道：一旦算上，这个安装就被冻在当前默认值上，
+            // 将来改默认值它不会再跟随（issue #252 的验收前提）。渲染初始选中会触发切换监听器，
+            // 所以这条必须真的跑在界面上断言 —— 只有单测定不到这条路。
+            assertThat(uiGet(settings::updateChannelExplicit)).as("渲染不等于用户选择").isFalse();
+
+            // 默认通道自 issue #252 起是 Stable ⇒ 必须切到**另一个**通道去，否则
+            // setSelected(true) 是空操作、切换处理根本不会跑，这条断言就成了假绿/假红
+            assertThat(uiGet(stable::isSelected)).as("初始通道 = 默认通道（Stable）").isTrue();
+            RadioButton target = uiGet(() -> stable.isSelected() ? beta : stable);
 
             uiGet(() -> {
                 check.fire();
@@ -978,7 +989,7 @@ class AhaDesktopSmokeTest {
             assertThat(uiGet(check::isDisabled)).as("检查期间按钮应置灰（状态确实在跑）").isTrue();
 
             uiGet(() -> {
-                stable.setSelected(true);
+                target.setSelected(true);
                 return null;
             });
 
