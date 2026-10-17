@@ -54,6 +54,23 @@ jobs:
           echo "实际使用：  ${ACTUAL}"
           test -n "${EXPECTED}"
           test "${EXPECTED}" = "${ACTUAL}"
+      - name: 安装 bubblewrap（Agent 执行边界自证用）
+        # bwrap 在 ubuntu-latest 上默认没装；装它只为下面那条自证步骤。
+        # 位置在完整 verify **之前**：这是便宜、且只看「环境」不看构建产物的检查，
+        # 早跑早反馈；也免得 verify 阶段的失败把它的结论挡住。
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+      - name: Agent 执行边界自证（域内无 Maven/JDK、/mnt 不可见；隔离一失效自证即红）
+        # issue #70 / Docs/Design/AgentExecutionBoundaryDesign.md §6.6：
+        # 边界的「默认路径物理不可行」本身也要被验证，否则隔离被改坏也照样绿（F7）。
+        # 反向用例写在脚本里：--allow-jdk 与域外对照必须**不**被拦，证明断言真的在起作用。
+        run: |
+          # GitHub 的 Ubuntu 24.04 runner 默认用 AppArmor 限制非特权 user namespace，
+          # 而 bwrap 建立挂载命名空间需要它。放开是 runner 级一次性设置，不改仓库任何文件。
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || \
+            echo "::notice::该 runner 无此 sysctl 项（旧内核），继续探测"
+          python3 bin/CheckAgentBoundary.py
       # 凡会解析依赖的 Maven 调用都经 .github/actions/maven-run：先清本地仓库失败标记，
       # 失败则重试。理由见该 action 的说明——仓库侧瞬时故障会把必需检查卡红，与代码无关。
       # （上面那步 `./mvnw -v` 是本地查询与 wrapper 自举，不解析项目依赖，故不经它。）
@@ -77,22 +94,6 @@ jobs:
         run: python3 bin/CheckSkills.py
       - name: 脚本编码与行尾
         run: python3 bin/CheckScripts.py
-      - name: 安装 bubblewrap（Agent 执行边界自证用）
-        # bwrap 在 ubuntu-latest 上默认没装；装它只为下面那条自证步骤。
-        # 放在所有静态检查之后：装配失败或 apt 抖动不该拖累前面的结论。
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap
-      - name: Agent 执行边界自证（域内无 Maven/JDK、/mnt 不可见；隔离一失效自证即红）
-        # issue #70 / Docs/Design/AgentExecutionBoundaryDesign.md §6.6：
-        # 边界的「默认路径物理不可行」本身也要被验证，否则隔离被改坏也照样绿（F7）。
-        # 反向用例写在脚本里：--allow-jdk 与域外对照必须**不**被拦，证明断言真的在起作用。
-        run: |
-          # GitHub 的 Ubuntu 24.04 runner 默认用 AppArmor 限制非特权 user namespace，
-          # 而 bwrap 建立挂载命名空间需要它。放开是 runner 级一次性设置，不改仓库任何文件。
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || \
-            echo "::notice::该 runner 无此 sysctl 项（旧内核），继续探测"
-          python3 bin/CheckAgentBoundary.py
       - name: 主题色号来自色表
         # issue #153：颜色只能有一个来源（Palette 色表），CSS 里的字面量是它的投影。
         # 查三件事：两份主题补丁表的选择器集合一致 / 同一选择器的属性集合一致 /
