@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+（暂无）
+
+## [0.1.3] - 2026-10-17
+
 ### 新增
 - **桌面端应用内升级（issue #51，2026-10-16）**：设置面板里多一个「升级」tab，可选通道、检查更新、看版本列表、升级 / 降级；下载 → 校验 → 由外部 helper 换装 → 自动重启。
   - **三通道**：`Stable`（正式发版，当前还没有带资产的正式发版）/ `Beta`（dev 最新合并，**默认**）/ `Alpha`（PR 试包，7 天有效期，首次切换需确认）；
@@ -219,6 +223,95 @@
   （原生镜像下自定义 color 查表失败会丢掉整条声明），两份 CSS 的头部注释就写着这条结论。
   详见 `TS-2610-035` 与 `Docs/DevLog/20261014-09.md`。
 
+- **补齐界面路径的自动化覆盖（2026-10-13，issue #144）**：FXML 化四批期间反复暴露同一个缺口——
+  静态对账只管「fxml 自身写对没有」、原生冒烟只管「界面在原生包里装起来没有」，而
+  **装起来之后的交互**在 CI 上从未执行过。两项改动：
+
+  1. `Build.yml` 新增**可选作业** `ui-smoke`（Linux + Xvfb）真开窗口跑 `AhaDesktopSmokeTest`
+     ——那套断言（三栏折叠三条路、Enter 发送、工具卡片、会话列表）其实早就写好了，
+     只是被 `@EnabledIfSystemProperty("aha.ui.tests")` 关着。按 `BuildSpec` §7，
+     它是 `continue-on-error` 的：**不进必需检查、不挡合并**，失败以红叉 + Job Summary 暴露。
+  2. `DesktopNative.yml` 增加**带路径过滤**的 `pull_request` 触发（只碰 `aha-desktop/**`、
+     `aha-desktop-native/**`、`pom.xml`、该工作流自身时才跑）：让「原生包能不能起」
+     **在合并前**可见。**PR 事件下不发布**——否则会在尚未合并时往发布页推预发行包、
+     留下无人认领的 tag；制品仍走 Actions artifact。
+
+  见 `Docs/DevLog/20261013-16.md`；规范同步到 `BuildSpec.md` §8.1（v1.29.0）、
+  `DesktopNativeDesign.md` §4.1，`TS-2610-032` §6 的「仍存在的盲区」标注为已补齐。
+- **界面静态资源按类型分目录（2026-10-13）**：`aha-desktop` 的静态资源由「与 Java 类同包的平面
+  目录」改为 `view/fxml/`（7 个骨架）/ `view/css/`（2 份主题表）/ `view/image/`（logo.png）。
+  **Java 类与包名不变**，因此 `module-info` 的 `opens`、native-image 的资源白名单（按扩展名匹配）
+  与打包描述符**都不用改**。同时新增 `view/UiResources.java` 把 10 条路径集中到一处
+  （原先散在 7 个控制器 + `ThemePaint` + `LogoImage`），以后调目录只改它；
+  新增 `UiResourcesTest`：**真的去 classpath 取一次**每条路径——这是白名单对账拦不住的那一半
+  （它按扩展名匹配，路径写错也照样命中）。见 `Docs/DevLog/20261013-15.md`。
+- **其余四个对话框迁到 FXML（2026-10-13，批次 4，最后一批）**：`SettingsDialog`（设置）/ 
+  `ApprovalDialog`（授权）/ `OutputDialog`（输出）/ `ToolListDialog`（工具列表）共 521 行、
+  33 处手写控件迁到各自的 `*-dialog.fxml`，四个类改作 FXML 控制器。决定按钮（复制 / 关闭 /
+  拒绝 / 本次允许 / 本会话始终允许）是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  `FxmlViewChecks` 再添两条：**fxml 必须是良构 XML**（JDK 解析器，无需 JavaFX 工具包）
+  与**扫元素前剔除 XML 注释**（修掉注释里 `List<T>` 造成的假阳性）。
+  元数据新增 4 条（控制器字段注入）。见 `Docs/DevLog/20261013-14.md`。
+- **日志面板迁到 FXML（2026-10-13，批次 3）**：`LogPanel`（240 行 / 9 处手写控件）的结构迁到
+  `log-panel.fxml`，本类改作 FXML 控制器；工具栏（级别过滤 / 刷新 / 复制 / 清空 / 统计行）与
+  只读日志区在 fxml 里一眼可见。「关闭」仍是 `Dialog` 自己的 `ButtonType`，不进 fxml。
+  本批是第一次真正复用批次 2 抽出的 `FxmlViewChecks`——并把「节点 id 必须来自公开常量」
+  也搬进助手，主窗口与日志面板共用。元数据新增 1 条（`LogPanel` 控制器字段注入）。
+  见 `Docs/DevLog/20261013-13.md`。
+- **供应商对话框迁到 FXML（2026-10-13，批次 2）**：`ProviderDialog`（617 行 / 61 处手写控件）
+  的界面结构迁到 `provider-dialog.fxml`，两个 `GridPane` 的全部行由 `GridPane.rowIndex`
+  定位；本类改作 FXML 控制器（`setController(this)`），接线收敛到
+  `wireView` / `wireEditGrid` / `wireCreateGrid` / `wireKeyRow`。
+  档位（`ModelTier` 的 5 档）写进 fxml 以保证表单可读，并用**两道守卫**防「枚举改了、
+  fxml 忘了改」：控制器里的数量硬校验 + `ProviderDialogFxmlTest` 的三向静态对账。
+  同时把批次 1 写的 5 条 FXML 对账抽成可复用的 `FxmlViewChecks`（批次 3 / 4 直接复用）。
+  元数据新增 7 条（`ProviderDialog` 控制器字段、`ChoiceBox` / `ComboBox` / `MenuButton` /
+  `PasswordField` / `Separator` / `GridPane`）。见 `Docs/DevLog/20261013-12.md`。
+- **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
+  状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
+  `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
+  冒烟测试按 id 的 `lookup` 全部照旧。新增 `javafx-fxml` 依赖（父 POM 的
+  `dependencyManagement` 一并登记）。原生镜像侧：`.fxml` 并入 `-H:IncludeResources`
+  扩展名白名单（**刻意不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像、
+  触发运行期 `defineClass` 而启动即崩），并按「**按声明类登记**」的规律补齐反射元数据
+  （`FXMLLoader` / `FXML` / 各控件与布局 / StAX 实现，并把 `Node` / `Parent` / `Region` /
+  `Pane` / `Control` / `Labeled` 升级为 `allDeclared*`）。自证：`NativeImageMetadataTest`
+  新增 FXML 用例，新增 `DesktopShellFxmlTest`（fx:id ↔ 字段 / id ↔ 常量 / 资源白名单
+  三向对账，不启 JavaFX）；启动时打印 ASCII 正面标记 `[ui-fxml-loaded]` /
+  `[ui-fxml-load-failed]`（带 flush）。参考姊妹项目 `TS-2610-003`（FXML 重构后
+  原生包启动即崩的两层踩坑）。见 `Docs/DevLog/20261013-11.md`。
+- **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
+  的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
+  不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。
+  补齐此前硬编码的 3 个插件版本（`compiler` / `surefire` / `jar`），`jacoco.version` →
+  `jacoco.plugin.version`，删除未使用的 `testfx.version`（`D-04` 已定案不引入 TestFX），
+  并在 `dependencyManagement` 补登记 `picocli-codegen`。规范见 `BuildSpec.md` §7。
+  见 `Docs/DevLog/20261013-10.md`。
+- **原生桌面端文本渲染临时缓解（issue #44 / #48）**：真机像素对照确认原生包**丢失了 LCD 次像素抗锯齿**
+  （退化为灰度，笔画发虚、偏细；彩色边缘像素为 JVM 的 1/18.4，暗像素反而多 67%）。
+  新增 `NativeRenderDefaults`，在**原生镜像内**默认写入 `prism.lcdtext=false`（改走灰度）；
+  JVM 版不受影响。用户可随时回退：`-Dprism.lcdtext=…` 直接指定渲染属性、
+  或用 `-Daha.desktop.nativeTextGreyscale=false` 关掉本默认值；命令行与日志诊断
+  （`渲染诊断：原生文本灰度默认 …`）已同步。
+  **这是临时措施、不是根治**——成因指向 DirectWrite 渲染参数在 closed-world 下读不到
+  （与 #60 同源），上游修复或补上参数读取后应删除本类与调用点。
+  见 `Docs/DevLog/20261013-08.md` 与 `TS-2610-030-Native-Font-Rendering-Diff.md` §6。
+- **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
+  `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
+  （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
+  跳过、不采用**。
+  理由：① 避免引入第三种发行形态及其安装器 / 签名 / 公证维护面；② 「免装 JDK」已由原生镜像覆盖，
+  且更彻底；③ 现有两种形态可沿用同一套产物名自证与完整性自证链路。
+  口径见 `ReleaseProcess.md` §3.3；受影响的文档已同步（`BuildSpec.md` / `AHA-Design-V1.md` /
+  `DesktopDesign.md` / `DesktopNativeDesign.md` / `TD-00007` / `TD-00009`）。
+- **排查档案（TS）命名规范收敛（2026-10-13）**：`Docs/Troubleshooting/` 下 31 篇档案由
+  `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，
+  对齐姊妹项目 LegionFanControl 的 `TroubleShootingDocSpec.md`）；序号按原索引登记顺序重编
+  （`001`~`031`），全仓引用、各档案 H1 编号、`bin/CheckDocs.py` 命名正则与
+  `DocumentationSpec.md` §1 / `Docs/Troubleshooting/README.md` §1 同步。
+  正文骨架的对齐另开 issue [#128](https://github.com/ACANX/AHA/issues/128)。
+  见 `Docs/DevLog/20261013-09.md`。
+
 ### 修复
 - **`CheckScripts.py` 不再把「刚构建出来的 `Dist/AhaCli.*`」当成被忽略的源码（issue #262，2026-10-17）**：
   `check_ignored_sources()` 用 `git ls-files --others --ignored` 找「被 `.gitignore` 吃掉、却被装配描述符
@@ -386,96 +479,6 @@
   `[aha-version] version=0.1.3.00134 baseline=0.1.3 prerelease=true`（纯 ASCII + 显式 flush）。
   走 stdout 而不是日志，是因为 console appender 级别为 ERROR，INFO 级的版本行在真机控制台上看不见
   ——而排障第一句要问的就是「你跑的是哪一版」。它同时是冒烟正面断言的落点。
-
-### 变更
-- **补齐界面路径的自动化覆盖（2026-10-13，issue #144）**：FXML 化四批期间反复暴露同一个缺口——
-  静态对账只管「fxml 自身写对没有」、原生冒烟只管「界面在原生包里装起来没有」，而
-  **装起来之后的交互**在 CI 上从未执行过。两项改动：
-
-  1. `Build.yml` 新增**可选作业** `ui-smoke`（Linux + Xvfb）真开窗口跑 `AhaDesktopSmokeTest`
-     ——那套断言（三栏折叠三条路、Enter 发送、工具卡片、会话列表）其实早就写好了，
-     只是被 `@EnabledIfSystemProperty("aha.ui.tests")` 关着。按 `BuildSpec` §7，
-     它是 `continue-on-error` 的：**不进必需检查、不挡合并**，失败以红叉 + Job Summary 暴露。
-  2. `DesktopNative.yml` 增加**带路径过滤**的 `pull_request` 触发（只碰 `aha-desktop/**`、
-     `aha-desktop-native/**`、`pom.xml`、该工作流自身时才跑）：让「原生包能不能起」
-     **在合并前**可见。**PR 事件下不发布**——否则会在尚未合并时往发布页推预发行包、
-     留下无人认领的 tag；制品仍走 Actions artifact。
-
-  见 `Docs/DevLog/20261013-16.md`；规范同步到 `BuildSpec.md` §8.1（v1.29.0）、
-  `DesktopNativeDesign.md` §4.1，`TS-2610-032` §6 的「仍存在的盲区」标注为已补齐。
-- **界面静态资源按类型分目录（2026-10-13）**：`aha-desktop` 的静态资源由「与 Java 类同包的平面
-  目录」改为 `view/fxml/`（7 个骨架）/ `view/css/`（2 份主题表）/ `view/image/`（logo.png）。
-  **Java 类与包名不变**，因此 `module-info` 的 `opens`、native-image 的资源白名单（按扩展名匹配）
-  与打包描述符**都不用改**。同时新增 `view/UiResources.java` 把 10 条路径集中到一处
-  （原先散在 7 个控制器 + `ThemePaint` + `LogoImage`），以后调目录只改它；
-  新增 `UiResourcesTest`：**真的去 classpath 取一次**每条路径——这是白名单对账拦不住的那一半
-  （它按扩展名匹配，路径写错也照样命中）。见 `Docs/DevLog/20261013-15.md`。
-- **其余四个对话框迁到 FXML（2026-10-13，批次 4，最后一批）**：`SettingsDialog`（设置）/ 
-  `ApprovalDialog`（授权）/ `OutputDialog`（输出）/ `ToolListDialog`（工具列表）共 521 行、
-  33 处手写控件迁到各自的 `*-dialog.fxml`，四个类改作 FXML 控制器。决定按钮（复制 / 关闭 /
-  拒绝 / 本次允许 / 本会话始终允许）是 `Dialog` 自己的 `ButtonType`，不进 fxml。
-  `FxmlViewChecks` 再添两条：**fxml 必须是良构 XML**（JDK 解析器，无需 JavaFX 工具包）
-  与**扫元素前剔除 XML 注释**（修掉注释里 `List<T>` 造成的假阳性）。
-  元数据新增 4 条（控制器字段注入）。见 `Docs/DevLog/20261013-14.md`。
-- **日志面板迁到 FXML（2026-10-13，批次 3）**：`LogPanel`（240 行 / 9 处手写控件）的结构迁到
-  `log-panel.fxml`，本类改作 FXML 控制器；工具栏（级别过滤 / 刷新 / 复制 / 清空 / 统计行）与
-  只读日志区在 fxml 里一眼可见。「关闭」仍是 `Dialog` 自己的 `ButtonType`，不进 fxml。
-  本批是第一次真正复用批次 2 抽出的 `FxmlViewChecks`——并把「节点 id 必须来自公开常量」
-  也搬进助手，主窗口与日志面板共用。元数据新增 1 条（`LogPanel` 控制器字段注入）。
-  见 `Docs/DevLog/20261013-13.md`。
-- **供应商对话框迁到 FXML（2026-10-13，批次 2）**：`ProviderDialog`（617 行 / 61 处手写控件）
-  的界面结构迁到 `provider-dialog.fxml`，两个 `GridPane` 的全部行由 `GridPane.rowIndex`
-  定位；本类改作 FXML 控制器（`setController(this)`），接线收敛到
-  `wireView` / `wireEditGrid` / `wireCreateGrid` / `wireKeyRow`。
-  档位（`ModelTier` 的 5 档）写进 fxml 以保证表单可读，并用**两道守卫**防「枚举改了、
-  fxml 忘了改」：控制器里的数量硬校验 + `ProviderDialogFxmlTest` 的三向静态对账。
-  同时把批次 1 写的 5 条 FXML 对账抽成可复用的 `FxmlViewChecks`（批次 3 / 4 直接复用）。
-  元数据新增 7 条（`ProviderDialog` 控制器字段、`ChoiceBox` / `ComboBox` / `MenuButton` /
-  `PasswordField` / `Separator` / `GridPane`）。见 `Docs/DevLog/20261013-12.md`。
-- **桌面端界面骨架迁到 FXML（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 /
-  状态栏 / 输入区，原约 840 行控件构造代码）迁到 `aha-desktop` 资源目录下的
-  `desktop-shell.fxml`，`DesktopShell` 改作它的 **FXML 控制器**——公开方法与行为不变，
-  冒烟测试按 id 的 `lookup` 全部照旧。新增 `javafx-fxml` 依赖（父 POM 的
-  `dependencyManagement` 一并登记）。原生镜像侧：`.fxml` 并入 `-H:IncludeResources`
-  扩展名白名单（**刻意不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像、
-  触发运行期 `defineClass` 而启动即崩），并按「**按声明类登记**」的规律补齐反射元数据
-  （`FXMLLoader` / `FXML` / 各控件与布局 / StAX 实现，并把 `Node` / `Parent` / `Region` /
-  `Pane` / `Control` / `Labeled` 升级为 `allDeclared*`）。自证：`NativeImageMetadataTest`
-  新增 FXML 用例，新增 `DesktopShellFxmlTest`（fx:id ↔ 字段 / id ↔ 常量 / 资源白名单
-  三向对账，不启 JavaFX）；启动时打印 ASCII 正面标记 `[ui-fxml-loaded]` /
-  `[ui-fxml-load-failed]`（带 flush）。参考姊妹项目 `TS-2610-003`（FXML 重构后
-  原生包启动即崩的两层踩坑）。见 `Docs/DevLog/20261013-11.md`。
-- **依赖与构建插件版本参数统一收敛（2026-10-13）**：第三方依赖与构建插件的版本一律在根 `pom.xml`
-  的 `<properties>` 声明、经 `<dependencyManagement>` / `<pluginManagement>` 下发，插件块与子模块
-  不再出现版本字面量；命名统一为「依赖 `<名>.version` / 插件 `<插件名>.plugin.version`」。
-  补齐此前硬编码的 3 个插件版本（`compiler` / `surefire` / `jar`），`jacoco.version` →
-  `jacoco.plugin.version`，删除未使用的 `testfx.version`（`D-04` 已定案不引入 TestFX），
-  并在 `dependencyManagement` 补登记 `picocli-codegen`。规范见 `BuildSpec.md` §7。
-  见 `Docs/DevLog/20261013-10.md`。
-- **原生桌面端文本渲染临时缓解（issue #44 / #48）**：真机像素对照确认原生包**丢失了 LCD 次像素抗锯齿**
-  （退化为灰度，笔画发虚、偏细；彩色边缘像素为 JVM 的 1/18.4，暗像素反而多 67%）。
-  新增 `NativeRenderDefaults`，在**原生镜像内**默认写入 `prism.lcdtext=false`（改走灰度）；
-  JVM 版不受影响。用户可随时回退：`-Dprism.lcdtext=…` 直接指定渲染属性、
-  或用 `-Daha.desktop.nativeTextGreyscale=false` 关掉本默认值；命令行与日志诊断
-  （`渲染诊断：原生文本灰度默认 …`）已同步。
-  **这是临时措施、不是根治**——成因指向 DirectWrite 渲染参数在 closed-world 下读不到
-  （与 #60 同源），上游修复或补上参数读取后应删除本类与调用点。
-  见 `Docs/DevLog/20261013-08.md` 与 `TS-2610-030-Native-Font-Rendering-Diff.md` §6。
-- **发行形态确定为两种（2026-10-09 决策）**：只保留「**JVM JAR 聚合包**」（`aha-cli-<版本>.zip` /
-  `aha-desktop-<版本>-<系统>-<架构>.zip`，解压后脚本启动）与「**原生镜像二进制**」
-  （`aha-cli-native` / `aha-desktop-native` 的 `native-image` 单文件）；**`jpackage` 安装包
-  跳过、不采用**。
-  理由：① 避免引入第三种发行形态及其安装器 / 签名 / 公证维护面；② 「免装 JDK」已由原生镜像覆盖，
-  且更彻底；③ 现有两种形态可沿用同一套产物名自证与完整性自证链路。
-  口径见 `ReleaseProcess.md` §3.3；受影响的文档已同步（`BuildSpec.md` / `AHA-Design-V1.md` /
-  `DesktopDesign.md` / `DesktopNativeDesign.md` / `TD-00007` / `TD-00009`）。
-- **排查档案（TS）命名规范收敛（2026-10-13）**：`Docs/Troubleshooting/` 下 31 篇档案由
-  `TS-yyyyMM-大驼峰标题.md` 改为 **`TS-yyMM-NNN-英文词序.md`**（年月 + 三位顺序号 + 逐词连字符标题，
-  对齐姊妹项目 LegionFanControl 的 `TroubleShootingDocSpec.md`）；序号按原索引登记顺序重编
-  （`001`~`031`），全仓引用、各档案 H1 编号、`bin/CheckDocs.py` 命名正则与
-  `DocumentationSpec.md` §1 / `Docs/Troubleshooting/README.md` §1 同步。
-  正文骨架的对齐另开 issue [#128](https://github.com/ACANX/AHA/issues/128)。
-  见 `Docs/DevLog/20261013-09.md`。
 
 ## [0.1.2] - 2026-10-09
 
