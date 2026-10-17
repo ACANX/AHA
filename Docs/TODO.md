@@ -18,6 +18,10 @@
 >
 > 现存条目**仅供追溯**：某条若实际已闭环，直接关闭对应 Issue 即可，**不必回改本文件**。
 >
+
+> **已完成 / 明确不做 / 已过时的条目已移出本文件**（2026-10-17），归档在
+> [`Docs/DevLog/20261017-15.md`](DevLog/20261017-15.md)（逐条附证据）。
+> 本文件此后只保留**仍未完成**的条目；新进展一律按上面的规则走 Issue。
 > 规则见 [`AGENTS.md`](../AGENTS.md) 与技能
 > [`issue-tracking`](../.agents/skills/issue-tracking/SKILL.md)。
 >
@@ -145,10 +149,7 @@
 
 | 编号 | 事项                                        | 类型     | 证据 | 优先级 | 状态      | 落地文档                                      |
 | ---- | ------------------------------------------- | -------- | ---- | ------ | --------- | --------------------------------------------- |
-| ~~A-07~~ | ~~`BuildSpec.md` §6 的覆盖率排除项引用失准~~    | 文档缺陷 | ⚠️    | P2     | ~~◐ 进行中~~  | `BuildSpec.md` §6                             |
 | A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
-| ~~A-09~~ | ~~`PLAN.md` §8.2 出现**两个 `8.2.7`**（环境无关性 / 日志文件不生成），编号重复易致误引~~ | 文档缺陷 | ✅ | P2 | ~~✅ 已完成~~ | `PLAN.md` §8.2 |
-| ~~A-10~~ | ~~`PLAN.md` 有两个 `## 8.` 标题（「相关文档」与「0.1.0 发布前问题清单」），后者才是正文；`### 8.4` 亦排在 `8.7` 之后~~ | 文档 | ✅ | P2 | ~~✅ 已完成~~ | `Docs/PLAN.md` |
 
 ### A-07 ◐ 进行中
 
@@ -290,9 +291,7 @@ finishReason = roundFinishReason[0];   // 仅在 DONE 时赋值
 | 编号 | 事项                                    | 类型     | 证据 | 优先级 | 状态     | 落地文档                           |
 | ---- | --------------------------------------- | -------- | ---- | ------ | -------- | ---------------------------------- |
 | D-03 | FXML 反射需限定 `opens`                 | 风险     | ⚠️    | P2     | ☐ 未完成 | `aha-desktop/module-info.java`     |
-| ~~D-04~~ | ~~TestFX 在 JPMS + 无显示 CI 下的配置~~     | 风险     | ⚠️    | P2     | ~~✅ 已定案（2026-10-09）~~ | `TestingSpec.md` §5.2              |
 | D-06 | 发行目标平台与 CI runner 平台不匹配     | 文档缺陷 | ✅    | P2     | ◐ 已决策，待回填 | `DesktopDesign.md` §2/§3           |
-| ~~D-08~~ | ~~打包流水线已就位；`jpackage` 已决策跳过~~ | 风险     | ✅    | P2     | ~~✅ 结项（2026-10-09）~~ | `ReleaseProcess.md` §3.3           |
 | D-13 | 0.2 桌面端剩余项（记忆面板 / 扩展面板 / 身份加载顺序展示 / 会话内搜索 / 覆盖率门禁上线） | 设计缺口 | ✅ | P2 | ◐ 见 `Docs/Dbsx.txt` | `aha-desktop`、`DesktopDesign.md` §11 |
 | F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
 | N-04 | 增加 JDK 27 编译分支（对比 Leyden AOT / 原始类型 / GC 对启动与内存的影响），**先只开 Windows**，为 JDK 29 铺路 | 需求 | ✅ | P2 | ◐ 机制已就位，数据待采集 | `aha-desktop-native/pom.xml`（`native-jdk27` profile）、`native-image-args-jdk27.txt`、`DesktopNativeDesign.md` §5 |
@@ -350,27 +349,6 @@ CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口�
 **残留动作**：在 `DesktopDesign.md` §2 列出目标平台清单（Windows / Linux / macOS），
 与 §3 的 CI 分平台策略、`Build.yml` 的 runner matrix 三者对齐。
 
-~~### D-08 ✅ 结项（2026-10-09）：打包流水线已就位，jpackage 已决策跳过~~
-
-~~**复核（✅ 已核实）**：`Build.yml` 仍无打包 job（dev 的 JVM 便携包已由独立工作流~~
-~~`BuildJVMArtifacts.yml` 承担，见 issue #63）；`Release.yml` 仍只上传 `dist.zip`。~~
-
-~~**残留动作**：0.2 在 `Build.yml` 新增按平台的打包 job，并扩展 `Release.yml` 的产物矩阵~~
-~~（桌面端安装包需另设产物）。~~
-
-~~**补充（`D-06` 决策，2026-10-08）**：打包 job **要覆盖 macOS**，但 macOS 腿**只打包、不跑测试**；~~
-~~必需检查仍是 Windows + Linux。~~
-
-~~**已落地（2026-10-08）**：`Release.yml` 新增 `desktop` 作业（矩阵 `ubuntu` / `windows` / `macos`，~~
-~~`fail-fast: false`），每条腿跑 `./mvnw clean verify` 后由产物名 + 依赖树**双向自证**平台分类器，~~
-~~再把 `aha-desktop-<版本>-<系统>-<架构>.zip` 上传到 release 页面；CLI 资产同步改名~~
-~~`aha-<版本>-cli.zip`。自证脚本已本地实跑（正常路径重命名成功；喂错期望值被 `::error::` 拦住~~
-~~且不动物件）。~~
-
-~~**已决策跳过（2026-10-09）**：`jpackage` 自包含安装包（MSI / DEB / DMG）**不采用**——发行形态最终~~
-~~只保留「JVM JAR 聚合包（解压后脚本启动）」与「原生镜像二进制」两种，「免装 JDK」由后者覆盖，~~
-~~也不必再维护安装器 + 签名 / 公证链路。理由与口径见 `ReleaseProcess.md` §3.3（issue #78 / #112）。~~
-
 ### F-17 ☐ 新增（2026-10-08）：`-Djavafx.platform=win` 时构建输出 `recursive variable reference: javafx.platform`
 
 **现象**：在 WSL 里用 `-Djavafx.platform=win` 打 Windows 便携包时，构建日志出现两行
@@ -421,14 +399,6 @@ CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口�
 | 编号 | 事项                                                   | 类型   | 证据 | 优先级 | 状态      | 落地文档                                |
 | ---- | ------------------------------------------------------ | ------ | ---- | ------ | --------- | --------------------------------------- |
 | E-01 | `ModuleLayer` 与 native-image 的 closed-world 根本冲突 | 待决策 | ✅    | P0     | ⏸ 待决策  | `ExtensionSystemDesign.md`、`BuildSpec.md` |
-| E-02 | `sqlite-jdbc` 的 JNI native library 嵌入               | 风险   | ⚠️    | P1     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-03 | Jackson 3 反射配置                                     | 风险   | ⚠️    | P1     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-04 | `ServiceLoader` 需资源配置                             | 风险   | ⚠️    | P1     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-05 | picocli 反射配置                                       | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-06 | JLine 终端能力探测依赖 native 组件                     | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-07 | Log4j2 在 native-image 下的兼容性                      | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-08 | `java.net.http` 的 TLS/SSL 配置                        | 风险   | ⚠️    | P2     | ☐ 未完成  | `BuildSpec.md`                          |
-| E-09 | 虚拟线程在 native-image 的支持现状                     | 调研   | ⚠️    | P2     | ☐ 未完成  | `Constitution.md` 第 5 条               |
 | ~~E-10~~ | ~~覆盖率门禁在 native 产物下不适用~~                       | 待决策 | ✅    | P2     | ~~⏸ 待决策~~  | `BuildSpec.md` §6/§8、`TestingSpec.md`  |
 | ~~E-11~~ | ~~发行布局（bin+lib）与单文件产物冲突~~                    | 待决策 | ✅    | P2     | ~~⏸ 待决策~~  | `BuildSpec.md` §7                       |
 | ~~E-12~~ | ~~`TODO.md` 文件名不合规（原 D-05 自身）~~                 | 规范偏差 | ✅  | P3     | ~~⏸ 待决策~~  | `DocumentationSpec.md` 第 1 节          |
@@ -450,9 +420,6 @@ CI 侧的等价物是上面第 2 条的桌面端原生镜像冒烟。汇总口�
 **残留动作（需拍板）**：
 
 1. 明确 native 产物中**扩展功能的降级策略**：完全禁用／仅支持编译期静态注册／不发布
-2. 若选择「禁用」，确认 `core.extension` 能否被 native-image 分析**排除**，
-   或需在构建期以 profile 剔除
-3. 在 `ExtensionSystemDesign.md` 中**显式记录**该限制
 4. 评估 `Constitution.md` 第 5 条是否需补充 native-image 例外条款（涉及第 8 条修订程序）
 
 > 若此冲突无法优雅解决，可能影响「native-image 是否值得做」的整体判断。
@@ -618,10 +585,6 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 13   | H-01 | 启动标志默认风格：像素风（现状）还是线框风？ | 首屏观感 | ⏸ 待决策 |
 ---
 
-## 8. 落地去向映射
-
-确认后，各条目应合并到以下文档。**建议按此顺序推进**（先易后难、先无争议后有争议）：
-
 ### 阶段一：无争议的缺陷修复
 
 | 条目 | 目标文档                | 变更性质   | 状态     |
@@ -636,7 +599,6 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | C-02 | `ModuleConvention.md`              | 补充 `ServiceLoader` 声明要求 | ☐ 未完成（待决策） |
 | C-03 | `BuildSpec.md` §7                  | 补充依赖治理手段（若采纳）    | ☐ 未完成 |
 | C-04 | `BuildSpec.md` §7                  | 补充 `jlink` 禁令解除条件     | ☐ 未完成 |
-| D-05 | `TestingSpec.md` §3                | 补充 Desktop 覆盖率策略       | ☐ 未完成（待决策） |
 | ~~E-10~~ | ~~`BuildSpec.md` §6/§8~~               | 补充 native 产物验收标准      | ☐ 未完成（待决策） |
 | A-08 | `DocumentationSpec.md` §2 | 明确 `Docs/` 根下暂存区文件的存放位置 | ⏸ 待决策 |
 | F-07 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 | 明确 `.ps1` 是否纳入检查、`Script/` 目录去留 | ⏸ 待决策 |
@@ -658,10 +620,8 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 | 条目               | 动作                                                         | 状态     |
 | ------------------ | ------------------------------------------------------------ | -------- |
 | E-12（本文件自身） | 全部条目消化后，将本文件标记为「已废弃」或删除；若长期保留，改名 `Todo.md` 以符合 `DocumentationSpec.md` 第 1 节 | ⏸ 待决策 |
-
 ---
 
-## 9. 复核结论汇总（2026-10-07）
 
 本轮对全部条目逐条对照仓库现状复核，结论如下。
 
@@ -671,7 +631,6 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 
 ### 9.1 统计
 
-| 状态     | 条目数 | 编号                                                         |
 | -------- | ------ | ------------------------------------------------------------ |
 | ✅ 已完成 | **7**  | A-01、A-02、A-03、A-04、A-05、A-06、6.1-序 2                  |
 | ◐ 进行中  | **4**  | A-07、B-03、D-07                                             |
@@ -920,15 +879,7 @@ Jackson **3.x** 的 GraalVM metadata 成熟度仍需实测。
 需在 Settings → Rules → 该规则集里确认）。不能绕过时，就从一个分支提 PR 合入 `dev`。
 
 **分支现状（2026-10-07，方案 B 执行后）**：
-
-| 分支 | SHA | 相对上游 |
-| ---- | ---- | ---- |
 | `dev` | `ca80c5c` | **ahead 2**（待推送） |
-| `dependa` | `1518056` | 与 `origin/dependa` **一致**（已复位，无需推送） |
-| `main` / `feat/local` | `4f12cef` | 一致 |
-
-**已知代价（实测，务必记住）**：`dependa` 复位后，**第一次把 `dev` 合进 `dependa` 时会冲突 6 个文件**——
-两侧相对分叉点 `5d938f3` 都改过它们，且改法的形状不同（这正是 squash 的后果，见 `F-12`）：
 
 ```
 CHANGELOG.md

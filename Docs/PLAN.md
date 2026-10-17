@@ -84,125 +84,17 @@
 
 ---
 
-## ~~1. 状态行置于输入行上方（pi 形态）——做不到~~
+## 1. ~~状态行置于输入行上方（pi 形态）——做不到~~
 
-### 1.1 期望形态
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-对标 pi-coding-agent：
+## 2. ~~pi 式底部统计栏 —— 暂不实施~~
 
-```
-──⠸ Working──────────────────────────────────────────────  ← 状态嵌在这条线里
- 输入行
-──────────────────────────────────────────────────────────
- ↑3.9M ↓2.3M R689M ⦿ 99.3% …            deepseek-flash • max        E:\…\AHA
-```
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-即：状态信息与盲文旋转帧嵌在输入行**上方**的分隔线中。
+## 3. ~~跨环境（Windows / WSL）项目 ID 共享 —— 暂不实施~~
 
-### 1.2 现状（0.1 采用）
-
-```
-（正文区）
-──────────────────────────────────────────────  ← 上分隔线（提示符）
-（输入行）
-───────────────────────────────────────────  ← 下分隔线（Status 边框）
-⠋ 等待响应…                                     ← 状态行在最底部
-```
-
-状态行在输入行**下方**，只有转圈帧与阶段文案（耗时与规模下沉到工具区块末行）。
-
-### 1.3 试过什么、结果如何
-
-**第一次尝试**：把状态行作为多行提示符的第一行，用 `LineReaderImpl.setPrompt` +
-`redisplay()` 刷新。
-
-- 能显示 ✓，能实时刷新 ✓（探针里帧从 `⠋` 走到 `⠼`，秒数同步增长）
-- 但**正文整段消失** ✗，且**没有任何报错** —— `PrintStream` 会吞掉异常，属于静默失败
-- 隔离验证：关掉定时刷新后正文恢复正常 → 定位到「提示符重绘」与流式正文冲突
-
-**第二次尝试**：加入不变量「**有正文在流时绝不重绘提示符**」——等待期刷新、正文一开始就停手、
-工具结果写完再恢复。
-
-- 仍然失败 ✗：两次实测分别只显示出 **6/12** 与 **3/12** 行正文
-- 结论：问题不在刷新时机
-
-### 1.4 根因（结构性，非实现缺陷）
-
-`LineReader.printAbove()`（正文上抛）与**提示符重绘共享同一套显示状态**。提示符重绘若干次之后，
-`printAbove` 计算出的位置就偏了，后续写入落在屏幕之外——而且因为 `PrintStream` 吞异常，全程无提示。
-
-JLine 的行读取器必然把输入行放在**内容区底部**（它占滚动区域内最后一行）。
-因此可控制的位置只有两个：
-
-| 位置 | 能否原地重绘 | 说明 |
-|---|---|---|
-| 输入行**上方**（作为提示符的一部分） | ✗ | 一重绘就与 `printAbove` 冲突 |
-| 输入行**下方**（`org.jline.utils.Status` 底部保留区） | ✅ | 实测转圈、秒数刷新与正文流式**可共存** |
-
-pi 能做到是因为它**自己接管了整块底部渲染**（全屏 TUI），根本不使用行读取器库。
-
-### 1.5 备选路径与代价
-
-| 路径 | 效果 | 代价 |
-|---|---|---|
-| **A（0.1 已采用）** | 状态行在输入行下方，转圈 + 阶段**实时** | 位置与 pi 不同 |
-| B | 状态行在输入行**上方** | 只能**静态**：不转圈、不更新（任何重绘都可能吃掉正文） |
-| C | 完全复刻 pi：自研底部渲染 | 放弃 JLine `LineReader`，自己实现输入行、编辑、历史、补全、多行粘贴。工作量是前两者的量级差异，且要重走一遍目前已经验证过的输入路径 |
-
-### 1.6 什么前提下可以再做 C
-
-- 输入层需求收敛（确认不需要 JLine 的补全 / 历史 / 多行粘贴语义，或愿意自己实现一遍）
-- 有真实终端矩阵可用于验证（至少 Windows Terminal / conhost / WSL / macOS）
-- 接受把已通过验证的输入实现推倒重来
-
-**在此之前不要重试 A/B 的“刷新式”方案**：两次实测都失败，失败模式还是静默的（正文消失而无报错），
-排查成本极高。
-
----
-
-## ~~2. pi 式底部统计栏 —— 暂不实施~~
-
-### 2.1 期望
-
-```
-↑3.9M ↓2.3M  R689M  ⦿ 99.3% 67.1%/1.0M   [auto]   deepseek-flash • max   E:\GitRepo\GitHub\ACANX\AHA
-```
-
-### 2.2 两个前置条件都不具备
-
-1. **渲染位置**：它位于输入行下方，可以借 `Status` 的底部保留区实现 ✓；但同一行还想放
-   “当前状态 + 转圈”，就与 §1 的位置诉求纠缠。作为**独立一行**放在状态行之下是可行的。
-2. **数据源不存在** ✗：上下行 token 数、缓存命中、上下文占用率这些都需要**把用量落库**。
-   目前 `UsageEvent` 只在流式过程中发出（用于状态行一闪与 `[usage]` 块），**从不持久化**，
-   SQLite 里也没有 usage 表。用量统计整体安排在 0.6（见 `Docs/AHA/AHA-Design-V1.md` 第十五部分 1.1）。
-
-**结论**：等 0.6 的用量落库完成后再做，届时数据与渲染位置都具备。
-
----
-
-## ~~3. 跨环境（Windows / WSL）项目 ID 共享 —— 暂不实施~~
-
-### 3.1 现状
-
-同一个项目在两个环境里得到两个不同的项目 ID：
-
-```
-E:\GitRepo\GitHub\ACANX\AHA        → E--GitRepo-GitHub-ACANX-AHA
-/mnt/e/GitRepo/GitHub/ACANX/AHA    → -mnt-e-GitRepo-GitHub-ACANX-AHA
-```
-
-**默认视为两个独立项目**（各自独立的记忆与会话历史）。这是刻意保留的默认：`/mnt/*` 并不总等价于
-Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通目录」的项目错误合并。
-
-### 3.2 待补机制
-
-需要**显式配置**才能共享（方案与代价见
-[MemoryStorageDesign.md](Design/MemoryStorageDesign.md) 8.6：项目 ID 覆盖 / 别名表 / 共享目录）。
-
-**暂缓原因**：它不是 0.1 的问题，且与「记忆载体选型」一同推进更划算——载体未定之前，
-共享机制的落点也会变。
-
----
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
 ## 4. 其它已记录但未定/未实施的项
 
@@ -237,82 +129,21 @@ Windows 盘符，隐式归一化会把「真的放在 WSL 内部 `/mnt/e` 普通
 
 这些不是“做不到”，而是**该做、也知道怎么做，但被前置条件卡住**。列在这里是为了不必反复口头提醒。
 
-### ~~6.1 首次提交已完成（本地），推送待做~~
+### 6.1 ~~首次提交已完成（本地），推送待做~~
 
-**已做（2026-10-07）**：0.1.0 基线按子系统拆成 **14 个提交**落在 `main` 上，
-入库 **371 个文件**，工作区干净；提交信息全部符合 [CommitMessageSpec.md](DevSpec/CommitMessageSpec.md)
-（`git log --format=%s` 校验不合规数为 0）。
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-| 批次 | 内容 | 文件数 |
-|---|---|---|
-| 1 | 仓库骨架与公共层 | 49 |
-| 2 | 构建与发布工作流 | 3 |
-| 3 | 扩展契约 | 19 |
-| 4 | 推理核心、LLM 适配器、配置与存储 | 115 |
-| 5 | 内置工具 | 12 |
-| 6 | 交互式 CLI 与终端渲染 | 94 |
-| 7 | 桌面端占位模块 | 3 |
-| 8 | 启动脚本与自检脚本 | 8 |
-| 9~13 | 开发规范 / 设计文档 / 用户指南 / 图资源 / 项目说明 | 51 |
-| 14 | AGENT 技能 | 17 |
+### 6.2 ~~Maven 3.9.x 兼容基线已复验（2026-10-07）~~
 
-**提交前已核对**：`Dist/`、`target/`、`Model.yml`、`Data/`、`Log/`、`*.db`、`.idea/`、`.xcodemap/`、
-`pom.xml.upgraded` **均未入库**（逐项在索引层面验证过）。
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-**仍待做（需要远端凭据）**：
+### 6.3 ~~发布流程（0.1.0 / 0.1.1 / 0.1.2 已发布）~~
 
-```bash
-git push -u origin main
-git switch -c dev && git push -u origin dev
-git switch -c dependa && git push -u origin dependa
-```
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-被它卡住的是：CI 从未触发、Dependabot 无法启用、无法打 tag，因此**正式发布仍不能执行**。
+### 6.4 ~~文档中的测试数据已刷新（2026-10-07）~~
 
-### ~~6.2 Maven 3.9.x 兼容基线已复验（2026-10-07）~~
-
-**已做**：用本机 `Apache Maven 3.9.11` 跑通 `mvn clean verify`，与 wrapper（Maven 4.0.0-rc-7）
-结果**完全一致**——同样 **604 用例**、同样 **合计行覆盖 80.4%**（4031/5016 行），门禁全模块通过。
-
-两条工具链的实测结论：
-
-| 工具链 | 命令 | 结果 |
-|---|---|---|
-| Maven 4（wrapper，固定 `4.0.0-rc-7`） | `./mvnw clean verify` | ✅ |
-| Maven 3.9.x（本机 `3.9.11`，JDK 25） | `mvn clean verify` | ✅ |
-
-**顺带澄清**：wrapper 固定 `4.0.0-rc-7` 并**不是**疏忽。实测 Maven 4 尚无 GA——
-`apache-maven-4.0.0-bin.zip` 返回 404，官方 `maven-metadata.xml` 的 `release` 就是 `4.0.0-rc-7`。
-
-### ~~6.3 发布流程（0.1.0 / 0.1.1 / 0.1.2 已发布）~~
-
-**0.1.0 已发布**（2026-10-07，`main` 上的 `9138847` `Release:V0.1.0`）。实际 tag 是 **`0.1.0`**
-（无 `V` 前缀），与后续约定不一致——处置见 [TODO.md](TODO.md) `G-06`。
-`CHANGELOG.md` 的发布日期已同步由 `2026-10-06` 更正为 `2026-10-07`。
-
-**0.1.1 / 0.1.2 已发布**（2026-10-10 结项）：tag `V0.1.1`（`0c10896`）、`V0.1.2`（`474ebe2`）
-均已存在于远端，并已建对应**正式 Release 条目**。发行包（`aha-cli-<版本>.zip` 与各平台
-`aha-desktop-<版本>-<系统>-<架构>.zip`）**不作强制要求**——完成条件为「有 tag + 正式 Release 条目」。
-版本号改动清单见 [ReleaseProcess.md](DevSpec/ReleaseProcess.md) 第 2 节（8 处，**不止根 POM**）。
-
-**依赖**：6.1（无提交就没有 tag 可打）。
-
-### ~~6.4 文档中的测试数据已刷新（2026-10-07）~~
-
-**已做**：跑通完整 `./mvnw clean verify`（含覆盖率门禁），把三处口径统一为同一套实测数据：
-**604 用例**、**合计行覆盖 80.4%**（4031/5016 行）。
-
-| 位置 | 处理 |
-|---|---|
-| `AHA/AHA-Design-V1.md` §3.1 | 模块表 + 合计 + 用例数全部换成实测值，并写明统计口径 |
-| `ArchitectureOverview.md` §6 | 同上 |
-| `PLAN.md` §8.1.2 / §8.2.1 | 标记完成 |
-
-**注意口径**：合计 = 各模块 `LINE_COVERED / (LINE_COVERED + LINE_MISSED)` 求和；
-`aha-desktop` 为 0.1 占位模块，已从门禁排除，不计入合计。用例数以 Surefire 的
-`Tests run` 为准（41 个测试类）。
-
----
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
 ## 7. TUI 渲染待补项 —— 后续支持
 
@@ -339,11 +170,9 @@ git switch -c dependa && git push -u origin dependa
 **待定**：Markdown 表格本身并没有行分隔线的语义，加上之后视觉更重（每行都被框住）。
 若确认要加，需一并决定**是否所有表格都加**（还是只在列数多、行数多时才加）。
 
-### ~~7.2 身份片段是否需要标明来源 —— 已解决~~
+### 7.2 ~~身份片段是否需要标明来源 —— 已解决~~
 
-**结论（2026-10-07）**：改为**一个来源一条 `system` 消息**（不再拼成一整段），
-片段边界本身就承载了来源信息，模型可直接区分用户级 / 项目级。
-因此不再需要加小标题。见 `AHA/AHA-Design-V1.md` §5.1.5 / §5.1.7。
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
 ### 7.3 其它已知渲染缺口
 
@@ -354,125 +183,30 @@ git switch -c dependa && git push -u origin dependa
 | 链接的 OSC 8 超链接 | 不生成，只用「文本 + 弱化地址」（重定向到文件会变乱码） |
 | 表格单元格内换行 | 不支持，单元格内容按单行处理 |
 
-## ~~8. 0.1.0 发布前问题清单~~
+## 8. ~~0.1.0 发布前问题清单~~
 
 核查日期 2026-10-07。结论：**0.1 的功能无缺口**（设计文档中 0.1 阶段仅余「真实 API Key 验收」一项未勾），
 卡住发布的是**可交付性**。下面的状态会随处理进度更新。
 
-### ~~8.1 阻塞项（不解决发不了版）~~
+### 8.1 ~~阻塞项（不解决发不了版）~~
 
-| # | 问题 | 状态 |
-|---|---|---|
-| 8.1.1 | 仓库零提交（打不了 tag 就发不了版） | 🟡 `dev` / `dependa` 已建，此前那批提交**已推送**（PR #6 已合入 `dev`）；现仅剩 PR #8 冲突修复的合并提交 `06c6121` **待推送**——见 [TODO.md](TODO.md) `G-01`、`F-12` |
-| 8.1.2 | **覆盖率门禁未在最终代码上验证** | ✅ 已完成：`./mvnw clean verify` 全模块通过（604 用例 / 合计行覆盖 80.4%） |
-| 8.1.3 | Maven 3.9.x 基线未在本地验证 | ✅ 已完成：`3.9.11` 跑通，与 Maven 4 结果一致（604 用例 / 80.4%） |
-| 8.1.4 | `dist` 打包被跳过 | ✅ 已完成：定位并结束占用者（**IDEA 的 Maven server**，而非运行中的 AHA——先前判断有误），完整 `./mvnw clean verify` 通过，`Dist/` 已重建（18 个 jar，含像素标志）；处置方法见 BuildGuide 的「关于 `Dist/`」 |
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-### ~~8.2 发版前必须解决~~
+### 8.2 ~~发版前必须解决~~
 
-| # | 问题 | 状态 |
-|---|---|---|
-| 8.2.1 | 测试数据三处口径不一致 | ✅ 已刷新为 **604 用例 / 80.4%** |
-| 8.2.2 | `CHANGELOG.md` 发布日 `2026-10-06` 需改为实际发布日 | ✅ 已修（→ `2026-10-07`，与 `main` 上 `9138847` 同日） |
-| 8.2.3 | CLI 文案残留「插件」 | ✅ 已修（代码 23 处 + 文档 2 处，全部改为「扩展」） |
-| 8.2.4 | `CliDesign.md` 未按命名约定改名 | ✅ 已修（→ `CLIDesign.md`，7 处引用同步） |
-| 8.2.5 | 真实供应商 API Key 端到端验收 | ⬜ 待做（需外部环境） |
-| 8.2.6 | Windows 真机走查（整体观感、旧 CMD 降级、滚动复制、`/memory` 分支） | 🟡 部分：日志落盘 / `Aha.bat` / `dist` 冒烟已验证；观感与降级待走查 |
-| 8.2.7 | `SystemPromptLoaderTest` 不具环境无关性（用户级身份文件一存在就 7 个用例全红） | ✅ 已修（2026-10-07）：测试类在 `@BeforeEach` 隔离 `AHA_HOME` / `user.home`；**该缺陷正是 PR #6 在 Windows 上失败的主因**，详见 8.2.8 |
-| 8.2.8 | **Windows 腿的真实失败（PR #6 之前在 wrapper 处就断了，从未暴露）**：`build (windows-latest, wrapper)` 退出码 1，实为 15 个用例失败 | ✅ 已修（2026-10-07）：见下 |
-| 8.2.9 | ~~**`main` 分支保护未配置**：`Gate` 与 `Compat` 尚未设为必需检查，门禁形同虚设~~ | ✗ 不做（`~~G-02~~`，2026-10-10 决定） |
-| 8.2.10 | **定期扫描未经验证**：`Gate.yml` 的每周 `schedule` 只在默认分支生效，合入前无法确认其真的会跑 | ☐ 待做（见 [TODO.md](TODO.md) `G-03`） |
-| 8.2.11 | **日志文件长期不生成** —— 见 §8.5 | ✅ 已修 |
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-> **注（issue #35）**：修复分支 `fix/issue-35-native-quantum-toolkit` 的推送与 PR（[TODO.md](TODO.md) `G-08`）
-> **不在** 0.1.x 的发版阻塞项内——原生镜像管线是**可选**的（失败不挡合并 / 发版）。
-> 但它阻塞 `N-16`（真机验证启动链路的反射 / JNI 元数据是否完整），因此单独登记在
-> `TODO.md` 第 11 节，凡人工动作不进对话、进清单。
->
-> **注（CLI 原生镜像）**：`aha-cli-native` 模块与 `CliNative.yml` 工作流已落地
-> （[CliNativeDesign.md](Design/CliNativeDesign.md)），它与桌面端是**平行的可选管线**，
-> 同样**不在** 0.1.x 发版阻塞项内。其推送与 PR（[TODO.md](TODO.md) `G-09`）
-> 阻塞 `N-19`（真机验证 CLI 产物）。
+### 8.3 ~~建议项~~
 
-在 Windows 上用 Git Bash 跑 `./mvnw clean verify` 复现（`D:\Dev\Git\bin\bash.exe`），
-共 15 个失败 / 错误，归为四类：
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-| 类别 | 现象 | 修法 |
-|---|---|---|
-| 生产缺陷 | `--help` 混入 ANSI 转义序列（picocli 的 `Ansi.AUTO` 把 Windows 一律当支持 ANSI，重定向到文件也会写转义） | `AhaCli.commandLine()` 统一按 `System.console()` 决定 `Help.Ansi`，非交互一律关闭 |
-| 生产缺陷 | `ConfigLoader.resolveModelPath` 把未展开的 `${AHA_HOME:-~/.aha}/Model.yml` 直接交给 `Path.of`，Windows 上 `Illegal char <:>`；Linux 上则静默变成名为 `${AHA_HOME:-~/.aha}` 的相对路径 | 先展开占位符；仍含 `${` 或含平台非法字符时回退默认位置 |
-| 生产缺陷 | 项目级向上查找**没有边界**，会一路走到用户主目录，把 `~/AHA.md` 当成项目级身份（Windows 临时目录位于主目录之下，故只在 Windows 暴露） | 查找止步于用户主目录（`user.home`，并参考 `USERPROFILE` / `HOME`）；`resolve` 与 `findProjectRoot` 同用此边界 |
-| 测试写法 | 断言硬编码 `/` 分隔符、路径里用 `<` `>`（Windows 非法）、假定「环境里没有任何身份文件」 | 用平台自身路径构造期望值；特殊字符改用纯字符串断言；前提自己造 |
+### 8.4 ~~已确认不是问题~~
 
-**顺带修复（CI 配置）**：`Build.yml` 的矩阵加 `fail-fast: false`。此前 Windows 腿一失败，
-GitHub 就取消 Linux 两条腿，页面上只看到「第一条红」，掩盖了「两个平台到底是什么结果」——
-这次排查为此多绕了很久。
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
-**验收**：Windows（Git Bash + `./mvnw clean verify`）与 Linux（`./mvnw clean verify`）均 BUILD SUCCESS。
+### 8.5 ~~已修复：日志文件长期不生成（2026-10-07）~~
 
-### ~~8.3 建议项~~
-
-| # | 项 | 状态 |
-|---|---|---|
-| 8.3.1 | `CHANGELOG.md` 两条重叠的「文档」条目 | ✅ 已合并 |
-| 8.3.2 | 示例模型名与内置预设不一致 | ✅ 已对齐（`claude-sonnet-5-1` / `gemini-3.5-flash`） |
-| 8.3.3 | `Docs/DevSpec/` 有 6 个文件不以 `Spec.md` 结尾 | ⬜ 待定（改名会牵动多处引用） |
-| 8.3.4 | `Docs/Dbsx.txt`（用户原始待办）去留 | ⬜ 待定 |
-| 8.3.5 | `PLAN.md` §7.1 表格数据行分割线 | ⬜ 待定 |
-| 8.3.6 | `.editorconfig` 缺失 | ⬜ 可选 |
-| 8.3.7 | 设计文档目录树索引漂移（`Docs/Design/` 实 15 份、树只列 12 份） | ✅ 已修（补齐 3 份 + `LoggingDesign.md`；四棵树已全量比对一致） |
-| 8.3.8 | 缺日志子系统设计文档 | ✅ 已修（新增 `Docs/Design/LoggingDesign.md` v1.0.0） |
-
-### ~~8.4 已确认不是问题~~
-
-`aha-plugin-api` / `aha-tools` 目录已删净；`.idea/` 已被忽略；`CheckDocs` / `CheckSkills` / `CheckScripts` 全过；
-`TODO.md` 已是干净的 656 行；CLI 冒烟（`version` / `provider list` / `tool list` / `init --no-input`）正常；
-`Dist/` 新鲜且包内默认配置正确（含 `CLAUDE.md` 候选与 `Agent.SystemPrompt`）。
-
-### 8.5 已修复：日志文件长期不生成（2026-10-07）
-
-**现象**：`$AHA_HOME/Log/Aha.log` 始终为空，`Log/` 目录下一个文件都没有。
-
-**排查**：`config get Logging.File` 返回的路径**正确**，`resolveLogFile` **正确**创建目录，
-全程无异常、无告警——属于「静默不生效」。
-
-**根因**：`LoggingSetup.apply` 里写的是
-
-```java
-Configurator.initialize(null, new ConfigurationSource(...));
-```
-
-它**并不是** `initialize(String name, ConfigurationSource)`，而是被编译到
-`initialize(ClassLoader, ConfigurationSource)` 重载上。该重载配置的是「按类加载器查到的」context，
-与 `LogManager.getContext(false)` 返回、logger 实际绑定的那个**不是同一个实例**——配置落到了别处，
-所以既不报错也永远不落盘。
-
-根因能藏这么久，是因为两点都错得很像对的：
-
-1. 注释写着「必须在首个 logger 创建之前调用；`ConfigLoader` 自身不记录日志」——
-   实际上 `ConfigLoader` 有 4 处 `INFO`，读配置时 log4j2 **已经**按默认配置初始化过一次，
-   于是 `initialize` 面对的是一个已存在的 context，而不是「还没创建」。
-2. 单测只验 `resolveLevel` / `resolveLogFile` / `xml` 字符串等**纯函数**，
-   没有任何测试调用过 `apply()`，**落盘行为从未被验证**。
-
-**修复**：显式对当前 context 应用配置，并把可测内核抽出来：
-
-```java
-static void install(LoggerContext context, String xml) throws IOException {
-    ConfigurationSource source = new ConfigurationSource(
-            new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-    context.start(new XmlConfiguration(context, source));
-}
-// apply: install((LoggerContext) LogManager.getContext(false), xml(level, file))
-```
-
-**回归测试**：`LoggingSetupTest#installWritesLogFileToDisk`——真写文件、真读回、断言标记文本。
-刻意不用 `@TempDir`（log4j2 持有文件句柄，Windows 上会删除失败），写在 `target/` 下由 `clean` 清理。
-
-**真机验证**：Windows 上 `Aha.bat version` 后 `C:\Users\ACANX\.aha\Log\Aha.log` 生成 ✓。
-
-**顺带暴露的已知限制**：`ConfigLoader` 那几行「已加载 xx 配置」发生在 `apply` 之前，
-因此**只出现在控制台，不会进日志文件**。已在该处注释说明。
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
 ### 8.6 日志文件命名与切分规则（2026-10-07 定稿）
 
@@ -499,37 +233,9 @@ static void install(LoggerContext context, String xml) throws IOException {
 **级别默认值**：内置默认 `DEBUG` 属**开发阶段的有意设计**（需要全量日志），不作为待办；
 若日后要降低记录量，用户级 `Aha.yaml` 覆盖为 `INFO` 即可。
 
-### 8.7 0.1.0 发布前复核（2026-10-07，逐项实查）
+### 8.7 ~~0.1.0 发布前复核（2026-10-07，逐项实查）~~
 
-不凭记忆、逐条实测的结果：
-
-> **本表是 2026-10-07 的当日实查快照，不随后续变动逐行回改。** 仓库状态此后已变化
-> （提交与分支已建、用例数已刷新、文档/技能/脚本三项检查已从 `Build.yml` 移入
-> `Gate.yml`），**现值以本文件 §6、§8.1 与 [TODO.md](TODO.md) 为准**。
-
-| 项 | 实测 | 结论 |
-|---|---|---|
-| `git rev-parse HEAD` | `fatal: ambiguous argument 'HEAD'` | ✗ 零提交 |
-| `git ls-files` | `0`（磁盘 373 个文件） | ✗ 未入索引 |
-| `git branch -a` / `rev-parse` | 无任何分支 / tag | ✗ 无法打 tag 发版 |
-| `git remote -v` | `origin` 已配置 | ✓ 只差提交推送 |
-| 覆盖率门禁 | `pom.xml:260` `COVEREDRATIO ≥ 0.70` | ✓ 配置在 |
-| 用例数（Surefire） | **604**（common 57 / extension-api 6 / core 193 / tool 25 / cli 323） | ✅ 与文档一致（§3.1 已刷新） |
-| Maven 4 GA | `apache-maven-4.0.0-bin.zip` → **HTTP 404**；metadata `release=4.0.0-rc-7` | rc-7 是**当前最新**，钉版本非疏忽 ✓ |
-| Maven 3.9.x | `/root/apache-maven-3.9.11` 可用（JDK 25 下可跑） | 待跑一次 ⬜ |
-| CI | `Build.yml` 含 wrapper(**Maven 4**) 与 system(**Maven 3.9.x**) 双腿 + 三项检查 | ✓ 推送后自动覆盖基线 |
-| 未勾的 0.1 验收项 | 仅验收清单里「LLM 供应商接入测试」（需真实 API Key），见 `AHA/AHA-Design-V1.md` §0.1 功能核查 | 唯一遗留 ⬜ |
-| `Aha.bat` / `Dist/bin/Aha.bat` | `file`: ASCII + CRLF | ✓ |
-| `Dist/` | 18 个 jar；`Aha.sh version` → `AHA 0.1.0`；`aha-core` jar 内含 `AhaDefault.yaml` / `ModelDefault.yml` | ✓ 新鲜可用 |
-| 核心模块 `System.out/err` | 0 处（CLI 除外） | ✓ 验收项可判 |
-| `TODO` 标记 | 5 处，全部 `TODO(0.3)`（扩展系统） | ✓ 非发布阻塞 |
-| `Docs/` 四棵目录树 | Design 16 / DevSpec 11 / Guide 8 / Diagrams 7，与磁盘**逐一比对一致** | ✓（此前 Design 缺 3 份，已修） |
-| `version.properties` | `version=${project.version}` + `build=${aha.build.version}` + 资源过滤（位于 `aha-common`，CLI 与桌面端共用） | ✓ |
-
-**本次因此改动的文档**：`LoggingDesign.md`（新建）、`ConfigurationGuide` / `ReferenceGuide`（`Logging.Level` 默认值 `INFO` → `DEBUG`，与 `AhaDefault.yaml` 一致）、`TroubleshootingGuide`、`Constitution`（第 10 条第 8 项）、`AHA-Design-V1`（目录树 + 清单表 + 日志小节指针）、`CHANGELOG`（滚动口径更正）。
-
-
----
+*（本节正文已归档 → [Docs/DevLog/20261017-15.md](DevLog/20261017-15.md)）*
 
 ## 9. 相关文档
 
