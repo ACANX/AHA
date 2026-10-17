@@ -234,8 +234,8 @@ jobs:
   #   逐腿作业 + 共用 `CliNativeImageLeg.yml`：逻辑一份，名字全静态。
   #   收窄靠 **job 级 `if`**（读 `needs.Plan.outputs.legs`）：未选中的腿直接 skipped。
 
-  CliNativeImageUbuntuAmd64JDK25:
-    name: CliNativeImageUbuntuAmd64JDK25
+  CliNativeImageUbuntuAmd64GraalVM25:
+    name: CliNativeImageUbuntuAmd64GraalVM25
     needs:
       - Plan
       - CliNativeVersion
@@ -253,8 +253,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.CliNativeVersion.outputs.version }}
 
-  CliNativeImageWindowsAmd64JDK25:
-    name: CliNativeImageWindowsAmd64JDK25
+  CliNativeImageWindowsAmd64GraalVM25:
+    name: CliNativeImageWindowsAmd64GraalVM25
     needs:
       - Plan
       - CliNativeVersion
@@ -272,8 +272,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.CliNativeVersion.outputs.version }}
 
-  CliNativeImageMacOSAarch64JDK25:
-    name: CliNativeImageMacOSAarch64JDK25
+  CliNativeImageMacOSAarch64GraalVM25:
+    name: CliNativeImageMacOSAarch64GraalVM25
     needs:
       - Plan
       - CliNativeVersion
@@ -291,8 +291,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.CliNativeVersion.outputs.version }}
 
-  CliNativeImageWindowsAmd64JDK27:
-    name: CliNativeImageWindowsAmd64JDK27
+  CliNativeImageWindowsAmd64GraalVM27:
+    name: CliNativeImageWindowsAmd64GraalVM27
     needs:
       - Plan
       - CliNativeVersion
@@ -310,8 +310,8 @@ jobs:
       jdk: '27'
       aha_version: ${{ needs.Plan.outputs.version || needs.CliNativeVersion.outputs.version }}
 
-  CliNativeImageUbuntuAmd64JDK27:
-    name: CliNativeImageUbuntuAmd64JDK27
+  CliNativeImageUbuntuAmd64GraalVM27:
+    name: CliNativeImageUbuntuAmd64GraalVM27
     needs:
       - Plan
       - CliNativeVersion
@@ -334,11 +334,11 @@ jobs:
     needs:
       - Plan
       - CliNativeVersion
-      - CliNativeImageUbuntuAmd64JDK25
-      - CliNativeImageWindowsAmd64JDK25
-      - CliNativeImageMacOSAarch64JDK25
-      - CliNativeImageWindowsAmd64JDK27
-      - CliNativeImageUbuntuAmd64JDK27
+      - CliNativeImageUbuntuAmd64GraalVM25
+      - CliNativeImageWindowsAmd64GraalVM25
+      - CliNativeImageMacOSAarch64GraalVM25
+      - CliNativeImageWindowsAmd64GraalVM27
+      - CliNativeImageUbuntuAmd64GraalVM27
     env:
       AHA_VERSION: ${{ needs.Plan.outputs.version || needs.CliNativeVersion.outputs.version }}
     # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。

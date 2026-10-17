@@ -35,12 +35,14 @@
 - **零标点**：不许 `-`、`(`、`)`、空格、`/`、`:`、中文、全角标点；
 - **用单数**：`StaticGuard`（不是 `StaticGuards`）、`ReleaseChecksum`（不是 `ReleaseChecksums`）；
 - **缩写整体大写**：`JDK25`、`MacOSAarch64`、`UISmoke`、`CLI`、`PR`、`JVM`、`ID`；
+- **原生镜像腿的版本段写作 `GraalVM25` / `GraalVM27`**（GraalVM 版本对应）：如
+  `NativeImageWindowsAmd64GraalVM25`；JVM 线仍是 `JDK25` / `JDK27`（两条线的版本含义不同）；
 - 语义靠词本身表达，细节留给 `run:` 与注释。
 
 ### 2.2 作业 id（强制）
 
 - 与显示名同规则（`^[A-Z][A-Za-z0-9]*$`）；
-- 矩阵作业**展开为逐腿静态作业**：显示名与作业 id 一致（如 `NativeImageWindowsAmd64JDK25`），
+- 矩阵作业**展开为逐腿静态作业**：显示名与作业 id 一致（如 `NativeImageWindowsAmd64GraalVM25`），
   重复的 steps 放进可复用工作流（`*Leg.yml`）；
 - 收窄（「这次只出哪几条腿」）用 **job 级 `if`**，不再靠步骤级遮挡。
 - **调用可复用工作流的 job 只允许**：`name` / `uses` / `with` / `secrets` / `strategy` / `needs` / `if` / `permissions` / `concurrency`；
@@ -88,22 +90,22 @@
 | `BuildJVMArtifacts.yml` | `build-publish` | `BuildPublish` |
 | `CliNative.yml` | `plan` | `Plan` |
 | `CliNative.yml` | `cli-native-version` | `CliNativeVersion` |
-| `CliNative.yml` | `cli-native-image` | `CliNativeImageUbuntuAmd64JDK25` |
-| `CliNative.yml` | `cli-native-image` | `CliNativeImageWindowsAmd64JDK25` |
-| `CliNative.yml` | `cli-native-image` | `CliNativeImageMacOSAarch64JDK25` |
-| `CliNative.yml` | `cli-native-image` | `CliNativeImageWindowsAmd64JDK27` |
-| `CliNative.yml` | `cli-native-image` | `CliNativeImageUbuntuAmd64JDK27` |
+| `CliNative.yml` | `cli-native-image` | `CliNativeImageUbuntuAmd64GraalVM25` |
+| `CliNative.yml` | `cli-native-image` | `CliNativeImageWindowsAmd64GraalVM25` |
+| `CliNative.yml` | `cli-native-image` | `CliNativeImageMacOSAarch64GraalVM25` |
+| `CliNative.yml` | `cli-native-image` | `CliNativeImageWindowsAmd64GraalVM27` |
+| `CliNative.yml` | `cli-native-image` | `CliNativeImageUbuntuAmd64GraalVM27` |
 | `CliNative.yml` | `cli-native-publish` | `CliNativePublish` |
 | `CliNative.yml` | `comment` | `Comment` |
 | `CodeQL.yml` | `analyze` | `Analyze` |
 | `Compat.yml` | `compat` | `Compat` |
 | `DesktopNative.yml` | `plan` | `Plan` |
 | `DesktopNative.yml` | `native-version` | `NativeVersion` |
-| `DesktopNative.yml` | `native-image` | `NativeImageUbuntuAmd64JDK25` |
-| `DesktopNative.yml` | `native-image` | `NativeImageWindowsAmd64JDK25` |
-| `DesktopNative.yml` | `native-image` | `NativeImageMacOSAarch64JDK25` |
-| `DesktopNative.yml` | `native-image` | `NativeImageWindowsAmd64JDK27` |
-| `DesktopNative.yml` | `native-image` | `NativeImageUbuntuAmd64JDK27` |
+| `DesktopNative.yml` | `native-image` | `NativeImageUbuntuAmd64GraalVM25` |
+| `DesktopNative.yml` | `native-image` | `NativeImageWindowsAmd64GraalVM25` |
+| `DesktopNative.yml` | `native-image` | `NativeImageMacOSAarch64GraalVM25` |
+| `DesktopNative.yml` | `native-image` | `NativeImageWindowsAmd64GraalVM27` |
+| `DesktopNative.yml` | `native-image` | `NativeImageUbuntuAmd64GraalVM27` |
 | `DesktopNative.yml` | `native-publish` | `NativePublish` |
 | `DesktopNative.yml` | `comment` | `Comment` |
 | `Gate.yml` | `gate` | `Gate` |

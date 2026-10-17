@@ -264,8 +264,8 @@ jobs:
   #   逐腿作业 + 共用 `NativeImageLeg.yml`：逻辑一份，名字全静态。
   #   收窄靠 **job 级 `if`**（读 `needs.Plan.outputs.legs`）：未选中的腿直接 skipped。
 
-  NativeImageUbuntuAmd64JDK25:
-    name: NativeImageUbuntuAmd64JDK25
+  NativeImageUbuntuAmd64GraalVM25:
+    name: NativeImageUbuntuAmd64GraalVM25
     needs:
       - Plan
       - NativeVersion
@@ -283,8 +283,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.NativeVersion.outputs.version }}
 
-  NativeImageWindowsAmd64JDK25:
-    name: NativeImageWindowsAmd64JDK25
+  NativeImageWindowsAmd64GraalVM25:
+    name: NativeImageWindowsAmd64GraalVM25
     needs:
       - Plan
       - NativeVersion
@@ -302,8 +302,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.NativeVersion.outputs.version }}
 
-  NativeImageMacOSAarch64JDK25:
-    name: NativeImageMacOSAarch64JDK25
+  NativeImageMacOSAarch64GraalVM25:
+    name: NativeImageMacOSAarch64GraalVM25
     needs:
       - Plan
       - NativeVersion
@@ -321,8 +321,8 @@ jobs:
       jdk: '25'
       aha_version: ${{ needs.Plan.outputs.version || needs.NativeVersion.outputs.version }}
 
-  NativeImageWindowsAmd64JDK27:
-    name: NativeImageWindowsAmd64JDK27
+  NativeImageWindowsAmd64GraalVM27:
+    name: NativeImageWindowsAmd64GraalVM27
     needs:
       - Plan
       - NativeVersion
@@ -340,8 +340,8 @@ jobs:
       jdk: '27'
       aha_version: ${{ needs.Plan.outputs.version || needs.NativeVersion.outputs.version }}
 
-  NativeImageUbuntuAmd64JDK27:
-    name: NativeImageUbuntuAmd64JDK27
+  NativeImageUbuntuAmd64GraalVM27:
+    name: NativeImageUbuntuAmd64GraalVM27
     needs:
       - Plan
       - NativeVersion
@@ -366,11 +366,11 @@ jobs:
     needs:
       - Plan
       - NativeVersion
-      - NativeImageUbuntuAmd64JDK25
-      - NativeImageWindowsAmd64JDK25
-      - NativeImageMacOSAarch64JDK25
-      - NativeImageWindowsAmd64JDK27
-      - NativeImageUbuntuAmd64JDK27
+      - NativeImageUbuntuAmd64GraalVM25
+      - NativeImageWindowsAmd64GraalVM25
+      - NativeImageMacOSAarch64GraalVM25
+      - NativeImageWindowsAmd64GraalVM27
+      - NativeImageUbuntuAmd64GraalVM27
     env:
       AHA_VERSION: ${{ needs.Plan.outputs.version || needs.NativeVersion.outputs.version }}
     # 即使某条腿失败也要发布已成功的那几个平台（试验性产物，部分可用也有价值）。
