@@ -342,6 +342,11 @@ def check_ignored_sources() -> list[str]:
       * 只有 CI 会告诉你 `cannot find symbol: class LogLevel`。
 
     因此这里直接问 git：有哪些被忽略的文件落在源码目录里（或本身就是 .java）。
+
+    一条白名单（issue #262）：若**同名文件在仓库别处受跟踪**，被忽略的那一份视为**构建产物**
+    —— 包根扁平化后 assemblies 会把 `bin/AhaCli.sh` 铺到 `Dist/` 根，而 `Dist/` 整体被忽略，
+    不排除的话「构建之后的检查」必然假红。只在被忽略目录里存在的手写脚本（如
+    `Dist/apply-update.cmd` 那种形态）仍然照旧判红。
     """
     try:
         result = subprocess.run(
@@ -357,6 +362,13 @@ def check_ignored_sources() -> list[str]:
 
     if result.returncode != 0:
         return [f"调用 git 失败（exit={result.returncode}）：{result.stderr.strip()}"]
+
+    # 「同名文件在仓库别处受跟踪」⇒ 被忽略的那份是**构建产物**（源在别处），不是漏提交。
+    # 包根扁平化（#217/#218）之后 assemblies 会把 `bin/AhaCli.sh` 铺到 `Dist/` 根，
+    # 而 `Dist/` 整体被 .gitignore 忽略 —— 若不排除，`clean verify` 之后的检查必然假红（issue #262）。
+    tracked_names = _tracked_basenames()
+    if tracked_names is None:
+        return ["调用 git 失败，无法取得受跟踪文件清单（构建产物判据）"]
 
     offenders: list[str] = []
     for line in result.stdout.splitlines():
@@ -375,6 +387,10 @@ def check_ignored_sources() -> list[str]:
         if Path(entry).suffix.lower() not in IGNORED_REF_SUFFIXES:
             continue
         base = Path(entry).name
+        if base in tracked_names:
+            # 构建产物：同名源文件在别处受跟踪（如 bin/AhaCli.sh → Dist/AhaCli.sh）。
+            # 只放过这一种；只在被忽略目录里存在、仓库别处没有同名文件的手写脚本仍会被抓。
+            continue
         for referenced_by, text in _referencing_texts():
             if re.search(r"(?<![\w.-])" + re.escape(base) + r"(?![\w.-])", text):
                 offenders.append(
@@ -383,6 +399,24 @@ def check_ignored_sources() -> list[str]:
                 )
                 break
     return offenders
+
+
+def _tracked_basenames() -> set[str] | None:
+    """仓库里所有**受跟踪**文件的文件名（用于识别「被忽略的构建产物」）。"""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - 环境问题
+        return None
+    if result.returncode != 0:  # pragma: no cover - 环境问题
+        return None
+    return {Path(line.strip()).name for line in result.stdout.splitlines() if line.strip()}
 
 
 def _referencing_texts() -> list[tuple[str, str]]:
