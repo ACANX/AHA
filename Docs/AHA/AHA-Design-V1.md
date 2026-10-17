@@ -1,6 +1,6 @@
 # AHA 设计蓝图与技术实现方案
 
-**文档版本**：v3.73.0
+**文档版本**：v3.74.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **适用宪法版本**：v1.6.0
@@ -419,7 +419,7 @@ aha/
 **文档版本**：v1.0.0
 **状态**：草稿 / 评审中 / 冻结 / 已废弃
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-17
 **负责人**：@username
 **适用版本**：AHA 0.1.x
 
@@ -491,6 +491,7 @@ aha/
 | v3.70.0 | 2026-10-09 | 版本源收敛（P5 / #97）：头部「目标版本」与 AGENTS 示例的「当前版本」不再写死（指向根目录 `version` 文件）；§2 父 POM 示例改用 `${revision}` + `<properties><revision>`，§3 子模块模板改 `${revision}`；项目结构树补 `version` 文件、`.github/Python/ProjectVersion.py`、`VersionBump.yml` 与 `Script/Python/VersionDistribute.py`；同步头部文档版本（v3.66.0 → v3.70.0，此前落后于变更日志） | @ACANX / CNXNC |
 | v3.71.0 | 2026-10-09 | 发行形态最终决策：打包方式表与相关小节去掉 `jpackage`，改为**两种形态**（JVM JAR 聚合包 + 原生镜像二进制）；风险表的「0.2 使用 jpackage」改为按新形态缓解。理由与口径见 `ReleaseProcess.md` §3.3 | @ACANX / CNXNC |
 | v3.72.0 | 2026-10-14 | §3 目录树补 `Docs/Guide/PlanWritingGuide.md`（方案文档编写参考：由 issue #165 的正文体例整理，参考性、非强制） | @cnxnc |
+| v3.74.0 | 2026-10-17 | 第十二部分 3.3「覆盖率排除项」修正：桌面端一行原写「桌面端 0.2 实现」，与 `TestingSpec.md` §3.2 / 根 POM 的 `jacoco` `excludes` 已漂移（实际是 0.1 整体排除、0.2 起按 `D-05` 用单独阈值 0.30 纳入）；表格改用 POM 的包路径形态，并注明**权威登记处是 `TestingSpec.md` §3.2**。原 `BuildSpec.md` §6 的引用「设计文档第十二部分 3.3」经核对**指向存在**，只是不该作为登记处（issue [#120](https://github.com/ACANX/AHA/issues/120) / `A-07`） | @cnxnc |
 | v3.73.0 | 2026-10-16 | 技能索引新增 `code-review`（代码审查：命令取证、P0–P3 判级、逃逸链、逐条复核、残余归属与真机验收项），取材于 PR #243 的三轮审查沉淀 | @cnxnc |
 
 ---
@@ -3241,14 +3242,17 @@ aha-core/src/test/resources/
 
 ### 3.3 覆盖率排除项
 
-以下范围不计入门禁，属后续版本或需真实运行环境，由手工验收覆盖：
+以下范围不计入门禁，属后续版本或需真实运行环境，由手工验收覆盖。
+
+> **权威登记处**：[测试规范 `TestingSpec.md`](../DevSpec/TestingSpec.md) §3.2（与根 POM 的 jacoco
+> `excludes` 逐条对应）。本节只是设计侧摘要，口径以那边为准；两边不一致时**改本节**。
 
 | 排除范围 | 理由 |
 |---|---|
-| `core/extension/**` | 扩展运行时属 0.3 |
-| `core/mcp/**` | MCP 适配器为 0.2 占位 |
-| `desktop/**` | 桌面端 0.2 实现 |
-| `cli/ChatCommand*`、`cli/RunCommand*` | 依赖真实 TTY 与供应商 API Key |
+| `com/acanx/module/aha/core/extension/**` | 扩展运行时属 0.3（阶段八） |
+| `com/acanx/module/aha/core/mcp/**` | MCP 适配器为 0.2 占位 |
+| `com/acanx/module/aha/desktop/**` | 0.1 为占位、整体排除；0.2 起**纳入**门禁、用单独阈值 0.30（`D-05`，见 `TestingSpec.md` §3.4） |
+| `com/acanx/module/aha/cli/ChatCommand*`、`com/acanx/module/aha/cli/RunCommand*` | 依赖真实 TTY 与供应商 API Key |
 
 ## 4. LLM 适配器测试要求
 

@@ -1,9 +1,9 @@
 # 构建规范
 
-**文档版本**：v1.46.0
+**文档版本**：v1.46.1
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-16
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.46.1 | 2026-10-17 | §6 覆盖率门禁的「排除项」引用改为指向**权威登记处** `TestingSpec.md` §3.2（issue [#120](https://github.com/ACANX/AHA/issues/120) / `A-07`）。核对结论：原引用「设计文档第十二部分 3.3」**指向确实存在**（`AHA-Design-V1.md` 第十二部分有 `### 3.3 覆盖率排除项`），失准的只是**口径**——那份表与 `TestingSpec.md` §3.2、根 POM 的 `jacoco` `excludes` 已漂移（桌面端一行还写着「0.2 实现」）。现改为规范单点登记，设计文档反向指回 | @cnxnc |
 | v1.46.0 | 2026-10-16 | §8.1 的瞬时失败判据补齐**Maven Wrapper 下载发行包失败**（2026-10-16 实测：PR 的 Windows 腿 21 秒红，报 `Conversion from JSON failed` + `FileNotFoundException: …apache-maven-4.0.0-rc-7-bin.zip`，旧判据一条都不命中 ⇒ 一次都没重试；同提交的另一次运行同腿是绿的）。新增判据只匹配这几句报错，编译错误 / 测试失败仍立刻失败（本地用真实 + 反向日志各验一次）| @ACANX / CNXNC |
 | v1.45.0 | 2026-10-16 | §7.1 补两条：① 桌面端两条线的包都必须带换装 helper（否则自更新在「复制 helper」那步必败，见 `ReleaseProcess.md` §3.6）；② 新增守卫 `check_update_helper_packaging()` / `check_repo_script_steps_have_checkout()`，`Script/PowerShell/HelperSelfTest.ps1` 进 `Build.yml` 的 `native-update-script` 作业（换装 helper 首次有真实行为测试）| @ACANX / CNXNC |
 | v1.44.0 | 2026-10-16 | 新增 §7.1「包内清单与发布页校验和」：四条出包线在打包步骤末尾统一写 `AHA-PACKAGE.json` 与 `SHA256SUMS`，契约只有一处定义（`ReleaseProcess.md` §3.4），实现只有一份（`.github/Python/PackageManifest.py`）且自检进 `static-guards`（issue #51 §6）| @ACANX / CNXNC |
@@ -197,7 +198,7 @@ POM 语法必须兼容 Maven 3.9.x：
 | 绑定 | `prepare-agent` / `report` / `check`，均于 `verify` 阶段 |
 | 门禁规则 | `BUNDLE` 级 `LINE COVEREDRATIO ≥ 0.70` |
 | 未达标后果 | `verify` 失败，PR 不得合入 |
-| 排除项 | 必须登记理由（见设计文档第十二部分 3.3） |
+| 排除项 | 必须登记理由；**权威登记处：[TestingSpec.md](TestingSpec.md) §3.2**（与根 POM 的 jacoco `excludes` 逐条对应） |
 
 模块级参考阈值见 [TestingSpec.md](TestingSpec.md) 第 3 节。
 
