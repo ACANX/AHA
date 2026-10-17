@@ -2,11 +2,11 @@
 
 > 待办编号：TD-00018
 > 标题：自动打的 `V*` tag 不触发 `Release.yml` —— 不配 PAT 前提下打通自动出包
-> 状态：◐ 进行中（实现：PR [#240](https://github.com/ACANX/AHA/pull/240)；闭环验收需一次真实发版）
-> 跟踪 Issue 状态：**OPEN**
+> 状态：✅ **已完成**（实现：PR [#240](https://github.com/ACANX/AHA/pull/240)；**闭环验收**：`V0.1.3` 首次真发版跑通，见 [#238 验收评论](https://github.com/ACANX/AHA/issues/238#issuecomment-6230970801)）
+> 跟踪 Issue 状态：**CLOSED**（2026-10-17）
 > 跟踪 Issue：[#238](https://github.com/ACANX/AHA/issues/238)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-17（`V0.1.3` 实测闭环）
 
 ---
 
