@@ -524,7 +524,7 @@ jobs:
             （JDK 27 试验），两者 diff 就是这一版做的实验改动。
 
             ## 独立报告包（与镜像包同族命名）
-            每腿另有一个 `AHA-Desktop-Native-<版本>-<系统>-<架构>-jdk<JDK>-Report.zip`，
+            每腿另有一个 `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>-diagnostics.zip`，
             内含 native-image 构建报告、该版使用的镜像参数与可达性元数据。
             报告是「为什么编得这么大 / 这么慢」与「下一步加什么参数」的唯一依据；
             文件名与镜像包一一对应（版本、系统、架构、JDK 轴全在名里），按需取件即可。
