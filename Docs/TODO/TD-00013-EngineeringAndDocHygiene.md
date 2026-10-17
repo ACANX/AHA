@@ -48,16 +48,14 @@
 
 按新的流程约定（见「遗留事项总览与流程调整」Issue），**`TODO.md` 不再自动追加内容**；本节条目在 Issue 里跟踪，`TODO.md` 只保留历史记录。
 
-## 原文摘录（来源文件已于 2026-10-17 删除）
+## 任务单（本主题拆出的最小任务，逐条可验收）
 
-### `Docs/TODO.md` 条目
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
 
-| A-08 | `Docs/` 根下的 `PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/` | 待决策 | ✅ | P3 | ⏸ 待决策 | `DocumentationSpec.md` §2 |
-| F-16 | Maven 4 下 verify 日志出现 10 行 `[stderr]` | 缺陷 | ⚠️ | P2 | ☐ 未完成 | `Gate.yml` 日志、`aha-core` 测试 |
-| ~~A-08~~ | ~~`PLAN.md` / `TODO.md` / `Dbsx.txt` 是否收进 `Docs/AHA/`~~ | **维持现状** | `Docs/AHA/` 的定位是「权威设计文档」；`PLAN.md`/`TODO.md` 是活的状态台账，放根目录更显眼；`Dbsx.txt` 是用户原始输入，宜先定去留（§8.3.4）再谈归档 |
-| ~~F-07~~ | ~~`.ps1` 是否纳入检查、`Script/` 与 `bin/` 是否合并~~ | **纳入检查 + 合并进 `bin/`** | 脚本规约要么全查、要么别立；两个目录职责重叠会长期制造「改了这个忘那个」；合并后 `CheckScripts.py` 只需覆盖一个目录 |
-| A-08 | `DocumentationSpec.md` §2 | 明确 `Docs/` 根下暂存区文件的存放位置 | ⏸ 待决策 |
-| F-07 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 | 明确 `.ps1` 是否纳入检查、`Script/` 目录去留 | ⏸ 待决策 |
-| F-07 | `Script/PowerShell/CountJavaLoc.ps1` 未纳入 `CheckScripts.py`（`.ps1` 不在检查范围）；`Script/` 与 `bin/` 目录职责重叠 | 待决策 | ✅ | P3 | ⏸ 待决策 | `BuildSpec.md` §8.1、`DocumentationSpec.md` §2 |
-| F-14 | `.github/**/*.yml` 没有任何本地检查：`bin/CheckScripts.py` 只覆盖 `.bat`/`.cmd`/`.sh`/`.py`，工作流语法写错只能等 GitHub 判，反馈环路长 | 工程效能 | ⏸ | P2 | ⏸ 待决策 | `bin/CheckScripts.py` |
-| F-15 | 文档标题/表行**编号重复**只能靠人工看：本轮 `PLAN.md` `A-09`/`A-10` 与两份 `Design/` 文档的重号都是事后肉眼发现 | 工程效能 | ⏸ | P3 | ⏸ 待决策 | `bin/CheckDocs.py` |
+- [TD-00051](TD-00051-ScriptDirectoryConsolidation.md) — `Script/` 与 `bin/` 是否合并（`.ps1` 已纳入检查）
+- [TD-00052](TD-00052-WorkflowYamlStaticCheck.md) — `.github/**/*.yml` 是否纳入静态检查
+- [TD-00053](TD-00053-DocDuplicateNumberCheck.md) — 文档标题 / 表行编号重复是否纳入检查
+- [TD-00054](TD-00054-Maven4StderrNoise.md) — Maven 4 `verify` 的 10 行 `[stderr]` 噪音
+- [TD-00057](TD-00057-TodoReviewBackfill.md) — 复核结论回灌正式文档（原 `TODO.md` §8 的遗留）
+- [TD-00058](TD-00058-MvnCleanLockedFileHandling.md) — `mvn clean` 无法删除被占用文件（Windows）
+

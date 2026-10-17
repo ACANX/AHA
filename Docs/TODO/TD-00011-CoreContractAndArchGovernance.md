@@ -65,17 +65,14 @@
 - `Docs/TODO.md` 第 2 / 3 节、`A-07`
 - `Docs/DevSpec/Constitution.md`、`ModuleConvention.md`、`BuildSpec.md`、`TestingSpec.md`
 
-## 原文摘录（来源文件已于 2026-10-17 删除）
+## 任务单（本主题拆出的最小任务，逐条可验收）
 
-### `Docs/TODO.md` 条目
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
 
-| B-01 | `AgentEngine.run()` 空 choices 时返回 `null` 正文 | 风险 | ✅ | P1 | ☐ 未完成 | `AgentEngine`、`AgentServiceDesign.md` |
-| B-02 | `AgentEngine.stream()` 的 `finishReason` 可能为 `null` | 风险 | ✅ | P1 | ☐ 未完成 | 同上 |
-| C-02 | `ServiceLoader` 双声明的长期维护成本 | 待决策 | ✅ | P3 | ⏸ 待决策 | `ModuleConvention.md` |
-| C-03 | 依赖治理补强（Enforcer / ArchUnit） | 调研 | ✅ | P2 | ☐ 未完成 | `BuildSpec.md` |
-| C-04 | `jlink` 禁令的解除条件未登记 | 待决策 | ✅ | P3 | ☐ 未完成 | `BuildSpec.md` §7 |
-| C-02 | `ModuleConvention.md` | 补充 `ServiceLoader` 声明要求 | ☐ 未完成（待决策） |
-| C-03 | `BuildSpec.md` §7 | 补充依赖治理手段（若采纳） | ☐ 未完成 |
-| C-04 | `BuildSpec.md` §7 | 补充 `jlink` 禁令解除条件 | ☐ 未完成 |
+- [TD-00037](TD-00037-AgentEngineEmptyChoicesContent.md) — `AgentEngine.run()`：空 `choices` 不得返回 `null` 正文
+- [TD-00038](TD-00038-AgentEngineStreamFinishReason.md) — `AgentEngine.stream()`：`finishReason` 的兜底值
+- [TD-00039](TD-00039-ConstitutionJpmsRationale.md) — `Constitution.md` / `ModuleConvention.md` 补「为何模块化优先」
+- [TD-00040](TD-00040-ServiceLoaderDualDeclarationDecision.md) — `ServiceLoader` 双声明：拍板三选一并落地
+- [TD-00041](TD-00041-DependencyGovernanceDecision.md) — 依赖治理：Enforcer / ArchUnit 引入与否
+- [TD-00042](TD-00042-JlinkBanLiftConditions.md) — `BuildSpec.md` §7 补 `jlink` 禁令的解除条件
 
-> **C-01**（原 `TODO.md` C-01）：`Constitution.md` 第 4 条、`ModuleConvention.md` 补充「为何 JPMS 存在 / 模块化优先」与复核点。

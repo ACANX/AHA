@@ -55,15 +55,10 @@ Windows 与 WSL 的同一项目得到两个项目 ID，**默认视为两个独�
 
 - `Docs/Design/MemoryStorageDesign.md`、`Docs/AHA/AHA-Design-V1.md` 第十五部分
 
-## 原文摘录（`Docs/PLAN.md` §4，该文件已于 2026-10-17 删除）
+## 任务单（本主题拆出的最小任务，逐条可验收）
 
-> | 项 | 位置 | 状态 |
-> |---|---|---|
-> | 记忆存储载体选型（表 / MD / 混合） | [MemoryStorageDesign.md](../Design/MemoryStorageDesign.md) 第 7 节 | 未定，待 0.6 一并决定 |
-> | 记忆的记录与整理机制 | 同上 7.5 | 原则已定，实施待 0.6 |
-> | 会话历史是否也改为项目级 | 同上 8.6 | 未定（牵连会话列表与统计） |
-> | ~~`Docs/TODO.md` 的重复内容清理~~ | `Docs/TODO.md` 自身 | ✅ **已完成（2026-10-07）**：已删除重复副本与误粘贴的会话日志，`TODO.md` 升 v0.3.0 并逐条复核。**本行可从表中移除** |
-> | `TODO.md` 复核结论未回灌正式文档 | `Docs/TODO.md` §8、各目标文档 | ◐ 进行中：`B-03` 版本漂移已收口（`BuildSpec.md` §7 立「版本单一来源」规则）；本轮新增的 `B-04`~`B-07`（Windows 平台缺陷）与 `F-01`~`F-06`（CI 门禁与工程效能）均已同步落地到 `BuildSpec` / `TestingSpec` / `BuildGuide` / `AGENTS`；仍待回灌的是 `D-09` / `E-12` 等 0.2 及以后的条目 |
-> | `mvn clean` 无法删除被占用的文件 | `aha-cli/pom.xml` | 已缓解（`failOnError=false`）：被锁的必然是当前版本同名文件（assembly 覆盖），旧版本残留无人占用可正常删 |
->
-> ---
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00055](TD-00055-MemoryBackendSelection.md) — 记忆存储载体选型（表 / MD / 混合）
+- [TD-00056](TD-00056-SessionHistoryProjectScope.md) — 会话历史是否也改为项目级
+

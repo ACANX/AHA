@@ -41,6 +41,9 @@ native-image 在**构建期**静态分析可达代码（closed-world），而扩
 - `Docs/TODO.md` `E-01`、`Docs/Design/ExtensionSystemDesign.md`、`Docs/DevSpec/Constitution.md` 第 5 / 8 条
 - 建议**先做本条决策**，再评估其余原生镜像条目。
 
-## 原文摘录（来源文件已于 2026-10-17 删除）
+## 任务单（本主题拆出的最小任务，逐条可验收）
 
-| E-01 | `ModuleLayer` 与 native-image 的 closed-world 根本冲突 | 待决策 | ✅ | P0 | ⏸ 待决策 | `ExtensionSystemDesign.md`、`BuildSpec.md` |
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00043](TD-00043-NativeModuleLayerConflictDecision.md) — `ModuleLayer` 与 native-image closed-world 冲突：给结论
+
