@@ -43,3 +43,11 @@
 - `Docs/Dbsx.txt` 第 2 节、`Docs/PLAN.md` §7.1 / §7.3
 - `Docs/Design/TUIDesign.md`（降级矩阵）
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00029](TD-00029-MarkdownRichTextRendering.md) — 会话总结的 Markdown 渲染成富文本（彩色 / 分格式）
+- [TD-00030](TD-00030-TableRowSeparatorPolicy.md) — 表格数据行之间是否补水平分割线（先拍板再实现）
+- [TD-00031](TD-00031-MarkdownRenderingGapsPolicy.md) — 渲染缺口逐项结论：图片 / 语法高亮 / OSC 8 / 单元格换行
+

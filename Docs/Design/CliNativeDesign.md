@@ -248,4 +248,4 @@ python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）
-- [TODO.md](../TODO.md)：`N-19`（真机验证 CLI 原生镜像）等
+- [TODO.md](../TODO/README.md)：`N-19`（真机验证 CLI 原生镜像）等

@@ -38,3 +38,13 @@
 - `Docs/Design/TUIDesign.md`、`Docs/Design/ToolSystemDesign.md`
 - 与本仓库「CLI Markdown 富文本渲染」同属终端输出层，建议一并设计渲染管线。
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00024](TD-00024-CliToolCallEditDiffRendering.md) — 工具调用：编辑类输出「分块 + 前后差异」渲染
+- [TD-00025](TD-00025-CliToolCallAddFileChunking.md) — 工具调用：新增文件输出「路径 + 内容」分块，超 500 行折叠
+- [TD-00026](TD-00026-CliToolCallReadFileChunking.md) — 工具调用：浏览文件输出「命令 + 文件内容」分块，过长折叠
+- [TD-00027](TD-00027-CliToolCallExecOutputChunking.md) — 工具调用：执行命令输出「命令 + 结果」分块
+- [TD-00028](TD-00028-DeepSeekToolCallApiParity.md) — 补齐 DeepSeek 工具调用缺失的命令 / API
+

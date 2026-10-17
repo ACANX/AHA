@@ -3,7 +3,7 @@
 > 日期：2026-10-07
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#8](https://github.com/ACANX/AHA/pull/8)（`dependa` → `dev`，冲突已解决待推送）
-> 关联记录：[ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §4、[TODO.md](../TODO.md) `F-12` / `G-01`
+> 关联记录：[ReleaseProcess.md](../DevSpec/ReleaseProcess.md) §4、[TODO.md](../TODO/README.md) `F-12` / `G-01`
 
 ---
 
@@ -130,7 +130,7 @@ $ git log -1 --format='%h %p' HEAD
 | ---- | ---- |
 | `dependa` 分支 | 新增合并提交 `06c6121`（`-s ours origin/dev`，树不变） |
 | [ReleaseProcess.md](../DevSpec/ReleaseProcess.md) | 新增 §4「分支流向与合并方式（强制）」：长期集成分支只能真合并；squash/rebase 后必须删源分支；合并前后用树的逐字节比对确认没丢内容 |
-| [TODO.md](../TODO.md) | 新增 `F-12`（本次事故与修法）；`G-01` 更新为「推送合并提交」并补验收标准 |
+| [TODO.md](../TODO/README.md) | 新增 `F-12`（本次事故与修法）；`G-01` 更新为「推送合并提交」并补验收标准 |
 | `CHANGELOG.md` | 记录本次修复 |
 
 ---

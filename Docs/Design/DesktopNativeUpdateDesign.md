@@ -314,7 +314,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - [CliNativeDesign.md](CliNativeDesign.md)：CLI 原生镜像的构建管线（取件由本工具覆盖）
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（含跨平台脚本规约）
 - [TD-00015](../TODO/TD-00015-CliNativeVersionUpdateScript.md)：CLI 原生镜像自动取件脚本（已收尾）
-- [TODO.md](../TODO.md)：`F-07`（`Script/` 目录归属）、`N-04`（JDK 轴）
+- [TODO.md](../TODO/README.md)：`F-07`（`Script/` 目录归属）、`N-04`（JDK 轴）
 - Issue #156：一键入口与 CLI 取件的来源单
 - 实现：`Script/Python/NativeVersionUpdate.py`（共享引擎）、
   `DesktopNativeVersionUpdate.py` / `CliNativeVersionUpdate.py`（两个薄壳）、

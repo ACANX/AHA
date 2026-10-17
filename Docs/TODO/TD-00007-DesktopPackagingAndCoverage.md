@@ -40,3 +40,9 @@
 
 - `Docs/TODO.md` `D-05` / `D-08`、`Docs/DevSpec/TestingSpec.md` §3、`Docs/DevSpec/ReleaseProcess.md`
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00050](TD-00050-DesktopCoverageGateEnablement.md) — 桌面端覆盖率门禁上线（0.30 → 0.70 两步走）
+
