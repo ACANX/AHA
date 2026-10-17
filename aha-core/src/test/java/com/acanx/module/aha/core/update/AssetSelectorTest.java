@@ -86,7 +86,7 @@ class AssetSelectorTest {
                 UpdateKind.DESKTOP_JVM, WINDOWS);
 
         // 该版本同时有 `…-windows-amd64.zip` 与 `…-windows-amd64-jdk27.zip`：默认必须取前者
-        assertThat(asset.name()).isEqualTo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+        assertThat(asset.name()).isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
     }
 
     @Test
@@ -94,10 +94,10 @@ class AssetSelectorTest {
         ChannelRelease release = BETA_DESKTOP_JVM.get(0);
 
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, WINDOWS).name())
-                .isEqualTo("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+                .isEqualTo("aha-desktop-0.1.3.00242-windows-amd64.zip");
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
                 PlatformTag.of("Linux", "x86_64")).name())
-                .isEqualTo("aha-desktop-jvm-0.1.3.00242-ubuntu-amd64-jdk25.zip");
+                .isEqualTo("aha-desktop-0.1.3.00242-ubuntu-amd64.zip");
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, MACOS_ARM).name())
                 .isEqualTo("aha-desktop-0.1.3.00242-macos-arm64.zip");
     }
@@ -109,7 +109,8 @@ class AssetSelectorTest {
         String onWindows = AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS).name();
         String onMacos = AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, MACOS_ARM).name();
 
-        assertThat(onWindows).isEqualTo("aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+        // 0.1.3 的 CLI-JVM 是平台无关的一份包（issue #269 起新包才带平台段）
+        assertThat(onWindows).isEqualTo("aha-cli-0.1.3.00242.zip");
         assertThat(onMacos).isEqualTo(onWindows);
         // 平台无关的包不受「本平台没有包」的限制：Windows ARM64 上 CLI JVM 包照样能用（只要有 JDK）
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS_ARM).name())
@@ -124,7 +125,7 @@ class AssetSelectorTest {
         ChannelRelease release = BETA_DESKTOP_NATIVE.get(0);
 
         assertThat(AssetSelector.select(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, WINDOWS).name())
-                .isEqualTo("aha-desktop-native-0.1.3.00242-windows-amd64-graalvm25.zip");
+                .isEqualTo("AHA-Desktop-Native-0.1.3.00242-windows-amd64-jdk25.zip");
         // 同族的 `-Report.zip` 是构建报告，不是升级资产：它压根解析不出（名字不匹配），因此不在候选里
         assertThat(AssetSelector.resolve(release, ReleaseChannel.BETA, UpdateKind.DESKTOP_NATIVE, WINDOWS))
                 .isPresent()
@@ -142,7 +143,7 @@ class AssetSelectorTest {
                 .isInstanceOf(UpdateException.class)
                 // 报错点名的是**本平台**的规范名（aarch64），不是资产名里的历史写法
                 .hasMessageContaining("macos-aarch64")
-                .hasMessageContaining("aha-desktop-native-0.1.3.00242-windows-amd64-graalvm25.zip");
+                .hasMessageContaining("AHA-Desktop-Native-0.1.3.00242-windows-amd64-jdk25.zip");
     }
 
     @Test
@@ -226,15 +227,16 @@ class AssetSelectorTest {
     }
 
     @Test
-    void reportsChannelThatHasNoSuchKind() {
-        // 正式发版只出 CLI 包与桌面端 JVM 包：稳定通道没有原生形态，与平台无关
+    void reportsMissingAssetWhenAReleaseHasNoNativePackage() {
+        // 0.1.4 起 Stable 支持原生形态（issue #269）；但某个具体 release 没出原生包时，
+        // 仍要响亮报错并列出该版本实际有哪些资产，绝不退到更旧的版本。
         ChannelRelease stable = release("V0.1.2", "0.1.2", "aha-desktop-jvm-0.1.2-windows-amd64-jdk25.zip");
 
         assertThatThrownBy(() -> AssetSelector.select(stable, ReleaseChannel.STABLE,
                 UpdateKind.DESKTOP_NATIVE, WINDOWS))
                 .isInstanceOf(UpdateException.class)
-                .hasMessageContaining("稳定 Stable")
-                .hasMessageContaining("Desktop-Native")
+                .hasMessageContaining("该版本没有本平台可用的包")
+                .hasMessageContaining("aha-desktop-jvm-0.1.2-windows-amd64-jdk25.zip")
                 .satisfies(error -> assertThat(((UpdateException) error).code())
                         .isEqualTo(UpdateException.CODE_ASSET_MISSING));
     }
@@ -289,25 +291,6 @@ class AssetSelectorTest {
                 UpdateKind.DESKTOP_JVM, WINDOWS))
                 .hasMessageContaining("只有 jdk27 变体")
                 .hasMessageContaining("jdk25");
-    }
-
-    /**
-     * 取「该形态在本通道不支持」那条消息（**测试辅助**，不是产品代码）。
-     *
-     * <p>供 {@link ChannelContractTest} 复用：这条消息是用户碰到「默认通道发不了本形态的包」时
-     * 唯一的指引，所以要在它自己该在的地方断言（issue #252 的排期边界）。</p>
-     *
-     * @param kind 形态
-     * @return 异常消息
-     */
-    static String unsupportedMessage(UpdateKind kind) {
-        try {
-            // supports() 在触碰 release 之前就拦下了 ⇒ 这里传 null 也能拿到消息
-            AssetSelector.select(null, ReleaseChannel.STABLE, kind, WINDOWS);
-            throw new AssertionError("不支持的组合应当抛异常");
-        } catch (UpdateException e) {
-            return e.getMessage();
-        }
     }
 
     @Test

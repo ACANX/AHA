@@ -221,7 +221,7 @@ public final class ChannelContract {
     private static Pattern currentPattern(UpdateKind kind) {
         return Pattern.compile("^aha-" + Pattern.quote(kind.product()) + "-"
                 + Pattern.quote(kind.form()) + "-" + VERSION_GROUP + "-" + PLATFORM_GROUP
-                + "-(jdk|graalvm)(?<jdk>[0-9]+)" + Pattern.quote(ZIP_SUFFIX) + "$");
+                + "-(?<runtime>jdk|graalvm)(?<jdk>[0-9]+)" + Pattern.quote(ZIP_SUFFIX) + "$");
     }
 
     /** 新文法的解析：runtime 前缀必须与形态匹配。 */
@@ -230,7 +230,7 @@ public final class ChannelContract {
         if (!matcher.matches()) {
             return Optional.empty();
         }
-        String runtimePrefix = matcher.group(1);
+        String runtimePrefix = matcher.group("runtime");
         String expectedPrefix = kind.nativeImage() ? RUNTIME_GRAALVM : RUNTIME_JDK;
         if (!expectedPrefix.equals(runtimePrefix)) {
             return Optional.empty();
