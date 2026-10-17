@@ -4,7 +4,7 @@ rem  AHA - one-click fetch of a DESKTOP JVM portable package snapshot build (Win
 rem
 rem  A snapshot is a build made for a PR that is not merged yet (issue #165).
 rem  It lives on the release page as a pre-release, tagged like
-rem      V0.1.3.00203.10151357-AHA-Desktop-JVM-SNAPSHOT
+rem      V0.1.3.00203.10151357-AHA-Desktop-JVM
 rem
 rem  This launcher only calls
 rem      Dist\UpdateSnapshot.ps1 -Kind desktop-jvm

@@ -7,7 +7,7 @@
     不带薄壳时也可直调：UpdateSnapshot.ps1 -Kind jvm -Pr <N>
 
     快照包 = 某个**未合并 PR** 的试包（issue #165 方案）。它挂在发布页的 pre-release 上：
-        tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native-SNAPSHOT
+        tag 形如  V0.1.3.00183.10141829-AHA-Desktop-Native（旧 tag 的 -SNAPSHOT 后缀仍兼容）
     本脚本做四件事：
       1. 查发布页，找出快照（可按 `-Pr` / `-Branch` / `-Run` / `-Kind` 过滤）；
       2. 挑出**本机平台**该取哪个资产（JVM 线与原生线自 2026-10-15 起**共用同一套**：`windows-amd64` / `ubuntu-amd64`）；
@@ -82,7 +82,7 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # ── 命名契约（唯一来源：.github/Python/SnapshotPlan.py）──────────────────────────
 # 这三行字面量一旦与判定脚本漂移，就会变成「发布页上有包、本地却永远取不到」。
 # bin/CheckScripts.py 会断言两边一致（与原生取件的 PS1/Python 契约同一思路）。
-$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)-SNAPSHOT$'
+$TagPattern   = '^V(?<version>[0-9][0-9.]*)-AHA-(?<target>Desktop-Native|Cli-Native|Desktop-JVM|Cli-JVM|NativeDesktop|NativeCli|Desktop|Cli)(?:-SNAPSHOT)?$'
 $TtlDays      = 7
 
 #: 取件种类 → 目标 / 资产前缀 / 平台标签（JVM 线与原生线共用同一套，issue #215）
