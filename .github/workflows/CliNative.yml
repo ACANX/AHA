@@ -39,7 +39,7 @@ on:
   # `paths:` 在**触发层**过滤，会让「只改文档 + 新打触发标签」的显式请求进不来
   # （现象：打了标签毫无反应），与 #165 验收 16 冲突。改为让 `plan` 先跑、
   # 昂贵的腿按 `needs.plan.outputs.should_build` 门控。
-  # 路径清单的唯一来源仍是 `.github/snapshot-paths.yml`（由判定脚本消费），本文件不写死任何路径；
+  # 路径清单的唯一来源仍是 `.github/SnapshotPaths.yml`（由判定脚本消费），本文件不写死任何路径；
   # `bin/CheckScripts.py` 的 `pull_request_paths_filters()` 会拦住再往回加 `paths:` 的改动。
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]

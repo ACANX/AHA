@@ -152,7 +152,7 @@ class PlanError(Exception):
 
 
 def read_manifest(path: Path) -> tuple[list[str], dict[str, list[str]]]:
-    """读快照清单（`.github/snapshot-paths.yml`）的标签与 A/B/C 路径分组。
+    """读快照清单（`.github/SnapshotPaths.yml`）的标签与 A/B/C 路径分组。
 
     只认该文件固定的形状（与 `bin/CheckScripts.py` 的断言一致）：顶层 `labels:` / `paths:`，
     其下 `组名:` 与 `- 值`。形状变了会解析为空，由调用方报错，而不是静默放行。
@@ -557,7 +557,7 @@ SELF_TEST_BAD_COMMANDS = [
 
 def self_test() -> int:
     """自检判定边界。"""
-    manifest = Path(__file__).resolve().parents[2] / ".github" / "snapshot-paths.yml"
+    manifest = Path(__file__).resolve().parents[2] / ".github" / "SnapshotPaths.yml"
     labels, groups = read_manifest(manifest)
     now = datetime(2026, 10, 14, 10, 14, 15, tzinfo=timezone.utc)
     problems = 0
@@ -814,7 +814,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--label-event", action="store_true", help="本次事件是「新打标签」（= 显式请求）")
     parser.add_argument("--now", help="当前时间（ISO8601；默认取系统时间，仅便于自检）")
     parser.add_argument("--run-url", default="", help="本次 run 的链接（写进 PR 评论）")
-    parser.add_argument("--manifest", default=str(Path(__file__).resolve().parents[2] / ".github" / "snapshot-paths.yml"))
+    parser.add_argument("--manifest", default=str(Path(__file__).resolve().parents[2] / ".github" / "SnapshotPaths.yml"))
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     parser.add_argument("--comment", action="store_true", help="输出 PR 评论正文")
     parser.add_argument("--notice", metavar="REASON", help="输出「未构建」评论正文（用法错误 / 无权限等）")

@@ -54,7 +54,7 @@ on:
   # 现在改为：**任何 PR 事件都让 `plan` 先跑**（约 10 秒、不编译不发包），
   # 昂贵的腿一律由 `needs.plan.outputs.should_build` 门控（见 native-image 的 if 与各腿的步骤级 if）。
   # 这条约定由 `bin/CheckScripts.py` 的 `pull_request_paths_filters()` 守住，别再往回加。
-  # 路径清单的唯一来源仍是 `.github/snapshot-paths.yml`（由 `plan` 作业里的判定脚本消费）；
+  # 路径清单的唯一来源仍是 `.github/SnapshotPaths.yml`（由 `plan` 作业里的判定脚本消费）；
   # 本文件不再写死任何路径字面量，也不要再往 `paths:` 里加。
   pull_request:
     # 【注意】`types` 一旦写出来就会**覆盖**默认值（默认只有 opened / synchronize / reopened），
