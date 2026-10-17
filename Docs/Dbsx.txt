@@ -12,6 +12,8 @@ AHA 待办事项
   规则见 AGENTS.md 与技能 .agents/skills/issue-tracking/SKILL.md。
 
 （除已归档的已完成项外，其余逐条保留用户原文）
+（**剩余任务的跟踪**已迁至 `Docs/TODO/TD-00023-FrozenDocsResidualBacklog.md`（`T-14`…`T-19`）；
+本文件原条目保留为用户原文，状态不再维护。）
 （另有**已过时前提**移出：第 5 项「斜杠命令」的旧前提句，归档在 [`Docs/DevLog/20261017-15.md`](DevLog/20261017-15.md)。）
 
 状态标记：

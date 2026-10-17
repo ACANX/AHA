@@ -21,6 +21,9 @@
 
 > **已完成 / 明确不做 / 已过时的条目已移出本文件**（2026-10-17），归档在
 > [`Docs/DevLog/20261017-15.md`](DevLog/20261017-15.md)（逐条附证据）。
+> **剩下仍未完成的条目**已重新拆解为最小任务并编号，统一在
+> [`Docs/TODO/TD-00023`](TODO/TD-00023-FrozenDocsResidualBacklog.md) 跟踪（`T-01`…`T-26`）；
+> 本文件的原条目**保留为历史原文**，状态不再维护。
 > 本文件此后只保留**仍未完成**的条目；新进展一律按上面的规则走 Issue。
 > 规则见 [`AGENTS.md`](../AGENTS.md) 与技能
 > [`issue-tracking`](../.agents/skills/issue-tracking/SKILL.md)。
