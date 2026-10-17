@@ -156,14 +156,21 @@ function Get-Json {
 }
 
 function Get-AssetFor {
-    # 一个快照 release 里可能有多个平台的资产（以及 `-Report.zip` 报告包）。
-    # 判据：前缀属于该目标，且以 `-<平台>-jdk<JDK>.zip` 收尾；显式排除报告包。
-    param($Release, [string]$Prefix, [string]$Platform)
-    return $Release.assets | Where-Object {
-        $_.name.StartsWith($Prefix) -and
-        $_.name.EndsWith("-$Platform-jdk25.zip") -and
-        -not $_.name.EndsWith('-Report.zip')
-    } | Select-Object -First 1
+    # 一个快照 release 里可能有多个平台的资产（以及报告包 `-report.zip`）。
+    # 判据：前缀属于该目标，且以 `-<平台>-(jdk|graalvm)<JDK>.zip` 收尾；显式排除报告包。
+    # `-Platforms` 是**候选列表**：CLI-JVM 内容平台无关，按本平台名找不到时回退到
+    # ubuntu / windows / macos 中实际存在的那一份（issue #269 §6 第 7 条）。
+    param($Release, [string]$Prefix, [string[]]$Platforms)
+    foreach ($platform in $Platforms) {
+        $hit = $Release.assets | Where-Object {
+            $_.name.StartsWith($Prefix) -and
+            $_.name -match ("-" + [regex]::Escape($platform) + "-(?:jdk|graalvm)[0-9]+\.zip$") -and
+            -not $_.name.EndsWith('-report.zip') -and
+            -not $_.name.EndsWith('-Report.zip')
+        } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    return $null
 }
 
 function Get-Candidates {
@@ -196,8 +203,15 @@ function Get-Candidates {
         elseif ($target -in @('Cli-JVM', 'Cli')) { $prefix = 'aha-cli-jvm-' }
         elseif ($target -in @('Desktop-Native', 'NativeDesktop')) { $prefix = 'aha-desktop-native-' }
         else { $prefix = 'aha-cli-native-' }
-        $platform = if ($target -in @('Desktop-JVM', 'Cli-JVM', 'Desktop', 'Cli')) { $jvmPlatform } else { $nativePlatform }
-        $asset = Get-AssetFor -Release $r -Prefix $prefix -Platform $platform
+        $platforms = if ($target -in @('Cli-JVM', 'Cli')) {
+            # CLI-JVM：本平台优先，找不到再回退到其它平台（内容相同）
+            @($jvmPlatform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')
+        } elseif ($target -in @('Desktop-JVM', 'Desktop')) {
+            @($jvmPlatform)
+        } else {
+            @($nativePlatform)
+        }
+        $asset = Get-AssetFor -Release $r -Prefix $prefix -Platforms $platforms
         $published = if ($r.published_at) { [datetime]$r.published_at } else { [datetime]$r.created_at }
         $items += [pscustomobject]@{
             Tag       = $r.tag_name

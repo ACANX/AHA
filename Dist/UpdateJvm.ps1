@@ -109,7 +109,7 @@ $kinds = @{
     }
     'Cli'     = @{
         Title = 'CLI JVM 便携包'; SubDir = 'cli-jvm'
-        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-jvm-'; LegacyPrefix = 'aha-cli-'; ByPlatform = $true; Workflow = 'BuildJVMArtifacts.yml'
+        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-jvm-'; LegacyPrefix = 'aha-cli-'; ByPlatform = $true; PlatformFree = $true; Workflow = 'BuildJVMArtifacts.yml'
         Flat = @(
             @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
             @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
@@ -180,8 +180,17 @@ function Get-TagVersion {
 #    `aha-cli-<版本>[-jdk27].zip`（旧 CLI-JVM 是平台无关的一份包）。
 function Get-AssetNames {
     param([string]$Version)
-    $names = @(("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $Jdk))
     $legacySuffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
+    if ($kindInfo.PlatformFree) {
+        # CLI-JVM 内容平台无关：本平台名优先，其次按三平台依次回退（issue #269 §6 第 7 条）。
+        $names = @()
+        foreach ($candidate in @($Platform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')) {
+            $names += ("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $candidate, $Jdk)
+        }
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        return $names
+    }
+    $names = @(("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $Jdk))
     if ($kindInfo.ByPlatform) {
         $names += ("{0}{1}-{2}{3}.zip" -f $kindInfo.LegacyPrefix, $Version, $Platform, $legacySuffix)
         # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。

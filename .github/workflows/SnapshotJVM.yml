@@ -285,25 +285,37 @@ jobs:
           find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
           ls -lh artifacts/ || true
           count=0
-          # 新文法（issue #269）：上游已产出 aha-<product>-jvm-<版本>-<平台>-jdk25.zip
-          for f in artifacts/aha-desktop-jvm-*.zip artifacts/aha-cli-jvm-*.zip; do
+          # 桌面端：新文法（issue #269）上游已产出 aha-desktop-jvm-<版本>-<平台>-jdk25.zip
+          for f in artifacts/aha-desktop-jvm-*.zip; do
             [ -e "$f" ] || continue
             count=$((count + 1))
           done
-          # 兼容旧名（旧版上游只给 aha-desktop-<版本>-<平台>.zip / aha-cli-<版本>.zip）
+          # 兼容旧名（旧版上游只给 aha-desktop-<版本>-<平台>.zip）
           for f in artifacts/aha-desktop-[0-9]*.zip; do
             [ -e "$f" ] || continue
             label=$(basename "$f" | sed -E 's/^aha-desktop-[0-9.]+-([a-z0-9-]+)\.zip$/\1/')
             mv "$f" "artifacts/aha-desktop-jvm-${VERSION}-${label}-jdk25.zip"
             count=$((count + 1))
           done
+          # 兼容旧名（旧版上游只给 aha-cli-<版本>.zip，平台无关）
           for f in artifacts/aha-cli-[0-9]*.zip; do
             [ -e "$f" ] || continue
-            label=$(basename "$f" | sed -E 's/^aha-cli-[0-9.]+-?([a-z0-9-]*)\.zip$/\1/')
-            [ -n "$label" ] || label=ubuntu-amd64
-            mv "$f" "artifacts/aha-cli-jvm-${VERSION}-${label}-jdk25.zip"
+            mv "$f" "artifacts/aha-cli-jvm-${VERSION}-ubuntu-amd64-jdk25.zip"
             count=$((count + 1))
           done
+          # CLI-JVM：内容平台无关，但**按三平台各出一份同内容的名字**（issue #269 §6 第 7 条）。
+          # 否则 Windows / macOS 用户按本平台名取件会落空（只有 ubuntu 一个名字）。
+          cli_src=""
+          for f in artifacts/aha-cli-jvm-*.zip; do
+            [ -e "$f" ] || continue
+            cli_src="$f"; break
+          done
+          if [ -n "${cli_src}" ]; then
+            for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
+              cp -f "${cli_src}" "artifacts/aha-cli-jvm-${VERSION}-${platform}-jdk25.zip"
+              count=$((count + 1))
+            done
+          fi
           echo "整理出 ${count} 个资产："
           ls -1 artifacts/*.zip | sed 's/^/  /'
           if [ "${count}" -eq 0 ]; then
