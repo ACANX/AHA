@@ -98,6 +98,22 @@
   `IssueTrackingSpec.md` 引用，不得重编号）。
 
 ### 变更
+- **Agent 执行边界落地：本地「没有构建能力」从约定变成执行域约束（issue #70，2026-10-17）**：
+  `bin/AgentSandbox.sh` 用 Linux 命名空间（bubblewrap）把命令放进受限执行域——域内 `/mnt`（Windows 盘）
+  不可见、宿主 JDK 目录逐个盖成空目录、`mvn` / `mvnw` / `java` / `javac` / `gradle` 全是拒绝桩
+  （命中即退出码 `97` 并提示「去看 PR 的 CI checks」）；**工作区文件一个都不改**，git 看不到虚假变更。
+  - 启动器修正与实际增强：`--repo` 由**占位改为真生效**（`bwrap --chdir`）、新增 `--print-plan` 取证、
+    仓库位于 `/mnt` 时直接拒绝（含 `/mnt` 自身——这条是自证脚本抓出来的）、JDK 隐藏改为
+    「静态清单 + 从 `java` 真实路径反推」并加「必须真含 `bin/java`、不许盖过浅目录」两条护栏；
+  - 新增自证 `bin/CheckAgentBoundary.py`（20 条断言）：域内构建入口全部被拦、`/mnt` 不可见、
+    工作区不被改写、`git` / `gh` / `python3` 仍可用；**反向用例**保证「隔离失效时它会变红」；
+    非 Linux / 无 `bwrap` 时明确**跳过**（退出码 3）而不是判绿；
+  - 接入 `Gate.yml`（装 `bubblewrap` + 跑自证；Ubuntu 24.04 runner 需放开 AppArmor 对非特权
+    user namespace 的限制，已在步骤里说明并处理）；
+  - 变异验证（在 `/tmp` 副本上做）：分别拆掉 `/mnt` 隐藏、桩 PATH、`JAVA_HOME` 的 java 桩、
+    整个 bwrap，自证分别报出 2 / 3 / 2 / 6 条失败——不是「怎么写都绿」；
+  - 人类开发者**不受影响**（`./mvnw` 照常）；Windows 侧原生启动的工具（P2）与 shell 自动进域
+    （Q1，属仓库外机器配置）**未做**，见 issue #70 的分阶段表。
 - **应用内升级的默认通道改回 `Stable`（issue #252 / TD-00019，2026-10-16）**：此前默认 `Beta` 是
   被现实逼出来的临时值（正式 release `0.1.0` / `V0.1.1` / `V0.1.2` 的资产数均为 0，默认 `Stable`
   会让升级面板首屏就是空列表）。改回之后，「**从没选过通道**」的安装会跟着默认值走，**显式选过**

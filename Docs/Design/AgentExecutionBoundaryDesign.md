@@ -1,9 +1,9 @@
 # AHA Agent 执行边界设计
 
-> **文档版本**：v1.0.0
-> **状态**：草案（待评审）
+> **文档版本**：v1.1.0
+> **状态**：**已采纳**（2026-10-17：P0 + P1 落地，见 §9；P2/P3 未做）
 > **生效日期**：2026-10-09
-> **最后更新**：2026-10-09
+> **最后更新**：2026-10-17
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
 
@@ -11,6 +11,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.1.0 | 2026-10-17 | **P1 落地**（issue [#70](https://github.com/ACANX/AHA/issues/70)）：`--repo` 由占位改为真生效（`bwrap --chdir`）、新增 `--print-plan` 取证、JDK 隐藏改为「静态清单 + 从 `java` 真实路径反推」并加「必须真含 `bin/java` / 不许盖过浅目录」的护栏；自证脚本 `bin/CheckAgentBoundary.py` 写就并接入 `Gate.yml`（含反向用例与变异验证）；状态由「草案（待评审）」改为**已采纳**；§6.1 / §6.2 / §6.6 / §6.7 / §9 / §10 / 附录 B 同步。shell 自动进域（Q1）仍待 ACANX 决定 | @cnxnc |
 | v1.0.0 | 2026-10-09 | 初始版本：三域模型、候选方案对比与决策、失败模式清单、POC 实测、分阶段落地 | @ACANX |
 
 ---
@@ -254,18 +255,20 @@ agent-sandbox [--repo <目录>] [--allow-mnt] [--allow-jdk] -- <命令...>
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `--repo` | `$PWD` | 预留：后续可对指定仓库做附加约束 |
+| `--repo` | `$PWD` | 执行域的工作目录（`bwrap --chdir`）；**不得位于 `/mnt`**——仓库在 Windows 盘时直接拒绝（退出码 64），先于任何挂载参数判定 |
 | `--allow-mnt` | 关 | 允许看到 `/mnt`（默认不可见） |
 | `--allow-jdk` | 关 | 允许使用宿主 JDK（调试用；默认隐藏） |
+| `--print-plan` | 关 | 只打印生效的 `bwrap` 参数与命令，不执行（取证 / 自证用；不需要 `bwrap` 在位） |
 | `--` 之后 | — | 在域内执行的命令与其参数 |
 
-退出码约定：`0` 正常；`64` 用法错误；`69` 缺少 `bwrap`；`97` 命中拒绝桩。
+退出码约定：`0` 正常；`64` 用法错误（含仓库位于 `/mnt`）；`69` 缺少 `bwrap`；
+`70` 内核不允许非特权 user namespace（F5，不静默降级）；`97` 命中拒绝桩。
 
 ### 6.2 剥离项清单
 
 | 类别 | 处理 | 理由 |
 |---|---|---|
-| 宿主 JDK 目录 | `--tmpfs` 隐藏 `/usr/lib/jvm`、`/usr/local/java`、`/opt/java`、`/opt/jdk` | 使 `mvnw` / `mvn` 无 JVM 可用（F2/F3） |
+| 宿主 JDK 目录 | `--tmpfs` 逐个盖掉：① 静态清单（`/usr/lib/jvm`、`/usr/local/java`、`/opt/java`、`$HOME/.sdkman/candidates/java` 等）；② **从 `java` 的真实路径反推**的发行版根（如 `/usr/local/java/25`）；③ `JAVA_HOME`。只有「真含 `bin/java`」且不是过浅目录（`/usr`、`$HOME` 之类）的才会被盖 | 使 `mvnw` / `mvn` 无 JVM 可用（F2/F3）。动态反推解决「JDK 装在非常规位置」——静态清单漏一个就等于没挡 |
 | `JAVA_HOME` | 指向桩 JDK（内含 `bin/java` 桩） | 让 `mvnw` 走到桩并给出指引，而非晦涩报错 |
 | `PATH` | 前置桩目录，含 `java` / `javac` / `jar` / `mvn` / `mvnw` / `mvnw.cmd` / `gradle` | 直接调用也命中桩 |
 | `/mnt` | `--tmpfs` 隐藏 | Windows 盘不可见，顺带落实环境边界 |
@@ -300,19 +303,40 @@ agent-sandbox [--repo <目录>] [--allow-mnt] [--allow-jdk] -- <命令...>
 
 ### 6.6 自证设计（P1）
 
-`bin/CheckAgentBoundary.py` 需断言：
+`bin/CheckAgentBoundary.py`（**已落地**，接入 `Gate.yml`）断言：
 
 1. 域内 `./mvnw`、`sh ./mvnw`、`mvn`、`java`、`javac` 都返回 `97`；
 2. 域内 `git status --short` 为空；
 3. 域内 `/mnt` 为空；
 4. 域内 `git` / `gh` / `python3 bin/Check*.py` 可用；
-5. **反向用例**：带 `--allow-jdk` 时 `java` 可用——证明断言真的在起作用（防 F7）；
+5. **反向用例**：带 `--allow-jdk` 时 `java` 可用、域外 `java` 可用——证明断言真的在起作用（防 F7）；
 6. 平台为 Linux 且 `bwrap` 不存在时，脚本**跳过并明确标注**，而不是判绿。
+
+实现时额外钉住的三件事（都是「隔离被改坏也照样绿」的入口）：
+
+| 附加断言 | 防的是什么 |
+|---|---|
+| `--print-plan` 里必须有 `--tmpfs /mnt`、`--chdir`、`setenv JAVA_HOME`、桩前置 PATH、至少一个被隐藏的 JDK 根 | 参数被删 / 被改坏但脚本照跑 |
+| 缺 `bwrap` 时退出码必须是 `69`（用一个只含必要符号链接的假 PATH 构造） | 「悄悄不加沙箱照跑」（退化成无边界） |
+| 仓库位于 `/mnt` 时必须拒绝（退出码 64） | 环境边界被绕过 |
+
+退出码：`0` 全通过；`1` 有失败；`3` **环境不支持**（非 Linux / 无 `bwrap`）——`3` 不是通过，
+CI 上出现即需先解决环境而非放宽断言。
+
+**变异验证（2026-10-17 本地实测，在 `/tmp` 的仓库副本上做）**：分别制造①不再隐藏 `/mnt`
+②桩目录没前置到 PATH ③不建 `JAVA_HOME` 的 `java` 桩 ④干脆 `exec "$@"` 不用 `bwrap`——
+四种变异下自证分别报出 2 / 3 / 2 / 6 条失败，说明它不是「怎么写都绿」。
 
 ### 6.7 CI 集成（P1）
 
-在 `Gate.yml` 增加一条 `agent-boundary` 作业（或并入既有文档 / 脚本检查）：
-运行自证脚本；由于 GitHub runner 允许 userns，可直接执行。
+**已落地**（2026-10-17）：并入 `Gate.yml` 的门禁作业（`sudo apt-get install -y bubblewrap` 后
+跑 `python3 bin/CheckAgentBoundary.py`），不新开工作流——门禁本来就是「合入 `main` 前 / 每周 /
+发布前」这三个时机，边界漂移恰好属于「与开发动作无关的漂移」。
+
+一处环境前提：GitHub 的 Ubuntu 24.04 runner 默认用 AppArmor 限制非特权 user namespace，
+而 `bwrap` 建立挂载命名空间需要它。工作流里用
+`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` 放开（runner 级、一次性、
+不改仓库任何文件）；旧内核没有该项时 `|| echo "::notice::…"` 继续（自证会自己探测）。
 
 ---
 
@@ -361,7 +385,7 @@ exit=97
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | **P0（本文档 + 参考实现）** | 设计文档、`bin/AgentSandbox.sh` | 第 7 节实测表逐条通过 |
-| **P1** | shell 集成、`AGENTS.md` 声明、`bin/CheckAgentBoundary.py`、`Gate.yml` 卡点 | 自证含反向用例；CI 绿 |
+| **P1（已落地 2026-10-17）** | `AGENTS.md` 声明、`bin/CheckAgentBoundary.py`、`Gate.yml` 卡点、`BuildSpec.md` §8 衔接 | ✅ 自证 20/20 含反向用例；四种变异均被判红；**shell 集成仍待 ACANX 决定（Q1）** |
 | **P2** | 容器化（devcontainer），覆盖 Windows 侧工具 | Windows 侧工具同为 Agent 域 |
 | **P3（可选）** | 更严档位：网络出口限制 / 遮蔽下载工具；仓库级 `mvnw` 兜底 | 对抗性绕过被显著抬高 |
 
@@ -371,7 +395,7 @@ exit=97
 
 | # | 问题 | 当前倾向 |
 |---|---|---|
-| Q1 | shell 集成用 PATH shim 还是 `~/.bashrc` 函数？ | shim 更硬，函数更轻；待 ACANX 定 |
+| Q1 | shell 集成用 PATH shim 还是 `~/.bashrc` 函数？ | shim 更硬，函数更轻；**仍待 ACANX 定**（属仓库外的机器配置，Agent 不自行安装）。在此之前用 `bin/AgentSandbox.sh -- <命令>` 显式进入 |
 | Q2 | 是否允许 Agent 使用 `java` 运行非构建类任务（如小工具）？ | 默认不允许；确有必要走 `--allow-jdk` 显式放宽 |
 | Q3 | P2 容器载体：devcontainer 还是项目自带 `Dockerfile`？ | 需先确认本机 Docker 可用性（CLI 在 `/mnt/c`） |
 | Q4 | 是否需要把 `/mnt` 不可见推广为「仓库必须位于 WSL 文件系统」的约束？ | 是，但属独立议题 |
@@ -398,4 +422,7 @@ exit=97
 | [../DevSpec/Constitution.md](../DevSpec/Constitution.md) | 第 7 条构建约束 |
 | [../../.agents/skills/build/SKILL.md](../../.agents/skills/build/SKILL.md) | 构建技能（以 CI 为准） |
 | [../../.agents/skills/test/SKILL.md](../../.agents/skills/test/SKILL.md) | 测试技能（以 CI 为准） |
+| [../../bin/AgentSandbox.sh](../../bin/AgentSandbox.sh) | 启动器（P0 实现，v1.1.0 起 `--repo` / `--print-plan` 生效） |
+| [../../bin/CheckAgentBoundary.py](../../bin/CheckAgentBoundary.py) | 自证脚本（P1 实现，接入 `Gate.yml`） |
+| [../../.github/workflows/Gate.yml](../../.github/workflows/Gate.yml) | 门禁：安装 `bubblewrap` + 跑自证 |
 | Issue #70 | 本设计的来源与跟踪载体 |
