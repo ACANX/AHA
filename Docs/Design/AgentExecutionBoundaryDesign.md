@@ -268,7 +268,7 @@ agent-sandbox [--repo <目录>] [--allow-mnt] [--allow-jdk] -- <命令...>
 
 | 类别 | 处理 | 理由 |
 |---|---|---|
-| 宿主 JDK 目录 | `--tmpfs` 逐个盖掉：① 静态清单（`/usr/lib/jvm`、`/usr/local/java`、`/opt/java`、`$HOME/.sdkman/candidates/java` 等）；② **从 `java` 的真实路径反推**的发行版根（如 `/usr/local/java/25`）；③ `JAVA_HOME`。只有「真含 `bin/java`」且不是过浅目录（`/usr`、`$HOME` 之类）的才会被盖 | 使 `mvnw` / `mvn` 无 JVM 可用（F2/F3）。动态反推解决「JDK 装在非常规位置」——静态清单漏一个就等于没挡 |
+| 宿主 JDK 目录 | `--tmpfs` 逐个盖掉：① 静态清单（`/usr/lib/jvm`、`/usr/local/java`、`/opt/java`、`$HOME/.sdkman/candidates/java` 等）；② **从 `java` 的真实路径反推**的发行版根（如 `/usr/local/java/25`）；③ `JAVA_HOME`。只有「真含 `bin/java`」且不是过浅目录（`/usr`、`$HOME` 之类）的才会被盖。**三份清单必须先 `readlink -f` 归一、去重、只留最浅的根**——同一个 JDK 常有互为符号链接的多条路径（CI 上 `/usr/lib/jvm/temurin-25-jdk-amd64` 指向 `/opt/hostedtoolcache/.../x64`），对同一真实目录 tmpfs 两次，第二次会直接 `bwrap: Can't mount tmpfs on …: No such file or directory`，整个域都起不来 | 使 `mvnw` / `mvn` 无 JVM 可用（F2/F3）。动态反推解决「JDK 装在非常规位置」——静态清单漏一个就等于没挡 |
 | `JAVA_HOME` | 指向桩 JDK（内含 `bin/java` 桩） | 让 `mvnw` 走到桩并给出指引，而非晦涩报错 |
 | `PATH` | 前置桩目录，含 `java` / `javac` / `jar` / `mvn` / `mvnw` / `mvnw.cmd` / `gradle` | 直接调用也命中桩 |
 | `/mnt` | `--tmpfs` 隐藏 | Windows 盘不可见，顺带落实环境边界 |

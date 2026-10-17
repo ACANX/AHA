@@ -149,7 +149,18 @@ fi
 # ── 要 tmpfs 盖掉的 JDK 根目录 ───────────────────────────────────────────
 # 只盖「真的装着 bin/java 的目录」，并且不盖过浅的目录（/usr、$HOME 之类）——
 # 盖错一层会把整个系统藏掉，比不盖危险得多。
-jdk_roots=()
+#
+# 两个必须处理好的细节（CI 上真实踩过）：
+#   1. 同一个 JDK 常有多条路径（`/usr/lib/jvm/temurin-25-jdk-amd64` 是符号链接，
+#      指向 `/opt/hostedtoolcache/.../x64`）⇒ 必须先 readlink -f 归一，否则同一目录被
+#      tmpfs 两次，第二次直接 `bwrap: Can't mount tmpfs on ...: No such file or directory`；
+#   2. 归一后若一条路径在另一条之下，只保留**更浅**的那条（盖父目录即可覆盖子目录）。
+candidates=()
+
+add_candidate() {
+  [ -n "$1" ] && [ -d "$1" ] && candidates+=("$1")
+  return 0
+}
 
 is_too_shallow() {
   case "$1" in
@@ -158,25 +169,12 @@ is_too_shallow() {
   return 1
 }
 
-add_jdk_root() {
-  local candidate="$1" existing
-  [ -n "$candidate" ] || return 0
-  [ -d "$candidate" ] || return 0
-  # 必须真的是 JDK 根（有 bin/java 或 bin/java.exe），否则可能盖掉无关目录
-  [ -x "$candidate/bin/java" ] || [ -x "$candidate/bin/java.exe" ] || return 0
-  is_too_shallow "$candidate" && return 0
-  for existing in "${jdk_roots[@]}"; do
-    [ "$existing" = "$candidate" ] && return 0
-  done
-  jdk_roots+=("$candidate")
-}
-
 # 1) 常见安装位置（含各版本管理器的候选目录）
 for dir in \
   /usr/lib/jvm /usr/lib64/jvm /usr/local/java /usr/local/jdk /usr/local/lib/jvm \
   /opt/java /opt/jdk \
   "$HOME/.jdks" "$HOME/.sdkman/candidates/java" "$HOME/.asdf/installs/java"; do
-  add_jdk_root "$dir"
+  add_candidate "$dir"
 done
 
 # 2) 动态反推：从 `java` 的真实路径回溯到发行版根
@@ -184,14 +182,35 @@ done
 if javabin="$(command -v java 2>/dev/null)"; then
   real="$(readlink -f -- "$javabin" 2>/dev/null || printf '%s' "$javabin")"
   case "$real" in
-    */bin/java) add_jdk_root "${real%/bin/java}" ;;
-    */bin/java.exe) add_jdk_root "${real%/bin/java.exe}" ;;
+    */bin/java) add_candidate "${real%/bin/java}" ;;
+    */bin/java.exe) add_candidate "${real%/bin/java.exe}" ;;
   esac
 fi
 
-# 3) 显式声明的 JAVA_HOME
-if [ -n "${JAVA_HOME:-}" ]; then
-  add_jdk_root "$JAVA_HOME"
+# 3) 显式声明的 JAVA_HOME（可能本身就是符号链接，交给下面的归一处理）
+add_candidate "${JAVA_HOME:-}"
+
+# 归一 → 只留「真含 bin/java」且不过浅的目录 → 去重 → 只留最浅的
+resolved=()
+for candidate in "${candidates[@]}"; do
+  real="$(readlink -f -- "$candidate" 2>/dev/null || true)"
+  [ -n "$real" ] && [ -d "$real" ] || continue
+  [ -x "$real/bin/java" ] || [ -x "$real/bin/java.exe" ] || continue
+  is_too_shallow "$real" && continue
+  resolved+=("$real")
+done
+
+jdk_roots=()
+if [ "${#resolved[@]}" -gt 0 ]; then
+  while IFS= read -r path; do
+    covered=0
+    for kept in "${jdk_roots[@]}"; do
+      case "$path" in
+        "$kept"|"$kept"/*) covered=1; break ;;
+      esac
+    done
+    [ "$covered" -eq 0 ] && jdk_roots+=("$path")
+  done < <(printf '%s\n' "${resolved[@]}" | sort -u | awk -F/ '{print NF"\t"$0}' | sort -n -k1,1 | cut -f2-)
 fi
 
 # ── 组装执行域 ──────────────────────────────────────────────────────────
