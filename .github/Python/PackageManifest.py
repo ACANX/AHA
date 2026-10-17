@@ -272,8 +272,8 @@ def self_test() -> int:
         expect_fail("版本不符", lambda: verify(package, "desktop-jvm", "0.1.3.00241", None))
         expect_fail("形态不符", lambda: verify(package, "cli-jvm", None, None))
         expect_fail("平台不符", lambda: verify(package, None, None, "ubuntu-amd64"))
-        expect_fail("平台无关的形态给了平台", lambda: build_manifest(
-            "cli-jvm", "0.1.3.00242", "windows-amd64", 25, read_entries(package)))
+        expect_fail("CLI-JVM 没给平台（issue #269 起必须带平台段）", lambda: build_manifest(
+            "cli-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("带平台的形态没给平台", lambda: build_manifest(
             "desktop-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("不认识的形态", lambda: build_manifest(
