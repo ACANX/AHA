@@ -114,7 +114,7 @@ TD-00014-ManualAndExternalActions.md
 
 | TD | 标题 | 状态 | Issue | 备注 |
 |---|---|---|---|---|
-| [TD-00011](TD-00011-CoreContractAndArchGovernance.md) | AgentEngine 契约、ServiceLoader 双声明、依赖治理、jlink 解除条件 | ☐ 未开始 | [#82](https://github.com/ACANX/AHA/issues/82) | |
+| [TD-00011](TD-00011-CoreContractAndArchGovernance.md) | AgentEngine 契约、ServiceLoader 双声明、依赖治理、jlink 解除条件 | ◐ 进行中（`A-07` 覆盖率排除项引用链已收口 2026-10-17） | [#82](https://github.com/ACANX/AHA/issues/82) | |
 | [TD-00012](TD-00012-MemoryCapability06.md) | 记忆能力（0.6）：upsert / 工具与 `/memory` / 策略接入 / curate / 载体选型 | ☐ 未开始 | [#83](https://github.com/ACANX/AHA/issues/83) | |
 
 ### 4.5 工程效能 / 文档 / 人工
