@@ -180,14 +180,14 @@ class ChannelContractTest {
         // 0.1.3 的 JVM 桌面包：默认变体不带 -jdk 段。
         Optional<ChannelContract.Asset> desktop = ChannelContract.parseAsset(
                 ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
-                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+                "aha-desktop-0.1.3.00242-windows-amd64.zip");
         assertThat(desktop).isPresent();
         assertThat(desktop.get().jdk()).isEqualTo(25);
         assertThat(desktop.get().platformTag()).isEqualTo("windows-amd64");
 
         // 0.1.3 的 CLI-JVM 是平台无关的一份包（解析结果 platform 为 null）。
         Optional<ChannelContract.Asset> cli = ChannelContract.parseAsset(
-                ReleaseChannel.STABLE, UpdateKind.CLI_JVM, "aha-cli-jvm-0.1.3-windows-amd64-jdk25.zip");
+                ReleaseChannel.STABLE, UpdateKind.CLI_JVM, "aha-cli-0.1.3.zip");
         assertThat(cli).isPresent();
         assertThat(cli.get().platformTag()).isNull();
 

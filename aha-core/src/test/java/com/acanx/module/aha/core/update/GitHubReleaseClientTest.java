@@ -86,8 +86,8 @@ class GitHubReleaseClientTest {
         assertThat(first.publishedAt()).isNotNull();
         assertThat(first.assetList()).hasSize(8);
         assertThat(first.assetList()).extracting(AssetInfo::name)
-                .contains("aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip",
-                        "aha-cli-jvm-0.1.3.00242-windows-amd64-jdk27.zip");
+                .contains("aha-desktop-0.1.3.00242-windows-amd64.zip",
+                        "aha-cli-0.1.3.00242-jdk27.zip");
         assertThat(first.assetList().get(0).uploaded()).isTrue();
 
         assertThat(server.callCount()).isEqualTo(1);
