@@ -2,11 +2,11 @@
 
 > 待办编号：TD-00019
 > 标题：首个带资产的正式发版落地后，把应用内升级的默认通道从 `Beta` 改回 `Stable`
-> 状态：🚧 已成文（2026-10-16，PR [#255](https://github.com/ACANX/AHA/pull/255)）—— **触发条件尚未达成**，合并时机与种子发版对齐（见下「本轮落实」）
-> 跟踪 Issue 状态：**OPEN**
+> 状态：✅ **已完成**（2026-10-17，PR [#255](https://github.com/ACANX/AHA/pull/255) → 合并提交 `1f10666`）—— 代码侧已交付；「`Stable` 通道此刻能列出版本」这一条**依赖种子发版**，转 [#238](https://github.com/ACANX/AHA/issues/238) 跟踪（见下「收尾」）
+> 跟踪 Issue 状态：**CLOSED**（2026-10-17，验收记录见 [#252 评论](https://github.com/ACANX/AHA/issues/252#issuecomment-6229297998) —— 2/3 达成，第 3 条随 #238 走）
 > 跟踪 Issue：[#252](https://github.com/ACANX/AHA/issues/252)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16（原载体 [#51](https://github.com/ACANX/AHA/issues/51) 已随 PR #243 交付后关闭；本单转由 [#252](https://github.com/ACANX/AHA/issues/252) 跟踪）
+> 最后更新：2026-10-17（PR #255 已合并；#252 验收关闭；剩余条件转 #238）
 
 ---
 
@@ -88,3 +88,41 @@ V0.1.1  assets=0
 
 这次种子发版**同时是 #238（TD-00018）的验收项**：要看的正是「tag 自动创建 → 自动派发 → release 页
 自动出现 CLI 包与三平台桌面包 + `AHA-PACKAGE.json` + `SHA256SUMS`」。两边一次跑完，别分两次。
+
+## 收尾（2026-10-17）
+
+PR [#255](https://github.com/ACANX/AHA/pull/255) **已合并进 `dev`**（`1f10666`，15 文件 +288/−39），
+#252 已验收关闭（[记录](https://github.com/ACANX/AHA/issues/252#issuecomment-6229297998)）。验收结论：
+
+| # | 验收项 | 结论 |
+|---|---|---|
+| 1 | 默认通道 = `Stable`，「从没选过通道」的安装自动跟随 | ✅ |
+| 2 | 显式选过 `Beta` 的安装不受影响 | ✅ |
+| 3 | 该通道此刻确实能列出版本 | ⬜ **未达成** —— 触发条件仍未满足，见下 |
+
+### 合并途中修掉的一个真 bug（比「缺键不写盘」更隐蔽）
+
+CI 的 `ui-smoke` 红在 `switchingChannelReleasesTheCheckButtonWhileACheckIsRunning`：
+默认值变成 `Stable` 之后，「切到 Stable」在该用例里成了空操作（打开面板时已是选中项），
+`ToggleGroup` 监听器不触发 ⇒ 按钮仍灰。**顺藤摸出来的是**：那个监听器在**渲染初始选中**时也会触发，
+里面会 `settings.updateChannel(...)` + `save()`，而 `DesktopSettings.updateChannel` **无条件**把
+`Update.Channel` 记成「用户显式设过」——
+
+> 只要**打开过一次升级面板**，这个安装就被记成「用户选过通道」，从此**不再跟随代码默认值**。
+
+也就是说，本单赖以惠及老安装的那条机制（「缺键不写盘」）原本被这条渲染路径**静默废掉了**。
+两处收口：设成**当前有效值**不再算显式选择（值没变，没什么可记）；渲染这一步上锁
+（`UpgradePane.applyingInitialChannel`），纯渲染不再产生持久化副作用。守卫：`DesktopSettingsTest.
+pickingTheDefaultValueDoesNotCountAsAnExplicitChoice` + 冒烟测试里「渲染不等于用户选择」。
+
+### 剩余条件的去向
+
+「`Stable` 通道能列出版本」依赖**种子发版**（一次带资产的正式发布），已在
+[#238](https://github.com/ACANX/AHA/issues/238#issuecomment-6229298979) 登记跟踪 —— 那本就是 #238 的
+验收内容，落地后要一并确认三件事：① tag 自动创建并自动派发；② 每个 zip 带 `AHA-PACKAGE.json`、
+release 带 `SHA256SUMS`；③ 升级面板在 `Stable` 通道**能列出该版本**。
+
+### 待真机确认
+
+`DesktopAutoUpdateDesign.md` §8.2 第 14 项：用**从没选过通道**的安装目录（`desktop.properties` 里没有
+`Update.Channel`）打开「设置 → 升级」，应选中「稳定 Stable」；显式选过 `Beta` 的老安装仍停在 `Beta`。
