@@ -69,7 +69,7 @@ jobs:
           # 报 `AnalysisError$ParsingError ... unexpected input could not be handled: class java.lang.Object`
           # （pointsto 解析错误），桌面端原生镜像编不出来；25.3.4.1 无此问题。
           # CLI 原生不涉及 JavaFX，继续用 25.4（`CliNativeImageLeg.yml` 未改）。
-          version: ${{ runner.os == 'macOS' && '25.3' || '25.4' }}
+          version: ${{ runner.os == 'macOS' && '25.1' || '25.4' }}
           java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
