@@ -71,7 +71,7 @@
         -->
         <aha.build.version>${project.version}</aha.build.version>
 
-        <javafx.version>25</javafx.version>
+        <javafx.version>25.0.4</javafx.version>
         <!--
             OpenJFX 平台分类器。取值由下方 javafx-* profile 按当前操作系统/架构设定，模块里
             只写 <classifier>${javafx.platform}</classifier>，不出现平台字面量。
