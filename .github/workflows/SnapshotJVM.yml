@@ -297,21 +297,7 @@ jobs:
             [ -e "$f" ] || continue
             mv "$f" "artifacts/aha-cli-jvm-${VERSION}-ubuntu-amd64-jdk25.zip"
           done
-          # CLI-JVM：内容平台无关，但**按三平台各出一份同内容的名字**（issue #269 §6 第 7 条）。
-          # 否则 Windows / macOS 用户按本平台名取件会落空（只有 ubuntu 一个名字）。
-          cli_src=""
-          for f in artifacts/aha-cli-jvm-*.zip; do
-            [ -e "$f" ] || continue
-            cli_src="$f"; break
-          done
-          if [ -n "${cli_src}" ]; then
-            for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
-              dest="artifacts/aha-cli-jvm-${VERSION}-${platform}-jdk25.zip"
-              # 源本身就是其中一个平台名时跳过（`cp a a` 会报 "same file" 并退出）
-              [ "${dest}" = "${cli_src}" ] && continue
-              cp -f "${cli_src}" "${dest}"
-            done
-          fi
+          # CLI-JVM 自 issue #269 起由三条 jdk25 腿各自产出，这里不再复制同内容的三份。
           # 计数：任何非报告包的 zip（不依赖前缀——前缀改过一次，按前缀计数会静默归零）
           count=0
           for f in artifacts/*.zip; do

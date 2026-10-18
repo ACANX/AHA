@@ -195,10 +195,10 @@ jobs:
 
   # ── 2. 三条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
-  #    CLI 包平台无关，只在一条腿产出。
+  #    CLI-JVM 自 issue #269 起也按平台各出一份（三条 jdk25 腿都开 `upload_cli`）。
   # ── 2. 每条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
-  #    CLI 包平台无关，只在一条腿产出。
+  #    CLI-JVM 自 issue #269 起也按平台各出一份（三条 jdk25 腿都开 `upload_cli`）。
   #
   # 【为什么是六个静态作业，而不是矩阵】（issue #287）
   #   作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），矩阵只能靠表达式区分腿。
@@ -243,7 +243,8 @@ jobs:
       os: windows-latest
       label: windows-amd64
       jdk: '25'
-      upload_cli: false
+      # CLI-JVM 自 #269 起按平台各出一份（真正在对应 runner 上构建）
+      upload_cli: true
       version: ${{ needs.BuildVersion.outputs.version }}
 
   BuildMvnArtifactWindowsAmd64JDK27:
@@ -271,7 +272,8 @@ jobs:
       os: macos-latest
       label: macos-aarch64
       jdk: '25'
-      upload_cli: false
+      # CLI-JVM 自 #269 起按平台各出一份（真正在对应 runner 上构建）
+      upload_cli: true
       version: ${{ needs.BuildVersion.outputs.version }}
 
   BuildMvnArtifactMacOSAarch64JDK27:
@@ -338,24 +340,8 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # CLI-JVM：内容平台无关，但按三平台各出一份**同内容**的名字（issue #269 §6 第 7 条）。
-          # 否则 Windows / macOS 用户按本平台名取件会落空（只有 ubuntu 一个名字）。
-          cli_src=""
-          for f in artifacts/aha-cli-jvm-*.zip; do
-            [ -e "$f" ] || continue
-            cli_src="$f"; break
-          done
-          if [ -n "${cli_src}" ]; then
-            cli_version=$(basename "${cli_src}" | sed -E 's/^aha-cli-jvm-([0-9.]+)-.*-jdk([0-9]+)\.zip$/\1/')
-            cli_jdk=$(basename "${cli_src}" | sed -E 's/.*-jdk([0-9]+)\.zip$/\1/')
-            for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
-              dest="artifacts/aha-cli-jvm-${cli_version}-${platform}-jdk${cli_jdk}.zip"
-              # 源本身就是其中一个平台名时跳过（`cp a a` 会报 "same file" 并退出）
-              [ "${dest}" = "${cli_src}" ] && continue
-              cp -f "${cli_src}" "${dest}"
-            done
-            files=(artifacts/*.zip)
-          fi
+          # CLI-JVM 自 issue #269 起由三条 jdk25 腿各自产出（`upload_cli: true`），
+          # 这里不再复制同内容的三份 —— 每个平台的名字都对应真实的构建产物。
           echo "any=true" >> "$GITHUB_OUTPUT"
           ls -lh "${files[@]}"
           {

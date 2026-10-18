@@ -41,8 +41,17 @@ if not defined ROOT goto :missing
 set "ZIP="
 set "ZDIR="
 set "ZNAME="
+rem issue #269 naming: aha-cli-jvm-<version>-<platform>-jdk25.zip comes first.
+for %%Z in ("%ROOT%\Dist\aha-cli-jvm-*.zip") do (
+    if exist "%%~fZ" (
+        set "ZIP=%%~fZ"
+        set "ZDIR=%%~dpZ"
+        set "ZNAME=%%~nZ"
+    )
+)
+rem Legacy name: aha-cli-<version>[-jdk27].zip.
 rem The [0-9] pattern skips aha-cli-native-<version>-<jdk>.zip.
-for %%Z in ("%ROOT%\Dist\aha-cli-[0-9]*.zip") do (
+if not defined ZIP for %%Z in ("%ROOT%\Dist\aha-cli-[0-9]*.zip") do (
     if exist "%%~fZ" (
         set "ZIP=%%~fZ"
         set "ZDIR=%%~dpZ"
