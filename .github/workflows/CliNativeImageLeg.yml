@@ -187,15 +187,6 @@ jobs:
           ls -lh "$out"
           "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
 
-      - name: UploadReportArtifact
-        continue-on-error: true
-        if: always() && steps.graal.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Cli-Native-Report-${{ inputs.label }}-jdk${{ inputs.jdk }}
-          path: Dist/aha-cli-native-*-report.zip
-          if-no-files-found: warn
-          retention-days: 90
 
       - name: VerifyArtifactDiagnostic
         # 诊断式而非硬门禁：判据只留真正的不变式（存在 / 体积 / 平台魔法数 / 依赖齐全 /
@@ -474,6 +465,17 @@ jobs:
             --kind cli-native --version "${{ env.AHA_VERSION }}" \
             --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
             --graalvm "${{ steps.graal.outputs.version }}"
+
+      - name: UploadReportArtifact
+        continue-on-error: true
+        # 只有主包真的产出了才上传报告：否则发布页会出现「有 report、没有主包」的孤立报告
+        if: steps.verify.outputs.produced == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cli-Native-Report-${{ inputs.label }}-jdk${{ inputs.jdk }}
+          path: Dist/aha-cli-native-*-report.zip
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: UploadArtifact
         if: steps.verify.outputs.produced == 'true'
