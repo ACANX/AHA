@@ -1,6 +1,6 @@
 # 文档规范
 
-**文档版本**：v1.25.0
+**文档版本**：v1.26.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-17
@@ -55,6 +55,7 @@
 - **开发日志**（`Docs/DevLog/`）按 **`yyyyMMdd-HH.md`** 命名：`yyyyMMdd` 为事件日期，`HH` 为 24 小时制的**小时**（本地时间，取事件处理时点）。这是为「按时间线排序、一眼看出何时发生」而设的**显式例外**。同一小时内若确有第二件独立事项，**把 `HH` 顺延一位**（21 时的第二件记为 `20261007-22.md`），**不得加 `-2` 之类的后缀**——同一目录里只保留一种文件名形态，纯字符串排序即时间线顺序；当日编号单调递增，不回头复用。
 - **开发日志规范与模板**：`Docs/DevLog/README.md`（目录内除它以外，只应有 `yyyyMMdd-HH.md` 形态的文件）。
 - **问题排查记录**（`Docs/Troubleshooting/`）按 **`TS-yyMM-NNN-英文词序.md`** 命名：`TS` 为固定前缀，`yyMM` 为事件发生的年月（`2610` = 2026 年 10 月），`NNN` 为同期间内的**三位顺序号**（按登记时间递增，从 `001` 起，不复用、不跳号），标题为**英文词序**且**逐词用 `-` 连接**（如 `CI-Required-Check-Name-Mismatch`）；缩写（`CI` / `PR` / `JNI` / `CSS` / `JVM` / `LCD` …）整体大写，产品名按原厂写法（如 `GraalVM`、`JavaFX`），不用下划线、不连写、不出中文。模板为 `Docs/Troubleshooting/TS-Template.md`（同样是显式例外）。
+- **已完成待办**（`Docs/DONE/`）按 **`DN-PPPPP-大驼峰英文标题.md`** 命名：`DN` 为固定前缀（Done），`PPPPP` 与归档前的 `TD-` **完全相同**（编号不变、不复用）；标题不变。详见 §7 的归档 SOP。
 - **待办详情**（`Docs/TODO/`）按 **`TD-PPPPP-大驼峰英文标题.md`** 命名：`TD` 为固定前缀，`PPPPP` 为**五位数字，从 `00001` 开始全局自增**（不复用、不跳号），标题为英文大驼峰。`Docs/TODO/README.md` 是清单索引，为目录固定的保留名，**不走**该规则；新文件取当前最大编号 + 1。
 - **归档资料**（`Archive/`）：文件名**保持原样**（不强制改名），但必须在文件头部注明「**已废弃（YYYY-MM-DD）**」与替代物（如有）；`Archive/README.md` 为目录说明，按保留名处理。
 - 反例（禁止）：`agent-service-design.md`、`agent_service_design.md`、`AgentServiceDesign.MD`、`module-architecture.svg`、`TestingRule.md`、`Docs/DevSpec/BuildGuide.md`（构建规范应置于 DevSpec 并以 `Spec.md` 结尾）
@@ -230,3 +231,8 @@
   - `BuildJVMArtifacts.yml`
   - `Release.yml`
 ```
+
+## 7. 待办的生命周期
+
+待办的创建、跟踪、**完成后的归档**（`Docs/TODO/TD-…` → `Docs/DONE/DN-…`，目录变、编号不变）
+统一见 [TodoLifecycleSpec.md](TodoLifecycleSpec.md)；本文档只约束文件名形态与存放目录。

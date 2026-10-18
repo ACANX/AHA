@@ -1,12 +1,13 @@
-# TD-00030 TableRowSeparatorPolicy
+# DN-00030 TableRowSeparatorPolicy
 
-> 待办编号：TD-00030
+> 待办编号：**DN-00030**（原 `TD-00030`，完成后归档）
 > 标题：表格数据行之间补水平分割线（已拍板：全表加）
-> 状态：🚧 实施中（[#273](https://github.com/ACANX/AHA/issues/273)）
+> 状态：✅ 已完成（2026-10-18）
+> 完成依据：PR [#290](https://github.com/ACANX/AHA/pull/290)（squash commit `d14da0b`）/ Issue [#273](https://github.com/ACANX/AHA/issues/273)（已关闭）
 > 跟踪 Issue：[#273](https://github.com/ACANX/AHA/issues/273)（本任务的决策单）
-> 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)
+> 所属主题：[TD-00002](../TODO/TD-00002-CliMarkdownRichRendering.md)
 > 创建日期：2026-10-17
-> 最后更新：2026-10-17
+> 最后更新：2026-10-18
 
 ---
 
@@ -56,6 +57,6 @@
 
 ## 关联
 
-- 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)（该主题下的其余任务与总体验收）
+- 所属主题：[TD-00002](../TODO/TD-00002-CliMarkdownRichRendering.md)（该主题下的其余任务与总体验收）
 - 跟踪 Issue：[#73](https://github.com/ACANX/AHA/issues/73)
 - 决策单：[#273](https://github.com/ACANX/AHA/issues/273)（挂 V0.2.0）

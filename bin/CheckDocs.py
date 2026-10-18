@@ -246,12 +246,15 @@ def check_naming() -> list[str]:
     """
     rules = {
         "Docs/TODO": re.compile(r"^TD-\d{5}-[A-Za-z0-9]+\.md$"),
+        # 已完成待办：目录从 TODO 移到 DONE，**编号不变**，前缀 TD- → DN-（DocumentationSpec §6）
+        "Docs/DONE": re.compile(r"^DN-\d{5}-[A-Za-z0-9]+\.md$"),
         "Docs/Troubleshooting": re.compile(r"^TS-\d{4}-\d{3}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\.md$"),
         "Docs/DevLog": re.compile(r"^\d{8}-\d{2}\.md$"),
     }
     # 目录内允许的固定名（目录说明与模板）
     allowed = {
         "Docs/TODO": {"README.md"},
+        "Docs/DONE": {"README.md"},
         "Docs/Troubleshooting": {"README.md", "TS-Template.md"},
         "Docs/DevLog": {"README.md"},
     }
@@ -266,17 +269,19 @@ def check_naming() -> list[str]:
             if not pattern.fullmatch(path.name):
                 problems.append(f"{rel}/{path.name} 命名不合规（应为 {pattern.pattern}）")
 
-    # 待办编号不允许重复（同一编号只能对应一个待办）
-    td_dir = ROOT / "Docs/TODO"
-    if td_dir.is_dir():
-        seen: dict[str, list[str]] = {}
-        for path in sorted(td_dir.glob("TD-*.md")):
-            matched = re.match(r"^TD-(\d{5})-", path.name)
+    # 待办编号不允许重复（TODO 与 DONE 共用同一编号空间：完成后只换目录与前缀，编号不变）
+    seen: dict[str, list[str]] = {}
+    for rel, prefix in (("Docs/TODO", "TD"), ("Docs/DONE", "DN")):
+        directory = ROOT / rel
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob(f"{prefix}-*.md")):
+            matched = re.match(rf"^{prefix}-(\d{{5}})-", path.name)
             if matched:
-                seen.setdefault(matched.group(1), []).append(path.name)
-        for number, names in sorted(seen.items()):
-            if len(names) > 1:
-                problems.append(f"Docs/TODO/ 编号 TD-{number} 重复：{'、'.join(names)}")
+                seen.setdefault(matched.group(1), []).append(f"{rel}/{path.name}")
+    for number, names in sorted(seen.items()):
+        if len(names) > 1:
+            problems.append(f"待办编号 {number} 重复（TODO 与 DONE 共用编号空间）：{'、'.join(names)}")
     return problems
 
 

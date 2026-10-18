@@ -17,7 +17,7 @@
 | 载体 | 职责 |
 |---|---|
 | **本清单**（`Docs/TODO/README.md`） | 汇总全部待办、标记状态、定期更新进度；便于一眼看全貌 |
-| **`TD-*.md`** | 单个待办的详情（来源、现状、需求、验收标准） |
+| **`TD-*.md`** | 单个待办的详情（来源、现状、需求、验收标准）；完成后归档为 `Docs/DONE/DN-*.md`（规范：[TodoLifecycleSpec](../DevSpec/TodoLifecycleSpec.md) §3） |
 | **GitHub Issue** | 单个事项的长期跟踪：评论、状态、关闭 |
 | `Docs/Troubleshooting/` | 问题排查 / 事故复盘的**过程记录** |
 | `Docs/DevLog/` | 已完成事项的**开发记录** |
@@ -135,7 +135,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00027](TD-00027-CliToolCallExecOutputChunking.md) | 工具调用：执行命令输出「命令 + 结果」分块 | ☐ 未开始 | [#72](https://github.com/ACANX/AHA/issues/72) | 主题 [TD-00001](TD-00001-CliToolCallOutputRendering.md) |
 | [TD-00028](TD-00028-DeepSeekToolCallApiParity.md) | 补齐 DeepSeek 工具调用缺失的命令 / API | ☐ 未开始 | [#72](https://github.com/ACANX/AHA/issues/72) | 主题 [TD-00001](TD-00001-CliToolCallOutputRendering.md) |
 | [TD-00029](TD-00029-MarkdownRichTextRendering.md) | 会话总结的 Markdown 渲染成富文本（彩色 / 分格式） | ☐ 未开始 | [#73](https://github.com/ACANX/AHA/issues/73) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
-| [TD-00030](TD-00030-TableRowSeparatorPolicy.md) | 表格数据行之间补水平分割线（已拍板：全表加） | 🚧 实施中（#273） | [#273](https://github.com/ACANX/AHA/issues/273) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
+| [DN-00030](../DONE/DN-00030-TableRowSeparatorPolicy.md) | 表格数据行之间补水平分割线（A 全表加）—— **已归档到 `Docs/DONE/`** | ✅ 已完成（已归档，#273 / #290） | [#273](https://github.com/ACANX/AHA/issues/273) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
 | [TD-00031](TD-00031-MarkdownRenderingGapsPolicy.md) | 渲染缺口逐项结论：图片 / 语法高亮 / OSC 8 / 单元格换行 | ⏸ 待决策（#274） | [#274](https://github.com/ACANX/AHA/issues/274) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
 | [TD-00032](TD-00032-InputBoxBorderStyle.md) | 输入框样式：用上下制表符包裹，去掉 `aha>` 前缀 | ☐ 未开始 | [#74](https://github.com/ACANX/AHA/issues/74) | 主题 [TD-00003](TD-00003-CliInputAndStatusBar.md) |
 | [TD-00033](TD-00033-InputBoxLoadingAnimation.md) | 输入框 loading 动效（旋转字符） | ☐ 未开始 | [#74](https://github.com/ACANX/AHA/issues/74) | 主题 [TD-00003](TD-00003-CliInputAndStatusBar.md) |
