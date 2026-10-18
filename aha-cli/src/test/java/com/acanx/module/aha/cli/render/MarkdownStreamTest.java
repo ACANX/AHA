@@ -145,6 +145,60 @@ class MarkdownStreamTest {
     }
 
     @Test
+    void strikethroughDropsTildesWhenColored() {
+        String out = colored().feed("a ~~已废弃~~ b");
+        assertThat(out).contains(ESC + "9m").contains("已废弃").doesNotContain("~~");
+    }
+
+    @Test
+    void strikethroughDropsTildesWhenPlain() {
+        // 无色时行内标记与强调一样被剥离：重定向到文件后不该出现 `~~` 噪音
+        assertThat(plain().feed("a ~~已废弃~~ b")).isEqualTo("a 已废弃 b");
+    }
+
+    @Test
+    void singleTildeStaysLiteral() {
+        // ~/x 与「约等于」都不是删除线：必须成对才算构造
+        assertThat(plain().feed("cd ~/x 与 ~3 个")).isEqualTo("cd ~/x 与 ~3 个");
+    }
+
+    @Test
+    void unclosedStrikethroughFallsBackToLiteral() {
+        assertThat(plain().feed("a ~~未闭合\n")).contains("~~未闭合");
+    }
+
+    @Test
+    void nestedUnorderedListKeepsIndentAndAsciiBullet() {
+        // 不支持扩展符号的终端：符号退回 `-`，缩进保留
+        String out = new MarkdownStream(Style.of(false), false, 0).feed("  - 子项\n");
+        assertThat(out).isEqualTo("  - 子项\n");
+    }
+
+    @Test
+    void nestedUnorderedListUsesConfiguredBulletWhenUnicode() {
+        String out = new MarkdownStream(Style.of(false), true, 0).feed("  - 子项\n");
+        assertThat(out).isEqualTo("  • 子项\n");
+    }
+
+    @Test
+    void nestedOrderedListKeepsNumberAndIndent() {
+        assertThat(plain().feed("   1. 子项\n")).isEqualTo("   1. 子项\n");
+    }
+
+    @Test
+    void emphasisAndInlineCodeCombine() {
+        String out = plain().feed("**粗体 `代码` 收尾**");
+        assertThat(out).isEqualTo("粗体 代码 收尾");
+    }
+
+    @Test
+    void everyLineIsEvaluatedIndependentlyPlainOutput() {
+        // 非 TTY 的关键约束：整段输出里不出现任何 SGR
+        String out = plain().feed("# 标题\n\n- 项 ~~删~~ `码` **粗**\n\n| a | b |\n| - | - |\n| 1 | 2 |\n");
+        assertThat(out).doesNotContain(ESC);
+    }
+
+    @Test
     void emphasisSplitAcrossChunksIsRecognized() {
         // 流式输出按分片到达：强调定界符可能被切开
         MarkdownStream stream = plain();

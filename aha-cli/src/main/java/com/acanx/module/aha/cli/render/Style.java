@@ -39,6 +39,9 @@ public final class Style {
 
     private static final String UNDERLINE = "\u001B[4m";
 
+    /** 删除线。 */
+    private static final String STRIKETHROUGH = "\u001B[9m";
+
     /** 256/真彩下的工具区块底色（暗灰）。 */
     private static final String BAND_BG = "\u001B[48;5;236m";
 
@@ -198,6 +201,16 @@ public final class Style {
             case 3 -> paint(BOLD + ITALIC, text);
             default -> paint(ITALIC, text);
         };
+    }
+
+    /**
+     * 删除线（GFM 的 {@code ~~文本~~}）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String strike(String text) {
+        return paint(STRIKETHROUGH, text);
     }
 
     /**
