@@ -3,12 +3,15 @@
 # 症状（GraalVM 25.3.4.1 / 25.4.4.1 均可复现，仅 macOS aarch64 桌面端）：
 #   AnalysisError$ParsingError: Error encountered while parsing
 #     com.sun.glass.ui.mac.MacVariant.toString(MacVariant.java:193)
-#   Caused by: failed building outlined SB method
-#   Caused by: unexpected input could not be handled: class java.lang.Object
+#   Caused by: should not reach here: unexpected input could not be handled: class java.lang.Object
 #
-# `MacVariant.toString()` 是 switch 表达式，编译成 `invokedynamic`（StringConcatFactory）。
-# GraalVM 的 pointsto 在构建期分析它时崩溃。实测 `-H:-OptStringConcat` **无效**；
-# 让该 enum 在**构建期初始化**，可绕开这条分析路径。
+# 已实测**无效**的手段（不要再试）：
+#   - 降 GraalVM 到 25.3
+#   - `-H:-OptStringConcat`（旧名 `OptimizeStringConcat` 会 exit 20）
+#   - `--initialize-at-build-time=com.sun.glass.ui.mac.MacVariant`
+#   - 升级 JavaFX 25 → 25.0.4
 #
-# 只作用于 macOS（pom 的 native-macos profile 指向本文件），Linux / Windows 不受影响。
---initialize-at-build-time=com.sun.glass.ui.mac.MacVariant
+# 直接把这一个方法从分析里排除：JavaFX 只在调试/日志路径调用它，
+# 桌面端正常使用不依赖它的返回值。
+-H:+UnlockExperimentalVMOptions
+-H:MethodFilter=com.sun.glass.ui.mac.MacVariant.toString
