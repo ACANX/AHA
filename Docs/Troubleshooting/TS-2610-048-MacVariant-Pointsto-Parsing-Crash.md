@@ -72,6 +72,20 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 **若上游短期不修**：需要在「矩阵里把 `desktop-native/macos-aarch64` 从 12 份暂时移除（12 → 11）」
 与「继续等待」之间做决定，见 #320。
 
+## 上游跟踪（2026-10-18 补齐）
+
+| 项 | 内容 |
+|---|---|
+| 同题历史 issue | [`oracle/graal#9017`](https://github.com/oracle/graal/issues/9017)（2024-05-31 提出，2024-06-04 以「改用 GitHub Actions 后消失」关闭） |
+| 本次复现 issue | [`oracle/graal#14533`](https://github.com/oracle/graal/issues/14533)（2026-09-26 提出，`[GR-80008]`，2026-09-28 **completed**） |
+| 修复 PR | [`oracle/graal#14545`](https://github.com/oracle/graal/pull/14545)（2026-09-28 合入 master；改动仅 1 文件 3 行，见 §机制 / 行为模型「上游修复」） |
+| 目标版本 | **GraalVM 25.5**，官方回复「will be backported as well」 |
+| 版本节奏（实测） | 25.1.3 / 25.2.4 / 25.3.4.1 / 25.4.4.1 分别发布于 2026-06-30 / 07-28 / 08-25 / 09-22 —— **每 4 周一个 patch（周二）**，据此推断 25.5 约在 **2026-10-20** |
+| 已发布版本 | 最新 `graal-25.4.4.1.1`（**2026-09-22**）**早于修复 6 天，必然不含** |
+
+**恢复动作**：25.5（或含 backport 的 25.4.x）发布后，更新 `NativeImageLeg.yml` 的 `version` 并验证
+`VerifyNativeImageRan == success`；代码其余部分无需改动（`-H` 参数已全部回滚）。
+
 ## 5. 复盘
 
 ### 5.1 时间线（每个决策与代价）
@@ -207,8 +221,8 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 
 ## 未决问题
 
-1. **本缺陷的上游链接**：需人工在 GraalVM / OpenJFX 仓库检索并补到 #320；
-2. **恢复条件**：GraalVM 修复后，macOS 桌面原生腿应自动恢复（代码无需改动，`-H` 参数已全部回滚）；
+1. ~~本缺陷的上游链接~~ → 已定位并补齐，见「上游跟踪」；
+2. **等修复版本**：25.5（按 4 周节奏约 2026-10-20）或含 backport 的 25.4.x 发布前，macOS 桌面原生腿无法产出；
 3. **是否需要「矩阵豁免」**：若上游短期不修，需决定是否把 `desktop-native/macos-aarch64` 从 12 份里
    暂时移除（并同步 `DesktopNative.yml` / `Release.yml` / `check_release_matrix()`），见 #320 的选项 A；
 4. **是否尝试旧组合**（GraalVM 22/23 + JavaFX 21）作为替代构建链：未验证，成本高。
