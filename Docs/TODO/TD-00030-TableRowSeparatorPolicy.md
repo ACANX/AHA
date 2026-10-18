@@ -2,7 +2,7 @@
 
 > 待办编号：TD-00030
 > 标题：表格数据行之间补水平分割线（已拍板：全表加）
-> 状态：🚧 实施中（[#273](https://github.com/ACANX/AHA/issues/273)）
+> 状态：✅ 已完成（[#273](https://github.com/ACANX/AHA/issues/273) / PR [#290](https://github.com/ACANX/AHA/pull/290)）
 > 跟踪 Issue：[#273](https://github.com/ACANX/AHA/issues/273)（本任务的决策单）
 > 所属主题：[TD-00002](TD-00002-CliMarkdownRichRendering.md)
 > 创建日期：2026-10-17

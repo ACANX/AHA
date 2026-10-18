@@ -135,7 +135,7 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00027](TD-00027-CliToolCallExecOutputChunking.md) | 工具调用：执行命令输出「命令 + 结果」分块 | ☐ 未开始 | [#72](https://github.com/ACANX/AHA/issues/72) | 主题 [TD-00001](TD-00001-CliToolCallOutputRendering.md) |
 | [TD-00028](TD-00028-DeepSeekToolCallApiParity.md) | 补齐 DeepSeek 工具调用缺失的命令 / API | ☐ 未开始 | [#72](https://github.com/ACANX/AHA/issues/72) | 主题 [TD-00001](TD-00001-CliToolCallOutputRendering.md) |
 | [TD-00029](TD-00029-MarkdownRichTextRendering.md) | 会话总结的 Markdown 渲染成富文本（彩色 / 分格式） | ☐ 未开始 | [#73](https://github.com/ACANX/AHA/issues/73) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
-| [TD-00030](TD-00030-TableRowSeparatorPolicy.md) | 表格数据行之间补水平分割线（已拍板：全表加） | 🚧 实施中（#273） | [#273](https://github.com/ACANX/AHA/issues/273) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
+| [TD-00030](TD-00030-TableRowSeparatorPolicy.md) | 表格数据行之间补水平分割线（已拍板：全表加） | ✅ 已完成（#273 / #290） | [#273](https://github.com/ACANX/AHA/issues/273) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
 | [TD-00031](TD-00031-MarkdownRenderingGapsPolicy.md) | 渲染缺口逐项结论：图片 / 语法高亮 / OSC 8 / 单元格换行 | ⏸ 待决策（#274） | [#274](https://github.com/ACANX/AHA/issues/274) | 主题 [TD-00002](TD-00002-CliMarkdownRichRendering.md) |
 | [TD-00032](TD-00032-InputBoxBorderStyle.md) | 输入框样式：用上下制表符包裹，去掉 `aha>` 前缀 | ☐ 未开始 | [#74](https://github.com/ACANX/AHA/issues/74) | 主题 [TD-00003](TD-00003-CliInputAndStatusBar.md) |
 | [TD-00033](TD-00033-InputBoxLoadingAnimation.md) | 输入框 loading 动效（旋转字符） | ☐ 未开始 | [#74](https://github.com/ACANX/AHA/issues/74) | 主题 [TD-00003](TD-00003-CliInputAndStatusBar.md) |
