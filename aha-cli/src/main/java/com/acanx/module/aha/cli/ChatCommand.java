@@ -14,6 +14,7 @@ import com.acanx.module.aha.cli.session.SessionCommand;
 import com.acanx.module.aha.cli.session.SessionCommandCompleter;
 import com.acanx.module.aha.cli.session.SessionCommandHighlighter;
 import com.acanx.module.aha.cli.session.SessionCommandRegistry;
+import com.acanx.module.aha.cli.session.SlashMenuReader;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
@@ -27,13 +28,8 @@ import com.acanx.module.aha.common.tool.CancellationToken;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
-import org.jline.keymap.KeyMap;
-import org.jline.reader.Binding;
-import org.jline.reader.Buffer;
 import org.jline.reader.EndOfFileException;
-import org.jline.reader.Reference;
 import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -164,28 +160,10 @@ public final class ChatCommand implements Runnable {
                     .forEach(System.out::println);
             detailRows(sessionId, opened).forEach(System.out::println);
             System.out.println();
-            LineReader reader = LineReaderBuilder.builder()
-                    .terminal(terminal)
-                    // 会话内命令补全与实时着色：Tab 出候选菜单（带用法说明），
-                    // 输入过程中命令名直接染成绿（已支持）或红（未知）——
-                    // 此前只能盲敲，按下回车才知道命令对不对
-                    .completer(new SessionCommandCompleter(registry))
-                    .highlighter(new SessionCommandHighlighter(registry, capabilities.colored()))
-                    // 允许多行粘贴：终端支持 bracketed paste 时，粘贴内容作为整体插入缓冲区，
-                    // 换行不会立即提交（否则多行文本会被拆成多条消息发给模型）
-                    .option(LineReader.Option.BRACKETED_PASTE, true)
-                    // 列表式补全：Tab 列出候选（普通文本）。
-                    // 不用 AUTO_MENU_LIST：菜单的选中项用反色渲染，在部分终端主题下是刺眼的红底。
-                    .option(LineReader.Option.AUTO_LIST, true)
-                    .option(LineReader.Option.LIST_PACKED, true)
-                    // 容错匹配：/cmpct 也能匹配到 /compact
-                    .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
-                    .build();
-            // 输入 `/` 立即展开命令候选（issue #333）：JLine 原生的补全只在按 Tab 时触发，
-            // 这里把 `/` 键绑到一个自定义 widget——先插入 `/`，若它是行的第一个字符就立刻
-            // 调 `menu-complete` 展开候选。候选本身仍由 SessionCommandCompleter 提供，
-            // 前缀过滤与容错匹配交给 JLine（COMPLETE_MATCHER_TYPO 已开启）。
-            installSlashMenu(reader, registry);
+            // 输入 / 时的候选面板由 SlashMenuReader 负责（画在输入行下方、一行一个、
+            // 支持 ↑/↓ 选择与 Enter 直接提交，见 issue #333）；这里不再用 LineReaderBuilder，
+            // 因为它无法在输入行下方追加候选区。
+            LineReader reader = new SlashMenuReader(terminal, registry, capabilities.colored());
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
@@ -395,49 +373,6 @@ public final class ChatCommand implements Runnable {
      * @param style   样式（上边线与下边线必须同色）
      * @return 分隔线
      */
-    /**
-     * 输入 {@code /} 时**只列出候选**，不自动补全、不选中任何一项（issue #333 反馈）。
-     *
-     * <p>此前用 JLine 的补全 widget，输入 {@code /} 会被直接补成某个命令（如 {@code /auto-compact}），
-     * 用户还得先删掉才能输入 {@code /model} —— 比不提示还麻烦。这里改成：</p>
-     *
-     * <ul>
-     *   <li>候选由本方法自己打印到输入行上方（普通文本，无背景色）；</li>
-     *   <li>缓冲区只多一个 {@code /}，**不再改动**；</li>
-     *   <li>用户想补全时自己按 Tab（JLine 的 {@code AUTO_LIST} 会列出过滤后的候选）。</li>
-     * </ul>
-     *
-     * @param reader   已构建的 LineReader
-     * @param registry 命令注册表
-     */
-    private static void installSlashMenu(LineReader reader, SessionCommandRegistry registry) {
-        String widgetName = "aha-slash-menu";
-        reader.getWidgets().put(widgetName, () -> {
-            Buffer buffer = reader.getBuffer();
-            boolean lineStart = buffer.length() == 0 && buffer.cursor() == 0;
-            buffer.write("/");
-            if (lineStart) {
-                StringBuilder hint = new StringBuilder("可用命令：");
-                boolean first = true;
-                for (SessionCommand command : registry.commands()) {
-                    if (!first) {
-                        hint.append("  ");
-                    }
-                    hint.append('/').append(command.name());
-                    first = false;
-                }
-                try {
-                    reader.printAbove(hint.toString());
-                } catch (Exception ignored) {
-                    // 打印失败不影响输入：候选只是提示，丢了也能按 Tab 查看
-                }
-            }
-            return true;
-        });
-        KeyMap<Binding> main = reader.getKeyMaps().get(LineReader.MAIN);
-        main.bind(new Reference(widgetName), "/");
-    }
-
     private static String rule(boolean unicode, int width, Style style) {
         int cells = width > 0 ? width - 1 : 40;
         return style.frame((unicode ? "─" : "-").repeat(Math.max(1, cells)));
