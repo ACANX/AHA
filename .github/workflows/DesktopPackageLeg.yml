@@ -117,7 +117,15 @@ jobs:
           shopt -s nullglob
           work="$RUNNER_TEMP/desktop-release-check"
           rm -rf "$work"; mkdir -p "$work"
-          cp -- "$(ls Dist/aha-desktop-[0-9]*.zip)" "$work/pkg.zip"
+          # 上一步已把产物改名成 aha-desktop-jvm-<版本>-<平台>-jdk25.zip；
+          # 这里按**新名**取件。旧 glob（`aha-desktop-[0-9]*.zip`）在新名下匹配不到，
+          # 空展开会让 `ls` 无参执行、把仓库根目录列表喂给 `cp`（V0.1.4 首发实测失败）。
+          files=(Dist/aha-desktop-jvm-*.zip)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::期望恰好一个 aha-desktop-jvm-*.zip，实际 ${#files[@]} 个"
+            exit 1
+          fi
+          cp -- "${files[0]}" "$work/pkg.zip"
           entries="$work/entries.txt"
           "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
 
