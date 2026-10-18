@@ -732,7 +732,13 @@ jobs:
           # GraalVM 精确版本：`graalvm/setup-graalvm` 只导出 cache-hit，不导出 version，
           # 直接从 $GRAALVM_HOME/release 的 IMPLEMENTOR_VERSION 里取（如 "GraalVM Community 25.4.4.1" → 25.4.4.1）。
           # 取不到就让这条腿红：清单里记一个空版本等于没记（issue #269 §5）。
-          graalvm_version="$(awk -F= '/^IMPLEMENTOR_VERSION=/{gsub(/"/, "", $2); print $2}' "${GRAALVM_HOME:-$JAVA_HOME}/release" | awk '{print $NF}')"
+          # Windows runner 的 Git Bash 里 GRAALVM_HOME 是 `C:\...` 形式，awk 读不到 —— 先转成 POSIX 路径；
+          # release 文件是 CRLF —— 先 tr 掉 \r，否则版本串末尾会带控制字符。
+          graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
+          if command -v cygpath >/dev/null 2>&1; then
+            graalvm_home="$(cygpath -u "$graalvm_home" 2>/dev/null || printf '%s' "$graalvm_home")"
+          fi
+          graalvm_version="$(tr -d '\r' < "$graalvm_home/release" | awk -F= '/^IMPLEMENTOR_VERSION=/{gsub(/"/, "", $2); print $2}' | awk '{print $NF}')"
           if [ -z "$graalvm_version" ]; then
             echo "::error::无法从 ${GRAALVM_HOME:-$JAVA_HOME}/release 读取 GraalVM 版本"
             exit 1
