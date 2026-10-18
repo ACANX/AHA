@@ -1,17 +1,14 @@
-# AHA 桌面端 · macOS 平台专属 native-image 参数（issue #303 发布阻塞的规避）
+# AHA 桌面端 · macOS 平台专属 native-image 参数（issue #303 发布阻塞）
 #
-# 症状（GraalVM 25.3.4.1 与 25.4.4.1 均可复现，仅 macOS aarch64 桌面端）：
+# 症状（GraalVM 25.3.4.1 / 25.4.4.1 均可复现，仅 macOS aarch64 桌面端）：
 #   AnalysisError$ParsingError: Error encountered while parsing
 #     com.sun.glass.ui.mac.MacVariant.toString(MacVariant.java:193)
-#   Caused by: VMError$HostedError: failed building outlined SB method
-#   Caused by: should not reach here: unexpected input could not be handled: class java.lang.Object
+#   Caused by: failed building outlined SB method
+#   Caused by: unexpected input could not be handled: class java.lang.Object
 #
-# `MacVariant.toString()` 是 switch 表达式，native-image 的字符串拼接优化
-# （outlined SB method）在解析它时撞上 GraalVM 的已知缺陷，整条腿产不出二进制。
-# 关掉该优化即可绕开；代价只有字符串拼接的性能，不影响正确性。
+# `MacVariant.toString()` 是 switch 表达式，编译成 `invokedynamic`（StringConcatFactory）。
+# GraalVM 的 pointsto 在构建期分析它时崩溃。实测 `-H:-OptStringConcat` **无效**；
+# 让该 enum 在**构建期初始化**，可绕开这条分析路径。
 #
 # 只作用于 macOS（pom 的 native-macos profile 指向本文件），Linux / Windows 不受影响。
-#
-# 选项名以 GraalVM 25 为准：`-H:±OptStringConcat`（写成 `OptimizeStringConcat` 会报
-#   Unrecognized option ... Did you mean '-H:±OptStringConcat'，整条腿 exit 20）。
--H:-OptStringConcat
+--initialize-at-build-time=com.sun.glass.ui.mac.MacVariant
