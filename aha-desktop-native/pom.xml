@@ -520,5 +520,18 @@
                 <native.manifest.input>-H:NativeLinkerOption=/MANIFESTINPUT:${project.basedir}/src/native/app.manifest</native.manifest.input>
             </properties>
         </profile>
+        <!-- macOS 专属参数：绕开 GraalVM 解析 JavaFX `MacVariant.toString` 的
+             outlined SB method 缺陷（issue #303，2026-10-18 V0.1.5 发布阻塞）。 -->
+        <profile>
+            <id>native-macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <native.image.extra.argsfile>src/native/native-image-args-macos.txt</native.image.extra.argsfile>
+            </properties>
+        </profile>
     </profiles>
 </project>
