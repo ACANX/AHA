@@ -163,7 +163,7 @@ public final class ChatCommand implements Runnable {
             // 输入 / 时的候选面板由 SlashMenuReader 负责（画在输入行下方、一行一个、
             // 支持 ↑/↓ 选择与 Enter 直接提交，见 issue #333）；这里不再用 LineReaderBuilder，
             // 因为它无法在输入行下方追加候选区。
-            LineReader reader = new SlashMenuReader(terminal, registry, capabilities.colored());
+            SlashMenuReader reader = new SlashMenuReader(terminal, registry, capabilities.colored());
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
@@ -211,6 +211,21 @@ public final class ChatCommand implements Runnable {
             ExecutorService turns = Executors.newSingleThreadExecutor(
                     Thread.ofVirtual().name("aha-turn-", 0).factory());
             AtomicReference<CancellationToken> currentTurn = new AtomicReference<>();
+            // ESC 中断：第一下由 reader 收起候选面板，第二下落到这里取消当前回合。
+            // 空闲时 currentTurn 为 null —— 返回 false，让 ESC 不产生任何副作用。
+            reader.setInterruptHandler(() -> {
+                CancellationToken token = currentTurn.get();
+                if (token == null) {
+                    return false;
+                }
+                token.cancel();
+                return true;
+            });
+            if (!capabilities.tty()) {
+                // 非交互终端收不到按键事件：ESC 中断必然不可用，提前说清楚，
+                // 免得用户以为按键失灵（issue #341 验收：不静默失灵）
+                say(out, "[warn] 当前不是交互式终端，ESC 中断不可用；请用 Ctrl+C 结束进程。");
+            }
             try {
                 while (true) {
                     String line;
