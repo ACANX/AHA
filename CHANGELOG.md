@@ -10,7 +10,18 @@
 
 ## [Unreleased]
 
-## [0.1.4] - 待发布
+## [0.1.5] - 待发布
+
+### 修复
+- **发布链路加固（issue #303，V0.1.4 发布事故复盘）**：
+  - 原生报告包只在主包产出后才上传，不再出现「有 report、没有主包」的孤立资产；
+  - 发布资产不齐时自动把 release 降为 **pre-release**，资产齐全后自动恢复（不完整版本不再被当成正式版推荐）；
+  - 原生腿的真实结果与「形态 × 平台」缺失矩阵写进 Job Summary，不再被 `continue-on-error` 隐藏；
+  - 新增 `bin/CheckReleaseAssets.py`：发布前按矩阵预演、发布后验收 12 份齐全；
+  - GraalVM 版本取值四级兜底（`IMPLEMENTOR_VERSION` → `native-image --version` → 路径名 → 报错），修复 Linux / Windows / macOS 三平台原生腿；
+- **旧资产名别名移除**：`check_release_matrix()` 的 0.1.5 版本门槛生效，旧前缀与旧段序不再被接受。
+
+## [0.1.4] - 2026-10-18
 
 ### 变更
 - **发布物矩阵与命名统一（issue #269）**：
