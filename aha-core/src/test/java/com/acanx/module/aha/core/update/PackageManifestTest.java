@@ -51,6 +51,7 @@ class PackageManifestTest {
                   "platform": "windows-amd64",
                   "jdk": 25,
                   "builtBy": "Release.yml",
+                  "toolchain": {"graalvm": "25.4"},
                   "files": [
                     {"path": "aha-desktop.jar", "sha256": "%s", "size": 9, "mode": "0755"}
                   ]
@@ -61,6 +62,8 @@ class PackageManifestTest {
 
         assertThat(manifest.updateKind()).contains(UpdateKind.DESKTOP_JVM);
         assertThat(manifest.fileList()).hasSize(1);
+        assertThat(manifest.toolchain()).isNotNull();
+        assertThat(manifest.toolchain().graalvm()).isEqualTo("25.4");
         manifest.verify(packageRoot, UpdateKind.DESKTOP_JVM, VERSION, WINDOWS);
     }
 
@@ -176,11 +179,11 @@ class PackageManifestTest {
     }
 
     @Test
-    void platformWithoutPlatformSegmentDoesNotRequireOne() throws IOException {
+    void cliJvmNowCarriesAPlatformSegment() throws IOException {
         String digest = write("aha-cli.jar", "jar-bytes");
 
-        // 平台无关的形态（CLI JVM）：清单里不写 platform 也算合格
-        manifest("cli-jvm", "0.1.3.00242", null, entry("aha-cli.jar", digest, 9))
+        // issue #269：CLI-JVM 也带平台段（三平台三个名字），清单必须写 platform。
+        manifest("cli-jvm", "0.1.3.00242", "windows-amd64", entry("aha-cli.jar", digest, 9))
                 .verify(packageRoot, UpdateKind.CLI_JVM, VERSION, WINDOWS);
     }
 

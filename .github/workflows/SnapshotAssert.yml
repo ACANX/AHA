@@ -1,10 +1,10 @@
 name: SnapshotAssert
 
-# 把「某 PR 的快照自测通过」记成一条 commit status（`context = snapshot-assert`）。issue #166。
+# 把「某 PR 的快照自测通过」记成一条 commit status（`context = SnapshotAssert`）。issue #166。
 #
 # 口径（2026-10-15）：
 #   * **默认启用**：本工作流随仓库就位，评论命令即可打标 —— 不需要任何开关、不需要新标签；
-#   * **默认不卡点**：本文件**不碰**分支保护。`snapshot-assert` 不在 required 清单里，缺它不影响合并；
+#   * **默认不卡点**：本文件**不碰**分支保护。`SnapshotAssert` 不在 required 清单里，缺它不影响合并；
 #     要卡点是 ACANX 的后续显式动作（把该 context 加进分支保护）；
 #   * **必测项 0 token**：下面的自测清单里**没有任何模型往返** —— 工具直调（`tool invoke`）与
 #     配置 / 本地命令就能覆盖「机器验不了」的那部分；需要打 provider 请求的动作（「发一句话看有没有回复」）
@@ -42,8 +42,8 @@ permissions:
   statuses: write      # 本工作流的唯一目的：POST commit status
 
 jobs:
-  snapshot-assert:
-    name: 快照自测留痕
+  SnapshotAssert:
+    name: SnapshotSelfTest
     # 只认「挂在 PR 上」的评论，且必须是本工作流的两个命令之一 —— 别的评论一条都不起运行。
     if: >-
       github.event.issue.pull_request != null
@@ -64,7 +64,7 @@ jobs:
       # 回写评论要用仓库里的 SnapshotComment.py（幂等 + 503 有界重试都在那里面）
       - uses: actions/checkout@v7
 
-      - name: 解析命令 / 校验权限与版本归属（任何拒绝都只回复用法，不打 status）
+      - name: ParseCommandAndCheckPermissions
         id: parse
         run: |
           # 刻意**不加** `-e`：拒绝路径要显式地「回复 + 退出 0」，而不是让作业变红。
@@ -236,7 +236,7 @@ jobs:
 
           echo "解析通过：${verb} ${version} ${platform} jdk${jdk} → ${sha}"
 
-      - name: 打 commit status（context=snapshot-assert）
+      - name: PostCommitStatus
         if: steps.parse.outputs.ok == 'true'
         env:
           STATE: ${{ steps.parse.outputs.state }}
@@ -255,12 +255,12 @@ jobs:
           fi
           gh api -X POST "repos/${REPO}/statuses/${SHA}" \
             -f state="${STATE}" \
-            -f context=snapshot-assert \
+            -f context=SnapshotAssert \
             -f description="${desc}" \
             -f target_url="https://github.com/${REPO}/pull/${PR}#issuecomment-${COMMENT_ID}" >/dev/null
           echo "已打 status：${STATE} / ${desc} / ${SHA}"
 
-      - name: 幂等回写留痕评论（marker + 瞬时重试都在 SnapshotComment.py 里）
+      - name: UpsertTraceComment
         if: steps.parse.outputs.ok == 'true'
         env:
           STATE: ${{ steps.parse.outputs.state }}

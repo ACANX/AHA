@@ -1,0 +1,806 @@
+name: NativeImageLeg
+
+# 可复用工作流：`DesktopNative.yml` 的一条原生镜像腿（issue #287）。
+#
+# 【为什么抽出来】作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），
+# 而矩阵只能靠表达式区分腿。于是改成「每腿一个静态作业 + 共用这份 steps」。
+#
+# 【选腿】「快照只出某几条腿」由调用方的 **job 级 `if`** 过滤；未选中的腿直接 skipped。
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: runner 标签
+        type: string
+        required: true
+      label:
+        description: 平台标签（ubuntu-amd64 / windows-amd64 / macos-aarch64）
+        type: string
+        required: true
+      platform:
+        description: 原生线平台词（ubuntu / win / mac-aarch64）
+        type: string
+        required: true
+      jdk:
+        description: JDK 大版本（25 / 27）
+        type: string
+        required: true
+      aha_version:
+        description: 本次构建用的版本号（快照 5 段 / dev 4 段）
+        type: string
+        required: true
+
+# 与调用方同一口径：Windows runner 上也用 Git Bash，脚本只有一套。
+# 【踩坑】可复用工作流**不会继承**调用方的 `defaults.run.shell` —— 漏了这段，
+# Windows 腿会按默认的 pwsh 解释 bash 语法，直接红（2026-10-17 实测）。
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  NativeImageLeg:
+    name: NativeImageLeg
+    runs-on: ${{ inputs.os }}
+    # 整条原生镜像管线都是**可选**的：任一腿失败都不牵连其余腿与发布作业。
+    # 注意：`continue-on-error` **不能**写在调用可复用工作流的 job 上（会让整个文件解析失败），
+    # 所以放在这里 —— 调用方（DesktopNative / CliNative）不再声明它。
+    continue-on-error: true
+    env:
+      AHA_VERSION: ${{ inputs.aha_version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # GraalVM（含 native-image）。用社区版：开源项目无需商用授权顾虑，
+      # 同样带 native-image；换 Oracle GraalVM 只需把 distribution 改成 graalvm。
+      - name: InstallGraalVM
+        # 【选腿】「这次只出哪几条腿」由**调用方的 job 级 `if`** 过滤（读 `needs.Plan.outputs.legs`），
+        # 未选中的腿直接 skipped。这里只剩「GraalVM 装不上时安静跳过整条腿」这一层容错：
+        # 本步一旦失败，其余步骤都被 `steps.graal.outcome == 'success'` 挡住。
+        # 容错原因：GraalVM 的某个 JDK 大版本可能**还没发布**（实测 JDK 27 就是这样，
+        # 这一步当时红了）。那是上游发布节奏，不是本项目的问题，不该染红本工作流。
+        id: graal
+        continue-on-error: true
+        uses: graalvm/setup-graalvm@v1
+        with:
+          version: '25.4'
+          java-version: ${{ inputs.jdk }}
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: ExplainToolchainUnavailable
+        # 跳过的步骤不会自己解释自己，所以在跳之前留一条摘要，免得看运行页的人以为漏跑了。
+        if: steps.graal.outcome != 'success'
+        run: |
+          {
+            echo "### ${{ inputs.label }}（jdk${{ inputs.jdk }}）"
+            echo ""
+            echo "- **本腿跳过**：GraalVM（JDK ${{ inputs.jdk }}）安装失败（结论：${{ steps.graal.outcome }}）。"
+            echo "  常见原因是该 JDK 大版本的 GraalVM 尚未发布（实测 JDK 27 就是如此），属于上游发布节奏。"
+            echo "- 本腿是数据点，不是交付物：跳过不影响其它腿，也不影响发布。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: ComputeMavenArgs
+        id: leg
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -euo pipefail
+          # Windows 上的可执行文件是 native-image.cmd，exec 插件不会自动补后缀
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            echo "executable=native-image.cmd" >> "$GITHUB_OUTPUT"
+          else
+            echo "executable=native-image" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ inputs.jdk }}" = "27" ]; then
+            echo "profiles=desktop-native,native-jdk27" >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=desktop-native" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: VerifyToolchain
+        # 只做记录：这里失败说明「环境不对」，不等于「代码编不出来」，
+        # 所以不阻塞后面的构建（构建自己会再报一次真实原因）。
+        #
+        # 变量名一律带 LEG_ 前缀并用 `${VAR:-}` 读取：Windows runner 的 shell 还带着
+        # VS 开发者命令提示的环境，里面本就有 `PLATFORM` 之类变量，与我们的注入互相打架
+        # （实测本步因 `PLATFORM: unbound variable` 直接退出）。命令失败也只记一行、不判死。
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          echo "—— 本腿参数 ——"
+          echo "OS=${RUNNER_OS:-未知} 平台=${LEG_PLATFORM:-未知} 标签=${LEG_LABEL:-未知} JDK=${{ inputs.jdk }}"
+          echo "原生镜像可执行文件=${{ steps.leg.outputs.executable }}"
+          echo "Maven profile=${{ steps.leg.outputs.profiles }}"
+          echo "版本=${LEG_VERSION:-未知}"
+          echo "—— 工具链版本 ——"
+          java -version || echo "（java -version 非零退出，仅记录）"
+          # Windows 上 native-image 是 .cmd：bash 不能直接执行 .cmd（实测这一步当时就是这样红的），
+          # 必须交回 cmd.exe。`//c` 是 Git Bash 的转义写法，避免被当成路径。
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+            cmd //c "${{ steps.leg.outputs.executable }} --version" || echo "（native-image --version 非零退出，仅记录）"
+          else
+            "${{ steps.leg.outputs.executable }}" --version || echo "（native-image --version 非零退出，仅记录）"
+          fi
+        env:
+          LEG_PLATFORM: ${{ inputs.platform }}
+          LEG_LABEL: ${{ inputs.label }}
+          LEG_VERSION: ${{ env.AHA_VERSION }}
+
+      - name: BuildNativeImage
+        # 容错：原生编译失败在本工作流里**不算整体失败**（可选项，见文件头）。
+        # id 供「产物自证」区分「编了但没出东西」与「压根没编」。
+        id: native
+        continue-on-error: true
+        if: steps.graal.outcome == 'success'
+        # 会解析依赖，因此走统一入口（清负缓存 + 只对瞬时故障重试）。
+        #
+        # 两点必须写清：
+        #   * `-pl aha-desktop-native,aha-desktop -am`：profile 加入的模块**不会**被 `-am`
+        #     带上游（实测 Maven 3.9.11 与 4 都一样：只选 native 时反应堆里只有它自己），
+        #     所以显式把 aha-desktop 也列出来，让 `-am` 把五个上游一起拉进来。
+        #   * skipTests + jacoco.skip：这里要的是可执行文件，不是测试报告（测试由 Build/Gate 跑）。
+        #   * `-Dnative.skip=false` **必须显式传**：默认值是 true（见根 POM 的 properties），
+        #     profile 里虽然也覆盖为 false，但 2026-10-08 实测踩过一层坑——
+        #     模块自身的 <properties> 会赢过父 POM 里 profile 注入的属性，于是
+        #     native-image **被静默跳过**：构建「成功」、零产物、零报错、CI 全绿。
+        #     命令行 -D 的优先级最高，显式传一次就把这类坑彻底关掉。
+        # -Daha.build.version：注入 version.properties 的 build 项，供桌面端「关于」/ 状态栏等显示（issue #46）。
+        # ⚠ 不能写成 command 折叠块内的 `#` 注释：块标量里的 `#` 不是 YAML 注释，
+        #   会被折进命令串，在 shell 里把其后所有参数注释掉（2026-10-09 实测踩过，构建号因此从未注入）。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B -P${{ steps.leg.outputs.profiles }}
+            -pl aha-desktop-native,aha-desktop -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.native.version=${{ env.AHA_VERSION }}
+            -Daha.build.version=${{ env.AHA_VERSION }}
+            -Dnative.image.executable=${{ steps.leg.outputs.executable }}
+            -Dnative.skip=false
+
+      - name: VerifyNativeImageRan
+        # 这一步专治「全绿但零产物」。
+        #
+        # 判据用「构建报告」而不是 `<name>.build_artifacts.txt`：**实测 macOS 腿根本不产
+        # build_artifacts.txt**（一开始按它判断，结果三腿里 macOS 被误判成「没执行」），
+        # 而报告文件是稳的：只要带 emit build report 参数且 native-image 跑到收尾，
+        # 就会写出 `<可执行名>-build-report.html`（注意前缀是**可执行名**，不是 build-report）。
+        # 两个都看：报告优先，build_artifacts.txt 作为兼容信号。
+        # 无论哪种都不阻塞（本管线可选），但必须**叫得响**：warning + 摘要双写。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success' && steps.native.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          marker=$(ls "$work"/*build-report.* "$work"/*.build_artifacts.txt 2>/dev/null | head -n1 || true)
+          if [ -n "$marker" ]; then
+            echo "native-image 执行证据：$(basename "$marker")"
+            echo "- native-image：确实执行过（证据：$(basename "$marker")）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::构建步骤成功，但没有 native-image 的执行痕迹（$work 下既无 *build-report.* 也无 *.build_artifacts.txt）。"
+            echo "::warning::最可能的原因：native.skip 仍然是 true（被静默跳过）；其次看构建日志里 native-image 的真实报错。"
+            {
+              echo ""
+              echo "> ⚠ **本腿的构建步骤「成功」，但没有 native-image 的执行痕迹**，"
+              echo "> 因此这一步什么都没产出。最可能的原因是 \`native.skip\` 仍为 \`true\`（被静默跳过）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: PackageBuildReport
+        # 为什么单独成包：报告与「给人运行的二进制」是两类东西。
+        # issue #29 定案：报告**不进镜像包**，但也不只留在 CI 制品里——
+        # 它作为**独立发布物**挂到发布页，命名与镜像包同族，
+        # 版本、系统、架构、JDK 轴全在文件名里：
+        #     aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>-report.zip
+        # 这样下载者按需取件（试跑取镜像包 / 分析体积与启动取报告包），
+        # 同一版本一眼能对上。包内含：报告 + 参数 + 可达性元数据（一组对账材料）。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          if ! ls "$work"/*build-report.* >/dev/null 2>&1; then
+            echo "::warning::没有构建报告，跳过独立报告包——检查参数清单里的「emit build report」是否被删掉了"
+            exit 0
+          fi
+          py=$(command -v python3 || command -v python || true)
+          if [ -z "$py" ]; then
+            echo "::warning::runner 上没有 python，无法打独立报告包"
+            exit 0
+          fi
+          out="Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}-report.zip"
+          "$py" -c "import sys,zipfile,glob,os; out,work=sys.argv[1],sys.argv[2]; files=sorted(glob.glob(work+'/*build-report.*')+glob.glob(work+'/*.build_artifacts.txt')+glob.glob(work+'/reachability-metadata.json')+glob.glob('aha-desktop-native/src/native/native-image-args*.txt')); z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED); [z.write(f,os.path.basename(f)) for f in files]; z.close(); print(out, len(files), 'files')" "$out" "$work"
+          ls -lh "$out"
+          "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
+
+      - name: UploadReportArtifact
+        # 与镜像包走同一套收集 / 发布路径（publish 作业把 artifacts/*.zip 一起上传），
+        # 因此这里只管上传，不必在发布作业里单独接线。
+        # 保留期给 90 天（比镜像包的 14 天长）：报告是长期资产。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Native-Report-${{ inputs.label }}-jdk${{ inputs.jdk }}
+          path: Dist/aha-desktop-native-*-report.zip
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: ExtractReportMetrics
+        # 目的：不下载也能看到「这次编出来多大 / 资源占多少」。
+        # 报告的具体字段名随 GraalVM 版本变，因此这里**只做尽力而为**的提取：
+        # 解析失败、没有 python、字段名不认识，都只是少几行摘要，绝不阻塞。
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          report=$(ls "$work"/*build-report.* 2>/dev/null | head -n1 || true)
+          if [ -z "$report" ]; then
+            echo "（没有构建报告，跳过摘要提取）"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 构建报告缺失——检查参数清单里的「emit build report」是否还在。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
+          echo "构建报告：$(basename "$report")（$((rsize / 1024 / 1024)) MB）"
+          case "$report" in
+            *.json) : ;;   # 只有 json 才尝试解析
+            *)
+              {
+                echo ""
+                echo "### 构建报告（${{ inputs.label }}，jdk${{ inputs.jdk }}）"
+                echo ""
+                echo "- 文件：\`$(basename "$report")\`（$((rsize / 1024 / 1024)) MB，HTML，不在此处解析）"
+                echo "- 下载：发布页的独立报告包 \`aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}-report.zip\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
+          py=$(command -v python3 || command -v python || true)
+          if [ -z "$py" ]; then
+            echo "（runner 上没有 python，跳过摘要提取；报告本身已打进独立报告包）"
+            exit 0
+          fi
+          "$py" - "$report" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          try:
+              data = json.loads(p.read_text(encoding="utf-8"))
+          except Exception as exc:
+              print(f"\n\n> 构建报告解析失败（{exc}）——原始文件已打进独立报告包。")
+              raise SystemExit(0)
+          hits = []
+          def walk(node, path, depth):
+              if depth > 3:
+                  return
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      walk(v, f"{path}.{k}" if path else k, depth + 1)
+              elif isinstance(node, (int, float)) and not isinstance(node, bool):
+                  leaf = path.rsplit(".", 1)[-1].lower()
+                  if any(t in leaf for t in ("size", "bytes", "count", "time", "ms", "seconds")):
+                      hits.append((path, node))
+          walk(data, "", 0)
+          print("")
+          print(f"### 构建报告摘要（{p.name}）")
+          print("")
+          print(f"- 顶层字段：{', '.join(list(data)[:12])}{' …' if len(data) > 12 else ''}")
+          for path, value in hits[:12]:
+              if isinstance(value, float):
+                  print(f"- {path} = {value:,.2f}")
+              elif value > 1024 * 256:
+                  print(f"- {path} = {value:,}（约 {value / 1024 / 1024:,.2f} MiB）")
+              else:
+                  print(f"- {path} = {value:,}")
+          print("")
+          print("> 完整报告见发布页的独立报告包 "
+                "`aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>-report.zip`。")
+          PY
+
+      - name: VerifyArtifactDiagnostic
+        # 为什么是「诊断式」而不是硬门禁：
+        #   这条管线是**可选**的（见文件头），硬门禁会把「试验产物没编出来」变成红叉；
+        #   而真正需要知道的不是「红没红」，而是「编了什么 / 在哪 / 多大 / 为什么没成」。
+        #   所以：① 先把现场打全；② 判据只留真正的不变式；③ 结论写进摘要，
+        #   并把 produced 交给后续步骤决定「要不要改名 / 上传」。
+        id: verify
+        continue-on-error: true
+        if: always() && steps.graal.outcome == 'success'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          produced=false
+          note=""
+
+          # **先把输出写出去**，后面再覆盖。原因（2026-10-08 实测事故）：
+          # 带 continue-on-error 的步骤一旦非零退出，**它的 outputs 不会被发布**，
+          # 于是下游 `if: steps.verify.outputs.produced == 'true'` 静默变成 false，
+          # 「改名」「上传制品」被跳过——表现成「构建成功、什么都没上传」。
+          # 所以：① 先写一次 false 兜底；② 脚本最后强制 exit 0（本步只做诊断，从不判死）。
+          echo "produced=false" >> "$GITHUB_OUTPUT"
+          # 再加一道保险：EXIT trap 无条件以 0 退出。`set -u` 被非 ASCII 变量名带崩、
+          # 平台差异命令失败……都不该让本步「红 + 丢 outputs」（2026-10-08 macOS 腿
+          # 就是因为「变量后紧跟全角括号」被 bash 当成变量名的一部分而 unbound，镜像包没传上去）。
+          trap 'exit 0' EXIT
+
+          echo "—— 现场：$work ——"
+          ls -la "$work" 2>/dev/null || echo "（目录不存在）"
+          echo "—— 现场：候选可执行文件 ——"
+          find aha-desktop-native/target -maxdepth 3 -type f \
+               \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null || true
+          echo "—— 现场：Dist/ ——"
+          ls -la Dist 2>/dev/null | head -20 || true
+
+          # ① 找可执行文件：不写死路径，先看约定位置，再在整个 target/ 兜一遍
+          bin=$(ls "$work/aha-desktop-native" "$work/aha-desktop-native.exe" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            # 不用 find -maxdepth：macOS 的 BSD find 不支持它（会报 unknown primary）
+            bin=$(find aha-desktop-native/target -type f \
+                    \( -name 'aha-desktop-native' -o -name 'aha-desktop-native.exe' \) 2>/dev/null | head -n1 || true)
+          fi
+          size=0
+          magic=""
+          if [ -z "$bin" ]; then
+            note="没有产出原生可执行文件（构建步骤结论：${{ steps.native.outcome }}）"
+            # 构建「成功」却没有产物，只可能是「被跳过」或「早退」，把两种可能都点名，
+            # 免得看的人以为只是「这次运气不好」。
+            if [ "${{ steps.native.outcome }}" = "success" ]; then
+              note="${note}；最可能是 native.skip 未生效（静默跳过）或 native-image 早退"
+            fi
+            echo "::warning::$note"
+          else
+            size=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+            echo "找到可执行文件：${bin}（$((size / 1024)) KB）"
+
+            # ⑨ exe 字节自证：**启动标记必须真的在二进制里**。
+            #    「代码里写了标记」不等于「标记在产物里」。实测（TS-2610-032 第三轮）：
+            #    `[ui-fxml-load-failed]` 所在的那圈 catch 包的是 `return rootNode;`，
+            #   静态分析证明不可能抛 ⇒ catch 与字符串常量一起被删，exe 里 grep 不到。
+            #    后果很阴：真机崩了却没有任何失败标记可看，而没人知道原因就在这里。
+            #    .fxml 资源一并查：它没进镜像的症状也是「启动即崩」，但构建全绿。
+            #    【必须用 -F】标记里带 `[` `]` `-`，走正则会把它们当字符类/区间：
+            #    实测 `grep -aq -- '[ui-fxml-loaded]'` 报 Invalid range end 并**漏报**——
+            #    而应用明明打印了这个标记（同一轮冒烟就是证据）。检查工具本身出错，
+            #    比没有检查更危险：它会让你去修一个并不存在的缺陷。
+            for marker in '[aha-version]' '[ui-fxml-loaded]' '[ui-fxml-load-failed]' 'desktop-shell.fxml'; do
+              if ! grep -aqF -- "$marker" "$bin"; then
+                note="${note:+${note}；}exe 里找不到 ${marker}"
+                echo "::warning::exe 里找不到 ${marker}（标记被优化掉 / 资源没进镜像）"
+              fi
+            done
+
+            # ② 体积下限 5 MB：小于它基本是「编译没真正完成却留下壳」
+            if [ "$size" -lt 5242880 ]; then
+              note="产物只有 $((size / 1024)) KB（< 5 MB），不像原生镜像"
+              echo "::warning::$note"
+            else
+              produced=true
+              # 命中有效产物就**立刻**写 outputs：本步后面还有一串诊断，
+              # 任何一处意外退出都不能把 produced 吞掉（2026-10-08 macOS 腿就因此丢了镜像包）。
+              echo "produced=true" >> "$GITHUB_OUTPUT"
+            fi
+
+            # ③ 平台魔法数：确认是本平台二进制而不是错平台的。
+            #    只比前 2 字节：PE 的 DOS stub 后两字节随 linker 变，4 字节比较会误报
+            #    （实测 Windows 期望 4d5a、实际 4d5a9000，一直「不匹配」）。
+            magic=$(head -c 2 "$bin" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' || true)
+            case "${RUNNER_OS}" in
+              Windows) expect="4d5a" ;;  # PE：MZ
+              Linux)   expect="7f45" ;;  # ELF：0x7f 'E'
+              macOS)   expect="cffe" ;;  # Mach-O 64 位（小端）
+            esac
+            ok=false
+            [ "$magic" = "$expect" ] && ok=true
+            # macOS 还可能是大端头（feedfacf）：只比前 2 字节时对应 'feed'
+            if [ "${RUNNER_OS}" = "macOS" ] && [ "$magic" = "feed" ]; then ok=true; fi
+            if [ "$ok" = "true" ]; then
+              echo "魔法数自证通过：$magic"
+            else
+              note="${note:+${note}；}魔法数不匹配（期望 ${expect}，实际 ${magic:-取不到}）"
+              echo "::warning::$note"
+            fi
+          fi
+
+          # ④ classpath 输入：真正的不变式是「OpenJFX 四件套齐全」+「没有空壳 jar」，
+          #    不是「恰好 4 个」——带分类器与不带分类器的 jar 共用同一份 POM，
+          #    多出来的条目是正常的；空壳才是问题（本项目已在 POM 里排除）。
+          #    四件：base / graphics / controls / fxml（0.1.3 起界面骨架走 FXML）。
+          #    【判据用 -size -2k 而不是 -size 0】实测（run 38347798375）：
+          #    无分类器的 `javafx-controls-25.jar` 是 **306 字节**，不是 0 字节——
+          #    用 `-size 0` 会让这种空壳从眼皮底下走过去。
+          jfx=$(ls "$work"/lib/javafx-*.jar 2>/dev/null | wc -l | tr -d ' ')
+          total=$(ls "$work"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ')
+          # 同①：不用 find -maxdepth（macOS BSD find 不支持）
+          empty=$(find "$work/lib" -type f -name '*.jar' -size -2k 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${jfx:-0}" -lt 4 ]; then
+            note="${note:+${note}；}classpath 里的 OpenJFX jar 只有 ${jfx} 个（少于四件套）"
+            echo "::warning::$note"
+            ls "$work"/lib/javafx-*.jar 2>/dev/null || true
+          fi
+          if [ "${empty:-0}" -ne 0 ]; then
+            note="${note:+${note}；}lib/ 里有 ${empty} 个空壳 jar（小于 2 KB）"
+            echo "::warning::$note"
+            find "$work/lib" -type f -name '*.jar' -size -2k 2>/dev/null || true
+          fi
+          echo "classpath 输入：lib/ 共 ${total} 个 jar，OpenJFX ${jfx} 个，空壳 ${empty} 个"
+
+          # ⑥ 构建报告（native-image 的 emit build report 参数产出）：
+          #    有它才谈得上「按报告调参数」，所以它缺了就告警。
+          # 报告文件名是 <可执行名>-build-report.html（前缀是可执行名），
+          # 不要再按 build-report* 去匹配——实测漏掉过，结果 34 MB 的报告没进制品。
+          report=$(ls "$work"/*build-report.* 2>/dev/null | head -n1 || true)
+          if [ -n "$report" ]; then
+            rsize=$(stat -c%s "$report" 2>/dev/null || stat -f%z "$report" 2>/dev/null || echo 0)
+            echo "构建报告：$(basename "$report")（$((rsize / 1024)) KB）"
+          else
+            echo "::warning::没有找到构建报告（$work/*build-report.*）——检查参数清单里的「emit build report」是否被删掉了"
+          fi
+
+          # ⑦ 独立报告包是否真的生成（issue #29 的回归守卫）。
+          #    「workdir 里有报告」不等于「发布物里有报告」——报告是单独打的包，
+          #    报告是用户要的交付物，缺了必须叫得响。
+          rpt_note="未检查（Dist/ 下没有报告包）"
+          rpt=$(ls -t Dist/aha-desktop-native-*-report.zip 2>/dev/null | head -n1 || true)
+          if [ -n "$rpt" ]; then
+            rpt_note="$(basename "$rpt")"
+            echo "独立报告包：$rpt_note"
+          else
+            rpt_note="**缺失**（Dist/ 下没有 aha-desktop-native-*-report.zip）"
+            echo "::warning::${rpt_note}——检查「打独立报告包」步骤（报告是否存在 / python 是否可用）"
+          fi
+
+          # ⑧ 可达性元数据必须注册 JavaFX 启动链路（issue #26、#35 的回归守卫）。
+          #    issue #26：主类没注册 → 构建**成功**，一启动就
+          #              ClassNotFoundException: com.acanx.module.aha.desktop.AhaDesktopApp；
+          #    issue #35：QuantumToolkit / Glass 工厂没注册 → 同样构建成功，一启动就
+          #              ClassNotFoundException: com.sun.javafx.tk.quantum.QuantumToolkit。
+          #    正是「构建成功不是验收标准」——所以要查元数据，不能只看编译通过。
+          #    三个平台的 Glass 工厂都查：同一份元数据在三条腿上共用，缺哪个平台就会在哪条腿上炸。
+          meta="$work/reachability-metadata.json"
+          meta_note=""
+          meta_ok=true
+          require_meta() {
+            if [ ! -f "$meta" ] || ! grep -q "$1" "$meta"; then
+              meta_ok=false
+              meta_note="${meta_note:+${meta_note}；}缺 $2"
+            fi
+          }
+          require_meta "com.acanx.module.aha.desktop.AhaDesktopApp" "主类 AhaDesktopApp（#26）"
+          require_meta "com.sun.javafx.tk.quantum.QuantumToolkit" "QuantumToolkit（#35）"
+          require_meta "com.sun.glass.ui.win.WinPlatformFactory" "WinPlatformFactory"
+          require_meta "com.sun.glass.ui.gtk.GtkPlatformFactory" "GtkPlatformFactory"
+          require_meta "com.sun.glass.ui.mac.MacPlatformFactory" "MacPlatformFactory"
+          require_meta "com.sun.prism.shader.Solid_Color_Loader" "stock shader 加载器"
+          # issue #41：Renderer.getPeerInstance 用动态类名加载效果 peer
+          # （PPS<name>Peer / Pr<name>Peer / JSW<name>Peer / SSE<name>Peer）；
+          # 未登记时渲染到该效果的控件会抛 Could not create peer，界面起来但控件画不出。
+          require_meta "com.sun.scenario.effect.impl.prism.ps.PPSLinearConvolveShadowPeer" "Prism 效果 peer（issue #41）"
+          require_meta "com.acanx.module.aha.core.config.AhaConfig" "AHA 配置记录（Jackson）"
+          require_meta "javafx.scene.Node" "JavaFX 运行期反射（tracing agent 采集补齐）"
+          require_meta "com.sun.glass.ui.gtk.GtkView" "Glass 平台实现类（tracing agent 采集补齐）"
+          # issue #125：Windows 手势（WinGestureSupport）与拖放剪贴板（WinDnDClipboard）。
+          # 它们的查找发生在 **native 侧**（glass.dll），本仓库 Java 侧无 Class.forName，
+          # 所以真正的归宿是下面 ⑧b 的 jni-config；这里再登记一次是为了让「类确定进镜像」
+          # 不依赖静态可达链，同时对齐姊妹项目按本清单**反射段**生成的口径。
+          require_meta "com.sun.glass.ui.win.WinGestureSupport" "WinGestureSupport（Windows 手势，issue #125）"
+          require_meta "com.sun.glass.ui.win.WinDnDClipboard" "WinDnDClipboard（Windows 拖放剪贴板，issue #125）"
+          # FXML 界面骨架（0.1.3）：FXMLLoader 按名字强初始化自己，控制器字段靠反射注入；
+          # 漏了同样是「构建全绿、启动即崩」（参考姊妹项目 LegionFanControl TS-2610-003）。
+          # ButtonBase 单列：反射访问成员按**声明类**解析，只登记 Button 盖不住 setOnAction。
+          require_meta "javafx.fxml.FXMLLoader" "FXMLLoader（FXML 骨架装载）"
+          require_meta "javafx.scene.control.ButtonBase" "ButtonBase（FXML 反射的声明类）"
+          require_meta "com.sun.xml.internal.stream.XMLInputFactoryImpl" "StAX 实现（FXMLLoader 解析 fxml）"
+
+          # ⑧b JNI 可达类（issue #37）：Glass / 字体 / 几何的 native 代码用 JNIEnv->FindClass
+          #     按名字查类，而 native-image 只允许「JNI accessible」的类被查到；否则抛
+          #     NoClassDefFoundError: java/lang/Runnable（随后 native 层用空指针继续跑 → segfault）。
+          #     这份清单单独放在 jni-config.json：reachability-metadata 的 schema（v1.2.0）
+          #     不含 jni 段，而 jni-config.json 有官方 schema v1.1.0。
+          jni="$work/jni-config.json"
+          jni_note=""
+          jni_ok=true
+          require_jni() {
+            if [ ! -f "$jni" ] || ! grep -q "$1" "$jni"; then
+              jni_ok=false
+              jni_note="${jni_note:+${jni_note}；}缺 $2"
+            fi
+          }
+          require_jni "java.lang.Runnable" "java.lang.Runnable（Glass 启动链路）"
+          require_jni "java.lang.Object" "java.lang.Object（PlatformSupport）"
+          require_jni "com.sun.glass.ui.win.WinVariant" "WinVariant（Windows 无障碍）"
+          # issue #39：平台实现类自己的 _initIDs 用 GetMethodID 查它自己声明的方法
+          # （notifyMoving / nonClientHitTest …）。基础类 Window 已登记不等于子类已登记，
+          # 未登记时 WinWindow.<clinit> 直接 NoSuchMethodError，启动即崩。
+          require_jni "com.sun.glass.ui.win.WinWindow" "WinWindow（Windows 窗口 JNI 回调，issue #39）"
+          require_jni "com.sun.glass.ui.win.WinView" "WinView（Windows 视图 JNI 回调）"
+          # issue #125：这两个类由 glass.dll 的 native 代码按名查找，真实查找路径就在这份清单；
+          # 漏登记时手势与拖放会**静默失效**（只刷 ClassNotFoundException、窗口照常打开）。
+          require_jni "com.sun.glass.ui.win.WinGestureSupport" "WinGestureSupport（Windows 手势，issue #125）"
+          require_jni "com.sun.glass.ui.win.WinDnDClipboard" "WinDnDClipboard（Windows 拖放剪贴板，issue #125）"
+          # issue #60：prism_d3d.dll 的 nGetDriverInformation 按名回写本类的 OS / 驱动字段；
+          # 漏登记时字段保持 0 / null（「Windows version 0.0 build 0」、ven_0000/dev_0000），
+          # 与 issue #35 / #37 / #39 同族：native 按名访问 Java 成员，closed-world 下拿不到。
+          require_jni "com.sun.prism.d3d.D3DDriverInformation" "D3DDriverInformation（prism_d3d 回写 OS / 驱动信息的字段，issue #60）"
+          require_jni "com.sun.glass.ui.mac.MacWindow" "MacWindow（macOS 窗口 JNI 回调）"
+          require_jni "com.sun.glass.ui.EventLoop" "EventLoop（三平台嵌套事件循环）"
+          require_jni "com.sun.javafx.font.directwrite.DWRITE_MATRIX" "DirectWrite 字体结构体"
+          require_jni "com.sun.javafx.font.FontConfigManager\$FcCompFont" "FontConfigManager（Linux 字体）"
+          if [ "$jni_ok" = "true" ]; then
+            jni_note="已注册 JNI 可达类（Glass / 字体 native 的 FindClass 清单）"
+            echo "JNI 元数据：$jni_note"
+          else
+            jni_note="**${jni_note}**（${jni}）"
+            echo "::warning::JNI 注册不完整：${jni_note}——原生镜像会在 native FindClass 处报 NoClassDefFoundError（#37）"
+          fi
+
+          if [ "$meta_ok" = "true" ]; then
+            meta_note="已注册主类与 JavaFX 启动链路（QuantumToolkit / Glass 工厂 / Prism 管线）"
+            echo "可达性元数据：$meta_note"
+          else
+            meta_note="**${meta_note}**（${meta}）"
+            echo "::warning::可达性元数据不完整：${meta_note}——原生镜像启动会报 ClassNotFoundException（#26 / #35）"
+          fi
+
+          # ⑤ 交给后续步骤 + 写摘要（成与不成都写，避免「没消息」被误读成「没跑」）
+          echo "produced=${produced}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${{ inputs.label }}（jdk${{ inputs.jdk }}）"
+            echo ""
+            if [ "$produced" = "true" ]; then
+              echo "- 产物：\`$(basename "$bin")\`（$((size / 1024 / 1024)) MB）"
+              echo "- 魔法数：\`${magic:-未取到}\`"
+            else
+              echo "- **未产出可用二进制**"
+            fi
+            echo "- 工具链：${{ steps.graal.outcome }}；构建：${{ steps.native.outcome }}"
+            echo "- classpath：${total} 个 jar（OpenJFX ${jfx} 个，0 KB 空壳 ${empty} 个）"
+            echo "- 构建报告：$([ -n "${report}" ] && basename "${report}" || echo '**缺失**')"
+            echo "- 独立报告包：${rpt_note}"
+            echo "- 可达性元数据：${meta_note}"
+            echo "- JNI 元数据：${jni_note}"
+            if [ -n "${note}" ]; then echo "- 备注：${note}"; fi
+            echo ""
+            echo "> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。"
+            echo "> 详见 \`Docs/Design/DesktopNativeDesign.md\` 第 2 节。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
+          exit 0
+
+      - name: RunGuiSmoke
+        # 为什么只在 Windows 跑：GitHub 的 windows-latest 有**交互式桌面会话**，能创建窗口；
+        #   Linux 腿无 X（需 Xvfb），macOS 腿 GUI 访问受限。
+        # 为什么是诊断式（不判死整条流程）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
+        #   覆盖不到真实 D3D 路径；BuildSpec §7 要求可选管线不得进必需检查、
+        #   且失败必须在步骤级容错。结论一律写摘要。
+        #
+        # 【2026-10-13 修正】判据从「进程能存活 20 秒」改为**正面断言**。
+        #   起因：PR #134 的 FXML 骨架在原生包里启动即崩
+        #   （`LoadException: BorderPane is not a valid type.`——fxml 忘了写 <?import?>），
+        #   而旧判据把这一次判成了“通过”——它看的是“进程存活 / 非 0 退出码”，
+        #   既抳不到「窗口根本没出来」，也会把「崩了但进程没回收」当成存活。
+        #   正是姊妹项目 LegionFanControl TS-2610-003 的教训：
+        #   **负面断言只能证明“没看到坏现象”，不能证明“程序真的走到了好状态”**。
+        #
+        #   现在：抓 stdout / stderr，断言——
+        #     ① 命中 `[aha-version]`（程序真的进了 main）
+        #     ② 命中 `[ui-fxml-loaded]`（界面骨架真的装起来了）
+        #     ③ 不得出现 `[ui-fxml-load-failed]`
+        #     ④ 不得在 20 秒内以非 0 退出
+        #     ⑤ 必须打印 `OS Information:`（否则第 ⑥ 条会空过——prism.verbose 没了就没人看得见）
+        #     ⑥ 不得出现 `Windows version 0.0 build 0`（issue #60：prism_d3d 按名回写字段失败的全零指纹）
+        #   ①~⑥ 任何一条不满足都是**确定的缺陷**（不是环境抖动）⇒ `exit 1`；
+        #   仍保留 continue-on-error（不挡合并），但用 `::error::` 与摘要里的 ❌ + 日志尾部把真相摆出来。
+        if: always() && runner.os == 'Windows' && steps.verify.outputs.produced == 'true'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $work = 'aha-desktop-native/target/native'
+          $bin = @("$work/aha-desktop-native.exe", "$work/aha-desktop-native") |
+                 Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $bin) {
+            $found = Get-ChildItem -Path 'aha-desktop-native/target' -Recurse -Filter 'aha-desktop-native.exe' -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if ($found) { $bin = $found.FullName }
+          }
+          if (-not $bin) {
+            Write-Host '::warning::没有找到可执行文件，跳过 GUI 冒烟'
+            exit 0
+          }
+
+          $stdout = Join-Path $env:RUNNER_TEMP 'aha-smoke.out.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'aha-smoke.err.log'
+          Remove-Item $stdout, $stderr -ErrorAction SilentlyContinue
+
+          Write-Host "可执行文件：$bin"
+          Write-Host '—— 冒烟：启动桌面端原生镜像，最多观察 20 秒 ——'
+          $p = Start-Process -FilePath $bin -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+
+          # 提前退出检测：崩得快就不必白等 20 秒
+          for ($i = 0; $i -lt 20; $i++) {
+            if ($p.HasExited) { break }
+            Start-Sleep -Seconds 1
+          }
+          $exited = $p.HasExited
+          $code = if ($exited) { $p.ExitCode } else { $null }
+          if (-not $exited) {
+            Write-Host "进程存活 20 秒，PID=$($p.Id)（冒烟结束，关掉它）"
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          $text = ''
+          if (Test-Path $stdout) { $text += (Get-Content $stdout -Raw) }
+          if (Test-Path $stderr) { $text += (Get-Content $stderr -Raw) }
+
+          $hasVersion = $text -match '\[aha-version\]'
+          $hasLoaded  = $text -match '\[ui-fxml-loaded\]'
+          $hasFailed  = $text -match '\[ui-fxml-load-failed\]'
+          # issue #60：OS / 驱动信息由 native（prism_d3d.dll）按名回写 D3DDriverInformation 的字段。
+          # 字段没登记时保持 Java 默认值，打印出来就是「Windows version 0.0 build 0」。
+          # 两条都要看：既要求这段真的打印了（否则下一条会**空过**），又要求它不是全零。
+          # 可判别性：改前该串必然出现（今天两条原生构建都是），改后应当消失 ⇒ 是真「前/后」对照。
+          $hasOsInfo  = $text -match 'OS Information:'
+          $zeroOsInfo = $text -match 'Windows version 0\.0 build 0'
+          # issue #151：没有「Windows 10 兼容清单」的 exe，GetVersionEx 家族一律返回 6.2.9200
+          # （= Windows 8.0），而 CI runner 是 Windows Server（10.0 家族）。
+          # 因此这两条在 CI 上都有判别力：改前必然命中 shim，改后应当是 10.x。
+          $shimOsInfo = $text -match 'Windows version 8\.0 build 9200'
+          $realOsInfo = $text -match 'Windows version 10\.'
+
+          # 把现场打全（TS-2610-003 的教训）。为什么**无条件**打印而不是只在失败时：
+          # 判定依赖「捕获到了什么」，而「什么都没捕获到」本身也是一种结论——
+          # 只看 verdict 无法区分「已捕获但没命中标记」与「redirect 压根没生效」。
+          # 这两者的排查方向完全不同，所以两者都要看得见。
+          Write-Host "—— 捕获情况：out=$((Get-Item $stdout -ErrorAction SilentlyContinue).Length) 字节，err=$((Get-Item $stderr -ErrorAction SilentlyContinue).Length) 字节 ——"
+          Write-Host '—— stdout（前 25 行）——'
+          if (Test-Path $stdout) { Get-Content $stdout -TotalCount 25 | ForEach-Object { Write-Host "OUT| $_" } }
+          Write-Host '—— stderr（前 25 行）——'
+          if (Test-Path $stderr) { Get-Content $stderr -TotalCount 25 | ForEach-Object { Write-Host "ERR| $_" } }
+
+          $ok = (-not $hasFailed) -and (-not ($exited -and $code -ne 0)) -and $hasLoaded `
+                -and $hasOsInfo -and (-not $zeroOsInfo) -and (-not $shimOsInfo) -and $realOsInfo
+          if ($hasFailed) {
+            $verdict = '失败：界面装载失败（命中 [ui-fxml-load-failed]）'
+          } elseif ($exited -and $code -ne 0) {
+            $verdict = "失败：启动期以非 0 退出（退出码 ${code}）"
+          } elseif (-not $hasLoaded) {
+            $verdict = '失败：未命中正面标记 [ui-fxml-loaded]（界面没有装起来）'
+          } elseif ($zeroOsInfo) {
+            $verdict = '失败：OS 信息全零（Windows version 0.0 build 0）——prism_d3d 按名回写字段失败（issue #60 回归）'
+          } elseif ($shimOsInfo) {
+            $verdict = '失败：OS 版本仍被兼容性 shim 报成 Windows 8.0 build 9200（issue #151：清单未嵌入或未生效）'
+          } elseif (-not $hasOsInfo) {
+            $verdict = '失败：未打印 OS Information（prism.verbose 输出缺失，本步的 #60 / #151 断言会空过）'
+          } elseif (-not $realOsInfo) {
+            $verdict = '失败：OS 版本不是 10.x（既不是 shim 的 8.0，也不是期望的真实版本——需看上面捕获的输出）'
+          } elseif (-not $hasVersion) {
+            $verdict = '可疑：命中 [ui-fxml-loaded] 但没有 [aha-version]'
+          } else {
+            $verdict = '通过：命中 [aha-version] 与 [ui-fxml-loaded]，且启动期未崩'
+          }
+
+          if ($ok) {
+            Write-Host "✅ GUI 冒烟：$verdict"
+          } else {
+            Write-Host "::error::GUI 冒烟：$verdict"
+          }
+
+          @(
+            '### 桌面端原生镜像 GUI 冒烟（windows-amd64）'
+            ''
+            "- 结论：$verdict"
+            "- 正面标记：``[aha-version]``=${hasVersion}，``[ui-fxml-loaded]``=${hasLoaded}，``[ui-fxml-load-failed]``=${hasFailed}"
+            "- OS / 驱动信息：``OS Information:``=${hasOsInfo}，全零（``Windows version 0.0 build 0``）=${zeroOsInfo}"
+            "- OS 版本真实性（issue #151）：命中 shim（``Windows version 8.0 build 9200``）=${shimOsInfo}，命中 10.x=${realOsInfo}"
+            "- 退出：exited=${exited}，code=${code}"
+            "- 可执行文件：$bin"
+            '- 说明：CI 无 GPU，Prism 走软件渲染 / WARP，D3D **驱动名 / 厂商 ID 等依赖真实 GPU 的字段仍可能是零值**（runner 是虚拟机）；能在这里判别的是 **Windows 版本号**（与 GPU 无关）。'
+            ''
+            '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+          # 失败时把现场打全（TS-2610-003 的教训）：日志尾部直接写进摘要，不必再去翻原始日志
+          # 注意：数组字面量里的元素必须**换行分隔**——PS 不接受 `@('a' 'b')` 这种单行空格分隔（会报
+          # Unexpected token，而且是**整段脚本解析失败**，静默变成空跑）。
+          if (-not $ok) {
+            $tail = (($text -split "`n") | Select-Object -Last 40) -join "`n"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value @(
+              ''
+              '```text'
+              $tail
+              '```'
+            )
+            exit 1
+          }
+          exit 0
+
+      - name: RenameToReleaseAsset
+        continue-on-error: true
+        if: steps.verify.outputs.produced == 'true'
+        run: |
+          set -euo pipefail
+          work=aha-desktop-native/target/native
+          # POM 产出的是 aha-desktop-native-<版本>-<jdk>.zip，
+          # 这里加上「操作系统 + 架构」，用户在发布页一眼能挑对。
+          # 产物统一落 Dist/（由 aha-desktop-native/pom.xml 决定），这里只改名
+          # 排除同族的报告包（`-report.zip`），否则 `ls` 会返回两行、`mv` 直接失败。
+          src=$(ls Dist/aha-desktop-native-*.zip | grep -v -- "-report.zip" | head -n1)
+          target="Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip"
+          mv -- "$src" "$target"
+          ls -lh "$target"
+          echo "发布资产：${target}"
+
+      - name: WritePackageManifest
+        # 另起一步、**不**沿用上一步的 continue-on-error：清单是升级器替换文件与逐项校验的依据，
+        # 缺了它这个包对升级器就是不合格的 —— 宁可这条腿红，也不要静默出一个不合格的包。
+        if: steps.verify.outputs.produced == 'true'
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
+            --zip "Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip" \
+            --kind desktop-native --version "${{ env.AHA_VERSION }}" \
+            --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
+            --graalvm "${{ steps.graal.outputs.version }}"
+
+      - name: VerifyWindows10Manifest
+        # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。
+        if: steps.verify.outputs.produced == 'true' && runner.os == 'Windows'
+        shell: bash
+        env:
+          # 双保险：即使 reconfigure 在某个 Python 上不可用，也让输出走 UTF-8。
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        run: |
+          set -euo pipefail
+          # 光看「加了参数」不算数：参数写错位置、被当应用参数、相对路径没解析到——
+          # 这些都表现得跟「成功」一模一样。所以到打好的包里把清单**找出来**。
+          python3 - <<'PY'
+          import sys, zipfile, pathlib
+
+          # Windows 的管道默认按 cp1252 解输出，print 中文 / ✅ 会抛 UnicodeEncodeError——
+          # 本轮就因此让「清单已嵌入」这句话自己把步骤弄挂了（构建与断言其实都通过了）。
+          # 写法与 Script/Python/*.py 一致。
+          for _stream in (sys.stdout, sys.stderr):
+              try:
+                  _stream.reconfigure(encoding="utf-8", errors="replace")
+              except (AttributeError, ValueError):
+                  pass
+
+          DIST = pathlib.Path("Dist")
+          guid = b"8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a"
+          zips = [p for p in DIST.glob("aha-desktop-native-*.zip") if "-report" not in p.name]
+          if not zips:
+              sys.exit("找不到镜像包（Dist/aha-desktop-native-*.zip）")
+          zips.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+          zip_path = zips[0]
+          with zipfile.ZipFile(zip_path) as archive:
+              exes = [i for i in archive.infolist() if i.filename.lower().endswith(".exe")]
+              if not exes:
+                  sys.exit(f"包内没有 exe：{archive.namelist()}")
+              data = archive.read(exes[0])
+          if guid not in data:
+              sys.exit(
+                  f"{zip_path.name} 的 {exes[0].filename} 里没有找到 Win10 兼容清单的 GUID\n"
+                  "  清单没嵌进去：检查 native.image.extra.argsfile 是否指向了 native-image-args-windows.txt\n"
+                  "  （在 Windows 上由 native-windows-manifest profile 自动设置）"
+              )
+          print(f"✅ 清单已嵌入：{zip_path.name} → {exes[0].filename}（命中 GUID {guid.decode()}）")
+          PY
+
+      - name: UploadArtifact
+        # 只有真的产出了二进制才上传；没有就跳过（不算失败——这是可选管线）
+        if: steps.verify.outputs.produced == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: Native-${{ inputs.label }}-jdk${{ inputs.jdk }}
+          path: |
+            Dist/aha-desktop-native-*.zip
+            !Dist/aha-desktop-native-*-report.zip
+          if-no-files-found: warn
+          retention-days: 14

@@ -26,7 +26,7 @@
   ——落地器就是这么核对的（`PackageManifest.java`）；
 * 清单写在**包根**：`AHA-PACKAGE.json` 自身**不进** `files`（否则校验和自指）；
 * `kind` 取值与 Java 的 `UpdateKind.of()` 一致：`desktop-jvm` / `desktop-native` / `cli-jvm` / `cli-native`；
-  `cli-jvm` 平台无关，**必须不带** `--platform`，其余三种**必须带**；
+  四种形态**都必须带** `--platform`（自 issue #269 起 CLI-JVM 也按平台拆名）；
 * 打包垃圾（`__MACOSX/`、`.DS_Store`）与非法路径（绝对路径、`..`、反斜杠）一律**响亮失败**，
   而不是默默写进清单；
 * 生成与校验都是确定性的（条目按 `path` 排序），同一份输入产出同一份 JSON，便于比对。
@@ -56,7 +56,8 @@ SUMS_NAME = "SHA256SUMS"
 KIND_HAS_PLATFORM = {
     "desktop-jvm": True,
     "desktop-native": True,
-    "cli-jvm": False,
+    # issue #269：CLI-JVM 也带平台段（三平台三个名字，内容暂相同）。
+    "cli-jvm": True,
     "cli-native": True,
 }
 
@@ -126,8 +127,12 @@ def read_entries(zip_path: Path, where: str = "包") -> list[Entry]:
     return entries
 
 
+#: 原生形态：清单必须记录构建它所用的 GraalVM 精确版本（issue #269 §5）。
+NATIVE_KINDS = frozenset({"desktop-native", "cli-native"})
+
+
 def build_manifest(kind: str, version: str, platform: str | None, jdk: int,
-                   entries: list[Entry]) -> dict:
+                   entries: list[Entry], graalvm: str | None = None) -> dict:
     """组装清单字典（字段与 `PackageManifest.java` 一一对应）。"""
     if kind not in KIND_HAS_PLATFORM:
         raise ManifestError(f"不认识的形态 `{kind}`（可选：{'、'.join(KIND_HAS_PLATFORM)}）")
@@ -138,13 +143,21 @@ def build_manifest(kind: str, version: str, platform: str | None, jdk: int,
         raise ManifestError(f"`{kind}` 的包平台无关，不该传 --platform（给了 {platform}）")
     if not entries:
         raise ManifestError("包里没有任何文件，拒绝生成清单")
-    return {
+    if kind in NATIVE_KINDS and not graalvm:
+        raise ManifestError(f"`{kind}` 的包由 GraalVM 构建，必须传 --graalvm（如 25.4）")
+    if kind not in NATIVE_KINDS and graalvm:
+        raise ManifestError(f"`{kind}` 是 JVM 包，不该传 --graalvm（给了 {graalvm}）")
+    manifest = {
         "kind": kind,
         "version": version,
         "platform": platform if needs_platform else None,
         "jdk": jdk,
         "files": [entry.to_json() for entry in entries],
     }
+    # `runtime` 段（jdk25 / graalvm25）是 JDK 级别；精确 GraalVM 版本单独记在 toolchain 里。
+    if graalvm:
+        manifest["toolchain"] = {"graalvm": graalvm}
+    return manifest
 
 
 def generate(zip_path: Path, manifest: dict) -> int:
@@ -260,6 +273,15 @@ def self_test() -> int:
 
         expect_ok("生成清单", lambda: generate(package, build_manifest(
             "desktop-jvm", "0.1.3.00242", "windows-amd64", 25, read_entries(package))))
+        native_entries = read_entries(package)
+        native_manifest = build_manifest(
+            "desktop-native", "0.1.3.00242", "windows-amd64", 25, native_entries, "25.4")
+        if native_manifest.get("toolchain", {}).get("graalvm") != "25.4":
+            failures.append("原生清单没有记录 toolchain.graalvm")
+        expect_fail("原生包没给 --graalvm", lambda: build_manifest(
+            "desktop-native", "0.1.3.00242", "windows-amd64", 25, native_entries))
+        expect_fail("JVM 包给了 --graalvm", lambda: build_manifest(
+            "desktop-jvm", "0.1.3.00242", "windows-amd64", 25, native_entries, "25.4"))
         expect_ok("校验清单", lambda: verify(package, "desktop-jvm", "0.1.3.00242", "windows-amd64"))
         expect_ok("再生成（幂等）", lambda: generate(package, build_manifest(
             "desktop-jvm", "0.1.3.00242", "windows-amd64", 25, read_entries(package))))
@@ -271,8 +293,8 @@ def self_test() -> int:
         expect_fail("版本不符", lambda: verify(package, "desktop-jvm", "0.1.3.00241", None))
         expect_fail("形态不符", lambda: verify(package, "cli-jvm", None, None))
         expect_fail("平台不符", lambda: verify(package, None, None, "ubuntu-amd64"))
-        expect_fail("平台无关的形态给了平台", lambda: build_manifest(
-            "cli-jvm", "0.1.3.00242", "windows-amd64", 25, read_entries(package)))
+        expect_fail("CLI-JVM 没给平台（issue #269 起必须带平台段）", lambda: build_manifest(
+            "cli-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("带平台的形态没给平台", lambda: build_manifest(
             "desktop-jvm", "0.1.3.00242", None, 25, read_entries(package)))
         expect_fail("不认识的形态", lambda: build_manifest(
@@ -317,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--version", required=True)
     gen.add_argument("--platform")
     gen.add_argument("--jdk", type=int, required=True)
+    gen.add_argument("--graalvm", help="原生包的 GraalVM 精确版本（如 25.4），JVM 包不传")
 
     ver = sub.add_parser("verify", help="核对包内清单与包的真实内容")
     ver.add_argument("--zip", required=True)
@@ -338,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "generate":
             package = Path(args.zip)
             manifest = build_manifest(args.kind, args.version, args.platform, args.jdk,
-                                      read_entries(package))
+                                      read_entries(package), args.graalvm)
             return generate(package, manifest)
         if args.command == "verify":
             return verify(Path(args.zip), args.kind, args.version, args.platform)

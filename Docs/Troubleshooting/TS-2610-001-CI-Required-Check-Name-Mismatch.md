@@ -3,7 +3,7 @@
 > 日期：2026-10-07
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#6](https://github.com/ACANX/AHA/pull/6)（bump: Dependa deps → main）
-> 关联记录：[TODO.md](../TODO.md) `F-08`、[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1
+> 关联记录：[TODO.md](../TODO/README.md) `F-08`、[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1
 
 ---
 
@@ -132,7 +132,7 @@ continue-on-error: ${{ matrix.os == 'macos-latest' }}
 4. **job 级 `name:` 同样是检查名**（`Gate.yml` / `Compat.yml` 都用了它），
    改 `name:` 等于改必需检查的名字。
 5. **改名必须成对操作**：工作流里的作业名 / 必需腿矩阵键一变，就要同步更新分支保护，
-   并刷新台账（[TODO.md](../TODO.md) `G-02` 的验收清单），否则下一次失配同样无人知道。
+   并刷新台账（[TODO.md](../TODO/README.md) `G-02` 的验收清单），否则下一次失配同样无人知道。
 6. **排障要拿到原始证据再下结论。** 本轮先取得作业标签做逐条对照，才在两分钟内定位；
    若停在「像是卡住」的猜测上，会一直在 runner、配额、网络这些方向上绕。
 

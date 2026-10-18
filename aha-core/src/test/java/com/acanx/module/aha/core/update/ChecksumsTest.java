@@ -46,18 +46,18 @@ class ChecksumsTest {
     void parsesSumsFileWithBothTextAndBinaryLinesAndComments() {
         String text = """
                 # 这是注释
-                %s  aha-cli-0.1.3.00242.zip
+                %s  aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip
 
-                %s *aha-desktop-0.1.3.00242-windows-amd64.zip\r
+                %s *aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip\r
                 """.formatted(HELLO_SHA256, AHA_SHA256);
 
         Map<String, String> sums = Checksums.parse(text);
 
-        assertThat(sums).containsOnlyKeys("aha-cli-0.1.3.00242.zip",
-                "aha-desktop-0.1.3.00242-windows-amd64.zip");
-        assertThat(Checksums.digestOf(sums, "aha-cli-0.1.3.00242.zip")).contains(HELLO_SHA256);
+        assertThat(sums).containsOnlyKeys("aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip",
+                "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip");
+        assertThat(Checksums.digestOf(sums, "aha-cli-jvm-0.1.3.00242-windows-amd64-jdk25.zip")).contains(HELLO_SHA256);
         // `*` 二进制模式前缀要被剥掉，文件名里不含星号
-        assertThat(Checksums.digestOf(sums, "aha-desktop-0.1.3.00242-windows-amd64.zip"))
+        assertThat(Checksums.digestOf(sums, "aha-desktop-jvm-0.1.3.00242-windows-amd64-jdk25.zip"))
                 .contains(AHA_SHA256);
     }
 

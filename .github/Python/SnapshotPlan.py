@@ -47,10 +47,10 @@ SNAPSHOT_LABELS: dict[str, str] = {
 OS_WORDS: dict[str, str] = {"win": "OS:Win", "macos": "OS:MacOS", "ubuntu": "OS:Ubuntu"}
 
 #: 平台限定标签 → 平台标签。**两条线共用这一套词**（2026-10-15 统一，见 issue #215 / BuildSpec §11.1）：
-#: Win→windows-amd64、Ubuntu→ubuntu-amd64、MacOS→macos-arm64。
+#: Win→windows-amd64、Ubuntu→ubuntu-amd64、MacOS→macos-aarch64（架构词统一 aarch64，issue #287）。
 OS_LABELS: dict[str, str] = {
     "OS:Win": "windows-amd64",
-    "OS:MacOS": "macos-arm64",
+    "OS:MacOS": "macos-aarch64",
     "OS:Ubuntu": "ubuntu-amd64",
 }
 
@@ -73,24 +73,25 @@ TARGET_ALIASES = {
     "nativecli": "Cli-Native",
 }
 
-#: JVM 快照线的腿：**没有 macOS**、**只有 JDK 25**（#165 验收 1 明写「不得出现 macOS / JDK27」）。
-#: 注意这与 dev 线（BuildJVMArtifacts 默认六腿）不同 —— dev 线出 macOS/JDK27，快照线不出。
-#: 因此 `OS:MacOS` + JVM 目标 = 没有可用的腿 ⇒ 判定为不出包并说明原因（自检里有这条用例）。
+#: JVM 快照线的腿：三平台 × **只有 JDK 25**（#165 验收 1 的「不出 JDK27」仍然成立；
+#: macOS 腿自 2026-10-18 起补上，用于 CLI-JVM 的按平台出包 —— 桌面端 JVM 快照仍不出 macOS）。
+#: CLI-JVM 自 issue #269 起在三条 jdk25 腿上都产出（`upload_cli=True`）。
 JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
     # (runner, label, jdk, upload_cli)
     "ubuntu-amd64": [("ubuntu-latest", "ubuntu-amd64", 25, True)],
-    "windows-amd64": [("windows-latest", "windows-amd64", 25, False)],
+    "windows-amd64": [("windows-latest", "windows-amd64", 25, True)],
+    "macos-aarch64": [("macos-latest", "macos-aarch64", 25, True)],
 }
 
 #: 快照的发布页 tag / 发行名（ACANX 定案，2026-10-14）：
-#:   tag  = `V<快照版本>-AHA-<目标>-SNAPSHOT`
+#:   tag  = `V<快照版本>-AHA-<目标>`（5 段版本已能区分快照，不再需要 `-SNAPSHOT` 后缀）
 #:   名称 = tag + 「（PR #<N> 快照）」
 #: 与 dev 线的 `V<版本>-aha-jvm` / 正式发版的 `V<版本>` **同为 `V*` 家族**，
 #: 因此必须满足两件事（都已落实）：
-#:   1. `Release.yml` 的 tag 过滤要**排除** `-SNAPSHOT`（否则每次出快照都会触发正式发版流程）；
+#:   1. `Release.yml` 的 tag 过滤要**排除** `-AHA-*`（否则每次出快照都会触发正式发版流程）；
 #:   2. 保持 `prerelease: true`（不进 `releases/latest`）。
 #: 每个目标一条 tag（一次运行若同时选中 Desktop 与 Cli，会得到两条并列的 pre-release）。
-TAG_FORMAT = "V{version}-AHA-{target}-SNAPSHOT"
+TAG_FORMAT = "V{version}-AHA-{target}"
 
 #: 取件命令提示（写进 PR 评论）：目标 → `Dist/` 下的启动器。
 #: 启动器**每目标一个**（ACANX 2026-10-14 把通用 `UpdateSnapshot.cmd` 拆开），免得用户还要自己记 `-Kind`；
@@ -101,42 +102,40 @@ FETCH_LAUNCHERS = {
 }
 FETCH_LAUNCHER_DEFAULT = r"Dist\UpdateSnapshot.ps1 -Kind jvm -Pr {pr}"
 # 发行名与 tag **完全相同**：再加「（PR #N 快照）」只是重复（PR 号已经在版本段 `.<PR 补零 5 位>.` 里，
-# 「快照」也已经在 `-SNAPSHOT` 后缀里）——ACANX 定案删掉。
+# 「快照」也已经在 5 段版本号里）——ACANX 定案删掉 2026-10-17：`-SNAPSHOT` 后缀也去掉。
 RELEASE_NAME_FORMAT = TAG_FORMAT
 
 #: 快照包资产名（#165 §八）。`{label}` 用平台标签；CLI 包平台无关，但按 §八 仍带平台段。
-# 命名对称（ACANX 定案，2026-10-14）：桌面端与 CLI 都要带目标段，且与原生线对称——
-#   原生：AHA-Desktop-Native-… / AHA-Cli-Native-…
-#   JVM ：AHA-Desktop-JVM-…    / AHA-Cli-JVM-…
-# 早先桌面端写成 `AHA-JVM-…`（不带 `Desktop`）：标签写的是 `…-AHA-Desktop-SNAPSHOT`，
-# 资产却叫 `AHA-JVM-…`，两处对不上，也读不出「这是桌面包」。
+# 自 issue #269 起资产名统一为**小写新文法**（与 tag 的大写 `AHA-<product>-<form>` 无关）：
+#   aha-<product>-<form>-<版本>-<平台>-<runtime>.zip
+# 四个目标共用一套文法，JVM 与原生只在 `form` / `runtime` 段不同。
 ASSET_FORMATS = {
-    "Desktop-JVM": "AHA-Desktop-JVM-{version}-{label}-jdk25.zip",
-    "Cli-JVM": "AHA-Cli-JVM-{version}-{label}-jdk25.zip",
+    "Desktop-JVM": "aha-desktop-jvm-{version}-{label}-jdk25.zip",
+    "Cli-JVM": "aha-cli-jvm-{version}-{label}-jdk25.zip",
 }
 
 # 【2026-10-15 合并】原生线原先另有一张 `OS_LABELS_NATIVE`（值是 `*-amd64`）。issue #215 把 JVM 线
 # 也统一到 `*-amd64` 之后，两张表**内容完全相同** ⇒ 合并进上面的 `OS_LABELS`，
 # 从结构上杜绝「同一平台两套叫法」再次分叉。
 
-#: 原生线「全部腿」（#165 §三：`ubuntu-amd64` / `windows-amd64` / `macos-arm64` × 现有 JDK）。
+#: 原生线「全部腿」（#165 §三：`ubuntu-amd64` / `windows-amd64` / `macos-aarch64` × 现有 JDK）。
 #: 与 DesktopNative.yml / CliNative.yml 的**静态矩阵逐条对应**；`OS:*` 只按平台收窄
 #: （该平台的 jdk25 / jdk27 两条腿都在内）。
 NATIVE_LEGS: dict[str, list[tuple[str, str, int]]] = {
     # (runner, label, jdk)
     "ubuntu-amd64": [("ubuntu-latest", "ubuntu-amd64", 25), ("ubuntu-latest", "ubuntu-amd64", 27)],
     "windows-amd64": [("windows-latest", "windows-amd64", 25), ("windows-latest", "windows-amd64", 27)],
-    "macos-arm64": [("macos-latest", "macos-arm64", 25)],
+    "macos-aarch64": [("macos-latest", "macos-aarch64", 25)],
 }
 
 #: 原生线资产名（#165 §八）：镜像包 + 同名族的独立报告包（报告包是 dev 线既有产物，快照一并带上）。
 NATIVE_ASSET_FORMATS = {
-    "Desktop-Native": "AHA-Desktop-Native-{version}-{label}-jdk{jdk}.zip",
-    "Cli-Native": "AHA-Cli-Native-{version}-{label}-jdk{jdk}.zip",
+    "Desktop-Native": "aha-desktop-native-{version}-{label}-graalvm{jdk}.zip",
+    "Cli-Native": "aha-cli-native-{version}-{label}-graalvm{jdk}.zip",
 }
 
 #: 原生腿标签 → 平台中文名（写进 run 摘要，验收 12 要求摘要写明「限定平台：Windows」）。
-NATIVE_PLATFORM_NAMES = {"windows-amd64": "Windows", "macos-arm64": "macOS", "ubuntu-amd64": "Ubuntu"}
+NATIVE_PLATFORM_NAMES = {"windows-amd64": "Windows", "macos-aarch64": "macOS", "ubuntu-amd64": "Ubuntu"}
 
 #: 两条线各用各的评论标记：JVM 线用 `aha-snapshot`，原生线用 `aha-snapshot-native`。
 #: **必须分开**：原生标签事件若不认领就罢了，一旦认领却写同一个标记，就会把另一条线的
@@ -152,7 +151,7 @@ class PlanError(Exception):
 
 
 def read_manifest(path: Path) -> tuple[list[str], dict[str, list[str]]]:
-    """读快照清单（`.github/snapshot-paths.yml`）的标签与 A/B/C 路径分组。
+    """读快照清单（`.github/SnapshotPaths.yml`）的标签与 A/B/C 路径分组。
 
     只认该文件固定的形状（与 `bin/CheckScripts.py` 的断言一致）：顶层 `labels:` / `paths:`，
     其下 `组名:` 与 `- 值`。形状变了会解析为空，由调用方报错，而不是静默放行。
@@ -249,7 +248,7 @@ def parse_command(command: str) -> tuple[list[str], list[str]]:
 
 def _os_word(platform: str) -> str:
     """平台标签 → `/snapshot` 命令里的词（两条线共用一套标签，见 issue #215）。"""
-    return {"windows-amd64": "win", "macos-arm64": "macos", "ubuntu-amd64": "ubuntu"}[platform]
+    return {"windows-amd64": "win", "macos-aarch64": "macos", "ubuntu-amd64": "ubuntu"}[platform]
 
 
 def build_version(baseline: str, pr: int, now: datetime) -> str:
@@ -289,14 +288,22 @@ def asset_names(targets: list[str], version: str, platforms: list[str], line: st
                 continue
             for leg in build_legs([target], platforms, line="native"):
                 names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]))
-                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-Report.zip"))
+                names.append(fmt.format(version=version, label=leg["label"], jdk=leg["jdk"]).replace(".zip", "-report.zip"))
         return names
     labels = platforms or ["ubuntu-amd64", "windows-amd64"]
     for target in targets:
         fmt = ASSET_FORMATS.get(target)
         if not fmt:
             continue
-        for label in labels:
+        # CLI-JVM 内容平台无关：`OS:*` 只收窄**构建腿**，不能收窄资产名 ——
+        # 发布作业会把那一份包按三平台各复制一份（issue #269 §6 第 7 条），
+        # 期望清单也必须按三平台列，否则 `UpsertPreRelease` 找不到 `windows-amd64`
+        # 而把整条 release 变成 0 资产（2026-10-18 实测 `…-AHA-Cli-JVM`）。
+        target_labels = (
+            ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+            if target == "Cli-JVM" else labels
+        )
+        for label in target_labels:
             names.append(fmt.format(version=version, label=label))
     return names
 
@@ -466,11 +473,11 @@ def comment_body(plan: dict, run_url: str = "") -> str:
         "- `ubuntu-amd64`：构建与冒烟环境为 **Ubuntu 24.04**（GitHub runner 镜像 `ubuntu-24.04`）；"
         "CentOS / RHEL 等其他发行版**未验证**；\n"
         "- `windows-amd64`：构建与冒烟环境为 GitHub Actions 的 Windows runner（`windows-latest`，本 run 的镜像是 `windows-2025-vs2026`）。\n"
-    ) if any(name.startswith(("AHA-Desktop-JVM", "AHA-Cli-JVM")) for name in plan["assets"]) else ""
+    ) if any(name.startswith(("aha-desktop-jvm", "aha-cli-jvm")) for name in plan["assets"]) else ""
     native_note = (
         "\n> **原生包是试验性产物**（GraalVM native-image），不是正式发行包；"
-        "同一平台的镜像包与 `-Report.zip` 报告包一一对应。\n"
-    ) if any(name.startswith(("AHA-Desktop-Native", "AHA-Cli-Native")) for name in plan["assets"]) else ""
+        "同一平台的镜像包与 `-report.zip` 报告包一一对应。\n"
+    ) if any(name.startswith(("aha-desktop-native", "aha-cli-native")) for name in plan["assets"]) else ""
     return (
         f"{marker}\n"
         f"### 快照包（{label}）：`{plan['version']}`\n\n"
@@ -515,8 +522,8 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
     ("命令旧拼写 `/snapshot Cli Ubuntu` 等价可用（命令别名，不影响 tag 命名）",
      {"labels": [], "changed": ["aha-common/pom.xml"], "command": "/snapshot Cli Ubuntu"},
      True, "ubuntu-amd64"),
-    ("JVM 目标 + OS:MacOS ⇒ JVM 线没有该平台的腿",
-     {"labels": ["SNAPSHOT:Desktop", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, False, "没有对应的腿"),
+    ("JVM 目标 + OS:MacOS ⇒ 自 2026-10-18 起有 macos-aarch64 腿（CLI-JVM 按平台出包）",
+     {"labels": ["SNAPSHOT:Cli", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, True, "macos-aarch64"),
 ]
 
 #: 原生线（S4 / #172）的判定用例：line="native" + 本工作流负责的目标 Desktop-Native。
@@ -557,7 +564,7 @@ SELF_TEST_BAD_COMMANDS = [
 
 def self_test() -> int:
     """自检判定边界。"""
-    manifest = Path(__file__).resolve().parents[2] / ".github" / "snapshot-paths.yml"
+    manifest = Path(__file__).resolve().parents[2] / ".github" / "SnapshotPaths.yml"
     labels, groups = read_manifest(manifest)
     now = datetime(2026, 10, 14, 10, 14, 15, tzinfo=timezone.utc)
     problems = 0
@@ -596,25 +603,30 @@ def self_test() -> int:
     print(f"  {'✅' if cross_ok else '❌'} JVM 线跨线：不构建，但写「交接说明」（owns_comment="
           f"{jvm_cross['owns_comment']}，交由原生线处理）")
 
-    # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>-SNAPSHOT`
+    # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>`（2026-10-17 去掉 `-SNAPSHOT`）
     # 注意：这里必须**重新判定一次**，不能复用上面循环里的 plan（那是最后一个用例，
     # 可能正落在「不出包」分支 ⇒ releases 为空 ⇒ 断言永远失败）。
     plan = decide(labels=["SNAPSHOT:Desktop", "SNAPSHOT:Cli"], changed=["aha-common/pom.xml"],
                   baseline="0.1.3", pr=171, now=now, groups=groups)
     tags_ok = all(
-        group["tag"].startswith("V" + plan["version"]) and group["tag"].endswith("-SNAPSHOT")
-        and f"-AHA-{group['target']}-SNAPSHOT" in group["tag"]
+        group["tag"] == f"V{plan['version']}-AHA-{group['target']}"
         for group in plan["releases"]
     ) and len(plan["releases"]) == len(plan["targets"]) and plan["releases"]
     problems += 0 if tags_ok else 1
     print(f"  {'✅' if tags_ok else '❌'} 每个目标一条 tag："
           + "、".join(g["tag"] for g in plan["releases"]))
+    prefix_by_target = {
+        "Desktop-JVM": "aha-desktop-jvm-",
+        "Cli-JVM": "aha-cli-jvm-",
+        "Desktop-Native": "aha-desktop-native-",
+        "Cli-Native": "aha-cli-native-",
+    }
     prefix_ok = all(
-        all(name.startswith(f"AHA-{group['target']}-") for name in group["assets"])
+        all(name.startswith(prefix_by_target[group["target"]]) for name in group["assets"])
         for group in plan["releases"]
     )
     problems += 0 if prefix_ok else 1
-    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标对称（AHA-<目标>-…）："
+    print(f"  {'✅' if prefix_ok else '❌'} 资产前缀与目标一致（aha-<product>-<form>-…，issue #269）："
           + "；".join(f"{g['target']}→{g['assets'][0]}" for g in plan["releases"]))
     name_ok = all(g["name"] == g["tag"] for g in plan["releases"])
     problems += 0 if name_ok else 1
@@ -657,11 +669,11 @@ def self_test() -> int:
                   baseline="0.1.3", pr=172, now=now, groups=groups, line="native",
                   native_target="Desktop-Native")
     ok_full = len(full["legs"]) == 5 and len(full["releases"]) == 1 \
-        and full["releases"][0]["tag"] == f"V{full['version']}-AHA-Desktop-Native-SNAPSHOT" \
+        and full["releases"][0]["tag"] == f"V{full['version']}-AHA-Desktop-Native" \
         and full["version"].endswith("10141814") \
-        and all(a.startswith("AHA-Desktop-Native-") for a in full["assets"])
+        and all(a.startswith("aha-desktop-native-") for a in full["assets"])
     problems += 0 if ok_full else 1
-    print(f"  {'✅' if ok_full else '❌'} 原生线：全部腿 = 5 条，且每个目标一条 `V<版本>-AHA-<目标>-SNAPSHOT`")
+    print(f"  {'✅' if ok_full else '❌'} 原生线：全部腿 = 5 条，且每个目标一条 `V<版本>-AHA-<目标>`")
     checks += 1
 
     win = decide(labels=["SNAPSHOT:NativeDesktop", "OS:Win"], changed=["aha-desktop-native/pom.xml"],
@@ -670,6 +682,17 @@ def self_test() -> int:
     ok_win = win["legs"] == ["windows-amd64/jdk25", "windows-amd64/jdk27"] and win["platforms"] == ["windows-amd64"]
     problems += 0 if ok_win else 1
     print(f"  {'✅' if ok_win else '❌'} 原生线：`OS:Win` ⇒ 恰好 windows-amd64 的 jdk25 + jdk27 两条腿")
+    checks += 1
+
+    # CLI-JVM：`OS:Win` 只收窄构建腿，**资产名仍按三平台列**（issue #269 §6 第 7 条）。
+    # 2026-10-18 实测：期望清单只列 windows、实际只产 ubuntu ⇒ 发布作业找不到资产，release 变 0 资产。
+    cli_win = decide(labels=["SNAPSHOT:Cli", "OS:Win"], changed=["aha-cli/pom.xml"],
+                     baseline="0.1.3", pr=172, now=now, groups=groups, line="jvm")
+    ok_cli_win = cli_win["legs"] == ["windows-amd64/jdk25"] \
+        and [a.split("-")[4] + "-" + a.split("-")[5] for a in cli_win["assets"]] \
+        == ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+    problems += 0 if ok_cli_win else 1
+    print(f"  {'✅' if ok_cli_win else '❌'} CLI-JVM：`OS:Win` 只收窄构建腿，资产名仍按三平台列")
     checks += 1
 
     # 两条线的评论标记必须不同：否则原生线会把 JVM 线的评论覆盖掉
@@ -814,7 +837,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--label-event", action="store_true", help="本次事件是「新打标签」（= 显式请求）")
     parser.add_argument("--now", help="当前时间（ISO8601；默认取系统时间，仅便于自检）")
     parser.add_argument("--run-url", default="", help="本次 run 的链接（写进 PR 评论）")
-    parser.add_argument("--manifest", default=str(Path(__file__).resolve().parents[2] / ".github" / "snapshot-paths.yml"))
+    parser.add_argument("--manifest", default=str(Path(__file__).resolve().parents[2] / ".github" / "SnapshotPaths.yml"))
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     parser.add_argument("--comment", action="store_true", help="输出 PR 评论正文")
     parser.add_argument("--notice", metavar="REASON", help="输出「未构建」评论正文（用法错误 / 无权限等）")

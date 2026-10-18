@@ -2,11 +2,11 @@
 
 > 待办编号：TD-00018
 > 标题：自动打的 `V*` tag 不触发 `Release.yml` —— 不配 PAT 前提下打通自动出包
-> 状态：◐ 进行中（实现：PR [#240](https://github.com/ACANX/AHA/pull/240)；闭环验收需一次真实发版）
-> 跟踪 Issue 状态：**OPEN**
+> 状态：✅ **已完成**（实现：PR [#240](https://github.com/ACANX/AHA/pull/240)；**闭环验收**：`V0.1.3` 首次真发版跑通，见 [#238 验收评论](https://github.com/ACANX/AHA/issues/238#issuecomment-6230970801)）
+> 跟踪 Issue 状态：**CLOSED**（2026-10-17）
 > 跟踪 Issue：[#238](https://github.com/ACANX/AHA/issues/238)
 > 创建日期：2026-10-16
-> 最后更新：2026-10-16
+> 最后更新：2026-10-17（`V0.1.3` 实测闭环）
 
 ---
 
@@ -95,7 +95,7 @@ commit `32a8557`）。除上表外多做了两处：
 
 - [x] 选定方案 → **B**（2026-10-16 已拍板）；
 - [x] 代码与文档同步修改（`Release.yml` / `Build.yml` / `ReleaseProcess.md` / `VersionBumpGuide.md` / `BuildSpec.md` / `CHANGELOG.md`）—— PR [#240](https://github.com/ACANX/AHA/pull/240)；
-- [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现 `aha-cli-<版本>.zip` 与三平台 `aha-desktop-<版本>-<系统>-<架构>.zip`；
+- [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现三平台 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip`；
 - [ ] 全流程**不使用 PAT / GitHub App token**（只用 `GITHUB_TOKEN`）；
 - [ ] 人工推 tag 的既有路径（`push: tags`）不被破坏；
 - [ ] **幂等**：tag 已存在（重复合入 `main`）时不重复派发；

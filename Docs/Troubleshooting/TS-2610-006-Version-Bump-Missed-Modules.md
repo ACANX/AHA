@@ -3,7 +3,7 @@
 > 日期：2026-10-08
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#12](https://github.com/ACANX/AHA/pull/12) / [#13](https://github.com/ACANX/AHA/pull/13)（自动打 tag 与 CHANGELOG 修订）之后的版本号切换
-> 关联记录：[ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节、[TODO.md](../TODO.md) `G-06`、[CHANGELOG.md](../../CHANGELOG.md) `[0.1.1]`
+> 关联记录：[ReleaseProcess.md](../DevSpec/ReleaseProcess.md) 第 2 节、[TODO.md](../TODO/README.md) `G-06`、[CHANGELOG.md](../../CHANGELOG.md) `[0.1.1]`
 
 ---
 

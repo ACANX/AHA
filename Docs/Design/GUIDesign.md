@@ -35,7 +35,7 @@
 | **GUIDesign.md（本文件）** | **界面方案**：布局、视觉语言、菜单、交互流程、状态设计 |
 | [TUIDesign.md](TUIDesign.md) | CLI 端的已实现形态；桌面端与之共享配色语义与命令名 |
 | [RemoteAndProtocolDesign.md](RemoteAndProtocolDesign.md) | 1.0+ 远程接入；桌面端是它的第一个真实客户端 |
-| [PLAN.md](../PLAN.md) | 暂缓与受限事项 |
+| [PLAN.md](../TODO/README.md) | 暂缓与受限事项 |
 
 **当前状态**：0.2 才实现。0.1 只有占位类 `AhaDesktopApp`（`main` 直接抛
 `UnsupportedOperationException`）。本文是提案，用于在动手前对齐「做成什么样」。
@@ -559,7 +559,7 @@ WebView（HTML/CSS/JS） ──HTTP/SSE──▶ 进程内 HTTP 服务器 ──
 | 输入区：`/` 命令面板、`@` 文件引用、`↑↓` 历史 | ✅ 0.1.1 起：`SlashCommands` / `FileMentions` / `InputHistory` 三块纯逻辑；候选弹层不抢焦点；斜杠命令在本端执行、不发给模型 |
 | 授权弹窗 | ✅ 0.1.1 起：自绘弹窗（权限说明 + 完整参数 + 「本会话内始终允许 WRITE」+ 默认焦点在拒绝 + `Esc` 即拒绝）；「工具 → 全部撤销本会话授权」可撤回 |
 | 暗 / 亮 / 跟随系统主题 + 设置面板 | ✅ 0.1.1 起：`Theme` / `Palette` 两套色表，换主题会重刷**已建节点**；字号与主题存 `AHA_HOME/desktop.properties`；设置面板三块（主题 / 字号 / 默认模型入口）都是真实可用的 |
-| 记忆面板、扩展面板、身份加载顺序展示、`Ctrl+F` 会话内搜索 | ☐ 未做（`Docs/Dbsx.txt` 与 `TODO.md` 已列明） |
+| 记忆面板、扩展面板、身份加载顺序展示、`Ctrl+F` 会话内搜索 | ☐ 未做（`Docs/TODO/TD-00005-Desktop02Remaining.md` 与 `TODO.md` 已列明） |
 | 标志与窗口图标 | ✅ 0.1.1 起：`Logo.svg` 栅格化后作窗口图标与空态展示（`DesktopDesign.md` §9） |
 | 窗口冒烟测试 | ◐ 已写、**默认跳过**（需图形环境；何时进 CI 见 `TODO.md` `D-04`） |
 
@@ -572,4 +572,4 @@ WebView（HTML/CSS/JS） ──HTTP/SSE──▶ 进程内 HTTP 服务器 ──
 - [MemoryStorageDesign.md](MemoryStorageDesign.md)：记忆分层与「先记录存档，后利用」
 - [ToolSystemDesign.md](ToolSystemDesign.md)：工具分类与权限模型
 - [RemoteAndProtocolDesign.md](RemoteAndProtocolDesign.md)：1.0+ 远程接入
-- [PLAN.md](../PLAN.md)：暂缓与受限事项
+- [PLAN.md](../TODO/README.md)：暂缓与受限事项

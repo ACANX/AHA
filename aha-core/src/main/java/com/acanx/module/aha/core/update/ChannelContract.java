@@ -5,40 +5,40 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 通道契约：把「通道 × 形态」唯一地映射到发布页的 <b>tag</b> 与 <b>资产名</b>（issue #51 §2.1）。
+ * 通道契约：把「通道 × 形态」唯一地映射到发布页的 <b>tag</b> 与 <b>资产名</b>
+ * （issue #51 §2.1；文法自 issue #269 起统一）。
  *
  * <p>这是本仓库第三次实现「从发布页挑包」这套规则（前两次是 {@code Dist/UpdateJvm.ps1} 与
  * {@code Script/Python/NativeVersionUpdate.py}）。规则一旦漂移，表现是「某个通道/平台上永远取不到包」，
  * <b>静默且难查</b>，所以本类把命名规则收在一处、双向都给（生成 + 解析），并由
  * {@code bin/CheckScripts.py} 的 {@code check_release_channel_contract()} 断言三处实现逐字一致。</p>
  *
- * <p><b>命名表（实现必须逐字按此）</b>：</p>
+ * <p><b>资产名文法（唯一一处定义，issue #269 §1）</b>：</p>
+ *
+ * <pre>{@code
+ * aha-<product>-<form>-<version>-<os>-<arch>-<runtime>.zip
+ * }</pre>
  *
  * <ul>
- *   <li>{@link ReleaseChannel#STABLE}（基线 {@code x.y.z}）：
- *     <ul>
- *       <li>tag：{@code V<版本>}（正式 release，{@code prerelease=false}）；</li>
- *       <li>资产：{@code aha-desktop-<版本>-<平台>.zip} / {@code aha-cli-<版本>.zip}
- *           —— 只有 JDK 25（无 {@code -jdk} 后缀）；</li>
- *       <li>原生形态<b>暂无</b>（正式发版目前只出 CLI 包与桌面端 JVM 包，见 issue #51 §2.1）。</li>
- *     </ul>
- *   </li>
- *   <li>{@link ReleaseChannel#BETA}（开发版 {@code x.y.z.PPPPP}）：
- *     <ul>
- *       <li>tag：JVM 线 {@code V<版本>-aha-jvm}；原生线 {@code V<版本>-aha-desktop-native}
- *           / {@code -aha-cli-native}；</li>
- *       <li>资产：JVM 线同上（JDK 25 无后缀，JDK 27 为 {@code -jdk27}）；
- *           原生线 {@code AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip}。</li>
- *     </ul>
- *   </li>
- *   <li>{@link ReleaseChannel#ALPHA}（快照 {@code x.y.z.PPPPP.MMddHHmm}）：
- *     <ul>
- *       <li>tag：{@code V<快照版本>-AHA-<目标词>-SNAPSHOT}；</li>
- *       <li>资产：{@code AHA-<目标词>-<快照版本>-<平台>-jdk<JDK>.zip}；
- *           同族的 {@code -Report.zip} 是构建报告包，<b>不是</b>升级资产（解析时会自然落空）。</li>
- *     </ul>
- *   </li>
+ *   <li>{@code product}：{@code desktop} / {@code cli}；</li>
+ *   <li>{@code form}：{@code jvm} / {@code native}；</li>
+ *   <li>{@code os}-{@code arch}：{@code windows-amd64} / {@code ubuntu-amd64} / {@code macos-aarch64}；</li>
+ *   <li>{@code runtime}：JVM 形态 {@code jdk25}（或 {@code jdk27}），原生形态 {@code graalvm25}。</li>
  * </ul>
+ *
+ * <p><b>tag 文法</b>：</p>
+ *
+ * <ul>
+ *   <li>{@link ReleaseChannel#STABLE}：{@code V<版本>}（一个 release 装下全部资产）；</li>
+ *   <li>{@link ReleaseChannel#BETA}：{@code V<版本>-aha-<product>-<form>}；</li>
+ *   <li>{@link ReleaseChannel#ALPHA}：{@code V<版本>-AHA-<product>-<form>}
+ *       （5 段版本已能区分，2026-10-17 起不再带 {@code -SNAPSHOT}）。</li>
+ * </ul>
+ *
+ * <p><b>旧名兼容</b>：0.1.3 及更早的两套资产名（{@code aha-desktop-…} / {@code AHA-Desktop-Native-…}）
+ * 与旧 tag（{@code -aha-jvm}、{@code -AHA-Desktop-Native-SNAPSHOT}）在一个版本周期内仍可解析，
+ * 见 {@link #parseAsset} 与 {@link #versionOfTag} 的兼容分支。0.1.5 起旧名由
+ * {@code check_release_matrix()} 的版本门槛判红。</p>
  *
  * <p>本类无 IO、无外部依赖，可在 CI 里完全离线验证。</p>
  *
@@ -46,16 +46,16 @@ import java.util.regex.Pattern;
  */
 public final class ChannelContract {
 
-    /** 默认 JDK 段：JVM 线的默认变体（资产名<b>不带</b> {@code -jdk} 后缀）。 */
+    /** 默认 JDK 段：JVM 线的默认变体。 */
     public static final int DEFAULT_JDK = 25;
 
-    /** JVM 线 dev 预发行的 tag 后缀。 */
+    /** 旧 JVM 线 dev 预发行的 tag 后缀（0.1.3 及更早，兼容用）。 */
     public static final String JVM_TAG_SUFFIX = "-aha-jvm";
 
     /** 原生线 dev 预发行的 tag 中缀（其后是 {@code desktop-native} / {@code cli-native}）。 */
     public static final String NATIVE_TAG_INFIX = "-aha-";
 
-    /** 快照 tag 的目标词中缀（其后是 {@code Desktop-JVM} 等目标词）。 */
+    /** 旧快照 tag 的目标词中缀（其后是 {@code Desktop-JVM} 等目标词）。 */
     public static final String SNAPSHOT_TARGET_INFIX = "-AHA-";
 
     /** 快照 tag 后缀。 */
@@ -64,17 +64,23 @@ public final class ChannelContract {
     /** 资产扩展名。 */
     public static final String ZIP_SUFFIX = ".zip";
 
-    /** 显式 JDK 段的前缀（{@code -jdk25} / {@code -jdk27}）。 */
+    /** 旧 JDK 段前缀（{@code -jdk25} / {@code -jdk27}），兼容用。 */
     public static final String JDK_INFIX = "-jdk";
+
+    /** 新文法的 runtime 段前缀：JVM 形态。 */
+    public static final String RUNTIME_JDK = "jdk";
+
+    /** 新文法的 runtime 段前缀：原生形态。 */
+    public static final String RUNTIME_GRAALVM = "graalvm";
 
     /** 版本段的通用正则片段（3–5 段；具体段数由通道决定）。 */
     private static final String VERSION_GROUP = "(?<version>[0-9]+(?:\\.[0-9]+){2,4})";
 
-    /** 平台标签片段（{@code windows-amd64} / {@code macos-arm64}）。 */
+    /** 平台标签片段（{@code windows-amd64} / {@code macos-aarch64}）。 */
     private static final String PLATFORM_GROUP = "(?<platform>[a-z0-9]+(?:-[a-z0-9]+)*)";
 
-    /** 资产名末尾的 JDK 段（解析时先剥掉它，再匹配剩下的核心部分）。 */
-    private static final Pattern JDK_SUFFIX = Pattern.compile("-jdk([0-9]+)$");
+    /** 旧资产名末尾的 JDK 段（解析兼容分支时先剥掉）。 */
+    private static final Pattern LEGACY_JDK_SUFFIX = Pattern.compile("-jdk([0-9]+)$");
 
     private ChannelContract() {
     }
@@ -82,15 +88,15 @@ public final class ChannelContract {
     /**
      * 该通道是否有该形态的包。
      *
-     * <p>目前唯一的不支持组合是「稳定通道 + 原生形态」：正式发版只出 CLI 包与桌面端 JVM 包，
-     * 原生单文件的正式发布排在 1.x（{@code Docs/DevSpec/ReleaseProcess.md} §3）。</p>
+     * <p>自 0.1.4 起原生形态进 Stable（issue #269 §3），四组合在所有通道都发布；
+     * 「本版本到底出了哪些」由 {@code .github/ReleaseMatrix.yml} 与本类的资产列表决定。</p>
      *
      * @param channel 通道
      * @param kind    形态
-     * @return 支持返回 {@code true}
+     * @return 恒为 {@code true}
      */
     public static boolean supports(ReleaseChannel channel, UpdateKind kind) {
-        return channel != ReleaseChannel.STABLE || !kind.nativeImage();
+        return true;
     }
 
     /**
@@ -113,27 +119,24 @@ public final class ChannelContract {
      * @param channel 通道
      * @param kind    形态
      * @param version 版本（段数必须与通道相符）
-     * @return tag，如 {@code V0.1.3.00233-aha-jvm}
-     * @throws IllegalArgumentException 该通道没有该形态，或版本段数与通道不符
+     * @return tag，如 {@code V0.1.4.00233-aha-desktop-jvm}
+     * @throws IllegalArgumentException 版本段数与通道不符
      */
     public static String tag(ReleaseChannel channel, UpdateKind kind, AhaVersion version) {
-        requireSupported(channel, kind);
         requireForm(channel, version);
         return switch (channel) {
             case STABLE -> "V" + version.value();
-            case BETA -> "V" + version.value() + (kind.nativeImage()
-                    ? NATIVE_TAG_INFIX + kind.tagSuffix()
-                    : JVM_TAG_SUFFIX);
-            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.targetWord()
-                    + SNAPSHOT_TAG_SUFFIX;
+            case BETA -> "V" + version.value() + NATIVE_TAG_INFIX + kind.tagSuffix();
+            // 2026-10-17 起快照 tag 不再带 `-SNAPSHOT`：5 段版本已能区分（issue #269）。
+            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.tagSuffix();
         };
     }
 
     /**
      * 从 tag 解析版本号；tag 不属于该「通道 + 形态」时返回空。
      *
-     * <p>「不属于」包含三种情况：tag 形态对不上、版本段数与通道不符、该组合本就不支持。
-     * 调用方（发布页过滤）据此把 release 分派到对应通道，而不是靠一堆 {@code startsWith}。</p>
+     * <p>兼容 0.1.3 的旧写法：{@code -aha-jvm}（对应 {@code desktop-jvm} / {@code cli-jvm} 两者）
+     * 与 {@code -AHA-<TargetWord>-SNAPSHOT}（大写驼峰目标词）。</p>
      *
      * @param channel 通道
      * @param kind    形态
@@ -141,56 +144,51 @@ public final class ChannelContract {
      * @return 版本；不匹配返回 {@link Optional#empty()}
      */
     public static Optional<AhaVersion> versionOfTag(ReleaseChannel channel, UpdateKind kind, String tag) {
-        if (tag == null || !supports(channel, kind)) {
+        if (tag == null) {
             return Optional.empty();
         }
-        Matcher matcher = tagPattern(channel, kind).matcher(tag.trim());
-        if (!matcher.matches()) {
-            return Optional.empty();
+        String text = tag.trim();
+        for (String candidate : tagPatterns(channel, kind)) {
+            Matcher matcher = Pattern.compile(candidate).matcher(text);
+            if (matcher.matches()) {
+                AhaVersion version = AhaVersion.parse(matcher.group("version"));
+                if (matchesForm(channel, version)) {
+                    return Optional.of(version);
+                }
+            }
         }
-        AhaVersion version = AhaVersion.parse(matcher.group("version"));
-        return matchesForm(channel, version) ? Optional.of(version) : Optional.empty();
+        return Optional.empty();
     }
 
     /**
-     * 生成资产名。
+     * 生成资产名（新文法）。
      *
      * @param channel     通道
      * @param kind        形态
      * @param version     版本（段数必须与通道相符）
-     * @param platformTag 平台标签；形态带平台段时必填，不带平台段时必须留空
+     * @param platformTag 平台标签（必填）
      * @param jdk         JDK 大版本（≥ {@link #DEFAULT_JDK}）
-     * @return 资产名，如 {@code aha-desktop-0.1.3.00233-windows-amd64-jdk27.zip}
-     * @throws IllegalArgumentException 参数与命名表不符
+     * @return 资产名，如 {@code aha-desktop-jvm-0.1.4-windows-amd64-jdk25.zip}
+     * @throws IllegalArgumentException 参数与文法不符
      */
     public static String assetName(ReleaseChannel channel, UpdateKind kind, AhaVersion version,
                                    String platformTag, int jdk) {
-        requireSupported(channel, kind);
         requireForm(channel, version);
         if (jdk < DEFAULT_JDK) {
             throw new IllegalArgumentException(
                     "JDK 段必须 ≥ " + DEFAULT_JDK + "（实际 " + jdk + "）");
         }
-        boolean platformGiven = platformTag != null && !platformTag.isBlank();
-        if (kind.hasPlatform() && !platformGiven) {
+        if (platformTag == null || platformTag.isBlank()) {
             throw new IllegalArgumentException(
                     kind.targetWord() + " 的资产名带平台段，必须传入平台标签");
         }
-        if (!kind.hasPlatform() && platformGiven) {
-            throw new IllegalArgumentException(
-                    kind.targetWord() + " 的资产名没有平台段（平台无关），不应传入：" + platformTag);
-        }
-        String platform = kind.hasPlatform() ? "-" + platformTag : "";
-        // JDK 段的两种口径：**原生线与快照线始终带** -jdk<JDK>；JVM 线只有非默认变体才带。
-        String jdkSuffix = jdkRequired(channel, kind) ? JDK_INFIX + jdk : variantJdkSuffix(jdk);
-        String prefix = channel == ReleaseChannel.ALPHA
-                ? "AHA-" + kind.targetWord() + "-"
-                : kind.assetPrefix();
-        return prefix + version.value() + platform + jdkSuffix + ZIP_SUFFIX;
+        String runtime = kind.nativeImage() ? RUNTIME_GRAALVM + jdk : RUNTIME_JDK + jdk;
+        return "aha-" + kind.product() + "-" + kind.form() + "-" + version.value()
+                + "-" + platformTag + "-" + runtime + ZIP_SUFFIX;
     }
 
     /**
-     * 从资产名解析「版本 / 平台 / JDK」；不是该「通道 + 形态」的资产时返回空。
+     * 从资产名解析「版本 / 平台 / JDK / 运行时」；不是该形态的资产时返回空。
      *
      * @param channel   通道
      * @param kind      形态
@@ -198,92 +196,129 @@ public final class ChannelContract {
      * @return 解析结果；不匹配返回 {@link Optional#empty()}
      */
     public static Optional<Asset> parseAsset(ReleaseChannel channel, UpdateKind kind, String assetName) {
-        if (assetName == null || !supports(channel, kind)) {
+        if (assetName == null) {
             return Optional.empty();
         }
         String name = assetName.trim();
         if (!name.endsWith(ZIP_SUFFIX)) {
             return Optional.empty();
         }
-        // 先把末尾的 -jdk<JDK> 剥掉再匹配核心部分：JVM 线的 JDK 段是**可选**的，
-        // 若把它交给主模式里的可选组，平台段会因为贪婪而把它吃掉（实测：
-        // `…-ubuntu-amd64-jdk27.zip` 曾被解析成平台 `ubuntu-amd64-jdk27`）。
-        String core = name.substring(0, name.length() - ZIP_SUFFIX.length());
-        int jdk = DEFAULT_JDK;
-        Matcher jdkMatcher = JDK_SUFFIX.matcher(core);
-        if (jdkMatcher.find()) {
-            jdk = Integer.parseInt(jdkMatcher.group(1));
-            core = core.substring(0, jdkMatcher.start());
-        } else if (jdkRequired(channel, kind)) {
-            return Optional.empty();
-        }
-        Matcher matcher = assetCorePattern(channel, kind).matcher(core);
-        if (!matcher.matches()) {
-            return Optional.empty();
-        }
-        AhaVersion version = AhaVersion.parse(matcher.group("version"));
-        if (!matchesForm(channel, version)) {
-            return Optional.empty();
-        }
-        String platform = kind.hasPlatform() ? matcher.group("platform") : null;
-        return Optional.of(new Asset(version, platform, jdk));
+        Optional<Asset> current = parseCurrent(kind, name);
+        return current.isPresent() ? current : parseLegacy(channel, kind, name);
     }
 
     /**
      * 资产名的解析结果。
      *
      * @param version     版本
-     * @param platformTag 平台标签；形态不带平台段时为 {@code null}
+     * @param platformTag 平台标签；旧 CLI-JVM 包（无平台段）为 {@code null}
      * @param jdk         JDK 大版本
+     * @param runtime     运行时（{@code jdk25} / {@code graalvm25}）
      */
-    public record Asset(AhaVersion version, String platformTag, int jdk) {
+    public record Asset(AhaVersion version, String platformTag, int jdk, String runtime) {
     }
 
-    /** tag 的匹配模式（按通道与形态生成，带具名组）。 */
-    private static Pattern tagPattern(ReleaseChannel channel, UpdateKind kind) {
-        return switch (channel) {
-            case STABLE -> Pattern.compile("^V" + VERSION_GROUP + "$");
-            case BETA -> Pattern.compile("^V" + VERSION_GROUP + Pattern.quote(kind.nativeImage()
-                    ? NATIVE_TAG_INFIX + kind.tagSuffix()
-                    : JVM_TAG_SUFFIX) + "$");
-            case ALPHA -> Pattern.compile("^V" + VERSION_GROUP
-                    + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.targetWord() + SNAPSHOT_TAG_SUFFIX)
-                    + "$");
-        };
+    /** 新文法的匹配模式（product / form 由 kind 固定）。 */
+    private static Pattern currentPattern(UpdateKind kind) {
+        return Pattern.compile("^aha-" + Pattern.quote(kind.product()) + "-"
+                + Pattern.quote(kind.form()) + "-" + VERSION_GROUP + "-" + PLATFORM_GROUP
+                + "-(?<runtime>jdk|graalvm)(?<jdk>[0-9]+)" + Pattern.quote(ZIP_SUFFIX) + "$");
     }
 
-    /** 资产名的**核心部分**模式（已去掉 {@code .zip} 与末尾的 {@code -jdk<JDK>}）。 */
-    private static Pattern assetCorePattern(ReleaseChannel channel, UpdateKind kind) {
-        String platform = kind.hasPlatform() ? "-" + PLATFORM_GROUP : "";
-        return switch (channel) {
-            case STABLE, BETA -> Pattern.compile("^" + Pattern.quote(kind.assetPrefix())
-                    + VERSION_GROUP + platform + "$");
-            case ALPHA -> Pattern.compile("^AHA-" + Pattern.quote(kind.targetWord()) + "-"
-                    + VERSION_GROUP + platform + "$");
-        };
+    /** 新文法的解析：runtime 前缀必须与形态匹配。 */
+    private static Optional<Asset> parseCurrent(UpdateKind kind, String name) {
+        Matcher matcher = currentPattern(kind).matcher(name);
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+        String runtimePrefix = matcher.group("runtime");
+        String expectedPrefix = kind.nativeImage() ? RUNTIME_GRAALVM : RUNTIME_JDK;
+        if (!expectedPrefix.equals(runtimePrefix)) {
+            return Optional.empty();
+        }
+        AhaVersion version = AhaVersion.parse(matcher.group("version"));
+        int jdk = Integer.parseInt(matcher.group("jdk"));
+        return Optional.of(new Asset(version, matcher.group("platform"), jdk,
+                runtimePrefix + jdk));
     }
 
     /**
-     * 该组合的资产名是否**必须**带 JDK 段。
+     * 旧文法的解析（0.1.3 及更早）。
      *
-     * <p>实查（2026-10-16）：dev 线原生包的资产名是
-     * {@code AHA-Desktop-Native-0.1.3.00242-ubuntu-amd64-jdk25.zip}（始终带），
-     * 而 JVM 线的默认变体是 {@code aha-desktop-0.1.3.00242-windows-amd64.zip}（不带）。
-     * 两者口径不同，不能共用一条规则。</p>
+     * <ul>
+     *   <li>JVM 线：{@code aha-desktop-<版本>-<平台>[-jdk27].zip} / {@code aha-cli-<版本>[-jdk27].zip}；</li>
+     *   <li>原生线：{@code AHA-<TargetWord>-<版本>-<平台>-jdk<JDK>.zip}。</li>
+     * </ul>
      */
-    private static boolean jdkRequired(ReleaseChannel channel, UpdateKind kind) {
-        return kind.nativeImage() || channel == ReleaseChannel.ALPHA;
+    private static Optional<Asset> parseLegacy(ReleaseChannel channel, UpdateKind kind, String name) {
+        String core = name.substring(0, name.length() - ZIP_SUFFIX.length());
+        int jdk = DEFAULT_JDK;
+        boolean jdkSuffix = false;
+        Matcher jdkMatcher = LEGACY_JDK_SUFFIX.matcher(core);
+        if (jdkMatcher.find()) {
+            jdk = Integer.parseInt(jdkMatcher.group(1));
+            core = core.substring(0, jdkMatcher.start());
+            jdkSuffix = true;
+        }
+        // 旧原生线（Beta / Alpha）的资产名始终带 -jdk<JDK>；JVM 线只有非默认变体才带。
+        if (kind.nativeImage() && !jdkSuffix) {
+            return Optional.empty();
+        }
+        for (String pattern : legacyPatterns(kind)) {
+            Matcher matcher = Pattern.compile(pattern).matcher(core);
+            if (!matcher.matches()) {
+                continue;
+            }
+            AhaVersion version = AhaVersion.parse(matcher.group("version"));
+            if (!matchesForm(channel, version)) {
+                return Optional.empty();
+            }
+            String platform = matcher.group("platform");
+            String runtime = kind.nativeImage() ? RUNTIME_GRAALVM + jdk : RUNTIME_JDK + jdk;
+            return Optional.of(new Asset(version, platform, jdk, runtime));
+        }
+        return Optional.empty();
     }
 
     /**
-     * JVM 线（稳定 / dev）的 JDK 后缀：默认变体不带后缀，其它变体带。
+     * 旧资产名的候选模式（{@code -jdk<JDK>} 已先被剥掉）。
      *
-     * <p>实查（2026-10-16）：{@code V0.1.3.00242-aha-jvm} 的资产里既有
-     * {@code aha-desktop-0.1.3.00242-windows-amd64.zip}（JDK 25），也有
-     * {@code …-jdk27.zip}。</p>
+     * <ul>
+     *   <li>JVM 线 Beta：{@code aha-desktop-<版本>-<平台>} / {@code aha-cli-<版本>}；</li>
+     *   <li>Alpha：{@code AHA-<TargetWord>-<版本>-<平台>}（四组合共用）；</li>
+     *   <li>原生线：{@code AHA-<TargetWord>-<版本>-<平台>}。</li>
+     * </ul>
      */
-    private static String variantJdkSuffix(int jdk) {
-        return jdk == DEFAULT_JDK ? "" : JDK_INFIX + jdk;
+    private static String[] legacyPatterns(UpdateKind kind) {
+        String alpha = "^AHA-" + Pattern.quote(kind.legacyTargetWord()) + "-" + VERSION_GROUP
+                + "-" + PLATFORM_GROUP + "$";
+        if (kind.nativeImage()) {
+            return new String[]{alpha};
+        }
+        String beta = "^aha-" + Pattern.quote(kind.product()) + "-" + VERSION_GROUP
+                + "(?:-" + PLATFORM_GROUP + ")?$";
+        return new String[]{beta, alpha};
+    }
+
+    /** tag 的候选模式：新文法在前，旧写法在后（只对历史版本有意义）。 */
+    private static String[] tagPatterns(ReleaseChannel channel, UpdateKind kind) {
+        String current = "^V" + VERSION_GROUP + Pattern.quote(NATIVE_TAG_INFIX + kind.tagSuffix()) + "$";
+        String currentSnapshot = "^V" + VERSION_GROUP
+                + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix()) + "$";
+        // 兼容历史上带 `-SNAPSHOT` 的快照 tag（大写目标词与上一版的小写目标词两种写法）。
+        String legacySnapshotUpper = "^V" + VERSION_GROUP
+                + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.legacyTargetWord() + SNAPSHOT_TAG_SUFFIX)
+                + "$";
+        String legacySnapshotLower = "^V" + VERSION_GROUP
+                + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix() + SNAPSHOT_TAG_SUFFIX) + "$";
+        return switch (channel) {
+            case STABLE -> new String[]{"^V" + VERSION_GROUP + "$"};
+            case BETA -> kind.nativeImage()
+                    ? new String[]{current}
+                    : new String[]{current,
+                            "^V" + VERSION_GROUP + Pattern.quote(JVM_TAG_SUFFIX) + "$"};
+            case ALPHA -> new String[]{currentSnapshot, legacySnapshotUpper, legacySnapshotLower};
+        };
     }
 
     /** 版本段数是否与通道相符。 */
@@ -298,15 +333,6 @@ public final class ChannelContract {
                     channel.label() + " 通道的版本必须是 " + expectedSegments(channel)
                             + " 段（" + formHint(channel) + "），实际给了 " + version.segmentCount()
                             + " 段：" + version.value());
-        }
-    }
-
-    /** 该通道支持的组合检查。 */
-    private static void requireSupported(ReleaseChannel channel, UpdateKind kind) {
-        if (!supports(channel, kind)) {
-            throw new IllegalArgumentException(
-                    channel.label() + " 通道目前没有 " + kind.targetWord() + " 的包"
-                            + "（正式发版只出 CLI 包与桌面端 JVM 包，见 issue #51 §2.1）");
         }
     }
 

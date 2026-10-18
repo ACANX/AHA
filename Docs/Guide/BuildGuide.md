@@ -1,9 +1,9 @@
 # 构建指南
 
-**文档版本**：v1.18.0
+**文档版本**：v1.19.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-15
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.19.0 | 2026-10-17 | 引用同步：快照路径清单更名为 `SnapshotPaths.yml`（原 `snapshot-paths.yml`）——`.github/` 下 AHA 自有 YAML 统一大驼峰，见 `GitHubActionsSpec.md` §2.2（issue [#270](https://github.com/ACANX/AHA/issues/270)） | @cnxnc |
 | v1.18.0 | 2026-10-16 | §3.3 快照取件的落地行为更正：JVM 便携包（桌面端 / CLI）改为**平铺到 `Dist\` 根**（原先只解压到 `Dist\<资产名>\`，取完还要手工搬），与正式版取件同一口径；补 `-NoInstall` / `-KeepExtract`（issue #244）| @ACANX / CNXNC |
 | v1.17.0 | 2026-10-16 | 引用同步：快照清理工作流更名为 `SnapshotCleanup.yml`（原 `snapshot-cleanup.yml`）——工作流文件名统一大驼峰，见 `GitHubActionsSpec.md` §2.2 | @ACANX / CNXNC |
 | v1.16.0 | 2026-10-15 | §3 CLI 也改为包根平铺（`Dist/aha-cli.jar` + `Dist/AhaCli.sh` / `Dist\AhaCli.bat`，无 `bin/` 与 `lib/`）；排错章节的占用者清单改指平铺后的入口（issue #218）| @ACANX / CNXNC |
@@ -243,7 +244,7 @@ CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没�
 
 **变更分类**：改动路径决定「本次要不要出包」——A 组（影响产物）与 C 组（未列到的一切）**出包**，
 B 组（`Docs/**`、`**/*.md` 等）**不出包**并在 PR 评论里写明原因；清单是
-`.github/snapshot-paths.yml`（单一来源，由 `bin/CheckScripts.py` 守住一致性）。
+`.github/SnapshotPaths.yml`（单一来源，由 `bin/CheckScripts.py` 守住一致性）。
 **只改文档的 PR 不会出包**，除非新打了触发标签（此时属显式请求，照出）。
 判定逻辑在 `.github/Python/SnapshotPlan.py`，可本地跑 `--self-test`。
 

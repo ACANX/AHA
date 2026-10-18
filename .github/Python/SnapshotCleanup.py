@@ -58,7 +58,7 @@ from pathlib import Path
 SAFETY_RE = re.compile(
     r"^V(?P<version>\d+\.\d+\.\d+\.(?P<pr>\d{5})\.(?P<stamp>\d{8}))"
     # 长拼写写在前面，避免 `Desktop` 抢在 `Desktop-Native` 之前（正则回溯能兜住，但顺序更清楚）。
-    r"-AHA-(?P<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop-JVM|Cli-JVM|Desktop|Cli)-SNAPSHOT$"
+    r"-AHA-(?P<target>Desktop-Native|Cli-Native|NativeDesktop|NativeCli|Desktop-JVM|Cli-JVM|Desktop|Cli)(?:-SNAPSHOT)?$"
 )
 
 #: 同一 PR + 同一目标最多保留几条（#165 §十）。

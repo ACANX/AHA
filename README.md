@@ -145,7 +145,7 @@ mvn clean verify             # Maven 3.9.x 兼容验证
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
 
 其余目录：`Docs/AHA/`（唯一权威设计文档）、`Docs/DevSpec/`（开发规范）、
-`Docs/Design/`（子系统设计）、`Docs/Diagrams/`（图资源）、`Docs/PLAN.md`（开发计划与待办）。
+`Docs/Design/`（子系统设计）、`Docs/Diagrams/`（图资源）、`Docs/TODO/`（待办清单与逐项 TD）。
 
 ## 许可证
 

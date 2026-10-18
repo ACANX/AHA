@@ -3,7 +3,7 @@
 > 日期：2026-10-07
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#7](https://github.com/ACANX/AHA/pull/7)（`dev` → `main`，被规则集锁死）
-> 关联记录：[TODO.md](../TODO.md) `G-02` / `G-04`、[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1
+> 关联记录：[TODO.md](../TODO/README.md) `G-02` / `G-04`、[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1
 
 ---
 
@@ -121,7 +121,7 @@ GET /repos/ACANX/AHA/rules/branches/{dev,main}
 
 | 文件 | 改动 |
 | ---- | ---- |
-| [TODO.md](../TODO.md) | `G-02` 重写：附两条规则集的**现状实测表**与**目标规格表**（含审批数、必需检查、`code_scanning` / `code_coverage` 的二选一）；新增 `G-04`（开启 CodeQL，附「不开启就必须删规则」的对应关系） |
+| [TODO.md](../TODO/README.md) | `G-02` 重写：附两条规则集的**现状实测表**与**目标规格表**（含审批数、必需检查、`code_scanning` / `code_coverage` 的二选一）；新增 `G-04`（开启 CodeQL，附「不开启就必须删规则」的对应关系） |
 | [BuildSpec.md](../DevSpec/BuildSpec.md) | §8.1 新增「分支规则集必须对『单人 + 机器』可满足（强制）」，含两种把 PR 永久锁死的实例 |
 | `CHANGELOG.md` | 记录本次整改规格 |
 | `PLAN.md` §8.2.9 | 仍以 `G-02` 为闭环出口（本次不新增条目，避免重复记账） |

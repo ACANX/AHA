@@ -221,7 +221,7 @@ IDLE ──检查──▶ CHECKING ──▶ LISTED ──选中──▶ READY
 | 平台 | 检查更新 | 升级 / 降级 |
 |---|---|---|
 | Windows | ✅ | ✅（本期实现并验证） |
-| Linux / macOS | ✅（只读发布页，没有理由禁掉） | **置灰** + 手动取件指引（可手动下 `aha-desktop-<版本>-<平台>.zip`，或用 `Dist/` 的同族脚本） |
+| Linux / macOS | ✅（只读发布页，没有理由禁掉） | **置灰** + 手动取件指引（可手动下 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip`，或用 `Dist/` 的同族脚本） |
 
 原则：**不让用户点了才发现不行**；置灰必须配「怎么办」的替代动作。
 
@@ -251,7 +251,7 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 
 > **曾经有过第 0 层「原生镜像」，v1.3.3 撤掉**（2026-10-16）：理由是「原生包不在升级通道里」，
 > 实测不成立 —— 原生线有自己的 tag（`V<版本>-aha-desktop-native`）与资产
-> （`AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip`），换装与重启机制与 JVM 同构
+> （`aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`），换装与重启机制与 JVM 同构
 > （包内清单 + helper 随包分发 + `restartCommand()` 返回 exe）。拦着它的代价是
 > 「升级按钮永远是灰的」，被当成 bug 报回来两次。原始 bug（原生 exe 被认成 JVM 形态 ⇒ 下了 JVM 包）
 > 的真因是**形态判定**，已单独修掉，不需要这层门。原生那条路径的正向覆盖见
@@ -316,8 +316,8 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 | 配置键与「缺键不写盘」 | `DesktopSettingsTest` |
 | 出包契约（清单 / 校验和 / 三处一致） | `.github/Python/PackageManifest.py --self-test`（正 5 反 11）、`check_release_channel_contract()` |
 | **换装 helper 真的在包里、也在仓库里** | `check_update_helper_packaging()`：两条发行线的装配描述符都要收 helper，且 helper 必须存在**且被 git 跟踪** —— v1.0.0 时 `Dist/apply-update.cmd` 被 `.gitignore` 吃掉，包里没有它，功能全废而门禁全绿 |
-| **helper 逻辑真跑过**（不只是「写没写」） | `Script/PowerShell/HelperSelfTest.ps1`（在 `Build.yml` 的 `native-update-script` 作业里跑）：临时目录里跑失败路径（缺清单 ⇒ 拒绝换装 + 写回执 + 写「已启动」标记 + 退出码 1）与成功路径（替换 + 删除 + 自证 + 回执 + 备份可还原） |
-| **调用仓库脚本的作业必须先 checkout** | `check_repo_script_steps_have_checkout()`（CI 实测：`native-publish` 没有 checkout 却调 `PackageManifest.py`，报 `No such file or directory`） |
+| **helper 逻辑真跑过**（不只是「写没写」） | `Script/PowerShell/HelperSelfTest.ps1`（在 `Build.yml` 的 `NativeUpdateScript` 作业里跑）：临时目录里跑失败路径（缺清单 ⇒ 拒绝换装 + 写回执 + 写「已启动」标记 + 退出码 1）与成功路径（替换 + 删除 + 自证 + 回执 + 备份可还原） |
+| **调用仓库脚本的作业必须先 checkout** | `check_repo_script_steps_have_checkout()`（CI 实测：`NativePublish` 没有 checkout 却调 `PackageManifest.py`，报 `No such file or directory`） |
 | **启动收尾与握手** | `UpdateServiceTest`：回执消费 + 暂存/备份清理 + `helperNeverRan` 判定 + 标记超时/出现 + 真拉起假 helper 的握手 |
 | **「被忽略却被引用」的文件** | `check_ignored_sources()` 扩展：`Dist/`、`Script/`、`bin/` 下本该手写的文件被 `.gitignore` 忽略、却被装配描述符或工作流按名字引用 ⇒ 直接红 |
 | 启动收尾在界面上真的接线 | `AhaDesktopSmokeTest#startupShowsTheLastSwapResultAndCleansStaging` |
@@ -337,7 +337,7 @@ issue #51 §7 P4）」）。**置灰必须发生在下载之前** —— v1.0.0 
 | 6 | 重启后用户看到什么 | 升级成功与失败各看一次 | 成功静默（只写日志）；失败弹窗并指向 `update.log` | ⏳ |
 | 7 | 用户数据未被触碰 | 升级前后比对 `~/.aha/` 下非 `update/` 目录的 mtime | 无变化 | ⏳ |
 | 8 | 备份与回滚可用 | 升级后看 `~/.aha/update/backup/<旧版本>/`，再按 §4.1 手工回滚一次 | 备份含旧文件（含被新包删掉的文件），回滚后旧版本能起来 | ⏳ |
-| 9 | Windows 原生形态自更新 | 用 `AHA-Desktop-Native-…` 包走同一条路径 | 替换后能起来、版本正确、备份可回滚（v1.1.0 起原生包也带 helper，之前这条路**注定失败**） | ⏳ |
+| 9 | Windows 原生形态自更新 | 用 `aha-desktop-native-…` 包走同一条路径 | 替换后能起来、版本正确、备份可回滚（v1.1.0 起原生包也带 helper，之前这条路**注定失败**） | ⏳ |
 | 10 | helper 起不来时不许「静默退出」 | 把安装根里的 `AhaApplyUpdate.ps1` 换成「什么都不做」的空脚本，再点升级 | App 等 20 秒后**留在前台**报「换装程序没有启动」，安装目录未改动，`update.log` 有留痕 | ⏳ |
 | 11 | 启动时清理真的生效 | 升级（或制造一次失败换装）后正常关闭再启动 | `~/.aha/update/<版本>/` 消失（不再白占 50–110 MB）；`backup/` 只留 `Update.BackupKeep` 份 | ⏳ |
 | 12 | 安装形态门（只剩单体 jar） | 直接 `java -jar aha-desktop.jar` 起，点「设置 → 升级」；再试一次 CLI `--update-to <版本> --yes` | 界面按钮**提前置灰**并说明「没有可用的启动脚本」；CLI **不下载**、明确拒绝、返回非 0 | ⏳ |

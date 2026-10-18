@@ -48,8 +48,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sweep:
-    name: sweep（快照发布页回收）
+  Sweep:
+    name: Sweep
     runs-on: ubuntu-latest
     steps:
       # 固定检出**默认分支**：`pull_request: closed` 之后 `refs/pull/<N>/merge` 可能已经不在，
@@ -58,7 +58,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: 清扫（判定与执行都在 .github/Python/SnapshotCleanup.py）
+      - name: RunSnapshotCleanup
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}

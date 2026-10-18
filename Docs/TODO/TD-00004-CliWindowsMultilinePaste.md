@@ -40,3 +40,9 @@
 - `Docs/Dbsx.txt` 第 6 节
 - `Docs/Design/TUIDesign.md`（终端能力与降级矩阵）
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00036](TD-00036-ConhostPasteRealMachineVerification.md) — conhost 粘贴侧门真机验证（Alt+V / `/paste`）
+
