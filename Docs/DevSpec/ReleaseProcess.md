@@ -101,6 +101,8 @@
      其中「产物名版本段」只比对**带版本段**的产物（`<artifactId>-<版本>…`）；包根扁平化后的
      `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**、不参与该比对（版本由包内
      `AHA-PACKAGE.json` 承载），被跳过的条目会写进校验日志，不会静默（issue #260）。
+     原生形态的 `AHA-PACKAGE.json` 还记 `toolchain.graalvm`（精确 GraalVM 版本，如 `25.4`）：
+     `runtime` 段（`graalvm25`）只表示 JDK 大版本，精确版本不塞进文件名（issue #269 §5）。
    - **验证时机**：版本切换 PR 上**不跑** `Build` / `Gate` / `Compat`——`GITHUB_TOKEN` 推的
      提交不触发下游 workflow，且后两者的 `pull_request` 只覆盖 `main` / `release/**`。
      验证由**合并到 `dev` 后**自动触发的流水线承担：`Build.yml`（`on: [push, pull_request]`）

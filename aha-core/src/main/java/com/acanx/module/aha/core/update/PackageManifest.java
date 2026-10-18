@@ -29,6 +29,7 @@ import java.util.Optional;
  * @param platform 平台标签（平台无关的形态可为空）
  * @param jdk      JDK 大版本
  * @param files    文件条目
+ * @param toolchain 构建工具链（原生形态记录精确 GraalVM 版本；JVM 形态为空）
  * @since 0.2.0
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,9 +38,22 @@ public record PackageManifest(
         @JsonProperty("version") String version,
         @JsonProperty("platform") String platform,
         @JsonProperty("jdk") int jdk,
-        @JsonProperty("files") List<FileEntry> files) {
+        @JsonProperty("files") List<FileEntry> files,
+        @JsonProperty("toolchain") Toolchain toolchain) {
 
     private static final ObjectMapper JSON = JsonMapper.builder().build();
+
+    /**
+     * 构建工具链信息。
+     *
+     * <p>{@code runtime} 段（{@code jdk25} / {@code graalvm25}）只表示 JDK 大版本，
+     * 精确的 GraalVM 版本（如 {@code 25.4}）记在这里 —— issue #269 §5。</p>
+     *
+     * @param graalvm GraalVM 精确版本（原生包才有）
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Toolchain(@JsonProperty("graalvm") String graalvm) {
+    }
 
     /**
      * 清单里的一个文件。
