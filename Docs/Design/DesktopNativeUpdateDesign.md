@@ -40,8 +40,8 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 
 | 种类 | tag 后缀 | 资产前缀 | 可执行文件 |
 |---|---|---|---|
-| 桌面端 | `-aha-desktop-native` | `AHA-Desktop-Native-` | `aha-desktop-native(.exe)` |
-| CLI | `-aha-cli-native` | `AHA-Cli-Native-` | `aha-cli-native(.exe)` |
+| 桌面端 | `-aha-desktop-native` | `aha-desktop-native-` | `aha-desktop-native(.exe)` |
+| CLI | `-aha-cli-native` | `aha-cli-native-` | `aha-cli-native(.exe)` |
 
 这张表在 Python 侧是 `KINDS`、在 PowerShell 侧是 `$kinds`，**由 `bin/CheckScripts.py`
 断言逐字一致**——一旦漂移，表现是「某个平台上永远取不到包」，静默且难查。
@@ -107,7 +107,7 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 - 不做签名校验与来源认证：当前信任边界是 HTTPS + GitHub 仓库本身；
 - 不解析可执行文件**内部**的版本号（那是
   [DesktopNativeDesign.md](DesktopNativeDesign.md) 第 7 节 `N-4` 的事）；
-- 不覆盖 `cli-native`：命名同族（`AHA-Cli-Native-*`），留作后续（见第 11 节 `U-1`）；
+- 不覆盖 `cli-native`：命名同族（`aha-cli-native-*`），留作后续（见第 11 节 `U-1`）；
 - 不做常驻「检查更新」进程：按需执行，不引入后台任务。
 
 ## 2. 命名契约（唯一来源）
@@ -118,7 +118,7 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 |---|---|---|
 | release tag | `V<基线>.<构建号>-aha-desktop-native` | `DesktopNative.yml` 的 `NativePublish` |
 | 构建号 | PR 号补零到 5 位，如 `00040` | `DesktopNative.yml` 的 `NativeVersion`（`printf '%05d'`） |
-| 镜像包 | `AHA-Desktop-Native-<版本>-<平台标签>-jdk<JDK>.zip` | `DesktopNative.yml` 的「改名为发布用资产名」 |
+| 镜像包 | `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip` | `DesktopNative.yml` 的「改名为发布用资产名」 |
 | 报告包 | 同名 + `-Report` 后缀 | 同上的独立报告包（脚本**不取**） |
 | 平台标签 | `windows-amd64` / `ubuntu-amd64` / `macos-aarch64` | `DesktopNative.yml` 的 `native-image` matrix |
 | JDK 轴 | `jdk25`（基线）/ `jdk27`（试验） | 同上的 matrix |
@@ -127,7 +127,7 @@ Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，�
 
 ```text
 tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
-资产    = ^AHA-Desktop-Native-(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$
+资产    = ^aha-desktop-native-(?P<version>\d+(?:\.\d+)*)-(?P<os>[a-z0-9]+)-(?P<arch>[a-z0-9]+)-graalvm(?P<jdk>\d+)\.zip$
 ```
 
 **只认各自后缀**这一条是有代价、也是有意为之的：正式版 tag（`V0.1.0`）、
@@ -137,7 +137,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 这也顺手排除了 `-Report.zip`（版本相同但结尾不匹配）。
 
 **CLI 原生包与之同构**（`CliNativeVersionUpdate.py`）：tag 为 `V<基线>.<构建号>-aha-cli-native`，
-资产为 `AHA-Cli-Native-<版本>-<平台标签>-jdk<JDK>.zip`，可执行文件为 `aha-cli-native(.exe)`，
+资产为 `aha-cli-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`，可执行文件为 `aha-cli-native(.exe)`，
 出处是同名的 `CliNative.yml`。两者正则形状完全一致，只有后缀 / 前缀不同——这正是
 一张 `KINDS` 表能覆盖两种包的原因；也是「桌面端入口永远不会去取 CLI 的包」的原因
 （互不串台：`cli-native` 的 tag 不匹配桌面端的后缀，反之亦然）。

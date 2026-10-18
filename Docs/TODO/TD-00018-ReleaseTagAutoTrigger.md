@@ -95,7 +95,7 @@ commit `32a8557`）。除上表外多做了两处：
 
 - [x] 选定方案 → **B**（2026-10-16 已拍板）；
 - [x] 代码与文档同步修改（`Release.yml` / `Build.yml` / `ReleaseProcess.md` / `VersionBumpGuide.md` / `BuildSpec.md` / `CHANGELOG.md`）—— PR [#240](https://github.com/ACANX/AHA/pull/240)；
-- [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现 `aha-cli-<版本>.zip` 与三平台 `aha-desktop-<版本>-<系统>-<架构>.zip`；
+- [ ] `dev → main` 合并后**无需人工介入**，Release 页面自动出现三平台 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip`；
 - [ ] 全流程**不使用 PAT / GitHub App token**（只用 `GITHUB_TOKEN`）；
 - [ ] 人工推 tag 的既有路径（`push: tags`）不被破坏；
 - [ ] **幂等**：tag 已存在（重复合入 `main`）时不重复派发；
