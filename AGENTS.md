@@ -258,6 +258,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [CodingStandard.md](Docs/DevSpec/CodingStandard.md) - 编码规范
 - [ModuleConvention.md](Docs/DevSpec/ModuleConvention.md) - 模块约定
 - [DocumentationSpec.md](Docs/DevSpec/DocumentationSpec.md) - 文档规范
+- [TodoLifecycleSpec.md](Docs/DevSpec/TodoLifecycleSpec.md) - 待办生命周期规范（完成后的归档 SOP：TD- → DN-，编号不变）
 - [BuildSpec.md](Docs/DevSpec/BuildSpec.md) - 构建规范
 - [GitHubActionsSpec.md](Docs/DevSpec/GitHubActionsSpec.md) - GitHub Actions 规范（工作流命名 / 触发 / 权限 / 留痕）
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范

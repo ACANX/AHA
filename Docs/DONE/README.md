@@ -24,7 +24,7 @@ Docs/TODO/TD-PPPPP-<标题>.md  ──完成──▶  Docs/DONE/DN-PPPPP-<标�
 
 ## 1. 归档 SOP（摘要）
 
-规范正文：[`Docs/DevSpec/DocumentationSpec.md`](../DevSpec/DocumentationSpec.md) §7。
+规范正文：[`Docs/DevSpec/TodoLifecycleSpec.md`](../DevSpec/TodoLifecycleSpec.md) §3。
 
 1. `git mv Docs/TODO/TD-PPPPP-<标题>.md Docs/DONE/DN-PPPPP-<标题>.md`；
 2. 文件头：状态改 `✅ 已完成（yyyy-MM-dd）`，补「完成依据」（PR / commit / Issue）；

@@ -232,40 +232,7 @@
   - `Release.yml`
 ```
 
-## 7. 待办完成后的归档（SOP，强制）
+## 7. 待办的生命周期
 
-**原则：目录调整、编号不变。** 待办一旦标记完成，就从 `Docs/TODO/` 移到 `Docs/DONE/`，
-`TD-` 前缀改为 `DN-`，**编号 `PPPPP` 与标题保持原样**。
-
-### 7.1 操作步骤（按顺序执行）
-
-1. `git mv Docs/TODO/TD-PPPPP-<标题>.md Docs/DONE/DN-PPPPP-<标题>.md`
-   —— 用 `git mv` 保留历史；目录不存在时先建 `Docs/DONE/`；
-2. 改文件头：
-   - 标题行 `# TD-PPPPP …` → `# DN-PPPPP …`；
-   - `> 待办编号` 改为 `**DN-PPPPP**（原 TD-PPPPP，完成后归档）`；
-   - `> 状态` 改为 `✅ 已完成（YYYY-MM-DD）`；
-   - 新增 `> 完成依据`：PR 编号 + squash commit + 关联 Issue（已关闭）；
-3. `Docs/TODO/README.md`：该行改为指向 `../DONE/DN-PPPPP-….md`，状态写 `✅ 已完成（已归档）`；
-4. `Docs/DONE/README.md` 的「归档清单」追加一行（编号 / 标题 / 完成日期 / 依据）；
-5. 编号**不回收**：新待办取「TODO + DONE 中出现过的最大编号 + 1」。
-
-### 7.2 为什么「编号不变」
-
-- 编号是**检索钥匙**：Issue、PR、DevLog、Troubleshooting 里都可能引用 `TD-00030`；
-  改号会让这些引用全部失配；
-- 归档只是「状态与位置」的变化，不是「另一件事」，编号必须稳定。
-
-### 7.3 机器检查
-
-`bin/CheckDocs.py` 的 `check_naming()` 钉住两条：
-
-- `Docs/DONE/` 下文件名必须匹配 `^DN-\d{5}-[A-Za-z0-9]+\.md$`（`README.md` 例外）；
-- **TODO 与 DONE 共用编号空间**：同一编号在两边各出现一次即判红（防止「归档时又新建了一份 TD」）。
-
-### 7.4 反例（禁止）
-
-- 直接 `rm` 掉 TD 文件（丢失来源、验收与实现记录）；
-- 改编号（如 `TD-00030` → `DN-00031`）；
-- 留在 `Docs/TODO/` 只把状态改成 ✅（TODO 目录只放**未完成**事项）；
-- 只改 `Docs/DONE/README.md` 清单、不移动文件。
+待办的创建、跟踪、**完成后的归档**（`Docs/TODO/TD-…` → `Docs/DONE/DN-…`，目录变、编号不变）
+统一见 [TodoLifecycleSpec.md](TodoLifecycleSpec.md)；本文档只约束文件名形态与存放目录。

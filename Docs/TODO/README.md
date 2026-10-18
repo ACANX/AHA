@@ -17,7 +17,7 @@
 | 载体 | 职责 |
 |---|---|
 | **本清单**（`Docs/TODO/README.md`） | 汇总全部待办、标记状态、定期更新进度；便于一眼看全貌 |
-| **`TD-*.md`** | 单个待办的详情（来源、现状、需求、验收标准） |
+| **`TD-*.md`** | 单个待办的详情（来源、现状、需求、验收标准）；完成后归档为 `Docs/DONE/DN-*.md`（规范：[TodoLifecycleSpec](../DevSpec/TodoLifecycleSpec.md) §3） |
 | **GitHub Issue** | 单个事项的长期跟踪：评论、状态、关闭 |
 | `Docs/Troubleshooting/` | 问题排查 / 事故复盘的**过程记录** |
 | `Docs/DevLog/` | 已完成事项的**开发记录** |
