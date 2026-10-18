@@ -3,7 +3,7 @@
 > 日期：2026-10-07
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#6](https://github.com/ACANX/AHA/pull/6)
-> 关联记录：[TODO.md](../TODO.md) `F-09`、[TestingSpec.md](../DevSpec/TestingSpec.md) §3.1、`bin/ReportCoverage.py`
+> 关联记录：[TODO.md](../TODO/README.md) `F-09`、[TestingSpec.md](../DevSpec/TestingSpec.md) §3.1、`bin/ReportCoverage.py`
 
 ---
 

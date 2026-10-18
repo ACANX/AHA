@@ -8,6 +8,18 @@
 
 ---
 
+## ⛔ 推送前必须确认分支对应的 PR 是否已合并（强制，2026-10-18 起）
+
+- **改代码前**与 **`git push` 前**，各查一次该分支对应的 PR 状态：
+  - `gh pr list --head <分支名> --state all --json number,state,mergedAt`
+  - `git fetch origin && git log --oneline origin/dev..HEAD`
+- 若 PR 已 `MERGED` / `CLOSED`：**禁止继续改动与推送**，必须基于最新 `origin/dev` 新建分支，
+  用 `git diff origin/dev <旧分支> | git apply` 迁移未合并改动，再开新 PR 并在正文注明前序 PR。
+- 旧分支保留、不再推送（作为历史）。
+- 完整流程、三个检查点与事故记录见
+  [PullRequestWorkflowSpec.md](Docs/DevSpec/PullRequestWorkflowSpec.md)（**强制规范**）。
+- 违反本条 = 改动不会进入主干且过程不可见，属**严重流程错误**；发现后立即停止、迁移、如实说明。
+
 ## ⛔ 本地不跑 Maven 编译与单元测试（强制，已多次重申，勿再违反）
 
 **本机不执行任何 Maven 编译 / 测试 / verify 动作**——包括但不限于
@@ -45,6 +57,29 @@
 - 唯一例外：用户**明确要求**本地跑，或 CI 不可用且用户确认。
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8 节。
+
+---
+
+## 🧱 Agent 执行域（能力剥离，issue #70）
+
+上面那条不只靠约定，还有**执行域兜底**：`bin/AgentSandbox.sh` 用 Linux 命名空间（bubblewrap）
+把命令放进一个**没有本地构建能力**的域里执行 —— 域内 `/mnt`（Windows 盘）不可见、宿主 JDK 目录
+被盖成空目录、`mvn` / `mvnw` / `java` / `javac` / `gradle` 都是拒绝桩（命中即退出码 `97`，
+并提示「去看 PR 的 CI checks」）。**工作区文件一个都不改**，所以 git 看不到任何虚假变更。
+
+```bash
+./bin/AgentSandbox.sh -- <命令>        # 在 Agent 域内执行（默认当前目录；--repo <目录> 可指定）
+./bin/AgentSandbox.sh --print-plan     # 只打印生效的 bwrap 参数（取证 / 排障）
+python3 bin/CheckAgentBoundary.py      # 自证：域内确实没构建能力，且隔离失效时它会变红
+```
+
+- **Agent 侧**：本地构建 / 测试不在域内做（也做不了）——改完推送，看 PR 的 checks；
+- **人类开发者不受影响**：直接用 `./mvnw`，不需要进这个域，也不需要任何额外配置；
+- **不覆盖**：Windows 侧原生启动的工具（OpenCode / DSH 等）在命名空间之外，见 issue #70 的 P2；
+- **尚未启用 shell 自动进域**（PATH shim / `~/.bashrc` 包装）：属**仓库外**的机器配置，
+  待 ACANX 决定后由人安装；在此之前用上面的命令显式进入；
+- 设计见 [AgentExecutionBoundaryDesign.md](Docs/Design/AgentExecutionBoundaryDesign.md)；
+  CI 卡点是 `Gate.yml` 的「Agent 执行边界自证」一步（隔离一被改坏，自证立刻变红）。
 
 ---
 
@@ -111,18 +146,25 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 判定规则与阈值见 [BuildSpec.md](Docs/DevSpec/BuildSpec.md) 第 8.1 节。
 
-### ⛔ `Docs/TODO.md` 已冻结（强制）
+### ⛔ 暂存区三份文件已删除（强制，2026-10-17）
 
-**不得自动往 [TODO.md](Docs/TODO.md) 写入内容**，除非 ACANX **主动要求**。
-该文件与 [PLAN.md](Docs/PLAN.md)、[Dbsx.txt](Docs/Dbsx.txt) 一并转为**只读历史记录**：
-保留既有内容与索引，新的待办、进展与状态**不再写进去**。
+`Docs/TODO.md`（暂存区清单）、`Docs/PLAN.md`（做不到 / 已暂缓的结论）、`Docs/Dbsx.txt`（用户原始待办）
+**已于 2026-10-17 删除**，内容去向：
+
+| 内容 | 现在在哪 |
+|---|---|
+| 已完成 / 明确不做 / 已过时 | [`Docs/DevLog/20261017-15.md`](Docs/DevLog/20261017-15.md)（逐条附证据） |
+| 仍然要做的条目 | 逐条折进 `Docs/TODO/` 的对应 `TD-*` 文件（**需求原文一并保留**） |
+| 三份文件的历史全文 | `git log` / 归档记录（不再有工作副本） |
+
+因此：**不要再向这三份文件写入**（它们不存在了），也不要在别处重建同类「暂存区」。
 
 待办改为：每项一个 `Docs/TODO/TD-PPPPP-大驼峰英文标题.md`（五位数字从 `00001` 全局自增），
 并在 [`Docs/TODO/README.md`](Docs/TODO/README.md) 的清单里登记一行（状态、跟踪 Issue）：
 状态变化时同变更内更新 TD 文件头部与清单，已完成需在备注写明依据；详规见该文件与
 `DocumentationSpec.md` §4。
 
-新的遗留事项一律走下面两条路径，不再进 `TODO.md`。
+新的遗留事项一律走下面两条路径，不再有「暂存区」。
 
 ### 遗留事项一律开 Issue 跟踪（强制）
 
@@ -160,8 +202,9 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 
 ### 「做不到 / 已暂缓」的结论去哪
 
-`Docs/PLAN.md` 只追加**结论与依据**（期望是什么、试过什么、证据是什么、为什么受阻、
-将来在什么前提下可以再做），不追加待办；待办一律是 Issue。
+「做不到 / 已暂缓」的**结论与依据**（期望是什么、试过什么、证据是什么、为什么受阻、
+将来在什么前提下可以再做）写进**对应 `Docs/TODO/TD-*` 的「结论 / 已排除方案」小节**（跨主题的进 Issue），
+**不追加待办**；待办一律走 `Docs/TODO/` + Issue。
 
 ## 文档记录去向（遇到 X 写哪里）
 
@@ -171,14 +214,14 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 | 排查完一个问题 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyMM-NNN-英文词序.md` → [README](Docs/Troubleshooting/README.md) + [TS-Template.md](Docs/Troubleshooting/TS-Template.md) |
 | 产生一个本轮不做的待办 | `Docs/TODO/`（+ 长期跟踪开 Issue） | `TD-PPPPP-大驼峰英文标题.md` → [README](Docs/TODO/README.md) |
 | 需要长期跟踪的遗留问题 / 待决策 / 需人工执行 | **GitHub Issue**（并在 `Docs/TODO/` 登记） | 技能 [issue-tracking](.agents/skills/issue-tracking/SKILL.md) |
-| 认定「做不到 / 已暂缓」 | `Docs/PLAN.md`（只追加结论，不追加待办） | `DocumentationSpec.md` §4 |
+| 认定「做不到 / 已暂缓」 | 写进**对应 `Docs/TODO/TD-*` 的「结论 / 已排除方案」小节**（跨主题的进 Issue） | `DocumentationSpec.md` §4 |
 | 文档 / 设计稿 / 脚本不再维护 | `Archive/` | 保持原名 + 头注「已废弃」 → [README](Archive/README.md) |
 | 已定方案的详细设计 / 规范 / 指南 | `Docs/Design/` / `Docs/DevSpec/` / `Docs/Guide/` | 按 `DocumentationSpec.md` |
 
 **记录纪律（强制）**：
 
 1. 记录与代码改动**同一变更内**完成，不要「下次补」；
-2. **不写进 `Docs/TODO.md`**（已冻结）——它只作为历史追溯；
+2. **不写进对话或临时笔记** —— 待办一律落 `Docs/TODO/`（README 索引 + `TD-*`）或 Issue；
 3. 待办不得只留在对话里；排查过程与开发日志**不混用**（过程进 Troubleshooting，完成进 DevLog）；
 4. 命名不符 `DocumentationSpec.md` §1 会被 `bin/CheckDocs.py` 判失败；收尾前跑一次它。
 
@@ -215,6 +258,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [CodingStandard.md](Docs/DevSpec/CodingStandard.md) - 编码规范
 - [ModuleConvention.md](Docs/DevSpec/ModuleConvention.md) - 模块约定
 - [DocumentationSpec.md](Docs/DevSpec/DocumentationSpec.md) - 文档规范
+- [TodoLifecycleSpec.md](Docs/DevSpec/TodoLifecycleSpec.md) - 待办生命周期规范（完成后的归档 SOP：TD- → DN-，编号不变）
 - [BuildSpec.md](Docs/DevSpec/BuildSpec.md) - 构建规范
 - [GitHubActionsSpec.md](Docs/DevSpec/GitHubActionsSpec.md) - GitHub Actions 规范（工作流命名 / 触发 / 权限 / 留痕）
 - [TestingSpec.md](Docs/DevSpec/TestingSpec.md) - 测试规范
@@ -222,6 +266,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
 - [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) - Issue 管理规范（开单 / 状态 / 关闭）
 - [BranchStrategy.md](Docs/DevSpec/BranchStrategy.md) - 分支策略
+- [PullRequestWorkflowSpec.md](Docs/DevSpec/PullRequestWorkflowSpec.md) - PR 合并操作规范（推送前必查 PR 状态，已合并须新开 PR）
 - [CodeReviewChecklist.md](Docs/DevSpec/CodeReviewChecklist.md) - 评审清单
 - [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) - 发布流程
 
@@ -278,9 +323,9 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [Docs/TODO/README.md](Docs/TODO/README.md) — 待办清单与进度看板；待办详情为同目录的 `TD-PPPPP-*.md`（每轮工作结束前扫一遍）
 - [Docs/Troubleshooting/](Docs/Troubleshooting/) — 问题排查 / 事故复盘（`TS-yyMM-NNN-英文词序.md`）
 - [Docs/DevLog/](Docs/DevLog/) — 已完成事项的开发记录（`yyyyMMdd-HH.md`，规范见该目录 README）
-- [TODO.md](Docs/TODO.md) — 历史待办与调整项（冻结，仅供追溯）
-- [PLAN.md](Docs/PLAN.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）
-- [Dbsx.txt](Docs/Dbsx.txt) — 用户原始待办（冻结，已完成项已归档）
+- [TODO.md](Docs/TODO/README.md) — 历史待办与调整项（冻结，仅供追溯）
+- [PLAN.md（已删除，内容归档于 DevLog 20261017-15）](Docs/DevLog/20261017-15.md) — 做不到 / 已决定暂缓 / 仍未做且有阻塞的事项，含判断依据（冻结）
+- [Dbsx.txt（已删除，需求原文折进 Docs/TODO/ 的 TD）](Docs/TODO/README.md) — 用户原始待办（冻结，已完成项已归档）
 - [Archive/](Archive/) — 已废弃的历史资料（不再维护）
 
 ## 技能索引

@@ -7,7 +7,7 @@
 # 运行期由 JavaFX 自己从 jar 取出并缓存），因此只要机器上有 JDK 25。
 #
 # 源码检出处也能用：包根找不到 `aha-desktop.jar` 时，自动把
-# `Dist/aha-desktop-<版本>-<平台>.zip` 解压到以 zip 名与时间戳命名的目录后再启动
+# `Dist/aha-desktop-jvm-<版本>-<平台>-jdk25.zip` 解压到以 zip 名与时间戳命名的目录后再启动
 # （旧目录不删，可能正被已运行的实例占用）。
 set -euo pipefail
 
@@ -53,7 +53,12 @@ if [ -z "$JARDIR" ] && [ -n "$ROOT" ]; then
     esac
 
     ZIP=""
-    if [ -n "$classifier" ]; then
+    # issue #269 新文法优先：aha-desktop-jvm-<版本>-<平台>-jdk25.zip
+    for z in "$ROOT"/Dist/aha-desktop-jvm-*.zip "$ROOT"/dist/aha-desktop-jvm-*.zip; do
+        [ -f "$z" ] || continue
+        ZIP="$z"
+    done
+    if [ -z "$ZIP" ] && [ -n "$classifier" ]; then
         for z in "$ROOT"/Dist/aha-desktop-*-"$classifier".zip "$ROOT"/dist/aha-desktop-*-"$classifier".zip; do
             [ -f "$z" ] || continue
             ZIP="$z"

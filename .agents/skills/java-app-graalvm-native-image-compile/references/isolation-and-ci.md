@@ -67,7 +67,7 @@
   复用会把实验性失败变成「PR 卡住」；
 - 不把它加进必需检查列表。
 - **同一仓库有多个原生目标时，作业名之间也要错开**：桌面端 `native-image-*`、
-  CLI `cli-native-image-*`。两者都不是必需检查，但同名会让日志 / 摘要分不清是哪条管线，
+  CLI `CliNativeImage*`。两者都不是必需检查，但同名会让日志 / 摘要分不清是哪条管线，
   也让日后改成必需检查时无法单独选中（实测：AHA 的 DesktopNative 与 CliNative）。
 
 ### 1.3 Tag 隔离：独立前缀，且**不要命中正式发版的过滤**
@@ -153,11 +153,11 @@ if: always() && needs.<版本作业>.result == 'success'   # 部分平台成功�
 
 按顺序的关键步骤（完整骨架见 [../assets/workflow-native.yml](../assets/workflow-native.yml)）：
 
-1. **`native-version` 作业**：先算版本，三条腿共用同一个版本号（避免各算各的）。
+1. **`NativeVersion` 作业**：先算版本，三条腿共用同一个版本号（避免各算各的）。
 2. **矩阵**：`include:` 显式列出 `os` / `label`（如 `linux-x64`）/ `platform`（分类器名）/
    `jdk` / `experimental`。
    - native-image **不能交叉编译**：每个 runner 只能产自己平台的产物；
-   - 架构差异要显式（`macos-arm64` 与 `linux-x64` 不是一回事）。
+   - 架构差异要显式（`macos-aarch64` 与 `ubuntu-amd64` 不是一回事）。
 3. **装 GraalVM**：用官方 action（`graalvm/setup-graalvm@v1`），
    `distribution` 选 `graalvm-community`（开源项目无授权顾虑，同样带 native-image）
    或 `graalvm`（Oracle 版）。

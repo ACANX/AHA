@@ -32,7 +32,7 @@
       所以用 `git ls-files` 把其中**被跟踪**的那几个手写入口单独捡回来）。
 
   快照清单：单一来源与消费方一致（issue #165）
-    - `.github/snapshot-paths.yml` 是「触发标签 + 变更分类路径」的**单一来源**；
+    - `.github/SnapshotPaths.yml` 是「触发标签 + 变更分类路径」的**单一来源**；
       `SnapshotJVM.yml` / `DesktopNative.yml` 与文档都必须与它一致：
         * 全仓出现的标签字面量必须与清单**逐字一致（含大小写）**——写错的表现是
           「打了标签却毫无反应」，静默且难查；
@@ -47,6 +47,13 @@
     原因：两套实现刻意并存（Windows 不假设有 Python；POSIX 不假设有 PowerShell，
     且 Python 版功能更多），但这三个字面量一旦漂移，表现是「**某个平台上永远取不到包**」
     ——静默且难查。把它们钉在一起，漂移立刻可见。
+
+  发版自动派发链路（issue #238）
+    - 自动打的 tag 由 `GITHUB_TOKEN` 推出，**不会**触发 `push` 事件，因此
+      `Build.yml` 的 `tag` 作业必须用 `gh workflow run Release.yml --ref main` 主动派发；
+    - 断言：`Release.yml` 保留 `workflow_dispatch` + `tag` 入参 + 显式 `tag_name`；
+      `Build.yml` 的 `tag` 作业有 `contents/actions: write`、幂等跳过、只在新建 tag 时派发；
+    - 改坏的表现是「发布页只有 tag、没有发行包，而 CI 全绿」—— 只在发版当天才发现。
 
   通道契约：三处实现的一致性（issue #51 §8.3）
     - 「通道 ↔ tag ↔ 资产名」的规则在本仓库已行三处实现：两套 PowerShell 脚本
@@ -86,6 +93,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import subprocess
 import os
@@ -115,9 +123,9 @@ JAVA_UPDATE_DIR = ROOT / "aha-core" / "src" / "main" / "java" / "com" / "acanx" 
 JAVA_KINDS = JAVA_UPDATE_DIR / "UpdateKind.java"
 JAVA_CHANNEL_CONTRACT = JAVA_UPDATE_DIR / "ChannelContract.java"
 
-#: Java 枚举常量：`DESKTOP_JVM("Desktop-JVM", "aha-desktop-", true, false),`
+#: Java 枚举常量：`DESKTOP_JVM("Desktop-JVM", "desktop", "jvm"),`（issue #269 起）
 JAVA_KIND_RE = re.compile(
-    r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*(true|false),\s*(true|false)\)', re.M)
+    r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)', re.M)
 JAVA_CONST_RE = re.compile(r'\b([A-Z_]{3,})\s*=\s*"([^"]+)"')
 
 #: `Dist/UpdateJvm.ps1`：`$TagSuffix = '-aha-jvm'` 与 `Prefix = 'aha-desktop-'`。
@@ -140,7 +148,7 @@ SNAPSHOT_VERIFIED_DOC = ROOT / "Docs" / "DevSpec" / "ReleaseProcess.md"
 #: 因此与快照自测留痕一样在这里钉成断言。
 PRE_DEPLOY_VERIFY_WORKFLOW = ROOT / ".github" / "workflows" / "PreDeployVerify.yml"
 PRE_DEPLOY_VERIFY_SCRIPT = ROOT / "bin" / "PreDeployVerify.py"
-PRE_DEPLOY_VERIFY_CONTEXT = "predeploy-verify"
+PRE_DEPLOY_VERIFY_CONTEXT = "PreDeployVerify"
 PRE_DEPLOY_VERIFY_MARKER = "<!-- predeploy-verify -->"
 
 #: 工作流顶层 `name:` 必须是大驼峰单数（`Docs/DevSpec/GitHubActionsSpec.md` §2.1）。
@@ -193,7 +201,7 @@ ASSEMBLY_NS = {"a": "http://maven.apache.org/ASSEMBLY/2.2.0"}
 #: 快照出包的单一来源（issue #165）：触发标签与变更分类路径清单。
 #: 消费方是 `SnapshotJVM.yml` / `DesktopNative.yml` 与文档——三者一旦漂移，表现是**静默**的
 #: （某个改动悄悄不出包 / 打错标签毫无反应），因此在这里钉成断言。
-SNAPSHOT_MANIFEST = ROOT / ".github" / "snapshot-paths.yml"
+SNAPSHOT_MANIFEST = ROOT / ".github" / "SnapshotPaths.yml"
 
 #: 仓库里**真实存在**的 7 个标签（`gh label list` 可查）。这是全仓唯一一处把标签名写死的地方——
 #: 名字必须与 GitHub 上的既有事实对齐，不能由清单自定义；清单与所有消费方都要与它逐字一致。
@@ -218,7 +226,7 @@ SCANNABLE_SUFFIXES = {
 }
 
 #: 快照工作流必须出现的清单引用（不许自己再写一套路径）
-SNAPSHOT_MANIFEST_REF = "snapshot-paths.yml"
+SNAPSHOT_MANIFEST_REF = "SnapshotPaths.yml"
 
 PY_KIND_RE = re.compile(
     r'key="(\w+)".*?tag_suffix="([^"]+)".*?asset_prefix="([^"]+)".*?exe_base="([^"]+)"',
@@ -342,6 +350,11 @@ def check_ignored_sources() -> list[str]:
       * 只有 CI 会告诉你 `cannot find symbol: class LogLevel`。
 
     因此这里直接问 git：有哪些被忽略的文件落在源码目录里（或本身就是 .java）。
+
+    一条白名单（issue #262）：若**同名文件在仓库别处受跟踪**，被忽略的那一份视为**构建产物**
+    —— 包根扁平化后 assemblies 会把 `bin/AhaCli.sh` 铺到 `Dist/` 根，而 `Dist/` 整体被忽略，
+    不排除的话「构建之后的检查」必然假红。只在被忽略目录里存在的手写脚本（如
+    `Dist/apply-update.cmd` 那种形态）仍然照旧判红。
     """
     try:
         result = subprocess.run(
@@ -357,6 +370,13 @@ def check_ignored_sources() -> list[str]:
 
     if result.returncode != 0:
         return [f"调用 git 失败（exit={result.returncode}）：{result.stderr.strip()}"]
+
+    # 「同名文件在仓库别处受跟踪」⇒ 被忽略的那份是**构建产物**（源在别处），不是漏提交。
+    # 包根扁平化（#217/#218）之后 assemblies 会把 `bin/AhaCli.sh` 铺到 `Dist/` 根，
+    # 而 `Dist/` 整体被 .gitignore 忽略 —— 若不排除，`clean verify` 之后的检查必然假红（issue #262）。
+    tracked_names = _tracked_basenames()
+    if tracked_names is None:
+        return ["调用 git 失败，无法取得受跟踪文件清单（构建产物判据）"]
 
     offenders: list[str] = []
     for line in result.stdout.splitlines():
@@ -375,6 +395,10 @@ def check_ignored_sources() -> list[str]:
         if Path(entry).suffix.lower() not in IGNORED_REF_SUFFIXES:
             continue
         base = Path(entry).name
+        if base in tracked_names:
+            # 构建产物：同名源文件在别处受跟踪（如 bin/AhaCli.sh → Dist/AhaCli.sh）。
+            # 只放过这一种；只在被忽略目录里存在、仓库别处没有同名文件的手写脚本仍会被抓。
+            continue
         for referenced_by, text in _referencing_texts():
             if re.search(r"(?<![\w.-])" + re.escape(base) + r"(?![\w.-])", text):
                 offenders.append(
@@ -383,6 +407,94 @@ def check_ignored_sources() -> list[str]:
                 )
                 break
     return offenders
+
+
+def _workflow_job_block(text: str, job: str) -> str:
+    """取出某个作业的 YAML 片段（从 `  <job>:` 到下一个同级键为止）。"""
+    match = re.search(rf"^  {re.escape(job)}:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text, re.M | re.S)
+    return match.group(0) if match else ""
+
+
+def check_release_auto_dispatch() -> list[str]:
+    """issue #238：自动打的 tag 经 `workflow_dispatch` 派发 `Release.yml` —— 这条链路不许被改坏。
+
+    为什么值得钉死：它**没有别的兜底**。tag 由 `GITHUB_TOKEN` 推出时 GitHub 不触发 `push` 事件，
+    所以派发那一段是「发布页有没有发行包」的唯一开关；改坏的表现是**发布页只有 tag、没有资产，
+    而 CI 全绿** —— 正是 #238 当初的样子，且要到发版当天才发现。
+    """
+    problems: list[str] = []
+    release = ROOT / ".github" / "workflows" / "Release.yml"
+    build = ROOT / ".github" / "workflows" / "Build.yml"
+    for path in (release, build):
+        if not path.is_file():
+            return [f"缺少 {path.relative_to(ROOT)}（发布链路无法核对）"]
+
+    release_text = release.read_text(encoding="utf-8")
+    build_text = build.read_text(encoding="utf-8")
+
+    # ① Release.yml 必须能被 workflow_dispatch 派发，且 tag 来自入参
+    if not re.search(r"^  workflow_dispatch:\n", release_text, re.M):
+        problems.append("Release.yml 缺 `workflow_dispatch` —— 自动派发与手工补发都靠它（issue #238）")
+    if not re.search(r"^      tag:\n", release_text, re.M):
+        problems.append("Release.yml 的 `workflow_dispatch` 缺 `tag` 入参（派发时用 `-f tag=<TAG>`）")
+    if "inputs.tag || github.ref_name" not in release_text:
+        problems.append("Release.yml 没有用 `inputs.tag || github.ref_name` 取发布 tag —— "
+                        "派发时 `github.ref` 是分支，会指错对象（issue #238）")
+    # 出包逻辑可能被抽到可复用工作流（如 `CliReleasePackageLeg.yml`）：
+    # 主工作流传 `ref`，腿里用 `tag_name: ${{ inputs.ref }}`。两处都算「显式指定」。
+    leg_texts = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / ".github" / "workflows").glob("*Leg.yml")))
+    has_explicit_tag = (
+        "tag_name: ${{ inputs.tag || github.ref_name }}" in release_text
+        or "tag_name: ${{ inputs.ref }}" in release_text
+        or "tag_name: ${{ inputs.ref }}" in leg_texts)
+    if not has_explicit_tag:
+        problems.append("Release.yml 的 `action-gh-release` 没有显式 `tag_name` —— 派发时会挂到分支上")
+    # ② 快照 tag 的负向排除不能丢（丢了则每次出快照都跑完整发版）
+    #    2026-10-17 起快照 tag 去掉了 `-SNAPSHOT`，改按 `-AHA-` / `-aha-` 排除；
+    #    旧的 `-SNAPSHOT` 规则保留（历史 tag 仍可能被重推）。
+    for pattern in ("'!V*-AHA-*'", "'!V*-aha-*'", "'!V*-SNAPSHOT'"):
+        if pattern not in release_text:
+            problems.append(f"Release.yml 缺快照 tag 负向排除 {pattern}（issue #165 的两条硬约束之一）")
+
+    # ③ Build.yml 的 tag 作业：权限、幂等、派发 ref
+    tag_job = _workflow_job_block(build_text, "Tag")
+    if not tag_job:
+        problems.append("Build.yml 找不到 `Tag` 作业（自动打 tag 的入口）")
+    else:
+        if "actions: write" not in tag_job:
+            problems.append("Build.yml 的 `Tag` 作业缺 `actions: write` —— "
+                            "`gh workflow run` 会 403，发行包不会产出（issue #238）")
+        if "contents: write" not in tag_job:
+            problems.append("Build.yml 的 `Tag` 作业缺 `contents: write` —— 推不了 tag")
+        if 'ls-remote --exit-code --tags origin "refs/tags/${TAG}"' not in tag_job:
+            problems.append("Build.yml 的 `Tag` 作业缺幂等判定（tag 已存在时应跳过，验收标准之一）")
+        if "created == 'true'" not in tag_job:
+            problems.append("Build.yml 的派发步骤没有限制「只在真的新建了 tag 时」—— "
+                            "否则每次 push 到 main 都会重复发版")
+        if "gh workflow run Release.yml --ref main" not in tag_job:
+            problems.append("Build.yml 的派发命令缺 `--ref main` —— "
+                            "`workflow_dispatch` 的 SHA 是所派发 ref 的头部，用默认分支会跑到 dev（issue #238）")
+    return problems
+
+
+def _tracked_basenames() -> set[str] | None:
+    """仓库里所有**受跟踪**文件的文件名（用于识别「被忽略的构建产物」）。"""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - 环境问题
+        return None
+    if result.returncode != 0:  # pragma: no cover - 环境问题
+        return None
+    return {Path(line.strip()).name for line in result.stdout.splitlines() if line.strip()}
 
 
 def _referencing_texts() -> list[tuple[str, str]]:
@@ -495,7 +607,7 @@ def check_snapshot_fetch_parity() -> list[str]:
     ps = SNAPSHOT_FETCH_PS1.read_text(encoding="utf-8-sig")
     problems: list[str] = []
 
-    # ① tag 形如 `V<版本>-AHA-<目标>-SNAPSHOT`
+    # ① tag 形如 `V<版本>-AHA-<目标>`（5 段版本；旧 tag 的 `-SNAPSHOT` 后缀仍兼容）
     tag_fmt = re.search(r'TAG_FORMAT = "([^"]+)"', py)
     if not tag_fmt:
         return ["快照命名契约：没能从 SnapshotPlan.py 解析出 TAG_FORMAT（写法变了？）"]
@@ -521,8 +633,8 @@ def check_snapshot_fetch_parity() -> list[str]:
                 problems.append(f"快照命名契约：$TagPattern 里没有目标 {target!r}——该目标的快照本地取不到")
 
     # ② 资产前缀：Python 的两张表必须与 PS1 的 $kinds 表逐一对应
-    py_prefixes = set(re.findall(r'"(AHA-[A-Za-z-]+-)\{version\}', py))
-    ps_prefixes = set(re.findall(r"'(AHA-[A-Za-z-]+-)'", ps))
+    py_prefixes = set(re.findall(r'"(aha-[a-z-]+-)\{version\}', py))
+    ps_prefixes = set(re.findall(r"'(aha-[a-z-]+-)'", ps))
     missing = sorted(py_prefixes - ps_prefixes)
     extra = sorted(ps_prefixes - py_prefixes)
     if missing:
@@ -579,21 +691,112 @@ def check_native_update_parity() -> list[str]:
 SHELL_VAR = re.compile(r"(?<!\\)\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
+
+# ── 发布物矩阵（issue #269）──────────────────────────────────────────────────
+
+RELEASE_MATRIX_FILE = ROOT / ".github" / "ReleaseMatrix.yml"
+RELEASE_MATRIX_READER = ROOT / ".github" / "Python" / "ReleaseMatrix.py"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "Release.yml"
+
+#: 0.1.3 及更早的**资产名**前缀（0.1.5 起必须彻底消失）。
+#:
+#: 只匹配「前缀 + 数字」（即真正的旧资产名 `AHA-Cli-Native-<版本>-…`）；
+#: 快照 release 的**标题** `V<版本>-AHA-Cli-Native-Image` 不是资产名，不能误伤
+#: （2026-10-18 切 0.1.5 时实测：过宽的字符串匹配把 release 标题也算进去，VersionBump 自检假红）。
+LEGACY_ASSET_PATTERNS = {
+    "AHA-Desktop-Native-": re.compile(r"AHA-Desktop-Native-\d"),
+    "AHA-Cli-Native-": re.compile(r"AHA-Cli-Native-\d"),
+    "AHA-Desktop-JVM-": re.compile(r"AHA-Desktop-JVM-\d"),
+    "AHA-Cli-JVM-": re.compile(r"AHA-Cli-JVM-\d"),
+}
+
+
+def _load_release_matrix_module():
+    """按路径加载 `.github/Python/ReleaseMatrix.py`（不依赖 sys.path）。"""
+    spec = importlib.util.spec_from_file_location("release_matrix", RELEASE_MATRIX_READER)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in text.strip().split("."))
+    except ValueError:
+        return (0,)
+
+
+def check_release_matrix() -> list[str]:
+    """发布物矩阵与工作流一致（issue #269 §3 / §6）。
+
+    钉三件事：
+      ① 矩阵文件存在、文件名大驼峰、结构合规（四组合 × 三平台、runtime 与形态匹配）；
+      ② `Release.yml` **从矩阵读期望清单**（不再硬编码资产名）；
+      ③ 旧资产名前缀在 `version >= 0.1.5` 时必须彻底消失（过渡期结束后不许回潮）。
+    """
+    if not RELEASE_MATRIX_FILE.exists():
+        return [f"缺少发布物矩阵：{RELEASE_MATRIX_FILE.relative_to(ROOT)}（issue #269）"]
+    if not re.fullmatch(r"[A-Z][A-Za-z0-9]*\.yml", RELEASE_MATRIX_FILE.name):
+        return [f"发布物矩阵文件名必须大驼峰：{RELEASE_MATRIX_FILE.name}"]
+    if not RELEASE_MATRIX_READER.exists():
+        return [f"缺少矩阵读取入口：{RELEASE_MATRIX_READER.relative_to(ROOT)}"]
+
+    module = _load_release_matrix_module()
+    try:
+        matrix = module.load(RELEASE_MATRIX_FILE)
+    except ValueError as error:
+        return [f"发布物矩阵无法解析：{error}"]
+
+    problems = [f"发布物矩阵：{problem}" for problem in module.validate(matrix)]
+
+    names = module.asset_names("0.0.0", matrix)
+    expected = len(module.COMBOS) * len(module.PLATFORMS)
+    if len(names) != expected:
+        problems.append(
+            f"发布物矩阵展开后应有 {expected} 份资产，实际 {len(names)} 份")
+
+    if RELEASE_WORKFLOW.exists():
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        if "ReleaseMatrix.py" not in workflow:
+            problems.append(
+                "`Release.yml` 没有从矩阵读期望资产清单（应调用 "
+                "`.github/Python/ReleaseMatrix.py --asset-names`）")
+        for legacy in ("aha-cli-${version}.zip", "aha-desktop-${version}-${LABEL}.zip"):
+            if legacy in workflow:
+                problems.append(
+                    f"`Release.yml` 里还有旧的资产名硬编码 `{legacy}`（issue #269 已改为读矩阵）")
+
+    version_file = ROOT / "version"
+    version = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "0.0.0"
+    if _version_tuple(version) >= (0, 1, 5):
+        workflows = ROOT / ".github" / "workflows"
+        for path in sorted(workflows.glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            for legacy, pattern in LEGACY_ASSET_PATTERNS.items():
+                if pattern.search(text):
+                    problems.append(
+                        f"{path.relative_to(ROOT)} 仍出现旧资产前缀 `{legacy}`——"
+                        f"version 已是 {version}（≥ 0.1.5），过渡期别名必须移除")
+    return problems
+
+
 def check_release_channel_contract() -> list[str]:
     """通道 ↔ tag ↔ 资产名的契约在 PowerShell / Python / Java 三处必须逐字一致（issue #51 §8.3）。
 
-    这是本仓库第三次（也是头一次用 Java）实现「从发布页挑包」的规则：
-    `Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`（PowerShell）、
-    `Script/Python/NativeVersionUpdate.py`（Python）、`ChannelContract.java` + `UpdateKind.java`（Java）。
-    规则一旦漂移，表现是「某个通道 / 平台上永远取不到包」—— 静默且难查，所以钉在这里。
+    命名文法自 issue #269 起统一为
+    `aha-<product>-<form>-<版本>-<平台>-<runtime>.zip`，tag 为
+    `V<版本>-aha-<product>-<form>`（Beta）/ `V<版本>-AHA-<product>-<form>-SNAPSHOT`（Alpha）。
+    三处实现（`Dist/UpdateJvm.ps1` / `Dist/UpdateNative.ps1`、`NativeVersionUpdate.py`、
+    `ChannelContract.java` + `UpdateKind.java`）必须逐字一致 —— 规则一旦漂移，
+    表现是「某个通道 / 平台上永远取不到包」，静默且难查。
 
-    钉的是**契约片段本身**，不是拼接后的整串：Java 把原生 tag 拼成
-    `NATIVE_TAG_INFIX + kind.tagSuffix()`，所以这里比的是「中缀 + 目标词」与另外两处的字面量相等，
-    这样改任一侧都会被拦下（只钉拼接结果的话，把中缀拆到别处就检不出来了）。
+    钉的是**由 product / form 拼出来的契约片段**，不是某一处写死的整串：
+    Java 把前缀拼成 `"aha-" + product + "-" + form + "-"`，这里在 Python / PowerShell 侧
+    按同样的 product / form 拼一遍再比较，改任一侧都会被拦下。
     """
     needed = (NATIVE_PS1, NATIVE_PY, JVM_PS1, JAVA_KINDS, JAVA_CHANNEL_CONTRACT)
     if not all(path.exists() for path in needed):
-        # 与 check_native_update_parity 同口径：文件还没到位（例如在老分支上跑）时不误报。
         return []
     problems: list[str] = []
 
@@ -601,6 +804,7 @@ def check_release_channel_contract() -> list[str]:
           for m in PY_KIND_RE.finditer(NATIVE_PY.read_text(encoding="utf-8"))}
     ps = {m.group(1).lower(): m.groups()[1:]
           for m in PS_KIND_RE.finditer(NATIVE_PS1.read_text(encoding="utf-8-sig"))}
+    # Java 枚举：`DESKTOP_JVM("Desktop-JVM", "desktop", "jvm"),` → (targetWord, product, form)
     java_kinds = {m.group(1): m.groups()[1:]
                   for m in JAVA_KIND_RE.finditer(JAVA_KINDS.read_text(encoding="utf-8"))}
     java_consts = dict(JAVA_CONST_RE.findall(JAVA_CHANNEL_CONTRACT.read_text(encoding="utf-8")))
@@ -623,23 +827,24 @@ def check_release_channel_contract() -> list[str]:
             problems.append(
                 f"通道契约：原生种类 {key!r} 的 Python 与 PowerShell 不一致——"
                 f"tag {py_tag!r} vs {ps_tag!r}，前缀 {py_prefix!r} vs {ps_prefix!r}")
-        java_kind = next(((name, value) for name, value in java_kinds.items()
-                          if value[1] == py_prefix and value[3] == "true"), None)
-        if java_kind is None:
-            problems.append(
-                f"通道契约：原生资产前缀 {py_prefix!r} 在 Java 的 UpdateKind 里找不到对应的原生常量"
-                "（挑的是 nativeImage=true 且 assetPrefix 相同的那一个）")
+        java_name = f"{key.upper()}_NATIVE"
+        value = java_kinds.get(java_name)
+        if value is None:
+            problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {java_name}")
             continue
-        java_name, java_kind_value = java_kind
-        if native_infix is None or f"{native_infix}{java_kind_value[0].lower()}" != py_tag:
+        _target, product, form = value
+        if native_infix is None or f"{native_infix}{product}-{form}" != py_tag:
             problems.append(
                 f"通道契约：原生 tag 在 Java（{java_name}）拼成 "
-                f"{native_infix!r}+{java_kind_value[0].lower()!r}，"
+                f"{native_infix!r}+{product!r}+'-'+{form!r}，"
                 f"而 Python / PowerShell 写的是 {py_tag!r}；这会让原生取件永远找不到包")
+        if f"aha-{product}-{form}-" != py_prefix:
+            problems.append(
+                f"通道契约：原生资产前缀在 Java（{java_name}）拼成 "
+                f"{'aha-'+product+'-'+form+'-'!r}，而 Python / PowerShell 写的是 {py_prefix!r}")
 
-    # ── ② JVM 线：tag 后缀与两个资产前缀 ────────────────────────────────────
+    # ── ② JVM 线：资产前缀与旧 tag 别名 ─────────────────────────────────────
     jvm_ps1_text = JVM_PS1.read_text(encoding="utf-8-sig")
-    ps_native_text = NATIVE_PY.read_text(encoding="utf-8")
     jvm_tag = PS_JVM_TAG_RE.search(jvm_ps1_text)
     if jvm_tag is None:
         problems.append("通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffix`，无法与 Java 对齐")
@@ -649,28 +854,17 @@ def check_release_channel_contract() -> list[str]:
             f"Java 侧 JVM_TAG_SUFFIX 是 {java_consts.get('JVM_TAG_SUFFIX')!r}")
     ps_prefixes = set(PS_JVM_PREFIX_RE.findall(jvm_ps1_text))
     for name in ("DESKTOP_JVM", "CLI_JVM"):
-        if name not in java_kinds:
+        value = java_kinds.get(name)
+        if value is None:
             problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {name}")
             continue
-        java_prefix = java_kinds[name][1]
-        if java_prefix not in ps_prefixes:
+        _target, product, form = value
+        expected_prefix = f"aha-{product}-{form}-"
+        if expected_prefix not in ps_prefixes:
             problems.append(
-                f"通道契约：JVM 线资产前缀 {java_prefix!r}（Java 侧 {name}）"
-                f"没出现在 `Dist/UpdateJvm.ps1` 的前缀表里（实际：{sorted(ps_prefixes)}）")
-
-    # ── ③ JDK 段与扩展名：三处一致 ────────────────────────────────────────
-    jdk_infix = java_consts.get("JDK_INFIX")
-    zip_suffix = java_consts.get("ZIP_SUFFIX")
-    if jdk_infix != "-jdk":
-        problems.append(f"通道契约：Java 侧 JDK 段应是 '-jdk'，实际 {jdk_infix!r}")
-    if zip_suffix != ".zip":
-        problems.append(f"通道契约：Java 侧扩展名应是 '.zip'，实际 {zip_suffix!r}")
-    if jdk_infix and f"{jdk_infix}{{jdk}}" not in ps_native_text:
-        problems.append(
-            f"通道契约：Python 侧资产名里应能看到 `{jdk_infix}{{jdk}}`（JDK 段），"
-            "否则原生包的 JDK 段只剩 Java 一处约定")
+                f"通道契约：JVM 资产前缀 {expected_prefix!r}（Java {name}）"
+                f"在 `Dist/UpdateJvm.ps1` 的 Prefix 里找不到（现有：{sorted(ps_prefixes)}）")
     return problems
-
 
 def maybe_scannable_files():
     """遍历被 git 跟踪（或未跟踪但未被忽略）的文本文件，产出 (路径, 内容)。
@@ -841,9 +1035,9 @@ def check_snapshot_assert_contract() -> list[str]:
     wf_text = wf.read_text(encoding="utf-8")
 
     # ① status 的 context：分支保护里认的就是这个字符串（必须出现在**打标那一行**）
-    if not re.search(r"-f context=snapshot-assert(\s|$)", wf_text, re.M):
+    if not re.search(r"-f context=SnapshotAssert(\s|$)", wf_text, re.M):
         problems.append(
-            f"{rel}：找不到 `-f context=snapshot-assert` —— 打出来的标不会指向分支保护里那个名字"
+            f"{rel}：找不到 `-f context=SnapshotAssert` —— 打出来的标不会指向分支保护里那个名字"
         )
 
     # ② 两个命令前缀必须出现在**触发守卫**里（只看 `if:` 那一块）
@@ -917,6 +1111,57 @@ def _step_with_always(text: str, needle: str) -> bool:
         if needle in block:
             return bool(re.search(r"^        if: always\(\)", block, re.M))
     return False
+
+
+#: 显示名扫描：只认三层 —— 顶层（0 缩进）、作业（4 空格）、步骤（6 空格 + `- `）。
+#: `with:` / `env:` 下的 `name:` 不是显示名（例如制品名、发布页标题），不在此列。
+DISPLAY_NAME_LINES = (
+    re.compile(r"^(?:name|run-name):[ \t]*(\S.*?)[ \t]*$"),
+    re.compile(r"^    name:[ \t]*(\S.*?)[ \t]*$"),
+    re.compile(r"^      - name:[ \t]*(\S.*?)[ \t]*$"),
+)
+
+
+def check_workflow_display_names() -> list[str]:
+    """所有 `name:` / `run-name:` 必须是**静态**英文大驼峰（issue #287）。
+
+    规则（`Docs/DevSpec/WorkflowDisplayNameSpec.md`）：`^[A-Z][A-Za-z0-9]*$` ——
+    不许 `${{ … }}`、不许 `-` / 括号 / 空格 / 中文。参数只允许出现在
+    `runs-on` / `with` / `env` / 步骤 `if` 里，**不进显示名**。
+
+    为什么单独守这一条：矩阵靠表达式区分腿，而表达式进显示名会同时带来三个问题 ——
+    PR 检查列表的名字随矩阵值变化（分支保护匹配不上）、名字里混着标点（检索与对照都要换算）、
+    以及「改了矩阵键就悄悄改了检查名」。矩阵因此展开为逐腿静态作业（`*Leg.yml` 可复用）。
+    """
+    problems: list[str] = []
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        rel = wf.relative_to(ROOT)
+        for number, line in enumerate(wf.read_text(encoding="utf-8").splitlines(), 1):
+            value = ""
+            for pattern in DISPLAY_NAME_LINES:
+                match = pattern.match(line)
+                if match:
+                    value = match.group(1).strip().strip("'\"")
+                    break
+            if not value:
+                continue
+            # 行内注释（`name: Foo  # 说明`）不算值的一部分
+            value = value.split("  #", 1)[0].strip()
+            if WORKFLOW_NAME_RE.match(value):
+                continue
+            if "${{" in value:
+                reason = "含 `${{ … }}`（显示名必须是静态字符串；参数只进 runs-on / with / env / if）"
+            elif not all(ord(ch) < 128 for ch in value):
+                reason = "含非 ASCII（中文 / 全角标点）"
+            elif "-" in value or " " in value or "(" in value or ")" in value:
+                reason = "含标点（连字符 / 空格 / 括号）"
+            else:
+                reason = "不是大驼峰"
+            problems.append(
+                f"{rel}:{number} 的显示名 {value!r} 不合格：{reason}——"
+                "一律 `^[A-Z][A-Za-z0-9]*$`，见 `Docs/DevSpec/WorkflowDisplayNameSpec.md`"
+            )
+    return problems
 
 
 def check_workflow_names() -> list[str]:
@@ -1048,7 +1293,7 @@ def check_pre_deploy_verify_contract() -> list[str]:
     if "PreDeployVerify.py --self-test" not in wf_text:
         problems.append(
             f"{rel}：没有跑验证脚本的自检（`PreDeployVerify.py --self-test`）—— "
-            "与 static-guards 里 `ProjectVersion.py --self-test` 同一口径，不该漏"
+            "与 StaticGuard 里 `ProjectVersion.py --self-test` 同一口径，不该漏"
         )
 
     # ⑧ 升级路径写进规范：status 名必须能在规范里查到（否则「加进 required」无从下手）
@@ -1232,7 +1477,7 @@ def check_snapshot_manifest() -> list[str]:
                 f"{wrel}:{number} 的 `pull_request.{key}` 在**触发层**过滤事件——"
                 "只改文档的 PR 就算新打了触发标签（显式请求）也进不来，"
                 "现象是「打了标签毫无反应」（2026-10-15 实测 PR #203）。"
-                "快照工作流一律去掉该过滤：让 plan 作业先跑，昂贵的步骤按 should_build 门控"
+                "快照工作流一律去掉该过滤：让 Plan 作业先跑，昂贵的步骤按 should_build 门控"
             )
 
         # ⑥ 快照工作流的并发组必须按「事件类别」分开：只按 ref / PR 号分组时，
@@ -1291,7 +1536,7 @@ INPUT_BOOL_COMPARE_RE = re.compile(
 def check_yaml_input_bool_compare(path: Path) -> list[str]:
     """工作流里禁止对 `inputs.*` 做 `== / != true|false` 的宽松比较。
 
-    来历（2026-10-15 实测，issue #213）：`build-publish` 的门写成
+    来历（2026-10-15 实测，issue #213）：`BuildPublish` 的门写成
     `inputs.publish != false && inputs.publish != 'false'`，意图是「push / dispatch 默认发布，
     只有显式 false 才跳过」。但 `push` 事件**没有 `inputs`** ⇒ `inputs.publish` 为 `null`；
     GitHub 表达式做宽松比较时把两侧折算成数字（`null → 0`、`false → 0`）
@@ -1411,7 +1656,7 @@ def check_update_helper_packaging() -> list[str]:
 def check_repo_script_steps_have_checkout() -> list[str]:
     """作业里调用**仓库内**脚本 ⇒ 该作业必须先 checkout（2026-10-16 CI 实测）。
 
-    来历：给 `native-publish` / `cli-native-publish` / `build-publish` 加「生成 SHA256SUMS」
+    来历：给 `NativePublish` / `CliNativePublish` / `BuildPublish` 加「生成 SHA256SUMS」
     步骤（调用 `.github/Python/PackageManifest.py`），但这三个作业只下载制品、**不检出仓库**，
     于是 CI 报 `can't open file '.../PackageManifest.py': [Errno 2] No such file or directory`。
     本地复现不出来（本地永远有工作区），所以钉成守卫。
@@ -1502,6 +1747,8 @@ def main() -> int:
     problems.extend(pre_deploy)
     wf_names = check_workflow_names()
     problems.extend(wf_names)
+    display_names = check_workflow_display_names()
+    problems.extend(display_names)
     layout = check_package_layout()
     problems.extend(layout)
     shade = check_shade_attached()
@@ -1512,6 +1759,8 @@ def main() -> int:
     problems.extend(parity)
     channel = check_release_channel_contract()
     problems.extend(channel)
+    release_matrix = check_release_matrix()
+    problems.extend(release_matrix)
     snap_parity = check_snapshot_fetch_parity()
     problems.extend(snap_parity)
     snapshot = check_snapshot_manifest()
@@ -1524,6 +1773,8 @@ def main() -> int:
     problems.extend(helper_pkg)
     checkout = check_repo_script_steps_have_checkout()
     problems.extend(checkout)
+    auto_dispatch = check_release_auto_dispatch()
+    problems.extend(auto_dispatch)
 
     print(f"\n检查 {checked} 个脚本文件（含 {len(groups['ps1'])} 个 PowerShell、"
           f"{len(groups['xml'])} 个 XML、{len(groups['yml'])} 个 YAML）")
@@ -1531,14 +1782,17 @@ def main() -> int:
     print(f"检查快照自测留痕契约（context/命令/权限/清单编号/必测项 0 token）：{'❌' if snap_assert else '✅'}")
     print(f"检查部署前验证契约（触发/权限/留痕非静默/升级路径）：{'❌' if pre_deploy else '✅'}")
     print(f"检查工作流命名（文件名 / name: 大驼峰且一一对应，GitHubActionsSpec §2）：{'❌' if wf_names else '✅'}")
+    print(f"检查显示名（name / run-name 静态英文大驼峰、零表达式，WorkflowDisplayNameSpec）：{'❌' if display_names else '✅'}")
     print(f"检查发行包形态（包根平铺、无 lib//bin/、jar 去版本号）：{'❌' if layout else '✅'}")
     print(f"检查 shade 附带产物声明（防 fat jar 顶替主产物）：{'❌' if shade else '✅'}")
     print(f"检查原生取件两套实现的命名契约：{'❌' if parity else '✅'}")
     print(f"检查通道契约三处（PowerShell / Python / Java）一致：{'❌' if channel else '✅'}")
+    print(f"检查发布物矩阵与工作流一致（ReleaseMatrix，issue #269）：{'❌' if release_matrix else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
     print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
     print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
+    print(f"检查发版自动派发链路（#238：tag → workflow_dispatch → Release.yml）：{'❌' if auto_dispatch else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
     if problems:
         print("\n[问题]")

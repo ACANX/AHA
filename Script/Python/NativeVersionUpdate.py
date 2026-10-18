@@ -24,7 +24,7 @@ Windows 一键入口：`Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cm
   1. 取最新版本 tag（形如 V0.1.1.00040-aha-desktop-native），解析出版本 0.1.1
      与构建号 00040；
   2. 按「系统-架构-jdk」挑出当前平台的包
-     `AHA-Desktop-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`；
+     `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`；
   3. 下载到 `Dist/`（断点续传 + sha256 校验）；
   4. 解压出可执行文件，覆盖 `Dist/aha-desktop-native.exe`（旧版留一份 `.bak`）。
 
@@ -92,7 +92,7 @@ class Kind:
 
     key: str          #: configure() 的参数
     title: str        #: 面向用户的名称
-    tag_suffix: str   #: 预发行版 tag 后缀（见各工作流的 native-publish 作业）
+    tag_suffix: str   #: 预发行版 tag 后缀（见各工作流的 NativePublish 作业）
     asset_prefix: str  #: 发布资产前缀
     exe_base: str     #: 可执行文件 basename（不带 .exe）
     state_file: str   #: 记录「本地装的是哪一版」的清单（落在 Dist/）
@@ -104,13 +104,13 @@ class Kind:
 KINDS = {
     "desktop": Kind(
         key="desktop", title="桌面端原生镜像",
-        tag_suffix="-aha-desktop-native", asset_prefix="AHA-Desktop-Native-",
+        tag_suffix="-aha-desktop-native", asset_prefix="aha-desktop-native-",
         exe_base="aha-desktop-native", state_file=".aha-desktop-native.json",
         entry="DesktopNativeVersionUpdate.py", workflow="DesktopNative.yml",
     ),
     "cli": Kind(
         key="cli", title="CLI 原生镜像",
-        tag_suffix="-aha-cli-native", asset_prefix="AHA-Cli-Native-",
+        tag_suffix="-aha-cli-native", asset_prefix="aha-cli-native-",
         exe_base="aha-cli-native", state_file=".aha-cli-native.json",
         entry="CliNativeVersionUpdate.py", workflow="CliNative.yml",
     ),
@@ -142,19 +142,21 @@ USAGE_CMD = rf"python3 Script\Python\{KIND.entry}"
 DOWNLOADER = "urllib"
 
 #: 本机平台 -> 发布用的平台标签（顺序即优先级）。注意 Linux 对应的标签是 ubuntu-*，
-#: 不是 linux-*；macOS 当前只发 arm64。
+#: 不是 linux-*；macOS 只发 Apple Silicon。
+#: 架构词统一 aarch64（issue #287）：新产出一律 `*-aarch64`；
+#: `macos-arm64` 是历史资产名，作为**次选**候选保留（读取兼容，旧快照包仍可取）。
 OS_LABELS = {
-    "win32": ("windows-amd64", "windows-arm64"),
-    "linux": ("ubuntu-amd64", "ubuntu-arm64"),
-    "darwin": ("macos-arm64", "macos-amd64"),
+    "win32": ("windows-amd64", "windows-aarch64"),
+    "linux": ("ubuntu-amd64", "ubuntu-aarch64"),
+    "darwin": ("macos-aarch64", "macos-arm64", "macos-amd64"),
 }
 ARCH_ALIASES = {
     "x86_64": "amd64",
     "amd64": "amd64",
     "i386": "x86",
     "i686": "x86",
-    "aarch64": "arm64",
-    "arm64": "arm64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
 }
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
@@ -253,8 +255,8 @@ def executable_name(label: str) -> str:
 
 
 def asset_name(version: Version, label: str, jdk: str) -> str:
-    """发布资产名：`<资产前缀><版本>-<平台>-jdk<JDK>.zip`。"""
-    return f"{ASSET_PREFIX}{version.text}-{label}-jdk{jdk}.zip"
+    """发布资产名（issue #269 新文法）：`aha-<product>-<form>-<版本>-<平台>-graalvm<JDK>.zip`。"""
+    return f"{ASSET_PREFIX}{version.text}-{label}-graalvm{jdk}.zip"
 
 
 #: tag -> 版本。构建号补零到 5 位（工作流用 printf '%05d'）。
@@ -263,7 +265,7 @@ def _rebuild_patterns() -> None:
     global TAG_RE, ASSET_RE
     TAG_RE = re.compile(rf"^[Vv]?(\d+(?:\.\d+)*?)\.(\d+){TAG_SUFFIX}$")
     ASSET_RE = re.compile(
-        rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$"
+        rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-(?:graalvm|jdk)(?P<jdk>\d+)\.zip$"
     )
 
 
@@ -876,7 +878,7 @@ def run(args: argparse.Namespace) -> int:
     labels = [args.platform] if args.platform else platform_labels()
     if not labels:
         raise UpdateError(
-            "无法识别当前平台，请用 --platform 显式指定（windows-amd64 / ubuntu-amd64 / macos-arm64）"
+            "无法识别当前平台，请用 --platform 显式指定（windows-amd64 / ubuntu-amd64 / macos-aarch64）"
         )
     jdk = args.jdk or DEFAULT_JDK
     jdk_explicit = bool(args.jdk)

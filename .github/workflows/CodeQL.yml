@@ -44,8 +44,8 @@ permissions:
   actions: read
 
 jobs:
-  analyze:
-    name: CodeQL（java-kotlin）
+  Analyze:
+    name: CodeQLJavaKotlin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -54,7 +54,7 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - name: 初始化 CodeQL
+      - name: InitCodeQL
         # v4：v3 计划于 2026 年 12 月弃用，且 v3 目标 Node.js 20（会被强制跑在 Node 24 上并报弃用警告）
         uses: github/codeql-action/init@v4
         with:
@@ -71,14 +71,14 @@ jobs:
           #    不指定时它对已编译语言会尝试自动构建，而自动构建往往认不出 Maven 4 RC 的 Wrapper。
           build-mode: manual
 
-      - name: 编译（CodeQL 需要真实编译产物）
+      - name: CompileForCodeQL
         # 经统一的 Maven 入口：会先清本地仓库失败标记，并对仓库侧瞬时故障定向重试
         # （见 BuildSpec 第 8.1 节「CI 必须容忍仓库侧瞬时失败」）
         uses: ./.github/actions/maven-run
         with:
           command: ./mvnw -B -DskipTests -Djacoco.skip=true compile
 
-      - name: 分析并上传结果
+      - name: AnalyzeAndUpload
         # 这一步失败时，先去日志里读错误原文——最常见的原因是**默认设置与高级设置互斥**：
         #   开启 GitHub 的 Code scanning 默认设置（Default setup）后，来自本工作流的结果会被拒收：
         #   CodeQL analyses from advanced configurations cannot be processed when the

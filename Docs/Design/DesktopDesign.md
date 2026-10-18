@@ -234,7 +234,7 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
 **与 CI 的关系**：`Build.yml` 每次 push / PR 只做编译与单元测试（见 [BuildSpec.md](../DevSpec/BuildSpec.md)
 第 8 节）；另有一条**独立的 dev JVM 构建线**（`BuildJVMArtifacts.yml`，与 `DesktopNative.yml` /
-`CliNative.yml` 同构）——`push` 到 `dev` 时由 `build-mvn-artifact` / `build-publish` 用**同一条命令**
+`CliNative.yml` 同构）——`push` 到 `dev` 时由 `BuildMvnArtifact` / `BuildPublish` 用**同一条命令**
 产出便携包并发布预发行版（JDK 25 基线与 JDK 27 两轴，issue #63 / #65）。正式发版仍由
 `Release.yml` 在 `V*` tag 上产出。原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
 （见 [DesktopNativeDesign.md](DesktopNativeDesign.md)），不在本节范围内。
@@ -563,7 +563,7 @@ com/acanx/module/aha/desktop/view/
   一旦失败，CSS 会**丢掉整条声明**（暗色下就是一片黑字），所以字面量必须保留；
   生成器入库 + 产物入库，与 `bin/GenLogoPng.py` 同一模式。
   四道静态门禁（`CheckDocs` / `CheckSkills` / `CheckScripts` / `CheckTheme`）同时挂到了
-  `Build.yml` 的 `static-guards` 作业：此前它们只在 `Gate.yml` 里跑，而 Gate **不覆盖对 `dev`
+  `Build.yml` 的 `StaticGuard` 作业：此前它们只在 `Gate.yml` 里跑，而 Gate **不覆盖对 `dev`
   的 PR**，这类问题恰恰要在提 PR 时就暴露。
 - **颜色分两类角色（2026-10-13，issue #153）**：
   | 角色 | 载体 | 底色 |

@@ -8,8 +8,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * 平台标签的归一化与发布范围（issue #51 §2.1）。
  *
- * <p>归一化的目标值取发布页上<b>实际出现过</b>的标签（实查 2026-10-16）：
- * {@code windows-amd64} / {@code ubuntu-amd64} / {@code macos-arm64}。</p>
+ * <p>归一化的目标值取发布页上的标签：{@code windows-amd64} / {@code ubuntu-amd64} /
+ * {@code macos-aarch64}（架构词统一 {@code aarch64}，issue #287）；历史 {@code macos-arm64}
+ * 只在读取时被 {@code matches()} 接受。</p>
  *
  * @since 0.2.0
  */
@@ -21,10 +22,10 @@ class PlatformTagTest {
         assertThat(PlatformTag.of("Windows 11", "amd64").value()).isEqualTo("windows-amd64");
         assertThat(PlatformTag.of("Windows 10", "x86_64").value()).isEqualTo("windows-amd64");
         assertThat(PlatformTag.of("Linux", "x86_64").value()).isEqualTo("ubuntu-amd64");
-        assertThat(PlatformTag.of("Linux", "aarch64").value()).isEqualTo("ubuntu-arm64");
-        assertThat(PlatformTag.of("Mac OS X", "aarch64").value()).isEqualTo("macos-arm64");
+        assertThat(PlatformTag.of("Linux", "aarch64").value()).isEqualTo("ubuntu-aarch64");
+        assertThat(PlatformTag.of("Mac OS X", "aarch64").value()).isEqualTo("macos-aarch64");
         assertThat(PlatformTag.of("Mac OS X", "x86_64").value()).isEqualTo("macos-amd64");
-        assertThat(PlatformTag.of("Darwin", "arm64").value()).isEqualTo("macos-arm64");
+        assertThat(PlatformTag.of("Darwin", "arm64").value()).isEqualTo("macos-aarch64");
     }
 
     @Test
@@ -46,6 +47,21 @@ class PlatformTagTest {
         assertThatThrownBy(() -> PlatformTag.of("Windows 11", ""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("架构名");
+    }
+
+    @Test
+    void acceptsLegacyArm64SpellingWhenMatchingAssets() {
+        PlatformTag mac = PlatformTag.of("Mac OS X", "aarch64");
+
+        // 新产出用 aarch64
+        assertThat(mac.matches("macos-aarch64")).isTrue();
+        // 历史资产名（2026-10-17 之前）用 arm64 —— 读取必须兼容，否则旧快照包取不到
+        assertThat(mac.matches("macos-arm64")).isTrue();
+        // 其它平台 / 空值不沾边
+        assertThat(mac.matches("windows-amd64")).isFalse();
+        assertThat(mac.matches(null)).isFalse();
+        // 非 macOS 平台不享受 arm64 别名
+        assertThat(PlatformTag.of("Linux", "aarch64").matches("ubuntu-arm64")).isFalse();
     }
 
     @Test

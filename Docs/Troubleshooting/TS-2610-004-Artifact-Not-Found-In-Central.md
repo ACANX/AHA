@@ -3,7 +3,7 @@
 > 日期：2026-10-07
 > 作者：@ACANX（与 AI 协作）
 > 关联 PR：[#8](https://github.com/ACANX/AHA/pull/8)（该轮 CI 失败）
-> 关联记录：[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1、[TODO.md](../TODO.md) `F-13`、`.github/actions/maven-run/action.yml`
+> 关联记录：[BuildSpec.md](../DevSpec/BuildSpec.md) §8.1、[TODO.md](../TODO/README.md) `F-13`、`.github/actions/maven-run/action.yml`
 
 ---
 
@@ -174,7 +174,7 @@ $ ./mvnw -B -N dependency:get -Dartifact=org.ow2.asm:asm-commons:9.99.9
 | `.github/workflows/Release.yml` | `Build and verify` 走复合 action |
 | [BuildSpec.md](../DevSpec/BuildSpec.md) | §8.1 新增「CI 必须容忍仓库侧瞬时失败（强制）」；§8 的改动范围补 `.github/actions/` |
 | [AHA-Design-V1.md](../AHA/AHA-Design-V1.md) | 附录 A 目录树补齐 `.github/workflows/`（原先只列了 Build 与 Release）并加 `actions/` |
-| [TODO.md](../TODO.md) | 新增 `F-13`（✅ 已修）与 `F-14`（⏸ 待决策） |
+| [TODO.md](../TODO/README.md) | 新增 `F-13`（✅ 已修）与 `F-14`（⏸ 待决策） |
 | `CHANGELOG.md` | 记录本次修复 |
 
 ---

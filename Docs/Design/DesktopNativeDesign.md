@@ -15,13 +15,13 @@
 
 三条边界先写清楚：
 
-1. **正式交付仍是 JVM 模式**（`aha-desktop-<版本>-<平台>.zip` + `bin/AhaDesktop.*`）。
+1. **正式交付仍是 JVM 模式**（`aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` + `bin/AhaDesktop.*`）。
    原生镜像是**旁路**，不替代它。
 2. **失败必须被隔离**：原生镜像编不出来，不允许挡住任何既有流程（见第 2 节）。
 3. **参数会反复改**：这是一份「起点」，不是终稿；迭代方式见第 6 节。
 
 > **JVM 模式自己的 dev 出包线**见 `BuildJVMArtifacts.yml`（`push` → `dev` 产出
-> `aha-desktop-<版本>-<平台>.zip` 与 `aha-cli-<版本>.zip` 的预发行版）——它与本工作流
+> `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 的预发行版）——它与本工作流
 > **并列**、互不牵连：一个编原生镜像，一个打包 JVM 产物，共用同一套 `a.b.c.PPPPP` 版本规则。
 > 该 JVM 线还含一份 **JDK 27 编译产物**（包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的
 > **JVM 字节码**，与本工作流里用 GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。
@@ -32,7 +32,7 @@
 
 | # | 目标 | 判据 |
 |---|---|---|
-| G1 | 把 `aha-desktop` 的 JVM 产物编成三平台原生可执行文件 | `DesktopNative.yml` 的 `native-build` 三条腿各自产出二进制 |
+| G1 | 把 `aha-desktop` 的 JVM 产物编成三平台原生可执行文件 | `DesktopNative.yml` 的 `NativeImage` 三条腿各自产出二进制 |
 | G2 | 每次合并到 `dev` 自动出一版，可在发布页直接下载 | 触发即发布 `native-v<版本>` 预发行版 |
 | G3 | 版本号可追溯到具体 PR | 版本形如 `0.1.1.00021`（PR 段补零到 5 位） |
 | G4 | 实验失败不影响既有流程 | 见第 2 节的四条隔离 |
@@ -92,7 +92,7 @@
 | 面 | 做法 | 证据 |
 |---|---|---|
 | **反应堆** | `aha-desktop-native` 只在父 POM 的 `desktop-native` profile 里，默认不在 `<modules>` | `./mvnw validate` 的输出里没有该模块；带 `-Pdesktop-native` 才出现 |
-| **检查** | 新工作流 `DesktopNative.yml`，作业名 `native-version` / `native-build` / `native-publish`，与 Build / Gate / Compat 全不同名 | 分支保护的必需检查列表不含它们 |
+| **检查** | 新工作流 `DesktopNative.yml`，作业名 `NativeVersion` / `NativeImage` / `NativePublish`，与 Build / Gate / Compat 全不同名 | 分支保护的必需检查列表不含它们 |
 | **Tag 与发版** | tag 前缀 `native-v`，**不匹配** `Release.yml` 的 `V*` / `v*`；发布为**预发行版** | `native-v0.1.1.00021` 首字符是 `n`，不命中 `v*` |
 | **失败传播** | `fail-fast: false`；实验腿 `continue-on-error: true`；发布作业 `if: always()` 且允许部分平台成功 | 某条腿红了，其余腿与发布照常 |
 
@@ -164,9 +164,9 @@ Dist/aha-desktop-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  n
 
 | 作业 | 作用 | 关键点 |
 |---|---|---|
-| `native-version` | 算版本号（`a.b.c.PPPPP`） | 基线读根 POM（唯一来源）；PR 号优先取输入，其次按提交 SHA 反查 API；取不到记 `00000` 并告警（不猜） |
-| `native-build` | 矩阵五条腿（ubuntu-amd64 / windows-amd64 / macos-arm64，JDK 25；其中 ubuntu-amd64 与 windows-amd64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
-| `native-publish` | 汇总制品 → 发布 `native-v<版本>` 预发行版 | 单写者（三条腿并发写同一个 release 会互相打架）；`if: always()` 让部分平台成功也照发 |
+| `NativeVersion` | 算版本号（`a.b.c.PPPPP`） | 基线读根 POM（唯一来源）；PR 号优先取输入，其次按提交 SHA 反查 API；取不到记 `00000` 并告警（不猜） |
+| `NativeImage` | 矩阵五条腿（ubuntu-amd64 / windows-amd64 / macos-aarch64，JDK 25；其中 ubuntu-amd64 与 windows-amd64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
+| `NativePublish` | 汇总制品 → 发布 `native-v<版本>` 预发行版 | 单写者（三条腿并发写同一个 release 会互相打架）；`if: always()` 让部分平台成功也照发 |
 
 ### 4.3 版本号规则（`a.b.c.PPPPP`）
 
@@ -258,7 +258,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
   报告是给人分析的，两者混在一个包里既推高体积也让职责不清。改由工作流单独打成
   **独立发布包**，与镜像包同批挂到发布页：
 
-      `AHA-Desktop-Native-Report-<版本>-<平台>-jdk<JDK>.zip`
+      `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>-report.zip`
 
   **文件名与镜像包同族**（版本号、系统、架构、JDK 轴全在名里，如
   `AHA-Desktop-Native-Report-0.1.1.00025-windows-amd64-jdk25.zip`），

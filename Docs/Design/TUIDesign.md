@@ -38,7 +38,7 @@
 |---|---|
 | [CLIDesign.md](CLIDesign.md) | 记录**决策过程**与备选方案（含被否决的方案与理由） |
 | **TUIDesign.md（本文件）** | 描述**已实现的形态**：版面、样式、降级、实现机制 |
-| [PLAN.md](../PLAN.md) | 记录**做不到 / 暂缓**的事及依据 |
+| [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) | 记录**做不到 / 暂缓**的事及依据 |
 
 写代码前先看本文，确认要动的是哪一层；改动后请同步更新本文的示例。
 
@@ -58,7 +58,7 @@ AHA 的交互式对话是**内联**的：像 `git`、`python` 那样把内容一
 - **管道友好**：非 TTY 时输出纯文本，没有 ANSI 垃圾
 
 代价：**无法任意定位光标**，因此「输入框上方放一个可原地重绘的状态行」做不到
-（判断依据见 [PLAN.md](../PLAN.md) 第 1 节）。
+（判断依据见 [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) 第 1 节）。
 
 ### 1.2 原则：探测能力，不探测品牌
 
@@ -101,7 +101,7 @@ ChatCommand（主线程 readLine + 回合线程）
 | 启动标志（像素风 / 线框风，右侧并排） | ✅ 已实现 | `--logo` 切换；宽度不足逐档降级，见 5.3 |
 | 输入行无 `>` 标记 | ✅ 已实现 | 分隔线已表明此处可输入 |
 | 常驻状态行 | ✅ 已实现 | 底部保留区，120ms 刷新转圈 |
-| **状态行位于输入行上方** | ❌ **做不到** | 见 [PLAN.md](../PLAN.md) §1 |
+| **状态行位于输入行上方** | ❌ **做不到** | 见 [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) §1 |
 | 流式期间输入可用 | ✅ 已实现 | 主线程常驻 `readLine` + 回合线程 |
 | Ctrl+C 取消本轮 | ✅ 已实现 | 生成中取消、空闲时清行 |
 | 多行粘贴 | ✅ 已实现 | bracketed paste，不拆成多条消息 |
@@ -117,7 +117,7 @@ ChatCommand（主线程 readLine + 回合线程）
 | 窗口 resize 重排 | ⚠️ 部分 | 状态行会重算滚动区域；正文已输出部分由终端自行重排 |
 | 全屏 TUI | ❌ 不做 | 形态选择：内联 REPL |
 | 鼠标 / 图片 / 超链接 | ❌ 不做 | 超出终端能力假设 |
-| 用量统计栏（pi 的 footer） | ⏸ 暂缓 | 依赖 0.6 用量落库，见 [PLAN.md](../PLAN.md) §2 |
+| 用量统计栏（pi 的 footer） | ⏸ 暂缓 | 依赖 0.6 用量落库，见 [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) §2 |
 
 ---
 
@@ -403,7 +403,7 @@ E:\GitRepo\GitHub\ACANX\AHA> powershell -NoProfile -Command "Get-ChildItem
 
 ```
 读取文件  file-read
- path  Docs/PLAN.md                                ← 超长值只报规模
+ path  Docs/DevLog/20261017-15.md                                ← 超长值只报规模
  ✓ 完成 · 0.1s · 412 行
  结果
    …（前 5 行）…
@@ -780,12 +780,12 @@ AHA_INPUT_TRACE=/tmp/aha-input.log      # 指定文件
 ## 6. 未实现与受限期
 ## 6. 未实现与受限期
 
-完整清单见 [PLAN.md](../PLAN.md)，这里只列与本文件直接相关的：
+完整清单见 [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md)，这里只列与本文件直接相关的：
 
 | 项 | 状态 | 依据 |
 |---|---|---|
-| 状态行置于输入行上方（pi 形态） | ❌ 做不到 | [PLAN.md](../PLAN.md) §1：两次实测失败，`printAbove` 与提示符重绘共享显示状态 |
-| pi 式底部统计栏（token / 缓存 / 上下文占用） | ⏸ 暂缓 | [PLAN.md](../PLAN.md) §2：依赖 0.6 用量落库 |
+| 状态行置于输入行上方（pi 形态） | ❌ 做不到 | [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) §1：两次实测失败，`printAbove` 与提示符重绘共享显示状态 |
+| pi 式底部统计栏（token / 缓存 / 上下文占用） | ⏸ 暂缓 | [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md) §2：依赖 0.6 用量落库 |
 | 完整 Markdown（表格、图片、链接） | ❌ 0.1 不做 | 纯文本终端价值有限 |
 | 语法高亮 | ❌ 未实现 | 围栏代码原样输出 |
 | 全屏 TUI / 鼠标 / 图片 | ❌ 不做 | 形态选择：内联 REPL |
@@ -847,6 +847,6 @@ AHA_INPUT_TRACE=/tmp/aha-input.log      # 指定文件
 
 - [CLIDesign.md](CLIDesign.md)：CLI 与终端决策（含备选方案与否决理由）
 - [PixelLogoDesign.md](PixelLogoDesign.md)：像素风启动标志的画法、调色板与复现
-- [PLAN.md](../PLAN.md)：暂缓与受限事项、判断依据
+- [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md)：暂缓与受限事项、判断依据
 - [ReferenceGuide.md](../Guide/ReferenceGuide.md)：用户视角的界面说明
 - [AHA-Design-V1.md](../AHA/AHA-Design-V1.md)：权威版本路线图

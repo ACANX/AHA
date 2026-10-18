@@ -7,7 +7,7 @@
     dev 线的 JVM 便携包挂在发布页的**预发行版**上：
 
         tag   形如  V0.1.3.00178-aha-jvm
-        资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-arm64）
+        资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-aarch64）
               CLI     aha-cli-<版本>[-jdk27].zip                （**平台无关**，只有一份）
 
     本脚本做五件事：
@@ -33,8 +33,8 @@
       * **资产名规则不同**：原生包是 `<前缀><版本>-<平台>-jdk<JDK>.zip`（平台段与 jdk 段**都必有**）；
         JVM 包是 `aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`
         （平台段只有桌面端有、jdk 段只有 27 有）；
-      * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-arm64`，
-        2026-10-15 统一，issue #215）。
+      * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`，
+        2026-10-15 统一（issue #215），2026-10-17 架构词统一为 `aarch64`（issue #287））。
 
       把这两套规则塞进同一份脚本，会让它同时背两套分支 —— 得不偿失。
 
@@ -99,8 +99,8 @@ $TagSuffix = '-aha-jvm'
 #: 包根本来就没有的条目会被跳过（旧形态的包平铺不了），实测里会点名说明。
 $kinds = @{
     'Desktop' = @{
-        Title = '桌面端 JVM 便携包'; ByPlatform = $true; SubDir = 'desktop-jvm'
-        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-'; Workflow = 'BuildJVMArtifacts.yml'
+        Title = '桌面端 JVM 便携包'; SubDir = 'desktop-jvm'
+        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-jvm-'; LegacyPrefix = 'aha-desktop-'; ByPlatform = $true; Workflow = 'BuildJVMArtifacts.yml'
         Flat = @(
             @{ Glob = 'aha-desktop.jar'; Name = 'aha-desktop.jar' }
             @{ Glob = 'AhaDesktop.bat';  Name = 'AhaDesktop.bat' }
@@ -108,8 +108,8 @@ $kinds = @{
         )
     }
     'Cli'     = @{
-        Title = 'CLI JVM 便携包'; ByPlatform = $false; SubDir = 'cli-jvm'
-        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-'; Workflow = 'BuildJVMArtifacts.yml'
+        Title = 'CLI JVM 便携包'; SubDir = 'cli-jvm'
+        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-jvm-'; LegacyPrefix = 'aha-cli-'; ByPlatform = $true; PlatformFree = $true; Workflow = 'BuildJVMArtifacts.yml'
         Flat = @(
             @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
             @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
@@ -134,7 +134,7 @@ $StateFile = Join-Path $OutDir $kindInfo.State
 
 # 本机架构 → JVM 线的平台词（与原生线的 windows-amd64 不同）。
 if (-not $Platform) {
-    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-arm64' } else { $Platform = 'windows-amd64' }
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-aarch64' } else { $Platform = 'windows-amd64' }
 }
 if (-not $Jdk) { $Jdk = '25' }
 
@@ -175,14 +175,32 @@ function Get-TagVersion {
     return $body
 }
 
-# ── 资产名：桌面端 `<前缀><版本>-<平台>[-jdk27].zip`；CLI `<前缀><版本>[-jdk27].zip` ──
-function Get-AssetName {
+# ── 资产名（issue #269）：`aha-<product>-jvm-<版本>-<平台>-jdk<JDK>.zip` ──────────
+#    旧名（0.1.3 / 0.1.4 双发别名）仍返回作为候选：`aha-desktop-<版本>-<平台>[-jdk27].zip`、
+#    `aha-cli-<版本>[-jdk27].zip`（旧 CLI-JVM 是平台无关的一份包）。
+function Get-AssetNames {
     param([string]$Version)
-    $suffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
-    if ($kindInfo.ByPlatform) {
-        return ("{0}{1}-{2}{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $suffix)
+    $legacySuffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
+    if ($kindInfo.PlatformFree) {
+        # CLI-JVM 内容平台无关：本平台名优先，其次按三平台依次回退（issue #269 §6 第 7 条）。
+        $names = @()
+        foreach ($candidate in @($Platform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')) {
+            $names += ("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $candidate, $Jdk)
+        }
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        return $names
     }
-    return ("{0}{1}{2}.zip" -f $kindInfo.Prefix, $Version, $suffix)
+    $names = @(("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $Jdk))
+    if ($kindInfo.ByPlatform) {
+        $names += ("{0}{1}-{2}{3}.zip" -f $kindInfo.LegacyPrefix, $Version, $Platform, $legacySuffix)
+        # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。
+        if ($Platform -eq 'macos-aarch64') {
+            $names += ("{0}{1}-macos-arm64{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        }
+    } else {
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+    }
+    return $names
 }
 
 function Get-AssetFor {
@@ -191,10 +209,12 @@ function Get-AssetFor {
     if (-not $version) { return $null }
     # 先按命名规则拼出目标资产名，再到清单里**精确匹配**：
     # JVM 包的 asset 名规则与原生包不同（jdk 段可选），精确匹配比前缀 + 后缀猜更稳。
-    $wanted = Get-AssetName $version
-    foreach ($a in $Release.assets) {
-        if ($a.state -ne 'uploaded') { continue }
-        if ($a.name -eq $wanted) { return $a }
+    $wantedNames = Get-AssetNames $version
+    foreach ($wanted in $wantedNames) {
+        foreach ($a in $Release.assets) {
+            if ($a.state -ne 'uploaded') { continue }
+            if ($a.name -eq $wanted) { return $a }
+        }
     }
     return $null
 }

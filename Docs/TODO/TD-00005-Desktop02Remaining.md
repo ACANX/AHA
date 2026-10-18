@@ -36,3 +36,14 @@
 - `Docs/Design/DesktopDesign.md` §11、`Docs/Design/GUIDesign.md`
 - `Docs/Dbsx.txt`（0.2 待办）
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00044](TD-00044-DesktopFxmlOpensNarrowing.md) — `module-info` 收紧 FXML 的 `opens`
+- [TD-00045](TD-00045-PlatformMatrixAlignment.md) — 平台清单三处对齐（设计 / Build / Release）
+- [TD-00046](TD-00046-DesktopMemoryPanel.md) — 桌面端 0.2：记忆面板
+- [TD-00047](TD-00047-DesktopExtensionPanel.md) — 桌面端 0.2：扩展面板
+- [TD-00048](TD-00048-DesktopIdentityLoadOrderDisplay.md) — 桌面端 0.2：身份加载顺序展示
+- [TD-00049](TD-00049-DesktopSessionSearch.md) — 桌面端 0.2：会话内搜索（`Ctrl+F`）
+

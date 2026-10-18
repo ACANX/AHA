@@ -25,7 +25,7 @@
 3. **参数会反复改**：这是一份「起点」，不是终稿。
 
 > **JVM 模式自己的 dev 出包线**见 `BuildJVMArtifacts.yml`（`push` → `dev` 产出
-> `aha-cli-<版本>.zip` 与 `aha-desktop-<版本>-<平台>.zip` 的预发行版）——它与本工作流
+> `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` 的预发行版）——它与本工作流
 > **并列**、互不牵连，共用同一套 `a.b.c.PPPPP` 版本规则。该 JVM 线还含一份 **JDK 27 编译产物**
 > （包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的 **JVM 字节码**，与本工作流里用
 > GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。
@@ -66,10 +66,10 @@ CLI 原生镜像与桌面端原生镜像是**两条平行管线**，互不牵连
 |---|---|---|
 | 反应堆 | `desktop-native` profile → `aha-desktop-native` | `cli-native` profile → `aha-cli-native` |
 | 工作流 | `DesktopNative.yml` | `CliNative.yml` |
-| 作业名 | `native-version` / `native-image-*` / `native-publish` | `cli-native-version` / `cli-native-image-*` / `cli-native-publish` |
+| 作业名 | `NativeVersion` / `NativeImage*` / `NativePublish` | `CliNativeVersion` / `CliNativeImage-*` / `CliNativePublish` |
 | Tag / 发版 | `V<版本>-aha-desktop-native` | `V<版本>-aha-cli-native` |
 | 参数文件 | `aha-desktop-native/src/native/native-image-args*.txt` | `aha-cli-native/src/native/native-image-args*.txt` |
-| 产物 | `AHA-Desktop-Native-…zip` | `AHA-Cli-Native-…zip` |
+| 产物 | `aha-desktop-native-…zip` | `aha-cli-native-…zip` |
 
 **作业名刻意与桌面端不同名**：GitHub 的必需检查按作业名匹配，两条可选管线若同名会互相干扰；
 而且日志 / 摘要里一眼能分清是哪条管线。
@@ -166,9 +166,9 @@ JDK 27 变体）均已补齐，结论同时登记进 `BuildSpec.md` §10.2。
 
 | 作业 | 关键点 |
 |---|---|
-| `cli-native-version` | 同桌面端：基线读根 POM，PR 号按输入或提交 SHA 反查，取不到记 `00000` 并告警 |
-| `cli-native-image` | 矩阵三条基线腿（ubuntu-amd64 / windows-amd64 / macos-arm64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
-| `cli-native-publish` | 单写者汇总制品，发 `V<版本>-aha-cli-native` **预发行版**；无产物时不发版也不失败 |
+| `CliNativeVersion` | 同桌面端：基线读根 POM，PR 号按输入或提交 SHA 反查，取不到记 `00000` 并告警 |
+| `CliNativeImage` | 矩阵三条基线腿（ubuntu-amd64 / windows-amd64 / macos-aarch64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
+| `CliNativePublish` | 单写者汇总制品，发 `V<版本>-aha-cli-native` **预发行版**；无产物时不发版也不失败 |
 
 **产物自证的七项**（与桌面端同形，判据换成 CLI 的不变式）：
 
@@ -248,4 +248,4 @@ python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）
-- [TODO.md](../TODO.md)：`N-19`（真机验证 CLI 原生镜像）等
+- [TODO.md](../TODO/README.md)：`N-19`（真机验证 CLI 原生镜像）等

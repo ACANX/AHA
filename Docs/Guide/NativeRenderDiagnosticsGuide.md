@@ -35,7 +35,7 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 
 1. **PR #58 已合入 `dev`** —— 诊断代码就在里面（`AhaDesktopApp.logRenderingDiagnostics()`）；
 2. `DesktopNative.yml` 已据此重出 Windows 原生包，形如
-   `AHA-Desktop-Native-<版本>-windows-amd64-jdk25.zip`；
+   `aha-desktop-native-<版本>-windows-amd64-graalvm25.zip`；
 3. 本机装有 **JDK 25**（跑 JVM 模式对照用）。
 
 > 诊断代码只存在于 PR #58 之后的包。更早的包跑出来是空的，不必试。
@@ -44,7 +44,7 @@ issue #48 的现象是「原生包的字发虚、字形偏细，而 JVM 模式�
 
 | 项目 | 做法 |
 |---|---|
-| 原生包 | **双击 `Dist\UpdateDesktopNative.cmd`**（自动取最新本平台包，无需 Python）；也可从 Releases 手动下载 `AHA-Desktop-Native-<版本>-windows-amd64-jdk25.zip` |
+| 原生包 | **双击 `Dist\UpdateDesktopNative.cmd`**（自动取最新本平台包，无需 Python）；也可从 Releases 手动下载 `aha-desktop-native-<版本>-windows-amd64-graalvm25.zip` |
 | 解压位置 | 任意目录，例如 `E:\AHA-Native\`（**记住它**，日志就在它下面） |
 | JVM 模式 | 源码检出的仓库根（`bin\AhaDesktop.bat` 会自动解压 `Dist\aha-desktop-*.zip`） |
 | 收集脚本 | 仓库内 `Script/Python/CollectRenderDiagnostics.py`（见 4.3） |

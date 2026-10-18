@@ -12,6 +12,12 @@ on:
       # 实测风险：不加这两行时，每次出快照都会跑一遍完整的正式发版流程。
       - '!V*-SNAPSHOT'
       - '!v*-SNAPSHOT'
+      # 2026-10-17 起快照 tag 去掉了 `-SNAPSHOT` 后缀（`V<5 段>-AHA-<product>-<form>`），
+      # 5 段版本已能区分快照；这里按 `-AHA-` / `-aha-` 排除，避免快照触发正式发版。
+      - '!V*-AHA-*'
+      - '!v*-AHA-*'
+      - '!V*-aha-*'
+      - '!v*-aha-*'
 
   # 自动打的 tag 由 `GITHUB_TOKEN` 推送，**不会**触发上面的 `push: tags`（GitHub 防递归）。
   # 但 `workflow_dispatch` 是该规则的**官方例外**：`Build.yml` 的 tag 作业在成功打完 tag 后，
@@ -39,278 +45,287 @@ permissions:
 jobs:
   # 发布前先过同一道门禁（verify + 覆盖率 + 文档 + 技能 + 脚本 + 重复率）。
   # 它同时是「合入 main」的卡点，发布因此不需要另一套检查。
-  gate:
+  Gate:
     uses: ./.github/workflows/Gate.yml
 
   # 兼容性验证（Maven 3.9.x）同样是发布前置：发行包必须在兼容基线上也能构建。
-  compat:
+  Compat:
     uses: ./.github/workflows/Compat.yml
 
-  # ── CLI 发行包（平台无关） ────────────────────────────────────────────────
-  # 纯 JAR 组合，sqlite-jdbc 的多平台原生库随它自己的 jar 走，因此一份包通吃所有平台，
-  # 不需要按平台出包。
-  release:
-    name: CLI 发行包
-    needs: [gate, compat]
-    runs-on: ubuntu-latest
-    steps:
-      # 显式检出**发布 tag**而不用默认的 `github.sha`：`workflow_dispatch` 下 `github.ref` 是分支，
-      # 靠默认值会取到分支头部（issue #238）。push tag 事件下两者本就是同一个提交。
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - name: Build and verify
-        # 有意重跑一次：发行包必须由「自身跑过门禁的构建」产出，
-        # 不复用 gate 另一个 runner 上的产物（跨 job 传产物只会让链路更难查）。
-        uses: ./.github/actions/maven-run
-        with:
-          command: ./mvnw clean verify
-      - name: Package CLI distribution
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 版本从**唯一读取入口**取（issue #93 / #94）：平铺后包内 jar 名不含版本号，
-          # 「从产物名读版本」那条路没有了，改用各工作流共用的版本读取点。
-          version=$(python3 .github/Python/ProjectVersion.py --resolve)
-          target="aha-cli-${version}.zip"
-          # 包内形态（issue #218）：平铺 —— 单体 jar + 启动脚本 + 文档，全在包根。
-          # 先在临时目录里打，再移进 Dist/：
-          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身也收进归档；
-          #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
-          #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/${target}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
-          mv -- "${RUNNER_TEMP}/${target}" Dist/
-          # 产物统一落 Dist/：仓库根只放源码与文档
-          ls -lh "Dist/${target}"
-          # 包内自证：不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
-          entries="${RUNNER_TEMP}/cli-release-entries.txt"
-          "$JAVA_HOME/bin/jar" tf "Dist/${target}" > "$entries"
-          if grep -Eq '^(lib|bin)/' "$entries"; then
-            echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
-            grep -E '^(lib|bin)/' "$entries" | head -5
-            exit 1
-          fi
-          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
-            if ! grep -qx "$f" "$entries"; then
-              echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
-            fi
-          done
-          echo "CLI 包：Dist/${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
-          # ── 包内清单（issue #51 §6）────────────────────────────────────────
-          # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
-          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-            --zip "Dist/${target}" --kind cli-jvm --version "${version}" --jdk 25
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v3
-        with:
-          # `tag_name` 必须显式指定：该 action 默认按 `github.ref` 找 release，而 `workflow_dispatch`
-          # 下 `github.ref` 是分支（`refs/heads/main`），会指向错误对象（issue #238）。
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: Dist/aha-cli-*.zip
+  # ── CLI-JVM：按平台各出一份（issue #269）────────────────────────────────
+  #   三条腿各自在对应 runner 上构建与打包，资产名里的平台段对应真实产物；
+  #   逻辑抽到 `CliReleasePackageLeg.yml`，主工作流只留「选哪条腿」。
+  CliReleasePackageUbuntuAmd64:
+    name: CliReleasePackageUbuntuAmd64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  CliReleasePackageWindowsAmd64:
+    name: CliReleasePackageWindowsAmd64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  CliReleasePackageMacOSAarch64:
+    name: CliReleasePackageMacOSAarch64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      ref: ${{ inputs.tag || github.ref_name }}
 
   # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
-  desktop:
-    name: 桌面端包（${{ matrix.label }}）
-    needs: [gate, compat]
-    strategy:
-      # 一条腿失败不要取消其余：三个平台的包是并列的交付物，缺哪一个都要看得见。
-      fail-fast: false
-      matrix:
-        # JavaFX 原生库按平台分类器发布
-        # （见 DesktopDesign.md 第 5 节），所以每个平台只能由自己的 runner 产出。
-        #
-        # `label` 同时是作业名与下载文件名的组成部分，供用户辨认
-        # 「操作系统 + 架构」；`expected` 是本腿**应当**解析出的平台分类器，
-        # 构建后由包名与依赖树双向自证——若 GitHub 改了 runner 的架构
-        # （例如 macos-latest 换架构），这里会直接失败，而不是把错平台的包
-        # 静静挂到 release 页面。
-        include:
-          - os: ubuntu-latest
-            label: ubuntu-amd64
-            expected: linux
-          - os: windows-latest
-            label: windows-amd64
-            expected: win
-          - os: macos-latest
-            label: macos-arm64
-            expected: mac-aarch64
-    runs-on: ${{ matrix.os }}
+  # 【为什么是三个静态作业，而不是矩阵】（issue #287）
+  #   作业的 `name` 必须是静态字符串（不许 `${{ … }}`、标点、中文），矩阵只能靠表达式区分腿。
+  #   逐平台作业 + 共用 `DesktopPackageLeg.yml`：逻辑一份，名字全静态。
+  #
+  #   `label` 同时是下载文件名的组成部分，供用户辨认「操作系统 + 架构」；
+  #   `expected` 是本腿**应当**解析出的平台分类器，构建后由包名与依赖树双向自证——
+  #   若 GitHub 改了 runner 的架构（例如 macos-latest 换架构），这里会直接失败，
+  #   而不是把错平台的包静静挂到 release 页面。
+  DesktopPackageUbuntuAmd64:
+    name: DesktopPackageUbuntuAmd64
+    needs:
+      - Gate
+      - Compat
+    uses: ./.github/workflows/DesktopPackageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      expected: linux
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  DesktopPackageWindowsAmd64:
+    name: DesktopPackageWindowsAmd64
+    needs:
+      - Gate
+      - Compat
+    uses: ./.github/workflows/DesktopPackageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      expected: win
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  DesktopPackageMacOSAarch64:
+    name: DesktopPackageMacOSAarch64
+    needs:
+      - Gate
+      - Compat
+    uses: ./.github/workflows/DesktopPackageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      expected: mac-aarch64
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  # ── 版本号：原生腿需要「0.1.4」而不是 tag 「V0.1.4」 ─────────────────────
+  ResolveVersion:
+    name: ResolveVersion
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      # 同 CLI 作业：显式检出发布 tag（`workflow_dispatch` 下 `github.ref` 是分支）
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - name: Build and verify
-        # 同 CLI 作业：发行包必须由自身跑过门禁的构建产出。
-        uses: ./.github/actions/maven-run
-        with:
-          command: ./mvnw clean verify
+      - name: ReadVersion
+        id: version
+        run: echo "version=$(python3 .github/Python/ProjectVersion.py --resolve)" >> "$GITHUB_OUTPUT"
 
-      - name: 自证平台分类器（包名 → 下载文件名）
+  # ── 原生线：Stable 自 0.1.4 起也出原生包（issue #269）───────────────────────
+  #   每条腿复用快照线同一份可复用工作流（`NativeImageLeg.yml` / `CliNativeImageLeg.yml`），
+  #   逻辑只有一份；这里只负责「传对版本与平台」。
+  DesktopNativeUbuntuAmd64:
+    name: DesktopNativeUbuntuAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      platform: ubuntu
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  DesktopNativeWindowsAmd64:
+    name: DesktopNativeWindowsAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      platform: win
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  DesktopNativeMacOSAarch64:
+    name: DesktopNativeMacOSAarch64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/NativeImageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      platform: mac-aarch64
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeUbuntuAmd64:
+    name: CliNativeUbuntuAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      platform: ubuntu
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeWindowsAmd64:
+    name: CliNativeWindowsAmd64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      platform: win
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  CliNativeMacOSAarch64:
+    name: CliNativeMacOSAarch64
+    needs: [Gate, Compat, ResolveVersion]
+    uses: ./.github/workflows/CliNativeImageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      platform: mac-aarch64
+      jdk: '25'
+      aha_version: ${{ needs.ResolveVersion.outputs.version }}
+
+  # 原生腿只上传 Actions 制品，不直接发版（与快照线同一套 legs）；这里统一挂到发布页。
+  NativePublish:
+    name: NativePublish
+    needs:
+      - ResolveVersion
+      - DesktopNativeUbuntuAmd64
+      - DesktopNativeWindowsAmd64
+      - DesktopNativeMacOSAarch64
+      - CliNativeUbuntuAmd64
+      - CliNativeWindowsAmd64
+      - CliNativeMacOSAarch64
+    # 部分腿失败也要发布已成功的那些（原生编译是可选管线，见 NativeImageLeg 的容错说明）。
+    if: always() && needs.ResolveVersion.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: DownloadNativeArtifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: UploadNativeAssets
         shell: bash
         env:
-          EXPECTED: ${{ matrix.expected }}
-          LABEL: ${{ matrix.label }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # 用 [0-9] 而不是 *：这样不会把 Dist/ 里可能存在的
-          # aha-desktop-native-<版本>-<jdk>.zip（原生镜像包）误当成桌面端 jar 包。
-          files=(Dist/aha-desktop-[0-9]*.zip)
-          if [ "${#files[@]}" -ne 1 ]; then
-            echo "::error::期望恰好 1 个桌面端包，实际 ${#files[@]} 个：${files[*]:-<无>}"
-            exit 1
+          # download-artifact 把每个制品的 zip 放在自己的子目录里，先收平到 artifacts/ 顶层。
+          find artifacts -mindepth 2 -name '*.zip' -exec mv -n {} artifacts/ \; 2>/dev/null || true
+          files=(artifacts/*.zip)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "⚠️ 本次没有原生包可发布（各腿可能未编出二进制）"
+            exit 0
           fi
-          # 文件名形如 Dist/aha-desktop-<版本>-<平台分类器>.zip，先去掉目录前缀
-          rest="${files[0]#Dist/}"
-          rest="${rest#aha-desktop-}"; rest="${rest%.zip}"
+          gh release upload "${TAG}" "${files[@]}" --clobber
+          echo "已上传 ${#files[@]} 个原生包"
 
-          # 分类器名里可能含 '-'（mac-aarch64 / linux-aarch64），
-          # 故先匹配更具体的，再匹配短的。
-          classifier=""
-          for c in linux-aarch64 mac-aarch64 win linux mac; do
-            case "$rest" in
-              *-"$c") classifier="$c"; version="${rest%-$c}"; break ;;
-            esac
-          done
-          if [ -z "$classifier" ]; then
-            echo "::error::无法从包名解析平台分类器：$rest"
-            exit 1
-          fi
-
-          echo "包名解析：版本=$version 分类器=$classifier"
-          if [ "$classifier" != "$EXPECTED" ]; then
-            echo "::error::平台不匹配：本腿（${LABEL}）期望 ${EXPECTED}，实际解析到 ${classifier}。"
-            echo "::error::runner 架构可能已变更，请核对本文件的 matrix。"
-            exit 1
-          fi
-
-          target="Dist/aha-desktop-${version}-${LABEL}.zip"
-          mv -- "${files[0]}" "$target"
-          size=$(du -h "$target" | cut -f1)
-          # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
-          # **根级**的原生库（libglass.so / glass.dll / libglass.dylib…），故按根级计数。
-          natives=$("$JAVA_HOME/bin/jar" tf "$target" | grep -Ec '^[^/]+\.(dll|so|dylib)$' || true)
-          echo "发布产物：${target}（${size}，含本平台 OpenJFX 原生库 $natives 个）"
-
-      - name: 便携包完整性自证（平铺入口 + 单体 jar + 本平台原生库）
-        # 这一步在 issue #218 之前是「模块图自证」：那时包是 lib/+bin/ 的 JPMS 目录形态，
-        # 判据是「用一个不存在的主类触发模块图解析，出现 FindException 即缺依赖」。
-        # 平铺形态下没有模块路径了，改判「包内实际有什么」——入口是否平铺、单体 jar 的
-        # Main-Class 是否是转发类、里面是否真的带了本平台（且只是本平台）的 OpenJFX 原生库。
+      - name: SummarizeNativeLegs
+        # 原生腿是 job 级 `continue-on-error`（整条管线可选），腿失败不会让 workflow 变红。
+        # 代价是「workflow 绿」掩盖了「交付物缺失」——V0.1.4 就是这样连续失败多次没人发现（#303）。
+        # 这里把 6 条腿的真实结果摊到 Job Summary，缺哪个形态 × 平台一眼可见。
+        if: always()
         shell: bash
         env:
-          EXPECTED: ${{ matrix.expected }}
-          LABEL: ${{ matrix.label }}
+          DESKTOP_WINDOWS: ${{ needs.DesktopNativeWindowsAmd64.result }}
+          DESKTOP_UBUNTU: ${{ needs.DesktopNativeUbuntuAmd64.result }}
+          DESKTOP_MACOS: ${{ needs.DesktopNativeMacOSAarch64.result }}
+          CLI_WINDOWS: ${{ needs.CliNativeWindowsAmd64.result }}
+          CLI_UBUNTU: ${{ needs.CliNativeUbuntuAmd64.result }}
+          CLI_MACOS: ${{ needs.CliNativeMacOSAarch64.result }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          work="$RUNNER_TEMP/desktop-release-check"
-          rm -rf "$work"; mkdir -p "$work"
-          cp -- "$(ls Dist/aha-desktop-[0-9]*.zip)" "$work/pkg.zip"
-          entries="$work/entries.txt"
-          "$JAVA_HOME/bin/jar" tf "$work/pkg.zip" > "$entries"
+          {
+            echo "### 原生腿结果（continue-on-error，不等于交付成功）"
+            echo
+            echo "| 形态 | 平台 | 结果 |"
+            echo "|---|---|---|"
+            echo "| desktop-native | windows-amd64 | ${DESKTOP_WINDOWS} |"
+            echo "| desktop-native | ubuntu-amd64 | ${DESKTOP_UBUNTU} |"
+            echo "| desktop-native | macos-aarch64 | ${DESKTOP_MACOS} |"
+            echo "| cli-native | windows-amd64 | ${CLI_WINDOWS} |"
+            echo "| cli-native | ubuntu-amd64 | ${CLI_UBUNTU} |"
+            echo "| cli-native | macos-aarch64 | ${CLI_MACOS} |"
+            echo
+            echo "> 失败或跳过的腿 = 本版缺对应主包；`Checksums` 作业会据此判定发布是否完整。"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
-          # ① 不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
-          if grep -Eq '^(lib|bin)/' "$entries"; then
-            echo "::error::桌面端包内不应再有 lib/ 或 bin/ 目录（issue #218）"
-            grep -E '^(lib|bin)/' "$entries" | head -5
-            exit 1
-          fi
-          # ② 三个入口都平铺在包根
-          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
-            if ! grep -qx "$f" "$entries"; then
-              echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
+          failed=0
+          for row in "desktop-native/windows-amd64:${DESKTOP_WINDOWS}" \
+                     "desktop-native/ubuntu-amd64:${DESKTOP_UBUNTU}" \
+                     "desktop-native/macos-aarch64:${DESKTOP_MACOS}" \
+                     "cli-native/windows-amd64:${CLI_WINDOWS}" \
+                     "cli-native/ubuntu-amd64:${CLI_UBUNTU}" \
+                     "cli-native/macos-aarch64:${CLI_MACOS}"; do
+            name="${row%%:*}"; result="${row##*:}"
+            if [ "${result}" != "success" ]; then
+              echo "::warning::原生包缺失：${name}（腿结果 ${result}）"
+              failed=$((failed + 1))
             fi
           done
-
-          # ③ 单体 jar 自证：Main-Class = 转发类、无 module-info、含 JavaFX 类
-          ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-desktop.jar )
-          ( cd "$work" && "$JAVA_HOME/bin/jar" xf aha-desktop.jar META-INF/MANIFEST.MF )
-          main=$(tr -d '\r' < "$work/META-INF/MANIFEST.MF" | sed -n 's/^Main-Class:[[:space:]]*//p')
-          if [ "$main" != "com.acanx.module.aha.desktop.AhaDesktopLauncher" ]; then
-            echo "::error::单体 jar 的 Main-Class 应为 AhaDesktopLauncher（不继承 Application 的转发类），实际：${main:-<空>}"
-            exit 1
-          fi
-          fat="$work/fat-entries.txt"
-          "$JAVA_HOME/bin/jar" tf "$work/aha-desktop.jar" > "$fat"
-          if grep -qx 'module-info.class' "$fat"; then
-            echo "::error::单体 jar 不得含 module-info.class"; exit 1
-          fi
-          if ! grep -q '^javafx/application/Application.class$' "$fat"; then
-            echo "::error::单体 jar 内含不到 JavaFX（javafx/application/Application.class）"; exit 1
+          if [ "${failed}" -gt 0 ]; then
+            echo "⚠️ ${failed} 条原生腿未产出交付物"
+          else
+            echo "✅ 6 条原生腿全部产出"
           fi
 
-          # ④ 本平台原生库：按平台点名 + 不允许混进别的平台
-          #    （JavaFX 的原生库在 jar **根级**；sqlite-jdbc 那种全平台包在 org/sqlite/native/ 下，
-          #     按根级过滤即可把它们排除在外。）
-          case "$EXPECTED" in
-            win)         want="glass.dll";      ext="dll" ;;
-            linux)       want="libglass.so";    ext="so" ;;
-            mac-aarch64) want="libglass.dylib"; ext="dylib" ;;
-            *)           echo "::error::未知平台分类器：$EXPECTED"; exit 1 ;;
-          esac
-          if ! grep -qx "$want" "$fat"; then
-            echo "::error::单体 jar 内没有本平台（${EXPECTED}）的 ${want} —— 运行时会报缺 JavaFX 运行时"
-            exit 1
-          fi
-          root_natives=$(grep -Ec '^[^/]+\.(dll|so|dylib)$' "$fat" || true)
-          same_ext=$(grep -Ec "^[^/]+\.${ext}$" "$fat" || true)
-          if [ "$same_ext" -eq 0 ]; then
-            echo "::error::本平台（${EXPECTED}）原生库数量为 0（期望 .${ext}）"; exit 1
-          fi
-          other=$(grep -E '^[^/]+\.(dll|so|dylib)$' "$fat" | grep -v "\.${ext}$" || true)
-          if [ -n "$other" ]; then
-            echo "::error::单体 jar 内混进了别的平台的原生库："
-            echo "$other" | head -5
-            exit 1
-          fi
-          echo "单体 jar：Main-Class=${main}，本平台（${EXPECTED}）原生库 ${same_ext}/${root_natives} 个，无 module-info"
-          # ── 包内清单（issue #51 §6）────────────────────────────────────────
-          # 版本从**唯一读取入口**取（issue #93 / #94），不从产物名里反推。
-          version=$(python3 .github/Python/ProjectVersion.py --resolve)
-          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-            --zip "Dist/aha-desktop-${version}-${LABEL}.zip" \
-            --kind desktop-jvm --version "${version}" --platform "${LABEL}" --jdk 25
-
-      - name: 打印本平台解析到的 OpenJFX 工件（自证）
-        shell: bash
-        run: ./mvnw -B -pl aha-desktop dependency:tree -Dincludes=org.openjfx
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v3
-        with:
-          # 同 CLI 作业：显式指定 tag（dispatch 下 `github.ref` 是分支）
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: Dist/aha-desktop-[0-9]*.zip
-
-  # ── 收尾：发布页校验和（SHA256SUMS）──────────────────────────────────────────
-  # 为什么要单开一个作业：CLI 与桌面端是**并列**的两个作业，各自直接往同一个 release 上传资产。
-  # 若让它们各自写一份 SHA256SUMS，后写的那份会覆盖先写的，结果是一份「只列了一半资产」
-  # 的校验和 —— 比没有更坏（用户会以为没列的那些不用核）。所以在这里统一下载已发布资产、
-  # 一次性生成完整清单再挂上去（issue #51 §4.3 第①层 / §6）。
-  checksums:
-    name: 发布页校验和（SHA256SUMS）
-    needs: [release, desktop]
+  Checksums:
+    name: ReleaseChecksum
+    needs:
+      - CliReleasePackageUbuntuAmd64
+      - CliReleasePackageWindowsAmd64
+      - CliReleasePackageMacOSAarch64
+      - DesktopPackageUbuntuAmd64
+      - DesktopPackageWindowsAmd64
+      - DesktopPackageMacOSAarch64
+      - NativePublish
     # 任一作业成功就要出校验和：已经挂在发布页上的资产必须能核对（部分平台失败也要有）。
     # 全都失败 / 被取消时不出——那时发布页上根本没有资产可核。
     if: >-
-      always() && (needs.release.result == 'success' || needs.desktop.result == 'success')
+      always() && (needs.CliReleasePackageUbuntuAmd64.result == 'success'
+      || needs.CliReleasePackageWindowsAmd64.result == 'success'
+      || needs.CliReleasePackageMacOSAarch64.result == 'success'
+      || needs.DesktopPackageUbuntuAmd64.result == 'success'
+      || needs.DesktopPackageWindowsAmd64.result == 'success'
+      || needs.DesktopPackageMacOSAarch64.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
 
-      - name: 下载本 tag 已发布的资产
+      - name: DownloadReleasedAssets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -322,7 +337,55 @@ jobs:
           gh release download "${TAG}" --pattern '*.zip' --dir assets
           ls -lh assets
 
-      - name: 生成并挂上 SHA256SUMS
+      - name: VerifyAllAssetsPresent
+        # 为什么要有这一步：`release` 与 `desktop` 是并列作业，任一成功本作业就会跑起来
+        # （`if: always() && (… || …)`）。于是「只出了 CLI 包 / 只出了两个平台」时，
+        # 发布页照样会生成、`SHA256SUMS` 照样会挂上 —— 而应用内升级按平台取件，
+        # 用户那边看到的是「该版本没有本平台可用的包」。这种「部分发布」不能靠人盯。
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(python3 .github/Python/ProjectVersion.py --resolve)
+          # 期望清单**只从矩阵读**（issue #269 §3）：四组合 × 三平台 = 12 份。
+          # 不再在工作流里硬编码资产名——那是「矩阵写在两处」的老问题。
+          mapfile -t expected < <(python3 .github/Python/ReleaseMatrix.py --asset-names --version "${version}")
+          missing=()
+          for name in "${expected[@]}"; do
+            [ -f "assets/${name}" ] || missing+=("${name}")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::${TAG} 的发布资产不齐（缺 ${#missing[@]} 份）：${missing[*]}"
+            {
+              echo "### ❌ 发布资产不齐 —— ${TAG}"
+              echo
+              echo "缺 ${#missing[@]} 份（应用内升级按平台取件，缺哪份哪类用户就升不了）："
+              printf -- '- `%s`\n' "${missing[@]}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          echo "资产齐全：${#expected[@]} 份（CLI + 三平台桌面端）"
+
+      - name: MarkReleaseIncomplete
+        # 断言失败 = 「部分发布」：把它标成 pre-release，避免用户把它当完整正式版下载
+        # （应用内升级只看 Stable / Latest，标成 pre-release 就不会被推荐）。
+        # 修复后重跑，GenerateAndUploadChecksums 会把它恢复为正式版。
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "${TAG}" --prerelease
+          {
+            echo "### ⚠️ 已把 ${TAG} 标为 pre-release"
+            echo
+            echo "发布资产不齐（见上一步的缺失清单）；补发成功后会自动恢复为正式版。"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: GenerateAndUploadChecksums
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -332,3 +395,6 @@ jobs:
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir assets
           # --clobber：重复发版（同一 tag 重跑）时覆盖旧的校验和，而不是报错退出
           gh release upload "${TAG}" assets/SHA256SUMS --clobber
+          # 资产齐全 ⇒ 确认是完整正式版。补发从失败恢复时，把 MarkReleaseIncomplete
+          # 打的 pre-release 标记撤回（有则改之，无则保持）。
+          gh release edit "${TAG}" --prerelease=false

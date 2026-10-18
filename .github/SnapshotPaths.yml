@@ -7,7 +7,7 @@
 #
 # 判定规则（与 #165 §四 一致）：
 #   1. 先与 **B 组**比对：命中即**不出包**（B 组的 `aha-*/src/test/**` 与 A 组的
-#      `aha-desktop/**` 重叠，故 B 优先——测试由 CI 的 `ui-smoke` 验证，不需要快照包）；
+#      `aha-desktop/**` 重叠，故 B 优先——测试由 CI 的 `UISmoke` 验证，不需要快照包）；
 #   2. 否则与 **A 组**比对：命中即出包；
 #   3. 都不命中（**C 组**：未列到的一切）⇒ 按 A 组处理（保守兜底：宁可多出一个包，
 #      也不要出现「改了东西却没人拿到包」）。
@@ -45,7 +45,7 @@ paths:
     - .github/workflows/DesktopNative.yml
     - .github/workflows/CliNative.yml
     # 本文件自身决定「怎么分类」。它与 C 组同效（都出包），显式列出是为了意图明确。
-    - .github/snapshot-paths.yml
+    - .github/SnapshotPaths.yml
   # B. 不出包：不进产物，但 PR 评论与 run 摘要要写明原因
   b:
     - Docs/**

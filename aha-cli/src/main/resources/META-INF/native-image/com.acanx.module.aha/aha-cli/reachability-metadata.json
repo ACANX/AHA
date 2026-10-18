@@ -8,6 +8,7 @@
     {"type": "com.acanx.module.aha.core.update.PackageDownloader$Downloaded", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.PackageManifest", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.PackageManifest$FileEntry", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.update.PackageManifest$Toolchain", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.PlatformTag", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.ReleaseChannel", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.ReleaseFilter$ChannelRelease", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},

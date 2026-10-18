@@ -18,8 +18,8 @@ on:
   workflow_call:
 
 jobs:
-  compat:
-    name: 兼容性（Maven 3.9.x 完整 verify）
+  Compat:
+    name: CompatVerify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,13 +32,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - name: 安装 Maven 3.9.x（基线补丁版本）
+      - name: InstallMavenCompat
         run: |
           URL="https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_COMPAT_VERSION}/apache-maven-${MAVEN_COMPAT_VERSION}-bin.zip"
           curl -fsSL -o maven-compat.zip "${URL}"
           unzip -q maven-compat.zip -d "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/apache-maven-${MAVEN_COMPAT_VERSION}/bin" >> "${GITHUB_PATH}"
-      - name: 确认 Maven 版本为 3.9.x
+      - name: AssertMavenVersion
         # 先断言版本：否则 runner 上恰好存在别的 mvn 时，会「验了另一条线却当作通过」
         run: |
           mvn -v
@@ -48,7 +48,7 @@ jobs:
             *) echo "期望 3.9.x，实际 ${ACTUAL}"; exit 1 ;;
           esac
         shell: bash
-      - name: 兼容基线完整 verify（Maven 3.9.x）
+      - name: VerifyWithCompatMaven
         uses: ./.github/actions/maven-run
         with:
           command: mvn -B clean verify

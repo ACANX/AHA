@@ -30,7 +30,7 @@
     python3 .github/Python/ProjectVersion.py --self-test         # 自检：版本号格式的正 / 反例（--resolve <值> 的边界）
 
 `--self-test` 把「版本号格式放宽到哪、放宽到什么程度为止」变成**可重复执行的断言**
-（验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `static-guards` 作业每次
+（验收标准第 19 条：5 段通过、6 段与乱码被拒），由 `Build.yml` 的 `StaticGuard` 作业每次
 PR 都跑一遍——否则这条验收只是一次性人工动作，改坏了没人知道。
 
 边界：`--verify` 的五处一致性校验仍以 **3 段基线**为准（`version` 文件与产物文件名的比对
@@ -147,12 +147,15 @@ def read_property(path: Path, key: str) -> str | None:
 
 
 def collect_artifact_ids(root: Path) -> list[str]:
-    """收集本项目各模块的 artifactId（用于把项目产物与第三方依赖区分开）。
+    """收集本项目各**子模块**的 artifactId（用于把项目产物与第三方依赖区分开）。
 
-    只扫根 POM 与一级子目录的 POM，不进入 `.agents/skills` 里的模板。
+    只扫一级子目录的 POM，不进入 `.agents/skills` 里的模板；**根聚合工程不参与**
+    （`<packaging>pom</packaging>`，不出任何 jar/zip）。把它留在表里会引发前缀碰撞：
+    本仓库根 artifactId 是 `aha`，于是任何 `aha-*` 文件都会被认成 `aha` 的产物，
+    扁平化后不带版本号的 `Dist/aha-cli.jar` 因此被误判成「版本段未识别」（issue #260）。
     """
     ids: list[str] = []
-    for pom in [root / "pom.xml", *sorted(root.glob("*/pom.xml"))]:
+    for pom in sorted(root.glob("*/pom.xml")):
         if not pom.is_file():
             continue
         try:
@@ -173,8 +176,10 @@ def collect_artifacts(root: Path) -> list[Path]:
     便携包的版本目录、或旧形态的 `Dist/lib`）：构建目录下还有 `classes/`、
     `maven-status/` 等海量文件，深挖既慢又没有意义。
 
-    平铺后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**，名字对不上
-    `artifactId-` 前缀，因此天然不参与比对（见下方 `match_artifact_id`）。
+    平铺后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` **不带版本号**：名字虽以
+    `artifactId-` 开头，但紧跟的不是版本段，因此在第 ④ 项里按「不带版本号的产物」跳过
+    （见 `extract_version`；这一段此前写的是「名字对不上前缀，天然不参与比对」，
+    实际会被根聚合 artifactId `aha` 的前缀碰撞吞掉 —— issue #260）。
     """
     artifacts: list[Path] = []
     for dirpath, dirnames, _ in os.walk(root):
@@ -196,10 +201,30 @@ def match_artifact_id(name: str, artifact_ids: list[str]) -> str | None:
 
 
 def extract_version(name: str, artifact_id: str) -> str | None:
-    """从 `<artifactId>-<版本>[-classifier].<ext>` 里取出版本段。"""
+    """从 `<artifactId>-<版本>[-classifier].<ext>` 里取出版本段。
+
+    版本段必须**紧跟**在 artifactId 之后（`match` 而非 `search`）：否则前缀较短的
+    artifactId 会把名字更长的产物吞掉 —— 例如 `aha-cli-native.jar` 被 `aha-cli` 匹配后，
+    `search` 会在 `native.jar` 里找不到版本号，于是被当成「本项目产物但版本段坏了」。
+    """
     tail = name[len(artifact_id) + 1 :]
-    match = VERSION_RE.search(tail)
+    match = VERSION_RE.match(tail)
     return match.group(0) if match else None
+
+
+#: `--self-test` 的产物名判定用例：(文件名, 是否算「本项目的版本化产物」, 期望版本段, 说明)
+#: 反例比正例更重要：这条规则一放宽就会变成「什么都接受」，一收紧就会把合法的扁平产物
+#: 判成「版本段坏掉」而卡红全仓（issue #260 就是这样）。
+ARTIFACT_SELF_TEST_CASES: list[tuple[str, bool, str | None, str]] = [
+    ("aha-cli-0.1.3.jar", True, "0.1.3", "标准形态 `<artifactId>-<版本>.jar`"),
+    ("aha-cli-0.1.3-linux-x64.zip", True, "0.1.3", "带 classifier 的分平台包"),
+    ("aha-cli-native-0.1.3.zip", True, "0.1.3", "长 artifactId 必须先匹配，版本段不许被截错"),
+    ("aha-cli.jar", False, None, "扁平化后不带版本号（#217/#218）⇒ 跳过，不是「版本段未识别」（#260）"),
+    ("aha-desktop.jar", False, None, "同上（桌面端）"),
+    ("aha-cli-native.jar", False, None, "短 id `aha-cli` 也不许吞掉长 id 的扁平名"),
+    ("jackson-core-2.19.0.jar", False, None, "第三方依赖：artifactId 不在本项目表里"),
+    ("aha-0.1.3.jar", False, None, "根聚合工程不出产物 ⇒ 其 artifactId 已排除，否则 `aha-*` 全被它认领"),
+]
 
 
 #: `--self-test` 的用例：(显式版本号, 是否应被接受, 说明)
@@ -217,8 +242,27 @@ SELF_TEST_CASES: list[tuple[str, bool, str]] = [
 ]
 
 
+def self_test_artifacts() -> int:
+    """自检「产物名里算不算本项目版本段」的判定边界。"""
+    print()
+    print("产物名判定自检（`<artifactId>-<版本>` 才算；扁平无版本号的产物必须跳过）：")
+    ids = collect_artifact_ids(ROOT)
+    print(f"  本项目子模块 artifactId：{'、'.join(ids)}")
+    failed = 0
+    for name, should_count, expect_version, note in ARTIFACT_SELF_TEST_CASES:
+        artifact_id = match_artifact_id(name, ids)
+        version = extract_version(name, artifact_id) if artifact_id else None
+        counted = version is not None
+        ok = counted == should_count and (not should_count or version == expect_version)
+        failed += 0 if ok else 1
+        got = f"版本段 {version}" if counted else "不参与比对"
+        print(f"  {'✅' if ok else '❌'} {name} → {got}"
+              f"（应为{'版本段 ' + expect_version if should_count else '不参与比对'}）—— {note}")
+    return failed
+
+
 def self_test() -> int:
-    """自检版本号格式的放宽边界（正 / 反例都要过）。"""
+    """自检版本号格式与产物名判定的放宽边界（正 / 反例都要过）。"""
     print("版本号格式自检（`--resolve <值>` 的接受 / 拒绝边界；本脚本没有 `--version` 选项）：")
     failed = 0
     for value, should_pass, note in SELF_TEST_CASES:
@@ -235,10 +279,12 @@ def self_test() -> int:
             f"  {'✅' if ok else '❌'} {value!r} → {'接受' if accepted else '拒绝'}"
             f"（应为{'接受' if should_pass else '拒绝'}）—— {note}；{detail}"
         )
+    total = len(SELF_TEST_CASES) + len(ARTIFACT_SELF_TEST_CASES)
+    failed += self_test_artifacts()
     if failed:
-        print(f"\n[问题] {failed} / {len(SELF_TEST_CASES)} 条自检不符合预期")
+        print(f"\n[问题] {failed} / {total} 条自检不符合预期")
         return 1
-    print(f"\n✅ {len(SELF_TEST_CASES)} 条自检全部符合预期")
+    print(f"\n✅ {total} 条自检全部符合预期（版本号格式 {len(SELF_TEST_CASES)} + 产物名判定 {len(ARTIFACT_SELF_TEST_CASES)}）")
     return 0
 
 
@@ -323,16 +369,23 @@ def collect_findings(root: Path, baseline: str) -> list[tuple[str, bool, str]]:
     else:
         artifact_ids = collect_artifact_ids(root)
         matched: list[Path] = []
+        flat: list[Path] = []
         mismatched: list[str] = []
         for artifact in artifacts:
             artifact_id = match_artifact_id(artifact.name, artifact_ids)
             if artifact_id is None:
-                continue  # 第三方依赖（如 Dist/lib 旧形态下的 jackson-*.jar）或平铺后无版本号的 aha-cli.jar
-            matched.append(artifact)
+                continue  # 第三方依赖（如 Dist/lib 旧形态下的 jackson-*.jar）
             segment = extract_version(artifact.name, artifact_id)
+            if segment is None:
+                # 名字以 `artifactId-` 开头但紧跟的不是版本号 ⇒ 不是本项目的**版本化**
+                # 产物：包根扁平化后的 `aha-cli.jar` / `aha-desktop.jar` 就是这种不带
+                # 版本号的形态（版本由包内 `AHA-PACKAGE.json` 承载），见 issue #217/#218。
+                flat.append(artifact)
+                continue
+            matched.append(artifact)
             if segment != baseline:
                 mismatched.append(
-                    f"{artifact.relative_to(root)}（版本段 {segment or '未识别'}）"
+                    f"{artifact.relative_to(root)}（版本段 {segment}）"
                 )
         if mismatched:
             findings.append(
@@ -340,9 +393,11 @@ def collect_findings(root: Path, baseline: str) -> list[tuple[str, bool, str]]:
             )
         elif matched:
             sample = "、".join(str(path.relative_to(root)) for path in matched[:4])
-            findings.append(
-                ("产物文件名中的版本段", True, f"{len(matched)} 个产物一致（如 {sample}）")
-            )
+            detail = f"{len(matched)} 个产物一致（如 {sample}）"
+            if flat:
+                skipped = "、".join(str(path.relative_to(root)) for path in flat[:4])
+                detail += f"；跳过 {len(flat)} 个不带版本号的产物（如 {skipped}）"
+            findings.append(("产物文件名中的版本段", True, detail))
         else:
             findings.append(
                 ("产物文件名中的版本段", False, "有 jar/zip 但无一本项目产物（artifactId 未匹配）")
