@@ -73,13 +73,14 @@ TARGET_ALIASES = {
     "nativecli": "Cli-Native",
 }
 
-#: JVM 快照线的腿：**没有 macOS**、**只有 JDK 25**（#165 验收 1 明写「不得出现 macOS / JDK27」）。
-#: 注意这与 dev 线（BuildJVMArtifacts 默认六腿）不同 —— dev 线出 macOS/JDK27，快照线不出。
-#: 因此 `OS:MacOS` + JVM 目标 = 没有可用的腿 ⇒ 判定为不出包并说明原因（自检里有这条用例）。
+#: JVM 快照线的腿：三平台 × **只有 JDK 25**（#165 验收 1 的「不出 JDK27」仍然成立；
+#: macOS 腿自 2026-10-18 起补上，用于 CLI-JVM 的按平台出包 —— 桌面端 JVM 快照仍不出 macOS）。
+#: CLI-JVM 自 issue #269 起在三条 jdk25 腿上都产出（`upload_cli=True`）。
 JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
     # (runner, label, jdk, upload_cli)
     "ubuntu-amd64": [("ubuntu-latest", "ubuntu-amd64", 25, True)],
-    "windows-amd64": [("windows-latest", "windows-amd64", 25, False)],
+    "windows-amd64": [("windows-latest", "windows-amd64", 25, True)],
+    "macos-aarch64": [("macos-latest", "macos-aarch64", 25, True)],
 }
 
 #: 快照的发布页 tag / 发行名（ACANX 定案，2026-10-14）：
@@ -294,7 +295,15 @@ def asset_names(targets: list[str], version: str, platforms: list[str], line: st
         fmt = ASSET_FORMATS.get(target)
         if not fmt:
             continue
-        for label in labels:
+        # CLI-JVM 内容平台无关：`OS:*` 只收窄**构建腿**，不能收窄资产名 ——
+        # 发布作业会把那一份包按三平台各复制一份（issue #269 §6 第 7 条），
+        # 期望清单也必须按三平台列，否则 `UpsertPreRelease` 找不到 `windows-amd64`
+        # 而把整条 release 变成 0 资产（2026-10-18 实测 `…-AHA-Cli-JVM`）。
+        target_labels = (
+            ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+            if target == "Cli-JVM" else labels
+        )
+        for label in target_labels:
             names.append(fmt.format(version=version, label=label))
     return names
 
@@ -513,8 +522,8 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
     ("命令旧拼写 `/snapshot Cli Ubuntu` 等价可用（命令别名，不影响 tag 命名）",
      {"labels": [], "changed": ["aha-common/pom.xml"], "command": "/snapshot Cli Ubuntu"},
      True, "ubuntu-amd64"),
-    ("JVM 目标 + OS:MacOS ⇒ JVM 线没有该平台的腿",
-     {"labels": ["SNAPSHOT:Desktop", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, False, "没有对应的腿"),
+    ("JVM 目标 + OS:MacOS ⇒ 自 2026-10-18 起有 macos-aarch64 腿（CLI-JVM 按平台出包）",
+     {"labels": ["SNAPSHOT:Cli", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, True, "macos-aarch64"),
 ]
 
 #: 原生线（S4 / #172）的判定用例：line="native" + 本工作流负责的目标 Desktop-Native。
@@ -673,6 +682,17 @@ def self_test() -> int:
     ok_win = win["legs"] == ["windows-amd64/jdk25", "windows-amd64/jdk27"] and win["platforms"] == ["windows-amd64"]
     problems += 0 if ok_win else 1
     print(f"  {'✅' if ok_win else '❌'} 原生线：`OS:Win` ⇒ 恰好 windows-amd64 的 jdk25 + jdk27 两条腿")
+    checks += 1
+
+    # CLI-JVM：`OS:Win` 只收窄构建腿，**资产名仍按三平台列**（issue #269 §6 第 7 条）。
+    # 2026-10-18 实测：期望清单只列 windows、实际只产 ubuntu ⇒ 发布作业找不到资产，release 变 0 资产。
+    cli_win = decide(labels=["SNAPSHOT:Cli", "OS:Win"], changed=["aha-cli/pom.xml"],
+                     baseline="0.1.3", pr=172, now=now, groups=groups, line="jvm")
+    ok_cli_win = cli_win["legs"] == ["windows-amd64/jdk25"] \
+        and [a.split("-")[4] + "-" + a.split("-")[5] for a in cli_win["assets"]] \
+        == ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+    problems += 0 if ok_cli_win else 1
+    print(f"  {'✅' if ok_cli_win else '❌'} CLI-JVM：`OS:Win` 只收窄构建腿，资产名仍按三平台列")
     checks += 1
 
     # 两条线的评论标记必须不同：否则原生线会把 JVM 线的评论覆盖掉

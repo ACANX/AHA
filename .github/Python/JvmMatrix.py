@@ -29,8 +29,8 @@ import sys
 #: 默认矩阵 = 三平台 × JDK 25/27 六条腿（与改造前逐条一致；YAML 里是同一个 JSON 字面量）。
 DEFAULT_MATRIX: list[dict] = [
     {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 25, "upload_cli": True},
-    {"os": "windows-latest", "label": "windows-amd64", "jdk": 25, "upload_cli": False},
-    {"os": "macos-latest", "label": "macos-aarch64", "jdk": 25, "upload_cli": False},
+    {"os": "windows-latest", "label": "windows-amd64", "jdk": 25, "upload_cli": True},
+    {"os": "macos-latest", "label": "macos-aarch64", "jdk": 25, "upload_cli": True},
     {"os": "ubuntu-latest", "label": "ubuntu-amd64", "jdk": 27, "upload_cli": True},
     {"os": "windows-latest", "label": "windows-amd64", "jdk": 27, "upload_cli": False},
     {"os": "macos-latest", "label": "macos-aarch64", "jdk": 27, "upload_cli": False},
