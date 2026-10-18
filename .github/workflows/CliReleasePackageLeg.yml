@@ -61,12 +61,12 @@ jobs:
           version=$(python3 .github/Python/ProjectVersion.py --resolve)
           target="Dist/aha-cli-jvm-${version}-${LABEL}-jdk25.zip"
           # 包内形态（issue #218）：平铺 —— 单体 jar + 启动脚本 + 文档，全在包根。
-          # 先在临时目录里打，再移进 Dist/：
-          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身收进归档；
-          #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
-          #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
-          (cd Dist && zip -qr "${RUNNER_TEMP}/aha-cli.zip" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
-          mv -- "${RUNNER_TEMP}/aha-cli.zip" "$target"
+          # 用 Python 的 zipfile 而不是 `zip`：Windows / macOS runner 上没有 `zip`（exit 127），
+          # 而 `python3` 三条腿都有（同一套脚本必须能在三种 OS 上跑）。
+          # 只列这几个入口：将来 Dist/ 里再放别的产物也不会被误收；
+          # 缺文件时 `zipfile.write` 会直接报错，因此这里本身就是「六个入口都在」的断言。
+          python3 -c "import sys,zipfile; t=sys.argv[1]; z=zipfile.ZipFile(t,'w',zipfile.ZIP_DEFLATED); [z.write('Dist/'+n, n) for n in sys.argv[2:]]; z.close()" \
+            "$target" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md
           ls -lh "$target"
           # 包内自证：不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
           entries="${RUNNER_TEMP}/cli-release-entries.txt"
