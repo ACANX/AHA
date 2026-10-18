@@ -14,6 +14,7 @@ import com.acanx.module.aha.cli.session.SessionCommand;
 import com.acanx.module.aha.cli.session.SessionCommandCompleter;
 import com.acanx.module.aha.cli.session.SessionCommandHighlighter;
 import com.acanx.module.aha.cli.session.SessionCommandRegistry;
+import com.acanx.module.aha.cli.session.SlashMenuReader;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
@@ -29,7 +30,6 @@ import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -160,22 +160,10 @@ public final class ChatCommand implements Runnable {
                     .forEach(System.out::println);
             detailRows(sessionId, opened).forEach(System.out::println);
             System.out.println();
-            LineReader reader = LineReaderBuilder.builder()
-                    .terminal(terminal)
-                    // 会话内命令补全与实时着色：Tab 出候选菜单（带用法说明），
-                    // 输入过程中命令名直接染成绿（已支持）或红（未知）——
-                    // 此前只能盲敲，按下回车才知道命令对不对
-                    .completer(new SessionCommandCompleter(registry))
-                    .highlighter(new SessionCommandHighlighter(registry, capabilities.colored()))
-                    // 允许多行粘贴：终端支持 bracketed paste 时，粘贴内容作为整体插入缓冲区，
-                    // 换行不会立即提交（否则多行文本会被拆成多条消息发给模型）
-                    .option(LineReader.Option.BRACKETED_PASTE, true)
-                    // 菜单式补全：Tab 列出全部候选并允许循环选择
-                    .option(LineReader.Option.AUTO_MENU_LIST, true)
-                    .option(LineReader.Option.LIST_PACKED, true)
-                    // 容错匹配：/cmpct 也能匹配到 /compact
-                    .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
-                    .build();
+            // 输入 / 时的候选面板由 SlashMenuReader 负责（画在输入行下方、一行一个、
+            // 支持 ↑/↓ 选择与 Enter 直接提交，见 issue #333）；这里不再用 LineReaderBuilder，
+            // 因为它无法在输入行下方追加候选区。
+            LineReader reader = new SlashMenuReader(terminal, registry, capabilities.colored());
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
