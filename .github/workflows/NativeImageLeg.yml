@@ -65,7 +65,11 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          version: '25.4'
+          # macOS + GraalVM 25.4 在解析 JavaFX 的 `com.sun.glass.ui.mac.MacVariant.toString` 时
+          # 报 `AnalysisError$ParsingError ... unexpected input could not be handled: class java.lang.Object`
+          # （pointsto 解析错误），桌面端原生镜像编不出来；25.3.4.1 无此问题。
+          # CLI 原生不涉及 JavaFX，继续用 25.4（`CliNativeImageLeg.yml` 未改）。
+          version: ${{ runner.os == 'macOS' && '25.3' || '25.4' }}
           java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
