@@ -40,8 +40,16 @@ if not defined ROOT goto :missing
 set "ZIP="
 set "ZDIR="
 set "ZNAME="
-rem Prefer the Windows package; the [0-9] fallback skips aha-desktop-native-*.zip.
-for %%Z in ("%ROOT%\Dist\aha-desktop-*-win.zip") do (
+rem issue #269 naming first: aha-desktop-jvm-<version>-windows-amd64-jdk25.zip.
+for %%Z in ("%ROOT%\Dist\aha-desktop-jvm-*.zip") do (
+    if exist "%%~fZ" (
+        set "ZIP=%%~fZ"
+        set "ZDIR=%%~dpZ"
+        set "ZNAME=%%~nZ"
+    )
+)
+rem Legacy name / Maven artifact fallback (the [0-9] pattern skips aha-desktop-native-*.zip).
+if not defined ZIP for %%Z in ("%ROOT%\Dist\aha-desktop-*-win.zip") do (
     if exist "%%~fZ" (
         set "ZIP=%%~fZ"
         set "ZDIR=%%~dpZ"

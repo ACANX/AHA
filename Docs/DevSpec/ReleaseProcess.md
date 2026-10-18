@@ -475,8 +475,9 @@ aha-cli-native-0.1.4-ubuntu-amd64-graalvm25.zip
 aha-cli-native-0.1.4-macos-aarch64-graalvm25.zip
 ```
 
-> CLI-JVM 目前三平台内容相同（同一份平台无关包），**先按平台拆成三个名字**；
-> 后续再真正按平台生成（issue #269 §6 第 7 条）。
+> CLI-JVM 自 2026-10-18 起由**三条 jdk25 腿各自构建与打包**（`Release.yml` 的
+> `CliReleasePackageUbuntuAmd64` / `CliReleasePackageWindowsAmd64` / `CliReleasePackageMacOSAarch64`），
+> 资产名里的平台段对应真实产物；jar 本身仍平台无关，但按平台出包便于用户按平台取件与核对。
 >
 > 矩阵由 `.github/Python/ReleaseMatrix.py` 读取，`Release.yml` 的完整性自证按矩阵展开；
 > 守卫 `check_release_matrix()` 钉住「矩阵 ↔ 工作流 ↔ 版本门槛」。

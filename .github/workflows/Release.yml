@@ -52,76 +52,35 @@ jobs:
   Compat:
     uses: ./.github/workflows/Compat.yml
 
-  CliReleasePackage:
-    name: CliReleasePackage
-    needs:
-      - Gate
-      - Compat
-    runs-on: ubuntu-latest
-    steps:
-      # 显式检出**发布 tag**而不用默认的 `github.sha`：`workflow_dispatch` 下 `github.ref` 是分支，
-      # 靠默认值会取到分支头部（issue #238）。push tag 事件下两者本就是同一个提交。
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - name: BuildAndVerify
-        # 有意重跑一次：发行包必须由「自身跑过门禁的构建」产出，
-        # 不复用 gate 另一个 runner 上的产物（跨 job 传产物只会让链路更难查）。
-        uses: ./.github/actions/maven-run
-        with:
-          command: ./mvnw clean verify
-      - name: PackageCliDistribution
-        shell: bash
-        run: |
-          set -euo pipefail
-          # 版本从**唯一读取入口**取（issue #93 / #94）：平铺后包内 jar 名不含版本号，
-          # 「从产物名读版本」那条路没有了，改用各工作流共用的版本读取点。
-          version=$(python3 .github/Python/ProjectVersion.py --resolve)
-          # 包内形态（issue #218）：平铺 —— 单体 jar + 启动脚本 + 文档，全在包根。
-          # 先在临时目录里打，再复制成三个平台名：
-          #   * 直接在 Dist/ 里写 zip，会把正在写入的自身收进归档；
-          #   * 只列这几个入口，将来 Dist/ 里再放别的产物也不会被误收；
-          #   * zip 对缺失的入参名会直接报错，因此这一行本身就是「六个入口都在」的断言。
-          tmp="${RUNNER_TEMP}/aha-cli.zip"
-          (cd Dist && zip -qr "${tmp}" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md)
-          # 包内自证：不得再有 lib/ 与 bin/（退回 JPMS 目录形态 ⇒ 直接失败）
-          entries="${RUNNER_TEMP}/cli-release-entries.txt"
-          "$JAVA_HOME/bin/jar" tf "${tmp}" > "$entries"
-          if grep -Eq '^(lib|bin)/' "$entries"; then
-            echo "::error::CLI 包内不应再有 lib/ 或 bin/ 目录（issue #218）"
-            grep -E '^(lib|bin)/' "$entries" | head -5
-            exit 1
-          fi
-          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
-            if ! grep -qx "$f" "$entries"; then
-              echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
-            fi
-          done
-          # issue #269：CLI-JVM 三个平台三个名字（内容暂相同，后续再真正按平台生成）。
-          for platform in windows-amd64 ubuntu-amd64 macos-aarch64; do
-            target="Dist/aha-cli-jvm-${version}-${platform}-jdk25.zip"
-            cp -- "${tmp}" "${target}"
-            # ── 包内清单（issue #51 §6）──────────────────────────────────────
-            # 放在包内自证**之后**：那些自证看的是「构建产出的包」，判据不该被清单文件干扰。
-            PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
-              --zip "${target}" --kind cli-jvm --version "${version}" --platform "${platform}" --jdk 25
-            # 写完立刻回读校验（先写后验，只差一次 zip 读取）：清单若生成有误，
-            # 用户下载后才在升级时撞「校验和不符」——那是发布出去之后才发现，代价最高。
-            PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py verify \
-              --zip "${target}" --kind cli-jvm --version "${version}" --platform "${platform}"
-            echo "CLI 包：${target}（平铺形态，共 $(wc -l < "$entries") 个条目）"
-          done
-      - name: UploadReleaseAssets
-        uses: softprops/action-gh-release@v3
-        with:
-          # `tag_name` 必须显式指定：该 action 默认按 `github.ref` 找 release，而 `workflow_dispatch`
-          # 下 `github.ref` 是分支（`refs/heads/main`），会指向错误对象（issue #238）。
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: Dist/aha-cli-*.zip
+  # ── CLI-JVM：按平台各出一份（issue #269）────────────────────────────────
+  #   三条腿各自在对应 runner 上构建与打包，资产名里的平台段对应真实产物；
+  #   逻辑抽到 `CliReleasePackageLeg.yml`，主工作流只留「选哪条腿」。
+  CliReleasePackageUbuntuAmd64:
+    name: CliReleasePackageUbuntuAmd64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: ubuntu-latest
+      label: ubuntu-amd64
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  CliReleasePackageWindowsAmd64:
+    name: CliReleasePackageWindowsAmd64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: windows-latest
+      label: windows-amd64
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  CliReleasePackageMacOSAarch64:
+    name: CliReleasePackageMacOSAarch64
+    needs: [Gate, Compat]
+    uses: ./.github/workflows/CliReleasePackageLeg.yml
+    with:
+      os: macos-latest
+      label: macos-aarch64
+      ref: ${{ inputs.tag || github.ref_name }}
 
   # ── 桌面端：按平台出包（每个 runner 只能产出自己平台的包） ────────────────
   # 【为什么是三个静态作业，而不是矩阵】（issue #287）
@@ -295,7 +254,9 @@ jobs:
   Checksums:
     name: ReleaseChecksum
     needs:
-      - CliReleasePackage
+      - CliReleasePackageUbuntuAmd64
+      - CliReleasePackageWindowsAmd64
+      - CliReleasePackageMacOSAarch64
       - DesktopPackageUbuntuAmd64
       - DesktopPackageWindowsAmd64
       - DesktopPackageMacOSAarch64
@@ -303,7 +264,9 @@ jobs:
     # 任一作业成功就要出校验和：已经挂在发布页上的资产必须能核对（部分平台失败也要有）。
     # 全都失败 / 被取消时不出——那时发布页上根本没有资产可核。
     if: >-
-      always() && (needs.CliReleasePackage.result == 'success'
+      always() && (needs.CliReleasePackageUbuntuAmd64.result == 'success'
+      || needs.CliReleasePackageWindowsAmd64.result == 'success'
+      || needs.CliReleasePackageMacOSAarch64.result == 'success'
       || needs.DesktopPackageUbuntuAmd64.result == 'success'
       || needs.DesktopPackageWindowsAmd64.result == 'success'
       || needs.DesktopPackageMacOSAarch64.result == 'success')
