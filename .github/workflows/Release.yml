@@ -251,6 +251,55 @@ jobs:
           gh release upload "${TAG}" "${files[@]}" --clobber
           echo "已上传 ${#files[@]} 个原生包"
 
+      - name: SummarizeNativeLegs
+        # 原生腿是 job 级 `continue-on-error`（整条管线可选），腿失败不会让 workflow 变红。
+        # 代价是「workflow 绿」掩盖了「交付物缺失」——V0.1.4 就是这样连续失败多次没人发现（#303）。
+        # 这里把 6 条腿的真实结果摊到 Job Summary，缺哪个形态 × 平台一眼可见。
+        if: always()
+        shell: bash
+        env:
+          DESKTOP_WINDOWS: ${{ needs.DesktopNativeWindowsAmd64.result }}
+          DESKTOP_UBUNTU: ${{ needs.DesktopNativeUbuntuAmd64.result }}
+          DESKTOP_MACOS: ${{ needs.DesktopNativeMacOSAarch64.result }}
+          CLI_WINDOWS: ${{ needs.CliNativeWindowsAmd64.result }}
+          CLI_UBUNTU: ${{ needs.CliNativeUbuntuAmd64.result }}
+          CLI_MACOS: ${{ needs.CliNativeMacOSAarch64.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### 原生腿结果（continue-on-error，不等于交付成功）"
+            echo
+            echo "| 形态 | 平台 | 结果 |"
+            echo "|---|---|---|"
+            echo "| desktop-native | windows-amd64 | ${DESKTOP_WINDOWS} |"
+            echo "| desktop-native | ubuntu-amd64 | ${DESKTOP_UBUNTU} |"
+            echo "| desktop-native | macos-aarch64 | ${DESKTOP_MACOS} |"
+            echo "| cli-native | windows-amd64 | ${CLI_WINDOWS} |"
+            echo "| cli-native | ubuntu-amd64 | ${CLI_UBUNTU} |"
+            echo "| cli-native | macos-aarch64 | ${CLI_MACOS} |"
+            echo
+            echo "> 失败或跳过的腿 = 本版缺对应主包；`Checksums` 作业会据此判定发布是否完整。"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          failed=0
+          for row in "desktop-native/windows-amd64:${DESKTOP_WINDOWS}" \
+                     "desktop-native/ubuntu-amd64:${DESKTOP_UBUNTU}" \
+                     "desktop-native/macos-aarch64:${DESKTOP_MACOS}" \
+                     "cli-native/windows-amd64:${CLI_WINDOWS}" \
+                     "cli-native/ubuntu-amd64:${CLI_UBUNTU}" \
+                     "cli-native/macos-aarch64:${CLI_MACOS}"; do
+            name="${row%%:*}"; result="${row##*:}"
+            if [ "${result}" != "success" ]; then
+              echo "::warning::原生包缺失：${name}（腿结果 ${result}）"
+              failed=$((failed + 1))
+            fi
+          done
+          if [ "${failed}" -gt 0 ]; then
+            echo "⚠️ ${failed} 条原生腿未产出交付物"
+          else
+            echo "✅ 6 条原生腿全部产出"
+          fi
+
   Checksums:
     name: ReleaseChecksum
     needs:
