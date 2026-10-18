@@ -185,7 +185,7 @@ public final class ChatCommand implements Runnable {
             // 这里把 `/` 键绑到一个自定义 widget——先插入 `/`，若它是行的第一个字符就立刻
             // 调 `menu-complete` 展开候选。候选本身仍由 SessionCommandCompleter 提供，
             // 前缀过滤与容错匹配交给 JLine（COMPLETE_MATCHER_TYPO 已开启）。
-            installSlashMenu(reader);
+            installSlashMenu(reader, registry);
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
@@ -396,52 +396,46 @@ public final class ChatCommand implements Runnable {
      * @return 分隔线
      */
     /**
-     * 把 {@code /} 键绑到「插入并立即展开候选菜单」的 widget（issue #333）。
+     * 输入 {@code /} 时**只列出候选**，不自动补全、不选中任何一项（issue #333 反馈）。
      *
-     * <p>只在**行首**输入 {@code /} 时弹菜单：命令名之后是它自己的参数，
-     * 在参数里敲 {@code /}（如路径）不应弹命令候选。</p>
+     * <p>此前用 JLine 的补全 widget，输入 {@code /} 会被直接补成某个命令（如 {@code /auto-compact}），
+     * 用户还得先删掉才能输入 {@code /model} —— 比不提示还麻烦。这里改成：</p>
      *
-     * @param reader 已构建的 LineReader
+     * <ul>
+     *   <li>候选由本方法自己打印到输入行上方（普通文本，无背景色）；</li>
+     *   <li>缓冲区只多一个 {@code /}，**不再改动**；</li>
+     *   <li>用户想补全时自己按 Tab（JLine 的 {@code AUTO_LIST} 会列出过滤后的候选）。</li>
+     * </ul>
+     *
+     * @param reader   已构建的 LineReader
+     * @param registry 命令注册表
      */
-    private static void installSlashMenu(LineReader reader) {
+    private static void installSlashMenu(LineReader reader, SessionCommandRegistry registry) {
         String widgetName = "aha-slash-menu";
         reader.getWidgets().put(widgetName, () -> {
             Buffer buffer = reader.getBuffer();
             boolean lineStart = buffer.length() == 0 && buffer.cursor() == 0;
             buffer.write("/");
             if (lineStart) {
-                // 立即列出候选：用 list-choices（普通文本列表），不用 menu，
-                // 避免菜单选中项的反色背景在部分终端主题下变成红底。
-                reader.callWidget(LineReader.LIST_CHOICES);
+                StringBuilder hint = new StringBuilder("可用命令：");
+                boolean first = true;
+                for (SessionCommand command : registry.commands()) {
+                    if (!first) {
+                        hint.append("  ");
+                    }
+                    hint.append('/').append(command.name());
+                    first = false;
+                }
+                try {
+                    reader.printAbove(hint.toString());
+                } catch (Exception ignored) {
+                    // 打印失败不影响输入：候选只是提示，丢了也能按 Tab 查看
+                }
             }
             return true;
         });
         KeyMap<Binding> main = reader.getKeyMaps().get(LineReader.MAIN);
         main.bind(new Reference(widgetName), "/");
-
-        // 命令名继续输入时自动匹配：唯一前缀直接补全（/cle -> /clear），
-        // 多候选时 JLine 只提示、不改动已输入内容 —— 不会像 menu-complete 那样把用户
-        // 打了一半的名字替换成某个候选。
-        reader.getWidgets().put("aha-slash-insert", () -> {
-            Buffer buffer = reader.getBuffer();
-            buffer.write(reader.getLastBinding());
-            String text = buffer.toString();
-            if (text.startsWith("/") && text.indexOf(' ') < 0 && text.length() > 1) {
-                reader.callWidget(LineReader.COMPLETE_WORD);
-            }
-            return true;
-        });
-        Reference insert = new Reference("aha-slash-insert");
-        for (char c = 'a'; c <= 'z'; c++) {
-            main.bind(insert, String.valueOf(c));
-        }
-        for (char c = 'A'; c <= 'Z'; c++) {
-            main.bind(insert, String.valueOf(c));
-        }
-        for (char c = '0'; c <= '9'; c++) {
-            main.bind(insert, String.valueOf(c));
-        }
-        main.bind(insert, "-");
     }
 
     private static String rule(boolean unicode, int width, Style style) {
