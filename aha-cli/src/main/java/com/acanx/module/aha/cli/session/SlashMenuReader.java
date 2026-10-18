@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BooleanSupplier;
 
 /**
  * 带「输入行下方候选面板」的 LineReader（issue #333）。
@@ -52,6 +53,14 @@ public final class SlashMenuReader extends LineReaderImpl {
 
     /** 选中项下标；无候选时为 {@code -1}。 */
     private int selected = -1;
+
+    /**
+     * ESC 的中断回调：返回 {@code true} 表示已消费该按键。
+     *
+     * <p>回合运行中由 {@code ChatCommand} 注册（取消当前回合）；空闲时为 {@code null}，
+     * ESC 不做任何事，也不会吞掉按键。</p>
+     */
+    private volatile BooleanSupplier interruptHandler;
 
     /**
      * 创建 reader。
@@ -120,6 +129,15 @@ public final class SlashMenuReader extends LineReaderImpl {
     }
 
     /**
+     * 注册 ESC 的中断回调。
+     *
+     * @param handler 返回 {@code true} 表示该按键已被消费；{@code null} 表示撤销
+     */
+    public void setInterruptHandler(BooleanSupplier handler) {
+        this.interruptHandler = handler;
+    }
+
+    /**
      * 安装自定义 widget 与按键绑定。
      *
      * <p>方向键 / Enter / Backspace 直接<b>覆盖同名 widget</b>（而非绑定具体转义序列）：
@@ -152,12 +170,15 @@ public final class SlashMenuReader extends LineReaderImpl {
             return true;
         });
         getWidgets().put("aha-slash-escape", () -> {
-            if (visible.isEmpty()) {
-                return false;
+            // 第一下：收起候选面板
+            if (!visible.isEmpty()) {
+                visible = List.of();
+                selected = -1;
+                return true;
             }
-            visible = List.of();
-            selected = -1;
-            return true;
+            // 第二下：中断当前回合（issue #341）；空闲时交给 JLine 默认处理
+            BooleanSupplier handler = interruptHandler;
+            return handler != null && handler.getAsBoolean();
         });
 
         Widget up = () -> {

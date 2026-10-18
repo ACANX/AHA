@@ -253,7 +253,7 @@ Dist\aha-cli-native.exe version
 ```
 
 > CLI 原生镜像由 CI 的 `CliNative.yml` 产出（预发行 tag `V<版本>-aha-cli-native`）。
-> 交互式模式下 `Ctrl+C` 只打断当前生成，不退出进程。
+> 交互式模式下 `Ctrl+C` 只打断当前生成，不退出进程；生成或工具执行中按 `ESC` 同样只中断当前任务（见 #341）。
 
 **dev 分支的 JVM 便携包**由 CI 的 `BuildJVMArtifacts.yml` 在每次合并到 `dev` 后产出，
 挂到发布页（预发行 tag `V<版本>-aha-jvm`），每个平台出 **JDK 25** 与 **JDK 27** 两份：
