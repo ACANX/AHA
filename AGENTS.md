@@ -8,6 +8,18 @@
 
 ---
 
+## ⛔ 推送前必须确认分支对应的 PR 是否已合并（强制，2026-10-18 起）
+
+- **改代码前**与 **`git push` 前**，各查一次该分支对应的 PR 状态：
+  - `gh pr list --head <分支名> --state all --json number,state,mergedAt`
+  - `git fetch origin && git log --oneline origin/dev..HEAD`
+- 若 PR 已 `MERGED` / `CLOSED`：**禁止继续改动与推送**，必须基于最新 `origin/dev` 新建分支，
+  用 `git diff origin/dev <旧分支> | git apply` 迁移未合并改动，再开新 PR 并在正文注明前序 PR。
+- 旧分支保留、不再推送（作为历史）。
+- 完整流程、三个检查点与事故记录见
+  [PullRequestWorkflowSpec.md](Docs/DevSpec/PullRequestWorkflowSpec.md)（**强制规范**）。
+- 违反本条 = 改动不会进入主干且过程不可见，属**严重流程错误**；发现后立即停止、迁移、如实说明。
+
 ## ⛔ 本地不跑 Maven 编译与单元测试（强制，已多次重申，勿再违反）
 
 **本机不执行任何 Maven 编译 / 测试 / verify 动作**——包括但不限于
@@ -253,6 +265,7 @@ verify / 覆盖率 / 文档 / 技能 / 脚本 / 重复率，并在**合入前、
 - [CommitMessageSpec.md](Docs/DevSpec/CommitMessageSpec.md) - 提交规范
 - [IssueTrackingSpec.md](Docs/DevSpec/IssueTrackingSpec.md) - Issue 管理规范（开单 / 状态 / 关闭）
 - [BranchStrategy.md](Docs/DevSpec/BranchStrategy.md) - 分支策略
+- [PullRequestWorkflowSpec.md](Docs/DevSpec/PullRequestWorkflowSpec.md) - PR 合并操作规范（推送前必查 PR 状态，已合并须新开 PR）
 - [CodeReviewChecklist.md](Docs/DevSpec/CodeReviewChecklist.md) - 评审清单
 - [ReleaseProcess.md](Docs/DevSpec/ReleaseProcess.md) - 发布流程
 
