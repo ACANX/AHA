@@ -440,7 +440,16 @@ def check_release_auto_dispatch() -> list[str]:
     if "inputs.tag || github.ref_name" not in release_text:
         problems.append("Release.yml 没有用 `inputs.tag || github.ref_name` 取发布 tag —— "
                         "派发时 `github.ref` 是分支，会指错对象（issue #238）")
-    if "tag_name: ${{ inputs.tag || github.ref_name }}" not in release_text:
+    # 出包逻辑可能被抽到可复用工作流（如 `CliReleasePackageLeg.yml`）：
+    # 主工作流传 `ref`，腿里用 `tag_name: ${{ inputs.ref }}`。两处都算「显式指定」。
+    leg_texts = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / ".github" / "workflows").glob("*Leg.yml")))
+    has_explicit_tag = (
+        "tag_name: ${{ inputs.tag || github.ref_name }}" in release_text
+        or "tag_name: ${{ inputs.ref }}" in release_text
+        or "tag_name: ${{ inputs.ref }}" in leg_texts)
+    if not has_explicit_tag:
         problems.append("Release.yml 的 `action-gh-release` 没有显式 `tag_name` —— 派发时会挂到分支上")
     # ② 快照 tag 的负向排除不能丢（丢了则每次出快照都跑完整发版）
     #    2026-10-17 起快照 tag 去掉了 `-SNAPSHOT`，改按 `-AHA-` / `-aha-` 排除；
