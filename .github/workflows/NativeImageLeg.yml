@@ -744,7 +744,8 @@ jobs:
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip" \
             --kind desktop-native --version "${{ env.AHA_VERSION }}" \
-            --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}"
+            --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
+            --graalvm "${{ steps.graal.outputs.version }}"
 
       - name: VerifyWindows10Manifest
         # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。

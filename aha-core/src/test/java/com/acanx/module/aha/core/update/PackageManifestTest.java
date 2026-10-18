@@ -51,6 +51,7 @@ class PackageManifestTest {
                   "platform": "windows-amd64",
                   "jdk": 25,
                   "builtBy": "Release.yml",
+                  "toolchain": {"graalvm": "25.4"},
                   "files": [
                     {"path": "aha-desktop.jar", "sha256": "%s", "size": 9, "mode": "0755"}
                   ]
@@ -61,6 +62,8 @@ class PackageManifestTest {
 
         assertThat(manifest.updateKind()).contains(UpdateKind.DESKTOP_JVM);
         assertThat(manifest.fileList()).hasSize(1);
+        assertThat(manifest.toolchain()).isNotNull();
+        assertThat(manifest.toolchain().graalvm()).isEqualTo("25.4");
         manifest.verify(packageRoot, UpdateKind.DESKTOP_JVM, VERSION, WINDOWS);
     }
 

@@ -10,7 +10,18 @@
 
 ## [Unreleased]
 
-（暂无）
+## [0.1.4] - 待发布
+
+### 变更
+- **发布物矩阵与命名统一（issue #269）**：
+  - 资产名统一为 `aha-<product>-<form>-<版本>-<os>-<arch>-<runtime>.zip`，四种形态 × 三平台共 12 份：
+    `aha-desktop-jvm-*` / `aha-desktop-native-*` / `aha-cli-jvm-*` / `aha-cli-native-*`；
+  - **CLI 从「平台无关一份包」改为三平台各自构建**（`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`），名字与内容一一对应；
+  - 矩阵单一来源：`.github/ReleaseMatrix.yml`（守卫 `check_release_matrix()` 钉住工作流 ↔ 矩阵 ↔ 文档一致）；
+  - 快照 tag 去掉 `-SNAPSHOT` 后缀（5 段版本已能区分），读取侧兼容旧后缀；
+  - 原生报告包改名为 `-report.zip`（原 `-diagnostics.zip` / `-Report.zip`，读取侧兼容旧名）；
+  - 原生包的 `AHA-PACKAGE.json` 新增 `toolchain.graalvm`（精确 GraalVM 版本）；
+  - 旧资产名保留为兼容别名，**0.1.5 起由守卫版本门槛判红**。
 
 ## [0.1.3] - 2026-10-17
 

@@ -472,7 +472,8 @@ jobs:
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/aha-cli-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip" \
             --kind cli-native --version "${{ env.AHA_VERSION }}" \
-            --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}"
+            --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
+            --graalvm "${{ steps.graal.outputs.version }}"
 
       - name: UploadArtifact
         if: steps.verify.outputs.produced == 'true'
