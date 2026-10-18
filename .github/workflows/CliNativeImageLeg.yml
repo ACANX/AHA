@@ -478,8 +478,15 @@ jobs:
               | sed -n 's/^IMPLEMENTOR_VERSION="\{0,1\}[^"]*[[:space:]]\([0-9][0-9.]*\)"\{0,1\}$/\1/p' \
               | head -n1)"
           fi
+          if [ -z "$graalvm_version" ] && [ -x "$graalvm_home/bin/native-image" ]; then
+            # GraalVM 25 的 `native-image --version` 第二行含 `Oracle GraalVM 25.4.4.1.1+1`
+            graalvm_version="$("$graalvm_home/bin/native-image" --version 2>/dev/null \
+              | sed -n 's/.*GraalVM \([0-9][0-9.]*\).*/\1/p' | head -n1)"
+          fi
           if [ -z "$graalvm_version" ]; then
-            graalvm_version="$(basename "$graalvm_home" | sed -n 's/.*graalvm[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
+            # 对整个路径匹配，而不是 basename：macOS 的 GRAALVM_HOME 末尾是
+            # `.../graalvm-25.4.4.1.1+1.1/Contents/Home`，basename 是 `Home`，匹配不到。
+            graalvm_version="$(printf '%s' "$graalvm_home" | sed -n 's/.*graalvm[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
           fi
           if [ -z "$graalvm_version" ]; then
             ls -la "$graalvm_home" || true
