@@ -217,18 +217,6 @@ jobs:
           ls -lh "$out"
           "$py" -c "import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [print(i.file_size, i.filename) for i in z.infolist()]" "$out"
 
-      - name: UploadReportArtifact
-        # 与镜像包走同一套收集 / 发布路径（publish 作业把 artifacts/*.zip 一起上传），
-        # 因此这里只管上传，不必在发布作业里单独接线。
-        # 保留期给 90 天（比镜像包的 14 天长）：报告是长期资产。
-        continue-on-error: true
-        if: always() && steps.graal.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Native-Report-${{ inputs.label }}-jdk${{ inputs.jdk }}
-          path: Dist/aha-desktop-native-*-report.zip
-          if-no-files-found: warn
-          retention-days: 90
 
       - name: ExtractReportMetrics
         # 目的：不下载也能看到「这次编出来多大 / 资源占多少」。
@@ -741,11 +729,38 @@ jobs:
         if: steps.verify.outputs.produced == 'true'
         run: |
           set -euo pipefail
+          # GraalVM 精确版本：`graalvm/setup-graalvm` 只导出 cache-hit，不导出 version，
+          # 直接从 $GRAALVM_HOME/release 的 IMPLEMENTOR_VERSION 里取（如 "GraalVM Community 25.4.4.1" → 25.4.4.1）。
+          # 取不到就让这条腿红：清单里记一个空版本等于没记（issue #269 §5）。
+          # Windows runner 的 Git Bash 里 GRAALVM_HOME 是 `C:\...` 形式，awk 读不到 —— 先转成 POSIX 路径；
+          # release 文件是 CRLF —— 先 tr 掉 \r，否则版本串末尾会带控制字符。
+          graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
+          if command -v cygpath >/dev/null 2>&1; then
+            graalvm_home="$(cygpath -u "$graalvm_home" 2>/dev/null || printf '%s' "$graalvm_home")"
+          fi
+          # ① 首选 release 文件的 IMPLEMENTOR_VERSION（"GraalVM Community 25.4.4.1" / "Oracle GraalVM 25.4.4.1.1"）；
+          # ② 字段缺失或格式不符时，从目录名兜底（`graalvm-25.4.4.1+1.1` / `graalvm-jdk-25.4.4.1+1.1`）；
+          # ③ 两者都失败才报错，并把目录与 release 头几行打出来便于排查。
+          graalvm_version=""
+          if [ -f "$graalvm_home/release" ]; then
+            graalvm_version="$(tr -d '\r' < "$graalvm_home/release" \
+              | sed -n 's/^IMPLEMENTOR_VERSION="\{0,1\}[^"]*[[:space:]]\([0-9][0-9.]*\)"\{0,1\}$/\1/p' \
+              | head -n1)"
+          fi
+          if [ -z "$graalvm_version" ]; then
+            graalvm_version="$(basename "$graalvm_home" | sed -n 's/.*graalvm[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
+          fi
+          if [ -z "$graalvm_version" ]; then
+            ls -la "$graalvm_home" || true
+            sed -n '1,20p' "$graalvm_home/release" 2>/dev/null || true
+            echo "::error::无法确定 GraalVM 版本（release 与目录名都没给出版本）"
+            exit 1
+          fi
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip" \
             --kind desktop-native --version "${{ env.AHA_VERSION }}" \
             --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
-            --graalvm "${{ steps.graal.outputs.version }}"
+            --graalvm "$graalvm_version"
 
       - name: VerifyWindows10Manifest
         # 只在 Windows 腿跑：清单只对 Windows 腿生效，其他平台根本没嵌。
@@ -791,6 +806,20 @@ jobs:
               )
           print(f"✅ 清单已嵌入：{zip_path.name} → {exes[0].filename}（命中 GUID {guid.decode()}）")
           PY
+
+      - name: UploadReportArtifact
+        # 与镜像包走同一套收集 / 发布路径（publish 作业把 artifacts/*.zip 一起上传），
+        # 因此这里只管上传，不必在发布作业里单独接线。
+        # 保留期给 90 天（比镜像包的 14 天长）：报告是长期资产。
+        continue-on-error: true
+        # 只有主包真的产出了才上传报告：否则发布页会出现「有 report、没有主包」的孤立报告
+        if: steps.verify.outputs.produced == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Native-Report-${{ inputs.label }}-jdk${{ inputs.jdk }}
+          path: Dist/aha-desktop-native-*-report.zip
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: UploadArtifact
         # 只有真的产出了二进制才上传；没有就跳过（不算失败——这是可选管线）
