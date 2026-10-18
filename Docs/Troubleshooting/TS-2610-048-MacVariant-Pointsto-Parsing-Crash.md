@@ -131,6 +131,34 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 - 这属于 **GraalVM 对该字节码形态的兼容缺陷**，与 JavaFX 具体版本、与本项目代码无关；
 - `MacVariant` 只存在于 macOS 分类器的 `javafx-graphics`，所以只有 macOS 桌面端触发。
 
+### 上游修复（`oracle/graal#14545`，2026-09-28 合入 master）
+
+文件：`substratevm/src/com.oracle.svm.hosted/src/com/oracle/svm/hosted/sboutlining/OutlinedSBMethod.java`
+
+```diff
+-            if (methodType.returnType().equals(String.class)) {
++            ResolvedJavaType returnType = providers.getMetaAccess().lookupJavaType(methodType.returnType());
++            ResolvedJavaType stringType = providers.getMetaAccess().lookupJavaType(String.class);
++            if (returnType.isAssignableFrom(stringType)) {
+                 graphBuilderMH = new SubstrateStringConcatFactory(kit).makeConcat(methodType);
+             } else {
+                 graphBuilderMH = new SubstrateSBConcatFactory(kit).makeConcat(methodType.dropParameterTypes(0, 1));
+```
+
+**这两行的差别，正是本缺陷的全部**：
+
+- 旧判定只认「返回类型 **等于** `String`」。而 `Object v = "a"; v += "b";` 生成的 `indy`
+  返回类型是 **`Object`**，于是掉进 `SubstrateSBConcatFactory`（outlined SB 拼接）分支，
+  `OutlinedSBMethod.buildGraph` 拿到 `Object` 就在 `VMError.shouldNotReachHere` 崩溃；
+- 新判定改为「`String` **可赋给** 返回类型」（`returnType.isAssignableFrom(String.class)`），
+  `Object` / `CharSequence` / `Serializable` 等超类型都改走 `SubstrateStringConcatFactory`，
+  从根上不再进入 SB 分支；
+- 因此本项目能想到的任何 native-image 参数都不可能绕过 —— 问题在**上游分支选择的类型判定**，
+  与优化开关、初始化时机、方法过滤、JavaFX 版本都无关。
+
+**为什么 JavaFX 命中**：`MacVariant.toString()` 是 switch 表达式，其合成结果被当作 `Object`
+使用（switch 的多分支常量类型推断），javac 生成的 `indy` 因此返回 `Object`。
+
 ### 未定位 / 未复现
 
 - ~~未确认该缺陷在 GraalVM 的哪个 commit / issue 被记录~~ → **已定位**，见 §上游跟踪；
