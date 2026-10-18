@@ -378,7 +378,7 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 ```
 
 `Dist/` 结构：`aha-cli.jar`（单体 jar，含全部依赖）+ `AhaCli.sh` / `AhaCli.bat` + 文档，全在根。
-发布流程将其打包为 `aha-cli-<版本>.zip` 并上传到 GitHub Release；`Dist/` 不入库。
+发布流程将其打包为 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 并上传到 GitHub Release；`Dist/` 不入库。
 桌面端另有按平台命名的便携包，见 3.2。
 
 > **OpenJFX 原生库按平台分类器发布**，0.2 起的桌面端产物必须分平台构建。
@@ -391,7 +391,7 @@ gh workflow run Release.yml --ref main -f "tag=V0.1.2"
 
 | 形态 | 产物 | 启动方式 | 前提 |
 |---|---|---|---|
-| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`；`aha-desktop-<版本>-<系统>-<架构>.zip`（见 3.2） | 解压后跑 `Aha.sh` / `Aha.bat`（CLI）或 `AhaDesktop.sh` / `.bat`（桌面端）——两条线都是包根平铺单体 jar | 机器需自备 JDK 25 |
+| **JVM JAR 聚合包** | `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip`；`aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip`（见 3.2） | 解压后跑 `Aha.sh` / `Aha.bat`（CLI）或 `AhaDesktop.sh` / `.bat`（桌面端）——两条线都是包根平铺单体 jar | 机器需自备 JDK 25 |
 | **原生镜像二进制** | `native-image` 单文件（`aha-cli-native` / `aha-desktop-native`，试验性） | 直接执行二进制 | 无需 JVM |
 
 **`jpackage` 安装包（MSI / DEB / DMG）已决策跳过，不采用**。理由：

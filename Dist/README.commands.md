@@ -28,8 +28,8 @@
 | 解压并更新 `Dist/` | `python3 Script\Python\DesktopDistExtract.py` | `python3 Script/Python/DesktopDistExtract.py` |
 | 下载最新桌面端原生镜像 | `Dist\UpdateDesktopNative.cmd`（双击，无需 Python）或 `python3 Script\Python\DesktopNativeVersionUpdate.py` | `python3 Script/Python/DesktopNativeVersionUpdate.py` |
 | 下载最新 CLI 原生镜像 | `Dist\UpdateCliNative.cmd`（双击，无需 Python）或 `python3 Script\Python\CliNativeVersionUpdate.py` | `python3 Script/Python/CliNativeVersionUpdate.py` |
-| 下载最新**桌面端 JVM 便携包** | `Dist\UpdateDesktopJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-desktop-<版本>-<平台>.zip` |
-| 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-<版本>.zip` |
+| 下载最新**桌面端 JVM 便携包** | `Dist\UpdateDesktopJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` |
+| 下载最新 **CLI JVM 便携包** | `Dist\UpdateCliJvm.cmd`（双击，无需 Python） | 手动从发布页取 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` |
 | 启动桌面端（Dist 版） | `Dist\AhaDesktop.bat` | `./Dist/AhaDesktop.sh` |
 | 启动桌面端（源码根） | `bin\AhaDesktop.bat` | `./bin/AhaDesktop.sh` |
 | 启动 CLI（Dist 版） | `Dist\AhaCli.bat` | `./Dist/AhaCli.sh` |
@@ -184,7 +184,7 @@ python3 Script\Python\DesktopNativeVersionUpdate.py --dry-run  :: 只预览链�
 
 **取件（手动：下载 zip → 解压出 exe → 放到 `Dist/`）**：
 
-发布页资产名为 `AHA-Desktop-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`，包内是可执行文件
+发布页资产名为 `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`，包内是可执行文件
 `aha-desktop-native.exe`（Windows）/ `aha-desktop-native`（Linux / macOS）。
 
 ```bat
@@ -213,7 +213,7 @@ Dist\aha-desktop-native.exe                                     :: 双击或命�
 
 ### 4.2 CLI 原生镜像
 
-发布页资产名为 `AHA-Cli-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`，包内是可执行文件
+发布页资产名为 `aha-cli-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`，包内是可执行文件
 `aha-cli-native.exe`（Windows）/ `aha-cli-native`（Linux / macOS）。
 
 **取件（一键，Windows 双击 / 脚本）**（与桌面端同构；`-List` / `-DryRun` / `-Tag` / `-Jdk` 都可用）：
@@ -258,8 +258,8 @@ Dist\aha-cli-native.exe version
 **dev 分支的 JVM 便携包**由 CI 的 `BuildJVMArtifacts.yml` 在每次合并到 `dev` 后产出，
 挂到发布页（预发行 tag `V<版本>-aha-jvm`），每个平台出 **JDK 25** 与 **JDK 27** 两份：
 
-- `aha-desktop-<版本>-<平台>.zip` / `aha-cli-<版本>.zip`：**JDK 25 基线**（Java 25 字节码，需 JDK 25）；
-- `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-cli-<版本>-jdk27.zip`：**JDK 27**（Java 27 字节码，需 JDK 27）。
+- `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` / `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip`：**JDK 25 基线**（Java 25 字节码，需 JDK 25）；
+- `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk27.zip` / `aha-cli-jvm-<版本>-<系统>-<架构>-jdk27.zip`：**JDK 27**（Java 27 字节码，需 JDK 27）。
 
 > 这是**验证 dev 最新合并**用的预发行产物；正式版本仍用 Release 页的 `V<版本号>` 资产。
 
@@ -287,7 +287,7 @@ Dist/
 ├── .aha-desktop-jvm.json   桌面端 JVM 取件状态（当前是哪一版、平铺了哪些入口）
 ├── .aha-cli-jvm.json       CLI JVM 取件状态（同上）
 ├── .aha-snapshot.json      JVM **快照** 的取件状态（见 §7）
-├── aha-desktop-<版本>-<平台>.zip      桌面端便携包
+├── aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip      桌面端便携包
 ├── aha-desktop-native-*.zip           桌面端原生镜像包
 ├── aha-desktop-native.exe             桌面端原生镜像（更新脚本或手动解压落在这里）
 ├── aha-cli-native.exe                 CLI 原生镜像（一键脚本或手动从发布页取出）

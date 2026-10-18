@@ -329,7 +329,7 @@ POM 语法必须兼容 Maven 3.9.x：
 
 | 形态 | CLI | 桌面端 | 前提 |
 |---|---|---|---|
-| **JVM JAR 聚合包** | `aha-cli-<版本>.zip`（包根平铺） | `aha-desktop-<版本>-<系统>-<架构>.zip`（包根平铺） | 需自备 JDK 25 |
+| **JVM JAR 聚合包** | `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip`（包根平铺） | `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip`（包根平铺） | 需自备 JDK 25 |
 | **原生镜像二进制**（试验性） | `aha-cli-native` 的 `native-image` 单文件 | `aha-desktop-native` 的 `native-image` 单文件 | 无需 JVM |
 
 > `jpackage` 安装包**已决策跳过、不采用**：它是第三种发行形态，而「免装 JDK」这一目标
