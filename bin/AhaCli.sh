@@ -6,7 +6,7 @@
 # 既没有 `lib/`，也没有单独的 `bin/`。jar 里已带全部依赖，因此只要机器上有 JDK 25。
 #
 # 源码检出处也能用：先在本目录、上一级与 `Dist/` 里找 `aha-cli.jar`；都没有时，
-# 自动把 `Dist/aha-cli-<版本>[-jdk27].zip` 解压到以 zip 名与时间戳命名的目录后再启动
+# 自动把 `Dist/aha-cli-jvm-<版本>-<平台>-jdk25.zip` 解压到以 zip 名与时间戳命名的目录后再启动
 # （旧目录不删，可能正被已运行的实例占用）。
 set -euo pipefail
 
@@ -43,10 +43,18 @@ done
 # 用 [0-9] 而不是 * 选包：这样不会把 aha-cli-native-<版本>-<jdk>.zip 误当成 JVM 便携包。
 if [ -z "$JARDIR" ] && [ -n "$ROOT" ]; then
     ZIP=""
-    for z in "$ROOT"/Dist/aha-cli-[0-9]*.zip "$ROOT"/dist/aha-cli-[0-9]*.zip; do
+    # issue #269 新文法优先：aha-cli-jvm-<版本>-<平台>-jdk25.zip
+    for z in "$ROOT"/Dist/aha-cli-jvm-*.zip "$ROOT"/dist/aha-cli-jvm-*.zip; do
         [ -f "$z" ] || continue
         ZIP="$z"
     done
+    # 旧名兼容（[0-9] 跳过 aha-cli-native-<版本>-<jdk>.zip）
+    if [ -z "$ZIP" ]; then
+        for z in "$ROOT"/Dist/aha-cli-[0-9]*.zip "$ROOT"/dist/aha-cli-[0-9]*.zip; do
+            [ -f "$z" ] || continue
+            ZIP="$z"
+        done
+    fi
 
     if [ -n "$ZIP" ]; then
         if stat -c %Y "$ZIP" >/dev/null 2>&1; then
