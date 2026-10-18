@@ -92,7 +92,8 @@ public final class SlashMenuReader extends LineReaderImpl {
             boolean active = index == selected;
             AttributedStyle style = active ? SELECTED : NORMAL;
             sb.append("\n");
-            sb.append(new AttributedString((active ? "❯ " : "  ") + "/" + visible.get(index), style));
+            // 选中标记用 ASCII `>`：`❯`（U+276F）在非 UTF-8 控制台或字体缺失时是乱码
+            sb.append(new AttributedString((active ? "> " : "  ") + "/" + visible.get(index), style));
         }
         return sb.toAttributedString();
     }
@@ -159,7 +160,7 @@ public final class SlashMenuReader extends LineReaderImpl {
             return true;
         });
 
-        getWidgets().put(LineReader.UP_LINE_OR_HISTORY, () -> {
+        Widget up = () -> {
             if (visible.isEmpty()) {
                 return originalUp != null && originalUp.apply();
             }
@@ -167,8 +168,8 @@ public final class SlashMenuReader extends LineReaderImpl {
                 selected--;
             }
             return true;
-        });
-        getWidgets().put(LineReader.DOWN_LINE_OR_HISTORY, () -> {
+        };
+        Widget down = () -> {
             if (visible.isEmpty()) {
                 return originalDown != null && originalDown.apply();
             }
@@ -176,7 +177,13 @@ public final class SlashMenuReader extends LineReaderImpl {
                 selected++;
             }
             return true;
-        });
+        };
+        // 两条路都铺上：覆盖 widget 名（终端把方向键映射到该 widget 时命中），
+        // 同时显式绑定常见转义序列（ANSI / 应用模式两种）。
+        getWidgets().put("aha-slash-up", up);
+        getWidgets().put("aha-slash-down", down);
+        getWidgets().put(LineReader.UP_LINE_OR_HISTORY, up);
+        getWidgets().put(LineReader.DOWN_LINE_OR_HISTORY, down);
         getWidgets().put(LineReader.ACCEPT_LINE, () -> {
             if (visible.isEmpty() || selected < 0) {
                 return originalAccept != null && originalAccept.apply();
@@ -196,6 +203,13 @@ public final class SlashMenuReader extends LineReaderImpl {
         KeyMap<Binding> main = getKeyMaps().get(LineReader.MAIN);
         main.bind(new Reference("aha-slash-open"), "/");
         main.bind(new Reference("aha-slash-tab"), "\t");
+        main.bind(new Reference("aha-slash-up"), "\u001b[A");
+        main.bind(new Reference("aha-slash-up"), "\u001bOA");
+        main.bind(new Reference("aha-slash-down"), "\u001b[B");
+        main.bind(new Reference("aha-slash-down"), "\u001bOB");
+        // 兜底：方向键序列因终端而异的极端情况下，Ctrl+P / Ctrl+N 也能切换选中
+        main.bind(new Reference("aha-slash-up"), "\u0010");
+        main.bind(new Reference("aha-slash-down"), "\u000e");
         main.bind(new Reference("aha-slash-escape"), "\u001b");
         Reference insert = new Reference("aha-slash-insert");
         for (char c = 'a'; c <= 'z'; c++) {
