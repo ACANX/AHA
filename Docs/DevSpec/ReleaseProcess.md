@@ -136,6 +136,16 @@
    这条挡的是「**部分发布**」：`release` 与 `desktop` 是并列作业，任一成功本作业就跑起来，
    以前缺资产也会绿着把发布页生成出来。
 
+3. **发布前预演（2026-10-18 起，issue #303）**：正式 `V*` 之前，先在已有快照 tag 上跑一次
+
+   ```bash
+   python3 bin/CheckReleaseAssets.py --tag <快照 tag> --version <版本> --allow-partial
+   ```
+
+   它按矩阵把「形态 × 平台」摊成表，直接列出缺哪些；`--allow-partial` 只报告不判红
+   （快照 tag 本来就不含 Stable 的 12 份）。正式发布后**去掉** `--allow-partial` 再跑一次，
+   即为验收：12 份齐全才退出 0。报告包（`-report.zip`）不计入 12 份，属合法附加物。
+
 ### 2.1 快照包（pre-release）：与正式发布彻底隔离
 
 给**未合并**的 PR 出的试包（方案见 [issue #165](https://github.com/ACANX/AHA/issues/165)）**不是交付物**，
