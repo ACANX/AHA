@@ -27,6 +27,8 @@ import com.acanx.module.aha.common.tool.CancellationToken;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
+import org.jline.keymap.KeyMap;
+import org.jline.reader.Binding;
 import org.jline.reader.Buffer;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.Reference;
@@ -172,8 +174,9 @@ public final class ChatCommand implements Runnable {
                     // 允许多行粘贴：终端支持 bracketed paste 时，粘贴内容作为整体插入缓冲区，
                     // 换行不会立即提交（否则多行文本会被拆成多条消息发给模型）
                     .option(LineReader.Option.BRACKETED_PASTE, true)
-                    // 菜单式补全：Tab 列出全部候选并允许循环选择
-                    .option(LineReader.Option.AUTO_MENU_LIST, true)
+                    // 列表式补全：Tab 列出候选（普通文本）。
+                    // 不用 AUTO_MENU_LIST：菜单的选中项用反色渲染，在部分终端主题下是刺眼的红底。
+                    .option(LineReader.Option.AUTO_LIST, true)
                     .option(LineReader.Option.LIST_PACKED, true)
                     // 容错匹配：/cmpct 也能匹配到 /compact
                     .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
@@ -407,12 +410,38 @@ public final class ChatCommand implements Runnable {
             boolean lineStart = buffer.length() == 0 && buffer.cursor() == 0;
             buffer.write("/");
             if (lineStart) {
-                // 立即展开候选：menu-complete 在有多个候选时按 AUTO_MENU_LIST 列出清单
-                reader.callWidget(LineReader.MENU_COMPLETE);
+                // 立即列出候选：用 list-choices（普通文本列表），不用 menu，
+                // 避免菜单选中项的反色背景在部分终端主题下变成红底。
+                reader.callWidget(LineReader.LIST_CHOICES);
             }
             return true;
         });
-        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference(widgetName), "/");
+        KeyMap<Binding> main = reader.getKeyMaps().get(LineReader.MAIN);
+        main.bind(new Reference(widgetName), "/");
+
+        // 命令名继续输入时自动匹配：唯一前缀直接补全（/cle -> /clear），
+        // 多候选时 JLine 只提示、不改动已输入内容 —— 不会像 menu-complete 那样把用户
+        // 打了一半的名字替换成某个候选。
+        reader.getWidgets().put("aha-slash-insert", () -> {
+            Buffer buffer = reader.getBuffer();
+            buffer.write(reader.getLastBinding());
+            String text = buffer.toString();
+            if (text.startsWith("/") && text.indexOf(' ') < 0 && text.length() > 1) {
+                reader.callWidget(LineReader.COMPLETE_WORD);
+            }
+            return true;
+        });
+        Reference insert = new Reference("aha-slash-insert");
+        for (char c = 'a'; c <= 'z'; c++) {
+            main.bind(insert, String.valueOf(c));
+        }
+        for (char c = 'A'; c <= 'Z'; c++) {
+            main.bind(insert, String.valueOf(c));
+        }
+        for (char c = '0'; c <= '9'; c++) {
+            main.bind(insert, String.valueOf(c));
+        }
+        main.bind(insert, "-");
     }
 
     private static String rule(boolean unicode, int width, Style style) {
