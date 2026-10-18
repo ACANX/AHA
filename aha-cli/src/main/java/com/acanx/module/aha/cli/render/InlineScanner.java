@@ -209,7 +209,14 @@ final class InlineScanner {
      * 因此必须成对出现才算构造；未闭合时按字面量处理，避免把后续内容扣住。</p>
      */
     private static Scan parseStrike(String text, int pos, Context context) {
-        if (pos + 1 >= text.length() || text.charAt(pos + 1) != TILDE) {
+        if (pos + 1 >= text.length()) {
+            // 只收到一个 ~：可能是 `~~` 的前半，必须等下一个字符再判定。
+            // 提前按字面量吐出会让 `~~x~~` 永远配不上对（流式比完整解析更容易踩）。
+            return context.lineEnd() || text.length() - pos > context.limit()
+                    ? literal("~", pos)
+                    : null;
+        }
+        if (text.charAt(pos + 1) != TILDE) {
             return literal("~", pos);
         }
         int close = text.indexOf("~~", pos + 2);
@@ -222,7 +229,9 @@ final class InlineScanner {
             return new Scan(context.style().strike(renderInline(inner, context.deeper())),
                     text.substring(pos, close + 2), close + 2);
         }
-        return text.length() - pos > context.limit() ? literal("~~", pos) : null;
+        return context.lineEnd() || text.length() - pos > context.limit()
+                ? literal("~~", pos)
+                : null;
     }
 
     private static Scan parseCode(String text, int pos, Context context) {
