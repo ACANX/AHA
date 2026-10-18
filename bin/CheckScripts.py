@@ -698,13 +698,17 @@ RELEASE_MATRIX_FILE = ROOT / ".github" / "ReleaseMatrix.yml"
 RELEASE_MATRIX_READER = ROOT / ".github" / "Python" / "ReleaseMatrix.py"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "Release.yml"
 
-#: 0.1.3 及更早的资产名前缀（0.1.5 起必须彻底消失）。
-LEGACY_ASSET_PREFIXES = (
-    "AHA-Desktop-Native-",
-    "AHA-Cli-Native-",
-    "AHA-Desktop-JVM-",
-    "AHA-Cli-JVM-",
-)
+#: 0.1.3 及更早的**资产名**前缀（0.1.5 起必须彻底消失）。
+#:
+#: 只匹配「前缀 + 数字」（即真正的旧资产名 `AHA-Cli-Native-<版本>-…`）；
+#: 快照 release 的**标题** `V<版本>-AHA-Cli-Native-Image` 不是资产名，不能误伤
+#: （2026-10-18 切 0.1.5 时实测：过宽的字符串匹配把 release 标题也算进去，VersionBump 自检假红）。
+LEGACY_ASSET_PATTERNS = {
+    "AHA-Desktop-Native-": re.compile(r"AHA-Desktop-Native-\d"),
+    "AHA-Cli-Native-": re.compile(r"AHA-Cli-Native-\d"),
+    "AHA-Desktop-JVM-": re.compile(r"AHA-Desktop-JVM-\d"),
+    "AHA-Cli-JVM-": re.compile(r"AHA-Cli-JVM-\d"),
+}
 
 
 def _load_release_matrix_module():
@@ -769,8 +773,8 @@ def check_release_matrix() -> list[str]:
         workflows = ROOT / ".github" / "workflows"
         for path in sorted(workflows.glob("*.yml")):
             text = path.read_text(encoding="utf-8")
-            for legacy in LEGACY_ASSET_PREFIXES:
-                if legacy in text:
+            for legacy, pattern in LEGACY_ASSET_PATTERNS.items():
+                if pattern.search(text):
                     problems.append(
                         f"{path.relative_to(ROOT)} 仍出现旧资产前缀 `{legacy}`——"
                         f"version 已是 {version}（≥ 0.1.5），过渡期别名必须移除")
