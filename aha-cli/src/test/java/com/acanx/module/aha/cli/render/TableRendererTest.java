@@ -149,6 +149,55 @@ class TableRendererTest {
     }
 
     @Test
+    void addsSeparatorBetweenEveryDataRow() {
+        // issue #273 拍板 A：全表加 —— 表头后 + 每两个数据行之间都补中间线
+        String out = TableRenderer.render(
+                List.of("| 名称 | 值 |", "|---|---|", "| a | 1 |", "| b | 2 |", "| c | 3 |"),
+                PLAIN, 0, true);
+
+        String[] lines = out.split("\n");
+        // 顶边 1 + 表头 1 + 3 行数据 + 3 条中间线（表头后 1、数据行之间 2）+ 底边 1
+        assertThat(lines).hasSize(9);
+        long middle = java.util.Arrays.stream(lines).filter(line -> line.startsWith("├")).count();
+        assertThat(middle).isEqualTo(3);
+        // 最后一行数据之后必须是底边，不能连着两条中间线
+        assertThat(lines[lines.length - 2]).doesNotStartWith("├");
+        assertThat(lines[lines.length - 1]).startsWith("└").endsWith("┘");
+    }
+
+    @Test
+    void singleRowTableHasNoMiddleSeparator() {
+        // 单行数据表也「全表加」，但两个行之间才有中间线：只有一行时自然没有
+        String out = TableRenderer.render(List.of("| a | 1 |"), PLAIN, 0, true);
+
+        String[] lines = out.split("\n");
+        assertThat(lines).hasSize(3);
+        assertThat(lines[0]).startsWith("┌");
+        assertThat(lines[1]).contains("a").contains("1");
+        assertThat(lines[2]).startsWith("└");
+
+        // 带表头的单行数据表：表头与数据之间有一条
+        String withHeader = TableRenderer.render(
+                List.of("| 名 | 值 |", "|---|---|", "| a | 1 |"), PLAIN, 0, true);
+        assertThat(withHeader.split("\n")).hasSize(5);
+    }
+
+    @Test
+    void separatorWidthMatchesCjkColumns() {
+        // 宽字符（CJK）按显示宽度计算：中间线列宽必须与内容行一致，否则整张表就是歪的
+        String out = TableRenderer.render(
+                List.of("| 字段 | 说明 |", "|---|---|", "| 名称 | 中文值 |", "| code | ab |"),
+                PLAIN, 0, true);
+
+        String[] lines = out.split("\n");
+        int width = TextWidth.width(lines[0]);
+        for (String line : lines) {
+            assertThat(TextWidth.width(line)).isEqualTo(width);
+        }
+        assertThat(lines[4]).startsWith("├").contains("┼").endsWith("┤");
+    }
+
+    @Test
     void ignoresEmptyInput() {
         assertThat(TableRenderer.render(List.of(), PLAIN, 0, true)).isEmpty();
         // 全是空单元格的「表格」没有任何信息，画出来只会是噪音

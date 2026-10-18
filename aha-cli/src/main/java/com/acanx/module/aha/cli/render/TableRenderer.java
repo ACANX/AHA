@@ -13,6 +13,9 @@ import java.util.regex.Pattern;
  * <p>表格宽度超出终端时<b>压缩列宽</b>而不是让它折行：表格一旦折行，行列对应关系
  * 就彻底乱了，比挤一点更难读。</p>
  *
+ * <p>数据行之间<b>一律</b>补中间分隔线（{@code ├──┼──┤}），形成完整网格（issue #273 拍板 A：
+ * 全表加、无例外，不按列数 / 行数做条件判断）。</p>
+ *
  * <p>框线字符需要终端支持制表符，不支持时退化为 ASCII（{@code +---+} / {@code | a |}）。</p>
  *
  * @since 0.1.0
@@ -108,7 +111,9 @@ final class TableRenderer {
         for (int i = 0; i < body.size(); i++) {
             boolean header = hasHeader && i == 0;
             out.append(row(body.get(i), widths, aligns, c[10], style, header)).append('\n');
-            if (header) {
+            // 全表加中间分隔线（issue #273 拍板 A）：表头之后、每两个数据行之间都补，
+            // **最后一行数据之后不补**——它以底边收尾，否则会出现两条紧挨着的横线。
+            if (i < body.size() - 1) {
                 out.append(style.tableBorder(border(widths, c, 3, 4, 5))).append('\n');
             }
         }
