@@ -294,7 +294,15 @@ def asset_names(targets: list[str], version: str, platforms: list[str], line: st
         fmt = ASSET_FORMATS.get(target)
         if not fmt:
             continue
-        for label in labels:
+        # CLI-JVM 内容平台无关：`OS:*` 只收窄**构建腿**，不能收窄资产名 ——
+        # 发布作业会把那一份包按三平台各复制一份（issue #269 §6 第 7 条），
+        # 期望清单也必须按三平台列，否则 `UpsertPreRelease` 找不到 `windows-amd64`
+        # 而把整条 release 变成 0 资产（2026-10-18 实测 `…-AHA-Cli-JVM`）。
+        target_labels = (
+            ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+            if target == "Cli-JVM" else labels
+        )
+        for label in target_labels:
             names.append(fmt.format(version=version, label=label))
     return names
 
@@ -673,6 +681,17 @@ def self_test() -> int:
     ok_win = win["legs"] == ["windows-amd64/jdk25", "windows-amd64/jdk27"] and win["platforms"] == ["windows-amd64"]
     problems += 0 if ok_win else 1
     print(f"  {'✅' if ok_win else '❌'} 原生线：`OS:Win` ⇒ 恰好 windows-amd64 的 jdk25 + jdk27 两条腿")
+    checks += 1
+
+    # CLI-JVM：`OS:Win` 只收窄构建腿，**资产名仍按三平台列**（issue #269 §6 第 7 条）。
+    # 2026-10-18 实测：期望清单只列 windows、实际只产 ubuntu ⇒ 发布作业找不到资产，release 变 0 资产。
+    cli_win = decide(labels=["SNAPSHOT:Cli", "OS:Win"], changed=["aha-cli/pom.xml"],
+                     baseline="0.1.3", pr=172, now=now, groups=groups, line="jvm")
+    ok_cli_win = cli_win["legs"] == ["windows-amd64/jdk25"] \
+        and [a.split("-")[4] + "-" + a.split("-")[5] for a in cli_win["assets"]] \
+        == ["windows-amd64", "ubuntu-amd64", "macos-aarch64"]
+    problems += 0 if ok_cli_win else 1
+    print(f"  {'✅' if ok_cli_win else '❌'} CLI-JVM：`OS:Win` 只收窄构建腿，资产名仍按三平台列")
     checks += 1
 
     # 两条线的评论标记必须不同：否则原生线会把 JVM 线的评论覆盖掉
