@@ -27,7 +27,9 @@ import com.acanx.module.aha.common.tool.CancellationToken;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
+import org.jline.reader.Buffer;
 import org.jline.reader.EndOfFileException;
+import org.jline.reader.Reference;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
@@ -176,6 +178,11 @@ public final class ChatCommand implements Runnable {
                     // 容错匹配：/cmpct 也能匹配到 /compact
                     .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
                     .build();
+            // 输入 `/` 立即展开命令候选（issue #333）：JLine 原生的补全只在按 Tab 时触发，
+            // 这里把 `/` 键绑到一个自定义 widget——先插入 `/`，若它是行的第一个字符就立刻
+            // 调 `menu-complete` 展开候选。候选本身仍由 SessionCommandCompleter 提供，
+            // 前缀过滤与容错匹配交给 JLine（COMPLETE_MATCHER_TYPO 已开启）。
+            installSlashMenu(reader);
 
             // 主线程常驻 readLine，回合跑在虚拟线程上——这是「流式期间输入可用」的正解：
             //   · 输入始终可用：主线程一直在读，敲下的内容排队，回合结束后依次处理
@@ -385,6 +392,29 @@ public final class ChatCommand implements Runnable {
      * @param style   样式（上边线与下边线必须同色）
      * @return 分隔线
      */
+    /**
+     * 把 {@code /} 键绑到「插入并立即展开候选菜单」的 widget（issue #333）。
+     *
+     * <p>只在**行首**输入 {@code /} 时弹菜单：命令名之后是它自己的参数，
+     * 在参数里敲 {@code /}（如路径）不应弹命令候选。</p>
+     *
+     * @param reader 已构建的 LineReader
+     */
+    private static void installSlashMenu(LineReader reader) {
+        String widgetName = "aha-slash-menu";
+        reader.getWidgets().put(widgetName, () -> {
+            Buffer buffer = reader.getBuffer();
+            boolean lineStart = buffer.length() == 0 && buffer.cursor() == 0;
+            buffer.write("/");
+            if (lineStart) {
+                // 立即展开候选：menu-complete 在有多个候选时按 AUTO_MENU_LIST 列出清单
+                reader.callWidget(LineReader.MENU_COMPLETE);
+            }
+            return true;
+        });
+        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference(widgetName), "/");
+    }
+
     private static String rule(boolean unicode, int width, Style style) {
         int cells = width > 0 ? width - 1 : 40;
         return style.frame((unicode ? "─" : "-").repeat(Math.max(1, cells)));
