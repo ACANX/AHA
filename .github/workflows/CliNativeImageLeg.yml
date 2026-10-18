@@ -463,9 +463,28 @@ jobs:
           # GraalVM 精确版本：`graalvm/setup-graalvm` 只导出 cache-hit，不导出 version，
           # 直接从 $GRAALVM_HOME/release 的 IMPLEMENTOR_VERSION 里取（如 "GraalVM Community 25.4.4.1" → 25.4.4.1）。
           # 取不到就让这条腿红：清单里记一个空版本等于没记（issue #269 §5）。
-          graalvm_version="$(awk -F= '/^IMPLEMENTOR_VERSION=/{gsub(/"/, "", $2); print $2}' "${GRAALVM_HOME:-$JAVA_HOME}/release" | awk '{print $NF}')"
+          # Windows runner 的 Git Bash 里 GRAALVM_HOME 是 `C:\...` 形式，awk 读不到 —— 先转成 POSIX 路径；
+          # release 文件是 CRLF —— 先 tr 掉 \r，否则版本串末尾会带控制字符。
+          graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
+          if command -v cygpath >/dev/null 2>&1; then
+            graalvm_home="$(cygpath -u "$graalvm_home" 2>/dev/null || printf '%s' "$graalvm_home")"
+          fi
+          # ① 首选 release 文件的 IMPLEMENTOR_VERSION（"GraalVM Community 25.4.4.1" / "Oracle GraalVM 25.4.4.1.1"）；
+          # ② 字段缺失或格式不符时，从目录名兜底（`graalvm-25.4.4.1+1.1` / `graalvm-jdk-25.4.4.1+1.1`）；
+          # ③ 两者都失败才报错，并把目录与 release 头几行打出来便于排查。
+          graalvm_version=""
+          if [ -f "$graalvm_home/release" ]; then
+            graalvm_version="$(tr -d '\r' < "$graalvm_home/release" \
+              | sed -n 's/^IMPLEMENTOR_VERSION="\{0,1\}[^"]*[[:space:]]\([0-9][0-9.]*\)"\{0,1\}$/\1/p' \
+              | head -n1)"
+          fi
           if [ -z "$graalvm_version" ]; then
-            echo "::error::无法从 ${GRAALVM_HOME:-$JAVA_HOME}/release 读取 GraalVM 版本"
+            graalvm_version="$(basename "$graalvm_home" | sed -n 's/.*graalvm[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
+          fi
+          if [ -z "$graalvm_version" ]; then
+            ls -la "$graalvm_home" || true
+            sed -n '1,20p' "$graalvm_home/release" 2>/dev/null || true
+            echo "::error::无法确定 GraalVM 版本（release 与目录名都没给出版本）"
             exit 1
           fi
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
