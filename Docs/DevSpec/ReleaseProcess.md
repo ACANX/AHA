@@ -121,7 +121,7 @@
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `Tag` 作业在 `main` 上的构建成功后，
    按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
-5. `Release.yml` **由 CI 自动开跑**（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）：
+5. `Release.yml` **由 CI 自动开跑**（产出四组合 × 三平台共 12 份资产并上传到 release 页面）：
    `Build.yml` 的 `Tag` 作业在**新建**出 tag 之后，用 `GITHUB_TOKEN` 经 `workflow_dispatch`
    派发它（GitHub 防递归的**官方例外**，issue #238），派发 ref 固定为 `main` —— 见 4.2。
    手工补触发的方法（派发失败 / 资产重来）同样见 4.2
@@ -131,7 +131,7 @@
 
 1. **清单先写后验**：每个打好的 zip 生成 `AHA-PACKAGE.json` 之后立刻 `PackageManifest.py verify` 回读，
    清单与包内容不一致就在这里失败 —— 不会等到用户下载后、「应用内升级」时报「校验和不符」；
-2. **资产齐全**：`checksums` 作业在挂 `SHA256SUMS` 之前断言「CLI + 三平台桌面端共 4 份 zip」都在，
+2. **资产齐全**：`checksums` 作业在挂 `SHA256SUMS` 之前断言「**四组合 × 三平台 = 12 份 zip**」都在（清单只从矩阵读，issue #269 §3），
    缺任何一份即失败并在 Job Summary 点名。应用内升级是按平台取件的，缺哪个平台哪类用户就升不了。
    这条挡的是「**部分发布**」：`release` 与 `desktop` 是并列作业，任一成功本作业就跑起来，
    以前缺资产也会绿着把发布页生成出来。
