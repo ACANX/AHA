@@ -460,11 +460,19 @@ jobs:
         if: steps.verify.outputs.produced == 'true'
         run: |
           set -euo pipefail
+          # GraalVM 精确版本：`graalvm/setup-graalvm` 只导出 cache-hit，不导出 version，
+          # 直接从 $GRAALVM_HOME/release 的 IMPLEMENTOR_VERSION 里取（如 "GraalVM Community 25.4.4.1" → 25.4.4.1）。
+          # 取不到就让这条腿红：清单里记一个空版本等于没记（issue #269 §5）。
+          graalvm_version="$(awk -F= '/^IMPLEMENTOR_VERSION=/{gsub(/"/, "", $2); print $2}' "${GRAALVM_HOME:-$JAVA_HOME}/release" | awk '{print $NF}')"
+          if [ -z "$graalvm_version" ]; then
+            echo "::error::无法从 ${GRAALVM_HOME:-$JAVA_HOME}/release 读取 GraalVM 版本"
+            exit 1
+          fi
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "Dist/aha-cli-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip" \
             --kind cli-native --version "${{ env.AHA_VERSION }}" \
             --platform "${{ inputs.label }}" --jdk "${{ inputs.jdk }}" \
-            --graalvm "${{ steps.graal.outputs.version }}"
+            --graalvm "$graalvm_version"
 
       - name: UploadReportArtifact
         continue-on-error: true
