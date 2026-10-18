@@ -24,7 +24,7 @@ Windows 一键入口：`Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cm
   1. 取最新版本 tag（形如 V0.1.1.00040-aha-desktop-native），解析出版本 0.1.1
      与构建号 00040；
   2. 按「系统-架构-jdk」挑出当前平台的包
-     `AHA-Desktop-Native-<版本>-<系统>-<架构>-jdk<JDK>.zip`；
+     `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`；
   3. 下载到 `Dist/`（断点续传 + sha256 校验）；
   4. 解压出可执行文件，覆盖 `Dist/aha-desktop-native.exe`（旧版留一份 `.bak`）。
 
@@ -104,13 +104,13 @@ class Kind:
 KINDS = {
     "desktop": Kind(
         key="desktop", title="桌面端原生镜像",
-        tag_suffix="-aha-desktop-native", asset_prefix="AHA-Desktop-Native-",
+        tag_suffix="-aha-desktop-native", asset_prefix="aha-desktop-native-",
         exe_base="aha-desktop-native", state_file=".aha-desktop-native.json",
         entry="DesktopNativeVersionUpdate.py", workflow="DesktopNative.yml",
     ),
     "cli": Kind(
         key="cli", title="CLI 原生镜像",
-        tag_suffix="-aha-cli-native", asset_prefix="AHA-Cli-Native-",
+        tag_suffix="-aha-cli-native", asset_prefix="aha-cli-native-",
         exe_base="aha-cli-native", state_file=".aha-cli-native.json",
         entry="CliNativeVersionUpdate.py", workflow="CliNative.yml",
     ),
@@ -255,8 +255,8 @@ def executable_name(label: str) -> str:
 
 
 def asset_name(version: Version, label: str, jdk: str) -> str:
-    """发布资产名：`<资产前缀><版本>-<平台>-jdk<JDK>.zip`。"""
-    return f"{ASSET_PREFIX}{version.text}-{label}-jdk{jdk}.zip"
+    """发布资产名（issue #269 新文法）：`aha-<product>-<form>-<版本>-<平台>-graalvm<JDK>.zip`。"""
+    return f"{ASSET_PREFIX}{version.text}-{label}-graalvm{jdk}.zip"
 
 
 #: tag -> 版本。构建号补零到 5 位（工作流用 printf '%05d'）。
@@ -265,7 +265,7 @@ def _rebuild_patterns() -> None:
     global TAG_RE, ASSET_RE
     TAG_RE = re.compile(rf"^[Vv]?(\d+(?:\.\d+)*?)\.(\d+){TAG_SUFFIX}$")
     ASSET_RE = re.compile(
-        rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$"
+        rf"^{re.escape(ASSET_PREFIX)}(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-(?:graalvm|jdk)(?P<jdk>\d+)\.zip$"
     )
 
 

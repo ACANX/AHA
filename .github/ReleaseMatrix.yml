@@ -1,0 +1,35 @@
+# 发布物矩阵 —— 「组合 × 平台 × 运行时」的唯一来源（issue #269）。
+#
+# 为什么要有这个文件：同一份信息（Stable 版本要发哪些资产）会被四处消费 ——
+#   * `Release.yml` 出包与完整性自证；
+#   * `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` 的腿与命名；
+#   * `bin/CheckScripts.py` 的 `check_release_matrix()`（工作流 ↔ 矩阵 ↔ 文档一致）；
+#   * `ChannelContract` / `UpdateNative.ps1` / `NativeVersionUpdate.py` 的取件规则。
+# 四处各写一套的必然结果是漂移，而漂移的表现是**静默**的：「某个组合永远没有包」
+# 或「发布页少一个平台」，都不报错。因此矩阵写在这里，消费方必须与它逐字一致。
+#
+# 命名合规：AHA 自有的 YAML 一律**大驼峰**（`GitHubActionsSpec.md` §2.2），不用 kebab-case。
+#
+# 资产名文法（唯一一处定义，见 `Docs/DevSpec/ReleaseProcess.md` §3.5）：
+#   aha-<product>-<form>-<version>-<os>-<arch>-<runtime>.zip
+#
+# 读取入口：`.github/Python/ReleaseMatrix.py`（`--validate` / `--asset-names` / `--legs`）。
+stable:
+  desktop-jvm:
+    - {os: windows-amd64, runtime: jdk25}
+    - {os: ubuntu-amd64, runtime: jdk25}
+    - {os: macos-aarch64, runtime: jdk25}
+  desktop-native:
+    - {os: windows-amd64, runtime: graalvm25}
+    - {os: ubuntu-amd64, runtime: graalvm25}
+    - {os: macos-aarch64, runtime: graalvm25}
+  # CLI-JVM 目前三平台内容相同（同一份平台无关包），但**先按平台拆成三个名字**；
+  # 后续真正按平台生成（issue #269 §6 第 7 条）。
+  cli-jvm:
+    - {os: windows-amd64, runtime: jdk25}
+    - {os: ubuntu-amd64, runtime: jdk25}
+    - {os: macos-aarch64, runtime: jdk25}
+  cli-native:
+    - {os: windows-amd64, runtime: graalvm25}
+    - {os: ubuntu-amd64, runtime: graalvm25}
+    - {os: macos-aarch64, runtime: graalvm25}

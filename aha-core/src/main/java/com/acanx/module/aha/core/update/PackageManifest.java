@@ -145,10 +145,10 @@ public record PackageManifest(
                                     PlatformTag expectedPlatform) {
         UpdateKind declared = updateKind().orElseThrow(() -> new UpdateException(
                 UpdateException.CODE_PACKAGE_INVALID,
-                "AHA-PACKAGE.json 的 kind 不认识：" + kind + "（期望 " + expectedKind.targetWord() + "）"));
+                "AHA-PACKAGE.json 的 kind 不认识：" + kind + "（期望 " + expectedKind.tagSuffix() + "）"));
         if (declared != expectedKind) {
             throw new UpdateException(UpdateException.CODE_PACKAGE_INVALID,
-                    "包的形态对不上：清单写 " + kind + "，当前运行的是 " + expectedKind.targetWord());
+                    "包的形态对不上：清单写 " + kind + "，当前运行的是 " + expectedKind.tagSuffix());
         }
         AhaVersion declaredVersion = AhaVersion.parse(version);
         if (!declaredVersion.equals(expectedVersion)) {

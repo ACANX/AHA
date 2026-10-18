@@ -4,7 +4,7 @@ rem  AHA - one-click fetch of a NATIVE CLI snapshot build (Windows)
 rem
 rem  A snapshot is a build made for a PR that is not merged yet (issue #165).
 rem  It lives on the release page as a pre-release, tagged like
-rem      V0.1.3.00188.10142007-AHA-Cli-Native-SNAPSHOT
+rem      V0.1.3.00188.10142007-AHA-Cli-Native
 rem
 rem  This launcher only calls
 rem      Dist\UpdateSnapshot.ps1 -Kind cli-native

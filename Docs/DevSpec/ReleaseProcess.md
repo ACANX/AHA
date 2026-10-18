@@ -1,6 +1,6 @@
 # 发布流程
 
-**文档版本**：v1.32.0
+**文档版本**：v1.34.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-17
@@ -16,6 +16,8 @@
 | v1.31.2 | 2026-10-17 | 发布流水线三处加固（发版前审计）：① 打包作业在生成 `AHA-PACKAGE.json` 后**立即 `verify` 回读**（清单错了在发布前就红，而不是用户升级时才撞「校验和不符」）；② `checksums` 作业新增**资产齐全自证**——期望 CLI + 三平台桌面端共 4 份 zip，缺任何一份即失败并在 Job Summary 点名（原来「只出了部分平台」也会绿着把发布页生成出来）；③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路（`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）钉死 | @cnxnc |
 | v1.31.1 | 2026-10-17 | §2 的「一致性校验」补一句口径：产物名版本段**只比对带版本段的产物**（`<artifactId>-<版本>…`）；包根扁平化后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` 不带版本号、不参与该比对（版本由包内 `AHA-PACKAGE.json` 承载），跳过项写进校验日志。修的是 `ProjectVersion.py` 被根聚合 artifactId 前缀碰撞后的**假红**（`dev` 上 Gate 自 2026-10-15 起一直红，issue #260） | @cnxnc |
 | v1.32.0 | 2026-10-17 | 按 issue [#287](https://github.com/ACANX/AHA/issues/287) 同步：平台标签 `macos-arm64` ⇒ `macos-aarch64`（读取兼容旧资产名）、commit status context `snapshot-assert` ⇒ `SnapshotAssert`、`predeploy-verify` ⇒ `PreDeployVerify` | @cnxnc |
+| v1.34.0 | 2026-10-17 | 快照 tag 去掉 `-SNAPSHOT` 后缀（5 段版本已能区分）：`V<快照版本>-AHA-<目标>`；`Release.yml` 的负向排除改按 `-AHA-*` / `-aha-*`（旧 `-SNAPSHOT` 规则保留兼容）| @ACANX / CNXNC |
+| v1.33.0 | 2026-10-17 | §3.5 改写：资产名文法统一为 `aha-<product>-<form>-<版本>-<平台>-<runtime>.zip`，tag 改为 `V<版本>-aha-<product>-<form>`；新增 `.github/ReleaseMatrix.yml`（矩阵单一来源）与 `check_release_matrix()`；原生形态自 0.1.4 起进 Stable，旧名兼容一个周期（issue #269）| @ACANX / CNXNC |
 | v1.31.0 | 2026-10-16 | 口径 6 更新：桌面端**默认通道已由临时值 `beta` 改回 `stable`**（issue #252 / TD-00019），并写明原生形态因 Stable 暂不发原生包、应用内升级仍走 `beta` / `alpha` | @ACANX / CNXNC |
 | v1.30.0 | 2026-10-16 | §3.5 补一条**打包硬性要求**：桌面端两条线的发行包（jar 便携包与原生单文件）都必须把换装 helper（`apply-update.cmd` + `AhaApplyUpdate.ps1`）铺在**包根**；由 `check_update_helper_packaging()` 钉住（原来原生包没带 helper，「原生形态自更新」注定失败，2026-10-16 代码审查 P0）| @ACANX / CNXNC |
 | v1.29.0 | 2026-10-16 | 新增 §3.5「升级通道契约」：三通道 ↔ tag ↔ 资产名的唯一定义（与 PowerShell / Python / Java 三处实现逐字一致，守卫 `check_release_channel_contract()`），配套口径 6 条（平台标签 / JDK 轴 / 形态不可混升 / 缺资产不退化 / tag 互不误匹配 / 默认通道待办）（issue #51 §8.3）| @ACANX / CNXNC |
@@ -139,19 +141,19 @@
 
 | 项 | 正式发布 | 快照包 |
 |---|---|---|
-| tag | `V<版本>`（`main` 构建成功后由 CI 自动打） | `V<快照版本>-AHA-<目标>-SNAPSHOT` |
+| tag | `V<版本>`（`main` 构建成功后由 CI 自动打） | `V<快照版本>-AHA-<目标>`（2026-10-17 起无 `-SNAPSHOT`） |
 | 载体 | `Release.yml` 产出的正式 release | **pre-release**（`prerelease: true`，不进 `releases/latest`） |
 | 触发 | `Release.yml` —— 由 `Build.yml` 自动派发 `workflow_dispatch`（issue #238），也可手工触发 | `SNAPSHOT:*` 标签 / `/snapshot` 评论 / `workflow_dispatch` |
 | 生命周期 | 长期保留 | **同 PR 同目标最近 3 条 / 有效期 7 天**；PR 关闭或合并后自动删除 |
 
 **两条硬约束**：
 
-1. `Release.yml` 的 tag 过滤**必须**保留负向模式 `!V*-SNAPSHOT` / `!v*-SNAPSHOT`——快照 tag 属 `V*` 家族，
+1. `Release.yml` 的 tag 过滤**必须**保留负向模式 `!V*-AHA-*` / `!V*-aha-*`（旧的 `!V*-SNAPSHOT` 一并保留）——快照 tag 属 `V*` 家族，
    少了这一条，每次出快照都会触发一遍完整正式发版流程。判定依据：改动前后
    `gh run list --workflow Release.yml` 里**由 tag push 触发**（`event=push`）的 run 数不变——
    截至 2026-10-16 为 **0 次**（正式发版此前一直靠手工重建 tag，见 §4.2）。
 2. 清理由 `SnapshotCleanup.yml` 独立承担，**不进必需检查**、不阻塞合并；它只处理严格匹配
-   `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag，正式发版与 dev 线 tag 一律不碰。
+   `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>$` 的 tag（旧 tag 的 `-SNAPSHOT` 后缀仍兼容），正式发版与 dev 线 tag 一律不碰。
 
 ### 2.2 快照自测留痕（`SnapshotAssert`）：默认启用、默认不卡点
 
@@ -441,16 +443,50 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
 
 | 通道 | 版本形态 | tag | 资产名 | 产出线 |
 |---|---|---|---|---|
-| **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| `aha-desktop-<版本>-<平台>.zip`（桌面端 JVM）、`aha-cli-<版本>.zip` | `Release.yml` |
-| **Beta** | `x.y.z.PPPPP` | JVM 线 `V<版本>-aha-jvm`；原生线 `V<版本>-aha-desktop-native` / `-aha-cli-native` | JVM 线同上（JDK 27 变体带 `-jdk27`）；原生线 `AHA-Desktop-Native-<版本>-<平台>-jdk<JDK>.zip` | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
-| **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<目标词>-SNAPSHOT` | `AHA-<目标词>-<快照版本>-<平台>-jdk<JDK>.zip` | 快照线（同上，7 天有效期） |
+| **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| 四组合 × 三平台 = **12 份**，见下 | `Release.yml` |
+| **Beta** | `x.y.z.PPPPP` | `V<版本>-aha-<product>-<form>` | 同一文法（旧 `-aha-jvm` 兼做一个周期） | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
+| **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<product>-<form>` | 同一文法 | 快照线（同上，7 天有效期） |
+
+**资产名文法（唯一一处定义，issue [#269](https://github.com/ACANX/AHA/issues/269)）**：
+
+```
+aha-<product>-<form>-<version>-<os>-<arch>-<runtime>.zip
+```
+
+- `product`：`desktop` / `cli`
+- `form`：`jvm` / `native`
+- `os`-`arch`：`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`（必选段）
+- `runtime`：JVM 形态 `jdk25` / `jdk27`，原生形态 `graalvm25`
+
+Stable `0.1.4` 的 12 份资产（**矩阵的唯一来源**是 `.github/ReleaseMatrix.yml`，不在本文重复展开）：
+
+```
+aha-desktop-jvm-0.1.4-windows-amd64-jdk25.zip
+aha-desktop-jvm-0.1.4-ubuntu-amd64-jdk25.zip
+aha-desktop-jvm-0.1.4-macos-aarch64-jdk25.zip
+aha-desktop-native-0.1.4-windows-amd64-graalvm25.zip
+aha-desktop-native-0.1.4-ubuntu-amd64-graalvm25.zip
+aha-desktop-native-0.1.4-macos-aarch64-graalvm25.zip
+aha-cli-jvm-0.1.4-windows-amd64-jdk25.zip
+aha-cli-jvm-0.1.4-ubuntu-amd64-jdk25.zip
+aha-cli-jvm-0.1.4-macos-aarch64-jdk25.zip
+aha-cli-native-0.1.4-windows-amd64-graalvm25.zip
+aha-cli-native-0.1.4-ubuntu-amd64-graalvm25.zip
+aha-cli-native-0.1.4-macos-aarch64-graalvm25.zip
+```
+
+> CLI-JVM 目前三平台内容相同（同一份平台无关包），**先按平台拆成三个名字**；
+> 后续再真正按平台生成（issue #269 §6 第 7 条）。
+>
+> 矩阵由 `.github/Python/ReleaseMatrix.py` 读取，`Release.yml` 的完整性自证按矩阵展开；
+> 守卫 `check_release_matrix()` 钉住「矩阵 ↔ 工作流 ↔ 版本门槛」。
 
 配套口径（每一条都有对应的实现或守卫，不是口号）：
 
 1. **平台标签**只有三个：`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`（架构词统一 `aarch64`；读取兼容历史资产名 `macos-arm64`）（Windows ARM64 打不出包，
    见 §3.2 的 OpenJFX 分类器限制）；
-2. **JDK 轴**：升级默认只取 JDK 25 变体（JVM 线资产名**不带** `-jdk` 后缀的那份）；`-jdk27` 是试验分支、
-   **不默认**；原生线与快照线**始终**带 `-jdk<JDK>`；
+2. **运行时轴**：升级默认只取 `jdk25`（JVM 形态）/ `graalvm25`（原生形态）；`jdk27` 是试验分支，
+   **不默认**。runtime 段现在**一律显式**，不再靠「默认变体不带后缀」区分；
 3. **形态不可混升**：JVM 便携包只升 JVM 包，原生单文件只升原生包；
 4. **缺资产不退化**：某版本缺本平台的腿 ⇒ 明确报错并列出该版本**实际有哪些资产**，
    **不得**退到更旧的版本（issue #210 的教训）；
@@ -459,8 +495,9 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
    [DesktopAutoUpdateDesign.md](../Design/DesktopAutoUpdateDesign.md) §6：**默认通道为 `stable`**
    （2026-10-16 由临时值 `beta` 改回，issue [#252](https://github.com/ACANX/AHA/issues/252) /
    [TD-00019](../TODO/TD-00019-DefaultChannelBackToStable.md)；改回能惠及老安装靠的是「缺键不写盘」）。
-   **原生形态例外**：Stable 暂不发原生包（原生线正式发布排在 1.x）⇒ 原生形态的应用内升级走
-   `beta` / `alpha` 通道。
+   **原生形态自 0.1.4 起进 Stable**（issue [#269](https://github.com/ACANX/AHA/issues/269)）：
+   Stable release 同时装下 JVM / Native × Desktop / CLI 四组合；0.1.4 一个版本周期内保留旧名别名
+   （`aha-desktop-…` / `AHA-Desktop-Native-…`），0.1.5 起旧名由 `check_release_matrix()` 的版本门槛判红。
 
 ### 3.6 发行包必须带换装 helper（桌面端两条线）
 
