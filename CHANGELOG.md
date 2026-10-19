@@ -40,6 +40,10 @@
     `ReferenceGuide.md` 同步新格式。
 
 ### 新增
+- **围栏代码行号与语言识别增强（issue #371）**：
+  - 有色 TTY 下代码块每行前置 3 位行号（`  1 │ `），无色 / 非 TTY 保持原样；
+  - 围栏语言标识支持 ` ```java title="x" ` 等附加信息（只取第一个 token）；
+  - 行号不改变行数，代码内容仍完整。
 - **围栏代码语法高亮（issue #336）**：
   - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML /
     Go / Rust / C# / C / C++ / PHP / Ruby；

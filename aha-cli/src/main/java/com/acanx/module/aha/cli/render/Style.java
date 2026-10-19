@@ -274,6 +274,16 @@ public final class Style {
     }
 
     /**
+     * 代码行号。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String lineNumber(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
      * 强调（Markdown 的斜体 / 粗体 / 粗斜体）。
      *
      * @param level 强调级别：1 斜体、2 粗体、3 粗斜体
