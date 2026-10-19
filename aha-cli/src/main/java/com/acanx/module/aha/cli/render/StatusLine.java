@@ -57,6 +57,9 @@ final class StatusLine {
 
     private final Style style;
 
+    /** 会话 ID（倒数第二行占位）。 */
+    private final String sessionId;
+
     private ScheduledFuture<?> task;
 
     /** 完成 / 失败态自动回到空闲的定时器。 */
@@ -84,6 +87,22 @@ final class StatusLine {
      */
     StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width,
                StatusBar statusBar, Style style) {
+        this(surface, enabled, unicode, width, statusBar, style, null);
+    }
+
+    /**
+     * 创建状态行，并指定倒数第二行展示的会话 ID。
+     *
+     * @param surface   状态行载体
+     * @param enabled   是否启用
+     * @param unicode   编码是否支持盲文帧
+     * @param width     终端宽度
+     * @param statusBar 状态栏
+     * @param style     样式
+     * @param sessionId 会话 ID（可空，空时显示 {@code -}）
+     */
+    StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width,
+               StatusBar statusBar, Style style, String sessionId) {
         this.surface = surface == null ? StatusSurface.NONE : surface;
         this.frames = unicode ? UNICODE_FRAMES : ASCII_FRAMES;
         this.bar = unicode ? "─" : "-";
@@ -91,6 +110,7 @@ final class StatusLine {
         this.enabled = enabled && width > 0 && this.surface.available();
         this.status = statusBar == null ? StatusBar.legacy("") : statusBar;
         this.style = style == null ? Style.of(false) : style;
+        this.sessionId = sessionId;
     }
 
     /**
@@ -259,7 +279,8 @@ final class StatusLine {
      * @return 文案
      */
     private String fieldLine() {
-        return " " + style.muted("状态") + "  " + style.muted("-");
+        String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
+        return " " + style.muted("会话") + "  " + style.muted(id);
     }
 
     /**

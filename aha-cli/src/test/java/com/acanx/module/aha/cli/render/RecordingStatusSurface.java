@@ -23,6 +23,9 @@ final class RecordingStatusSurface implements StatusSurface {
     /** 静态参数行（最后一行）。 */
     private final List<String> statics = new ArrayList<>();
 
+    /** 倒数第二行（状态字段 / 会话 ID）。 */
+    private final List<String> fields = new ArrayList<>();
+
     private final AtomicInteger hides = new AtomicInteger();
 
     private final boolean available;
@@ -49,6 +52,9 @@ final class RecordingStatusSurface implements StatusSurface {
         borders.add(lines.get(0));
         painted.add(lines.get(0));
         statics.add(lines.get(lines.size() - 1));
+        if (lines.size() > 1) {
+            fields.add(lines.get(1));
+        }
     }
 
     @Override
@@ -94,6 +100,15 @@ final class RecordingStatusSurface implements StatusSurface {
      */
     String staticLine() {
         return statics.isEmpty() ? null : statics.get(statics.size() - 1);
+    }
+
+    /**
+     * 最后一行倒数第二行（状态字段 / 会话 ID）。
+     *
+     * @return 文本；从未绘制时返回 {@code null}
+     */
+    String fieldLine() {
+        return fields.isEmpty() ? null : fields.get(fields.size() - 1);
     }
 
     /**

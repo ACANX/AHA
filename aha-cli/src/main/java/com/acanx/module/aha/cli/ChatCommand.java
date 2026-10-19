@@ -236,7 +236,7 @@ public final class ChatCommand implements Runnable {
                     handover(terminal, statusSurface));
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
             Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
-                    statusSurface);
+                    statusSurface, sessionId);
             rendererRef.set(renderer);
 
             // 工具授权发生在回合线程上，而 reader 由主线程持有，

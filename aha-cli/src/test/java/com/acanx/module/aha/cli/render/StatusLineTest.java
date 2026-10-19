@@ -193,6 +193,16 @@ class StatusLineTest {
     }
 
     @Test
+    void fieldLineShowsSessionId() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false), "SESSION-1");
+
+        status.idle();
+
+        assertThat(surface.fieldLine()).contains("SESSION-1");
+    }
+
+    @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
         StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("model-x"),
                 Style.of(ColorDepth.ANSI256));
