@@ -54,7 +54,10 @@ final class ModelSessionCommand implements SessionCommand {
         ProviderConfig provider = providerId == null || llm.providers() == null
                 ? null : llm.providers().get(providerId);
         Optional<SessionConfig> session = local.sessionManager().get(context.sessionId());
-        boolean tiered = provider != null && provider.hasModels();
+        // 只有一个档位时按老规则处理：旧单模型配置迁移后也只有 Standard 一档，
+        // 必须保留「任意模型名自由切换 / 当前模型提示」的升级前行为。
+        boolean tiered = provider != null && provider.hasModels()
+                && provider.configuredTiers().size() > 1;
 
         if (args.isEmpty()) {
             if (tiered) {
