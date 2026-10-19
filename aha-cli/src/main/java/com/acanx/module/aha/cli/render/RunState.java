@@ -7,7 +7,8 @@ package com.acanx.module.aha.cli.render;
  * 回合开始 → {@link #REQUESTING}；首个正文增量 → {@link #GENERATING}；
  * 工具调用 → {@link #TOOL_RUNNING}；工具结果 → 回到 {@link #GENERATING}；
  * 审批问答 → {@link #AWAITING_APPROVAL}；流结束 → {@link #DONE}；
- * 异常 → {@link #FAILED}；中断 / 回合收尾 → {@link #IDLE}。</p>
+ * 异常 → {@link #FAILED}；用户中断（ESC / Ctrl+C）→ {@link #INTERRUPTED}；
+ * 结束态短暂保留后 → {@link #IDLE}。</p>
  *
  * @since 0.1.5
  */
@@ -32,5 +33,8 @@ enum RunState {
     DONE,
 
     /** 失败：回合异常结束（单行原因摘要，短暂显示后回到空闲）。 */
-    FAILED
+    FAILED,
+
+    /** 已中断：用户主动 ESC / Ctrl+C（不显示原因，短暂显示后回到空闲）。 */
+    INTERRUPTED
 }
