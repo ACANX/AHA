@@ -391,7 +391,8 @@ public final class AhaDesktopApp extends Application {
         // 会话列表：左栏展示 + 切换 + 重命名 + 删除 + 导出（GUIDesign 第 4.5 节）
         shell.onSessionSelected(sessionId -> {
             int shown = controller.openSession(sessionId);
-            shell.appendNotice("已切换到会话 " + shortId(sessionId) + "，回放 " + shown + " 条消息。");
+            shell.appendNotice("已切换到会话 " + shortId(sessionId) + "，回放 " + shown
+                    + " 条消息；可直接继续输入。");
             refreshSessions(shell, controller);
         });
         shell.onSessionRename((sessionId, title) -> {

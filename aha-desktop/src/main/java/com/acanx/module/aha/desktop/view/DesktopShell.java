@@ -980,8 +980,8 @@ public final class DesktopShell implements ChatView {
      */
     public void refreshSessions(List<SessionSummary> summaries, String currentId) {
         this.sessionSummaries = summaries == null ? List.of() : List.copyOf(summaries);
-        refreshWorkspacePane();
         this.currentSessionId = currentId;
+        refreshWorkspacePane();
         applySessionFilter(sessionSearch == null ? "" : sessionSearch.getText());
     }
 
@@ -1610,8 +1610,11 @@ public final class DesktopShell implements ChatView {
         VBox group = new VBox(2, head);
         long now = System.currentTimeMillis();
         for (SessionSummary summary : summaries) {
-            Hyperlink link = new Hyperlink(SessionList.item(summary, now).line());
-            link.setTooltip(new Tooltip(summary.title() + "\n" + summary.id()));
+            boolean current = Objects.equals(summary.id(), currentSessionId);
+            String status = current ? "● 进行中" : "○ 已结束";
+            Hyperlink link = new Hyperlink(status + " · " + SessionList.item(summary, now).line());
+            link.setTooltip(new Tooltip(status + "\n" + summary.title() + "\n" + summary.id()
+                    + (current ? "" : "\n点击可打开并继续对话")));
             link.setOnAction(event -> onSessionSelected.accept(summary.id()));
             themed(link, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-border-color: transparent;"
                     + "-fx-padding: 0 0 0 12;");
