@@ -430,11 +430,16 @@ final class MarkdownStream {
     }
 
     private void decideFence(String p) {
-        if (leadingCount(p, ch -> ch == '`') >= 3) {
+        int ticks = leadingCount(p, ch -> ch == '`');
+        if (ticks >= 3) {
             // 继续缓冲整行：endLine 时解析语言标识并进入围栏
             return;
         }
-        flushPrefix();
+        // 还不足 3 个反引号：继续缓冲（可能还在围栏标记内），
+        // 长度达到 3 才说明这只是一段普通行内代码/文本
+        if (p.length() >= 3) {
+            flushPrefix();
+        }
     }
 
     /**
