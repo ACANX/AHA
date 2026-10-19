@@ -204,6 +204,6 @@ class ModelConfigStoreTest {
     void toYamlProducesPascalCaseModelRoot() {
         String yaml = ConfigLoader.toYaml(new ModelConfig("DeepSeek", Map.of("DeepSeek", provider("m"))));
 
-        assertThat(yaml).contains("Model:").contains("Default").contains("Providers").contains("Adapter");
+        assertThat(yaml).contains("Model:").contains("Default").contains("Providers").contains("ApiType");
     }
 }
