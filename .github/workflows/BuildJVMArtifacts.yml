@@ -174,8 +174,16 @@ jobs:
           print(d[0]['number'] if isinstance(d, list) and d else '')" 2>/dev/null || true)
           fi
           if [ -z "$pr" ]; then
-            # 直接 push 到 dev 或 API 限流：不猜假 PR 号，明确记 00000 并告警。
-            echo "::warning::没能确定 PR 号（直接 push 或 API 限流），版本里的 PR 段记为 00000"
+            # API 反查失败的两个已知原因：
+            #   ① 直接 push 到 dev —— 本来就没有 PR；
+            #   ② squash 合并后**立即**触发 —— GitHub 的 commit→PR 关联还没建立
+            #      （实测 #348：05:07:40 反查为空 ⇒ 00000；同一提交 05:16 再查就能拿到 348）。
+            # ② 用提交标题兜底：squash 标题形如 `feat(ci): … (#348)`，取最后一个 `(#N)`。
+            pr=$(git log -1 --format=%s | sed -n 's/.*(#\([0-9]\+\).*/\1/p' | tail -1)
+          fi
+          if [ -z "$pr" ]; then
+            # 仍未拿到：不猜假 PR 号，明确记 00000 并在摘要里告警。
+            echo "::warning::没能确定 PR 号（直接 push、API 限流或标题无 PR 号），版本里的 PR 段记为 00000"
             pr=0
           fi
 
@@ -193,9 +201,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── 2. 六条腿（3 平台 × JDK 25/27）各出自己平台的 JVM 便携包 ──────────────────
-  #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
-  #    CLI-JVM 自 issue #269 起也按平台各出一份（三条 jdk25 腿都开 `upload_cli`）。
-  # ── 2. 每条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
   #    CLI-JVM 自 issue #269 起也按平台各出一份（三条 jdk25 腿都开 `upload_cli`）。
   #
