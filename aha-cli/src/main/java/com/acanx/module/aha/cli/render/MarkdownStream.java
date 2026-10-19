@@ -181,6 +181,11 @@ final class MarkdownStream {
 
     /**
      * 结算表格并输出。
+     *
+     * <p><b>结束时必须复位行级状态</b>：表格内的换行由 {@link #stepTable(int)} 自己消费，
+     * 从不经过 {@link #endLine()}，而进入表格时 {@code prefixDone} 被置为 {@code true}。
+     * 若不复位，紧跟表格的第一行会带着「行首已判定」的旧状态进入行内流程——
+     * 标题 / 列表 / 引用 / 围栏的标记全被当成正文原样吐出（只坏这一行，下一行就恢复正常）。</p>
      */
     private void flushTable() {
         if (tableLine.length() > 0) {
@@ -188,11 +193,22 @@ final class MarkdownStream {
             tableLine.setLength(0);
         }
         inTable = false;
-        if (tableRows.isEmpty()) {
-            return;
+        if (!tableRows.isEmpty()) {
+            out.append(TableRenderer.render(tableRows, style, width, box));
+            tableRows.clear();
+            // 表格渲染结果以换行结尾：下一个字符属于新行，与 endLine() 的收尾保持一致
+            lastEmitted = '\n';
         }
-        out.append(TableRenderer.render(tableRows, style, width, box));
-        tableRows.clear();
+        resetLineState();
+    }
+
+    /** 复位行级状态：行结束或整块构造（表格）结算后调用。 */
+    private void resetLineState() {
+        kind = LineKind.PLAIN;
+        headingLevel = 0;
+        prefix.setLength(0);
+        prefixDone = false;
+        pendingHasDelimiter = false;
     }
 
     private void endLine() {
@@ -210,10 +226,7 @@ final class MarkdownStream {
         flushPending();
         out.append('\n');
         lastEmitted = '\n';
-        kind = LineKind.PLAIN;
-        headingLevel = 0;
-        prefixDone = false;
-        pendingHasDelimiter = false;
+        resetLineState();
     }
 
     /**
@@ -266,6 +279,20 @@ final class MarkdownStream {
         }
         if (inFence) {
             decideWhileInFence(p);
+            return;
+        }
+        // 嵌套列表：行首缩进表示层级。缩进原样保留（层级信号），符号统一成配置的 bullet，
+        // 否则顶层是 `• `、嵌套还是 `- `，看起来像两套记号。
+        int indent = 0;
+        while (indent < p.length() && p.charAt(indent) == ' ') {
+            indent++;
+        }
+        if (indent > 0) {
+            if (indent >= p.length()) {
+                // 目前全是空格：还不知道是「缩进列表」还是「缩进正文」，等下一个字符
+                return;
+            }
+            decideIndented(p, indent);
             return;
         }
         char first = p.charAt(0);
@@ -385,6 +412,54 @@ final class MarkdownStream {
             flushPrefixMuted();
             inFence = true;
         }
+    }
+
+    /**
+     * 缩进（嵌套）列表行首判定。
+     *
+     * @param p      行首缓冲
+     * @param indent 前导空格数
+     */
+    private void decideIndented(String p, int indent) {
+        char mark = p.charAt(indent);
+        if (mark == '-' || mark == '*' || mark == '+') {
+            if (p.length() <= indent + 1) {
+                return;
+            }
+            if (p.length() == indent + 2 && p.charAt(indent + 1) == ' ') {
+                out.append(" ".repeat(indent)).append(style.marker(bullet)).append(' ');
+                lastEmitted = ' ';
+                prefix.setLength(0);
+                prefixDone = true;
+                return;
+            }
+            // 可能是缩进的分隔线（如 "***"），交给常规判定
+            flushPrefix();
+            return;
+        }
+        if (Character.isDigit(mark)) {
+            int digits = indent + leadingCount(p.substring(indent), Character::isDigit);
+            if (p.length() <= digits || p.charAt(digits) != '.') {
+                if (p.length() > digits) {
+                    flushPrefix();
+                }
+                return;
+            }
+            if (p.length() == digits + 1) {
+                return;
+            }
+            if (p.charAt(digits + 1) != ' ') {
+                flushPrefix();
+                return;
+            }
+            out.append(" ".repeat(indent))
+                    .append(style.marker(p.substring(indent, digits + 1))).append(' ');
+            lastEmitted = ' ';
+            prefix.setLength(0);
+            prefixDone = true;
+            return;
+        }
+        flushPrefix();
     }
 
     private void decideOrderedList(String p) {
