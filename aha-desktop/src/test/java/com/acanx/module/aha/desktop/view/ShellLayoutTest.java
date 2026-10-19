@@ -37,6 +37,13 @@ class ShellLayoutTest {
     }
 
     @Test
+    void leftWidthStaysWithinDragRange() {
+        assertThat(ShellLayout.clampLeftWidth(100)).isEqualTo(ShellLayout.LEFT_MIN_WIDTH);
+        assertThat(ShellLayout.clampLeftWidth(9000)).isEqualTo(ShellLayout.LEFT_MAX_WIDTH);
+        assertThat(ShellLayout.clampLeftWidth(300)).isEqualTo(300);
+    }
+
+    @Test
     void rightPaneFollowsRoundPresence() {
         assertThat(ShellLayout.rightPaneVisibleByDefault(false)).isFalse();
         assertThat(ShellLayout.rightPaneVisibleByDefault(true)).isTrue();

@@ -108,6 +108,15 @@
     -fx-opacity: 0.5;
 }
 
+/* 会话列表：滚动条宽度减半（默认约 14px） */
+#aha.session.list .scroll-bar:vertical {
+    -fx-pref-width: 7px;
+}
+
+#aha.session.list .scroll-bar:vertical > .thumb {
+    -fx-background-radius: 3;
+}
+
 /* ============================ 滚动条 ============================ */
 
 .scroll-bar,
