@@ -117,7 +117,7 @@ class StreamRendererTest {
         String text = output();
         // 区块前留空行，首行是「类型 + 工具名」，参数在紧随其后的明细行
         assertThat(text).contains("正在读取" + System.lineSeparator()
-                + System.lineSeparator() + "[读取文件] file-read");
+                + System.lineSeparator() + System.lineSeparator() + " [读取文件] file-read");
         assertThat(text).contains("path").contains("a.txt");
         assertThat(text).contains("✓ 完成").contains("ok");
     }

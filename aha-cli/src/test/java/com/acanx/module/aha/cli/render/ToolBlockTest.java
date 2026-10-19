@@ -284,6 +284,6 @@ class ToolBlockTest {
         List<String> lines = ToolBlock.body("boom", Style.of(true), 0, 40, false, null);
 
         // 成功预览用弱化色，错误正文不着色，保证可读
-        assertThat(lines.get(0)).isEqualTo("  boom");
+        assertThat(lines.get(0)).isEqualTo("   boom");
     }
 }
