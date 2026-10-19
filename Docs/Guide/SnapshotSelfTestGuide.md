@@ -96,7 +96,7 @@ PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**
 在目标 PR 上触发（二选一）：
 
 ```text
-① 给 PR 打标签：SNAPSHOT:Cli
+① 给 PR 打标签：SNAPSHOT:JVMCli
 ② 在 PR 里发评论：/snapshot Cli
 ```
 

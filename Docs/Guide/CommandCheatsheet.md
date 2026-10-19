@@ -369,7 +369,7 @@ Dist\UpdateSnapshot.ps1 -Kind jvm              :: JVM 便携包快照（两种�
 
 | 方式 | 用法 | 特点 |
 |---|---|---|
-| 触发标签 | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | **粘性**：标签在则每次 push 重出；移除即停 |
+| 触发标签 | 给 PR 打 `SNAPSHOT:JVMDesktop` / `SNAPSHOT:JVMCli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | **粘性**：标签在则每次 push 重出；移除即停 |
 | PR 评论命令 | `/snapshot <target> [os ...]` | **一次性**；大小写不敏感 |
 
 平台收窄：再打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu`（**不能单独使用**）。

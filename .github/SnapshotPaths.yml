@@ -18,8 +18,8 @@
 labels:
   # 触发标签（4 个）：打在 PR 上即出包；**粘性**——PR 上还有标签则每次 push 重出，移除即停。
   snapshot:
-    - SNAPSHOT:Desktop
-    - SNAPSHOT:Cli
+    - SNAPSHOT:JVMDesktop
+    - SNAPSHOT:JVMCli
     - SNAPSHOT:NativeDesktop
     - SNAPSHOT:NativeCli
   # 平台限定标签（3 个）

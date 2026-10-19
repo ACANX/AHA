@@ -13,6 +13,14 @@
 ## [0.1.5] - 待发布
 
 ### 变更
+- **快照触发标签改名（2026-10-19）**：
+  - `SNAPSHOT:Desktop` → `SNAPSHOT:JVMDesktop`，`SNAPSHOT:Cli` → `SNAPSHOT:JVMCli`
+    （与原生线的 `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` 命名对称）；
+  - 同步：清单 `SnapshotPaths.yml`、判定 `SnapshotPlan.py`（含 31 条自测）、守卫 `CheckScripts.py`、
+    快照工作流注释、三份指南与 `Dist/README.commands.md` 副本；
+  - 旧标签保留但**不再触发出包**（GitHub 上描述已标注「已停用」）；
+    历史记录（Troubleshooting / DevLog / 本文件的历史段落）保留旧名，守卫按路径豁免；
+  - `bin/CheckScripts.py` 新增历史豁免：旧名只允许出现在历史载体，活代码与指南仍必须用新名。
 - **dev 线 JVM 预发行按形态拆分（issue #347）**：
   - 由一条 `V<版本>-AHA-JVM` 改为两条：`V<版本>-AHA-Desktop-JVM`（tag `-aha-desktop-jvm`）与
     `V<版本>-AHA-Cli-JVM`（tag `-aha-cli-jvm`），与原生线「每个目标一条」对齐；
