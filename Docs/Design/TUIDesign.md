@@ -552,7 +552,7 @@ E:\GitRepo\GitHub\ACANX\AHA> powershell -NoProfile -Command "Get-ChildItem
 | **块间间隙** | 连续两个工具块之间保留一个空行，块边界一眼可辨 | `StreamRenderer` |
 | **上下内边距** | 块首、块尾各一行纯底色空行（与块内同色） | `ToolBlock.padding` |
 | **行首内边距** | 块内每行首列留空，内容从第 2 列开始 | `ToolBlock.INDENT` / `head` / `result` |
-| **首行内容** | `类别 + 工具名`，命令类再补**程序名**（命令第一个词） | `ToolBlock.head` + `ToolKind#programOf` |
+| **首行内容** | `类别 + 工具名`；命令类补**程序名**；读取类补**目标路径与行号区间** | `ToolBlock.head` + `ToolKind#programOf` + `rangeOf` |
 | 类别标签 | 4 字对齐：读取文件 / 写入文件 / 执行命令 / 请求网络 / 调用工具 | `ToolKind` |
 | 命令行 | `<目录><提示符> <命令全文>`，折行、续行缩进 2 列 | `ToolBlock.command` |
 | 续行缩进 | 2 列 | 同上 |

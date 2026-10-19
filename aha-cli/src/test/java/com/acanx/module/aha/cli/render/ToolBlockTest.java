@@ -61,10 +61,22 @@ class ToolBlockTest {
     void headCarriesKindToolNameAndProgram() {
         // 色带行必须定宽铺满，只放短标识：长内容走各自的明细行
         assertThat(ToolBlock.head("file-read", Map.of("path", "Docs/PLAN.md"), PLAIN, 0))
-                .isEqualTo(" [读取文件] file-read");
+                .isEqualTo(" [读取文件] file-read  Docs/PLAN.md");
         // 命令类多一段程序名——它是「这次操作干了什么」最省字的说法
         assertThat(ToolBlock.head("shell-exec", Map.of("command", "powershell -NoProfile -X"),
                 PLAIN, 0)).isEqualTo(" [执行命令] shell-exec  powershell");
+    }
+
+    @Test
+    void readHeadShowsPathAndRange() {
+        String head = ToolBlock.head("file-read",
+                Map.of("path", "a.txt", "offset", 10, "limit", 50), PLAIN, 0);
+
+        assertThat(head).contains("file-read").contains("a.txt").contains("11-60");
+
+        String ranged = ToolBlock.head("file-read",
+                Map.of("path", "b.txt", "startLine", 3, "endLine", 9), PLAIN, 0);
+        assertThat(ranged).contains("b.txt").contains("3-9");
     }
 
     @Test

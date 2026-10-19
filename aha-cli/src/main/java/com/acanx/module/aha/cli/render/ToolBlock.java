@@ -79,12 +79,70 @@ final class ToolBlock {
     static String head(String toolName, Map<String, Object> args, Style style, int width) {
         ToolKind kind = ToolKind.of(toolName);
         String program = kind.programOf(args);
-        String tail = program == null ? "" : "  " + program;
+        String target = kind == ToolKind.EXEC ? null : kind.targetOf(args);
+        String range = kind == ToolKind.EXEC ? null : rangeOf(args);
+        StringBuilder tail = new StringBuilder();
+        if (program != null) {
+            tail.append("  ").append(program);
+        }
+        if (target != null) {
+            tail.append("  ").append(TextWidth.truncate(target, 40));
+        }
+        if (range != null) {
+            tail.append("  ").append(range);
+        }
         // 无色时没有色带可依，改用结构标记区分类型
         String body = style.colored()
                 ? " " + kind.label() + "  " + toolName + tail
                 : " [" + kind.label() + "] " + toolName + tail;
         return style.toolBand(kind, body, width);
+    }
+
+    /**
+     * 读取范围（行号区间）：把 {@code offset/limit}、{@code start/end}、
+     * {@code startLine/endLine} 统一成 {@code 起-止} 形式。
+     *
+     * @param args 调用参数
+     * @return 区间文本；未指定范围时返回 {@code null}
+     */
+    private static String rangeOf(Map<String, Object> args) {
+        if (args == null) {
+            return null;
+        }
+        Integer offset = intValue(args.get("offset"));
+        Integer limit = intValue(args.get("limit"));
+        Integer start = intValue(args.get("start"));
+        Integer end = intValue(args.get("end"));
+        if (start == null) {
+            start = intValue(args.get("startLine"));
+        }
+        if (end == null) {
+            end = intValue(args.get("endLine"));
+        }
+        if (offset != null) {
+            int from = offset + 1;
+            int to = limit == null ? from : from + limit - 1;
+            return from + "-" + to;
+        }
+        if (start != null || end != null) {
+            int from = start == null ? 1 : start;
+            return end == null ? from + "-" : from + "-" + end;
+        }
+        return limit == null ? null : "1-" + limit;
+    }
+
+    private static Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
