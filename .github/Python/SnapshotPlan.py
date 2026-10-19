@@ -11,7 +11,7 @@
 
 用法（输出 JSON，供工作流用 `--json` 消费）：
 
-    python3 .github/Python/SnapshotPlan.py --labels 'SNAPSHOT:Desktop,OS:Win' \\
+    python3 .github/Python/SnapshotPlan.py --labels 'SNAPSHOT:JVMDesktop,OS:Win' \\
         --changed-files /tmp/files.txt --baseline 0.1.3 --pr 171
     python3 .github/Python/SnapshotPlan.py --self-test
 
@@ -37,8 +37,8 @@ SNAPSHOT_TTL_DAYS = 7
 #: 与资产前缀 `AHA-Desktop-Native-…` **同序**；触发标签名沿用既有的 `SNAPSHOT:NativeDesktop`，
 #: 改标签名要动仓库上的标签本体，与 tag 命名是两件事）。
 SNAPSHOT_LABELS: dict[str, str] = {
-    "SNAPSHOT:Desktop": "Desktop-JVM",
-    "SNAPSHOT:Cli": "Cli-JVM",
+    "SNAPSHOT:JVMDesktop": "Desktop-JVM",
+    "SNAPSHOT:JVMCli": "Cli-JVM",
     "SNAPSHOT:NativeDesktop": "Desktop-Native",
     "SNAPSHOT:NativeCli": "Cli-Native",
 }
@@ -447,7 +447,7 @@ def notice_body(reason: str, marker: str = "<!-- aha-snapshot -->", label: str =
         f"- 原因：{reason}\n"
         "- 用法：`/snapshot <target> [os ...]`；目标取 `Desktop` / `Cli`，"
         "平台取 `Win` / `MacOS` / `Ubuntu`（可多个，缺省 = 该目标全部平台）。\n"
-        "- 也可以直接给本 PR 打触发标签（`SNAPSHOT:Desktop` / `SNAPSHOT:Cli`），不需要命令。\n"
+        "- 也可以直接给本 PR 打触发标签（`SNAPSHOT:JVMDesktop` / `SNAPSHOT:JVMCli`），不需要命令。\n"
     )
 
 
@@ -500,16 +500,16 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
     ("未打任何标签 ⇒ 不出包（验收 14）",
      {"labels": [], "changed": ["aha-common/src/main/java/A.java"]}, False, "未打任何"),
     ("只改文档 ⇒ 不出包（验收 15）",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["Docs/Guide/BuildGuide.md"]}, False, "B 组"),
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["Docs/Guide/BuildGuide.md"]}, False, "B 组"),
     ("只改文档 + 新打标签 ⇒ 出包（显式请求，验收 16）",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["Docs/Guide/BuildGuide.md"], "label_event": True},
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["Docs/Guide/BuildGuide.md"], "label_event": True},
      True, "显式请求"),
     ("改 A 组路径 ⇒ 出包（验收 17）",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["aha-common/pom.xml"]}, True, "A 组"),
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["aha-common/pom.xml"]}, True, "A 组"),
     ("未列到的路径 ⇒ 按 A 出包（C 组兜底）",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["something/odd.txt"]}, True, "C 组"),
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["something/odd.txt"]}, True, "C 组"),
     ("测试目录属 B 组（B 优先于 A）",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["aha-desktop/src/test/java/T.java"]}, False, "B 组"),
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["aha-desktop/src/test/java/T.java"]}, False, "B 组"),
     ("命令全小写等效（验收 26）",
      {"labels": [], "changed": ["aha-common/pom.xml"], "command": "/snapshot desktop win"},
      True, "windows-amd64"),
@@ -523,7 +523,7 @@ SELF_TEST_CASES: list[tuple[str, dict, bool, str]] = [
      {"labels": [], "changed": ["aha-common/pom.xml"], "command": "/snapshot Cli Ubuntu"},
      True, "ubuntu-amd64"),
     ("JVM 目标 + OS:MacOS ⇒ 自 2026-10-18 起有 macos-aarch64 腿（CLI-JVM 按平台出包）",
-     {"labels": ["SNAPSHOT:Cli", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, True, "macos-aarch64"),
+     {"labels": ["SNAPSHOT:JVMCli", "OS:MacOS"], "changed": ["aha-common/pom.xml"]}, True, "macos-aarch64"),
 ]
 
 #: 原生线（S4 / #172）的判定用例：line="native" + 本工作流负责的目标 Desktop-Native。
@@ -550,7 +550,7 @@ SELF_TEST_CASES_NATIVE: list[tuple[str, dict, bool, str]] = [
     ("原生线：只改文档 ⇒ 不出包（B 组，验收 15 的等价行为）",
      {"labels": ["SNAPSHOT:NativeDesktop"], "changed": ["Docs/Guide/BuildGuide.md"]}, False, "B 组"),
     ("原生线：JVM 目标 ⇒ 原生工作流不认领",
-     {"labels": ["SNAPSHOT:Desktop"], "changed": ["aha-desktop-native/pom.xml"]}, False, "只负责"),
+     {"labels": ["SNAPSHOT:JVMDesktop"], "changed": ["aha-desktop-native/pom.xml"]}, False, "只负责"),
 ]
 
 #: 必须报错（不构建）的命令写法（验收 26）
@@ -606,7 +606,7 @@ def self_test() -> int:
     # tag / 发行名形状（ACANX 定案）：`V<版本>-AHA-<目标>`（2026-10-17 去掉 `-SNAPSHOT`）
     # 注意：这里必须**重新判定一次**，不能复用上面循环里的 plan（那是最后一个用例，
     # 可能正落在「不出包」分支 ⇒ releases 为空 ⇒ 断言永远失败）。
-    plan = decide(labels=["SNAPSHOT:Desktop", "SNAPSHOT:Cli"], changed=["aha-common/pom.xml"],
+    plan = decide(labels=["SNAPSHOT:JVMDesktop", "SNAPSHOT:JVMCli"], changed=["aha-common/pom.xml"],
                   baseline="0.1.3", pr=171, now=now, groups=groups)
     tags_ok = all(
         group["tag"] == f"V{plan['version']}-AHA-{group['target']}"
@@ -646,7 +646,7 @@ def self_test() -> int:
     print(f"  {'✅' if old_tag_ok else '❌'} 评论正文不再出现旧 tag 形式（`snapshot-pr<N>`）")
 
     # 评论正文必须写清平台名的语义边界（本轮实测：该腿的验证环境只有 Ubuntu）
-    plan = decide(labels=["SNAPSHOT:Desktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
+    plan = decide(labels=["SNAPSHOT:JVMDesktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
                   pr=171, now=now, groups=groups)
     body = comment_body(plan, "https://example/run")
     ok_note = "平台验证范围" in body and "Ubuntu 24.04" in body and "未验证" in body
@@ -686,7 +686,7 @@ def self_test() -> int:
 
     # CLI-JVM：`OS:Win` 只收窄构建腿，**资产名仍按三平台列**（issue #269 §6 第 7 条）。
     # 2026-10-18 实测：期望清单只列 windows、实际只产 ubuntu ⇒ 发布作业找不到资产，release 变 0 资产。
-    cli_win = decide(labels=["SNAPSHOT:Cli", "OS:Win"], changed=["aha-cli/pom.xml"],
+    cli_win = decide(labels=["SNAPSHOT:JVMCli", "OS:Win"], changed=["aha-cli/pom.xml"],
                      baseline="0.1.3", pr=172, now=now, groups=groups, line="jvm")
     ok_cli_win = cli_win["legs"] == ["windows-amd64/jdk25"] \
         and [a.split("-")[4] + "-" + a.split("-")[5] for a in cli_win["assets"]] \
@@ -697,7 +697,7 @@ def self_test() -> int:
 
     # 两条线的评论标记必须不同：否则原生线会把 JVM 线的评论覆盖掉
     ok_marker = full["marker"] == "<!-- aha-snapshot-native -->" \
-        and decide(labels=["SNAPSHOT:Desktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
+        and decide(labels=["SNAPSHOT:JVMDesktop"], changed=["aha-common/pom.xml"], baseline="0.1.3",
                    pr=172, now=now, groups=groups)["marker"] == "<!-- aha-snapshot -->"
     problems += 0 if ok_marker else 1
     print(f"  {'✅' if ok_marker else '❌'} 两条线使用不同的评论标记（互不覆盖）")

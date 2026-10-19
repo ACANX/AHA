@@ -5,7 +5,7 @@ name: SnapshotJVM
 # JVM 便携包，把「自测」提前到合并之前。
 #
 # ── 触发方式（#165 §三）───────────────────────────────────────────────────────
-#   ① 标签（**粘性**）：PR 上打了 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` 就出包，
+#   ① 标签（**粘性**）：PR 上打了 `SNAPSHOT:JVMDesktop` / `SNAPSHOT:JVMCli` 就出包，
 #      之后每次 push 重出；移除标签即停；没打标签时一类目标都不出。
 #      `OS:Win` / `OS:MacOS` / `OS:Ubuntu` 把范围收窄到单平台（不能单独使用）。
 #   ② PR 评论命令（一次性）：`/snapshot <target> [os ...]`，大小写不敏感；
@@ -35,7 +35,7 @@ name: SnapshotJVM
 # `issue_comment` 与 `pull_request: closed` 这类事件，用的是**默认分支上**的工作流定义；
 # 而 `pull_request`（opened / synchronize / labeled …）用的是**PR 分支上**的定义。
 # 后果：
-#   * 标签触发：合并前就能用（✅ 实测：本 PR 打 `SNAPSHOT:Desktop` 即出包）；
+#   * 标签触发：合并前就能用（✅ 实测：本 PR 打 `SNAPSHOT:JVMDesktop` 即出包）；
 #   * `/snapshot` 评论命令：**必须等本文件进入默认分支后才生效**（合并前发评论毫无反应——
 #     实测：COLLABORATOR 账号发出 `/snapshot Cli Ubuntu`，没有产生任何 run）。
 # 因此合并后第一件事就是补一次评论命令的端到端验证（#165 验收 26 的端到端部分）。

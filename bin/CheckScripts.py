@@ -209,14 +209,21 @@ SNAPSHOT_MANIFEST = ROOT / ".github" / "SnapshotPaths.yml"
 #: 仓库里**真实存在**的 7 个标签（`gh label list` 可查）。这是全仓唯一一处把标签名写死的地方——
 #: 名字必须与 GitHub 上的既有事实对齐，不能由清单自定义；清单与所有消费方都要与它逐字一致。
 SNAPSHOT_LABELS = (
-    "SNAPSHOT:Desktop",
-    "SNAPSHOT:Cli",
+    "SNAPSHOT:JVMDesktop",
+    "SNAPSHOT:JVMCli",
     "SNAPSHOT:NativeDesktop",
     "SNAPSHOT:NativeCli",
     "OS:Win",
     "OS:MacOS",
     "OS:Ubuntu",
 )
+
+#: 0.1.5 之前的旧标签名（2026-10-19 由 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` 改名）。
+#: **只允许出现在历史记录里**：历史档案（Troubleshooting / DevLog）与 CHANGELOG 的历史段落
+#: 记录的是当时的事实，不追改；活代码、清单、指南一律用新名——否则扫描会与清单判不一致。
+LEGACY_SNAPSHOT_LABELS = ("SNAPSHOT:Desktop", "SNAPSHOT:Cli")
+LEGACY_LABEL_DIRS = ("Docs/Troubleshooting/", "Docs/DevLog/")
+LEGACY_LABEL_FILES = ("CHANGELOG.md",)
 
 #: 标签字面量。**故意不区分大小写地粗扫**，再与清单逐字比对——这样才能抓出
 #: 「平台名写成小写」这类大小写漂移（GitHub 的标签匹配是区分大小写的）。
@@ -1466,15 +1473,20 @@ def check_snapshot_manifest() -> list[str]:
     for path, text in maybe_scannable_files():
         if path.resolve() in authorities:
             continue
+        rel_path = path.relative_to(ROOT).as_posix()
+        legacy_ok = rel_path.startswith(LEGACY_LABEL_DIRS) or rel_path in LEGACY_LABEL_FILES
         for number, line in enumerate(text.splitlines(), 1):
             for match in SNAPSHOT_LABEL_RE.finditer(line):
                 literal = match.group(0)
-                if literal not in listed:
-                    problems.append(
-                        f"{path.relative_to(ROOT)}:{number} 出现清单之外的标签 {literal!r}——"
-                        f"标签名必须与 {rel} 逐字一致（含大小写）；"
-                        "写错的表现是「打了标签却毫无反应」，不报错、只是没反应"
-                    )
+                if literal in listed:
+                    continue
+                if legacy_ok and literal in LEGACY_SNAPSHOT_LABELS:
+                    continue  # 历史档案里的旧名：记录当时的事实，不判红
+                problems.append(
+                    f"{rel_path}:{number} 出现清单之外的标签 {literal!r}——"
+                    f"标签名必须与 {rel} 逐字一致（含大小写）；"
+                    "写错的表现是「打了标签却毫无反应」，不报错、只是没反应"
+                )
 
     # ④ 快照工作流：必须引用清单，且 `paths:` 字面量必须在清单里
     allowed = set(groups["a"]) | set(groups["b"]) | set(groups["c"])
