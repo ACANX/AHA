@@ -1702,6 +1702,7 @@ public final class DesktopShell implements ChatView {
 
         HBox head = new HBox(4, caret, name, add);
         head.setAlignment(Pos.CENTER_LEFT);
+        head.setPadding(new Insets(1, 0, 1, 0));
         head.setOnMouseClicked(event -> {
             if (collapsedWorkspaces.contains(workspace)) {
                 collapsedWorkspaces.remove(workspace);
@@ -1712,7 +1713,7 @@ public final class DesktopShell implements ChatView {
             dispatcher.dispatch(this::refreshWorkspacePane);
         });
 
-        VBox group = new VBox(2, head);
+        VBox group = new VBox(1, head);
         if (collapsed) {
             return group;
         }
@@ -1725,7 +1726,7 @@ public final class DesktopShell implements ChatView {
                     + (current ? "" : "\n点击可打开并继续对话")));
             link.setOnAction(event -> onSessionSelected.accept(summary.id()));
             themed(link, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-border-color: transparent;"
-                    + "-fx-padding: 0 0 0 12;");
+                    + "-fx-font-size: 12px; -fx-padding: 1 0 1 12;");
             group.getChildren().add(link);
         }
         return group;

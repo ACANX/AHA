@@ -122,7 +122,7 @@
                                 <TitledPane fx:id="workspacePane" id="aha.workspace"
                                             text="工作空间" expanded="false" animated="false">
                                     <content>
-                                        <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="4"/>
+                                        <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="2"/>
                                     </content>
                                 </TitledPane>
                                 <Button fx:id="providerButton"/>
