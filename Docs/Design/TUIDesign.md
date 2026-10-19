@@ -560,11 +560,11 @@ E:\GitRepo\GitHub\ACANX\AHA> powershell -NoProfile -Command "Get-ChildItem
 | 非命令类明细 | 逐条 `键  值`，标签列宽 6，值折行且续行对齐 | `ToolBlock.details` + `TextWidth.wrap` |
 | 参数值上限 | 超过 200 字符只写 `<N 字符，已省略>` | 同上 |
 | 结果区标题 | 成功为 `结果`，失败为 `错误` | `StreamRenderer#print` |
-| 成功正文 | 最多 5 行（折行后），超出报「输出共 N 行」 | `ToolBlock.body` |
-| 失败正文 | 最多 40 行、**不弱化** | 同上 |
+| 成功 / 失败正文 | 超过 500 行折叠，提示「已折叠 N 行（共 M 行）」；499 / 500 行完整显示 | `ToolBlock.body` |
 | 末行 | `✓ 完成 / ✗ 失败 · 耗时 · 规模`；失败时耗时同样显示 | `ToolBlock.result` |
 | 耗时显示阈值 | 成功与失败均为 ≥ 100ms | `ToolBlock.detail` / `failureDetail` |
 | **截断** | **任何情况都不按终端宽度硬截断** | 全部走 `TextWidth.wrap` |
+| **折叠阈值** | 单块超过 500 行折叠；折叠只影响终端显示，回灌内容不变 | `ToolBlock.FOLD_THRESHOLD` |
 
 **为什么整块同底色、块间留空行**：块内出现深浅断层（比如首行有底色、正文没有）时，
 一个块会被看成多个块；连续两个块之间没有空行则会粘成一片。两者都会让「哪里开始、哪里结束」

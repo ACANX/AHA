@@ -232,7 +232,38 @@ class ToolBlockTest {
 
         assertThat(lines).hasSize(4);
         assertThat(lines.get(0)).contains("l1");
-        assertThat(lines.get(3)).contains("输出共 7 行");
+        assertThat(lines.get(3)).contains("已折叠 4 行（共 7 行）");
+    }
+
+    private static String numberedLines(int count) {
+        return java.util.stream.IntStream.rangeClosed(1, count)
+                .mapToObj(i -> "l" + i)
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    @Test
+    void bodyFoldsOnlyAbove500Lines() {
+        assertThat(ToolBlock.body(numberedLines(499), PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null))
+                .hasSize(499);
+        assertThat(ToolBlock.body(numberedLines(500), PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null))
+                .hasSize(500);
+
+        List<String> folded = ToolBlock.body(numberedLines(501), PLAIN, 0,
+                ToolBlock.FOLD_THRESHOLD, true, null);
+
+        assertThat(folded).hasSize(501);
+        assertThat(folded.get(500)).contains("已折叠 1 行（共 501 行）");
+    }
+
+    @Test
+    void foldingDoesNotChangePayload() {
+        String raw = numberedLines(501);
+
+        ToolBlock.body(raw, PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null);
+
+        // 折叠只影响终端显示：回灌给模型的原始输出保持完整
+        assertThat(raw.split("\n", -1)).hasSize(501);
+        assertThat(raw).contains("l501");
     }
 
     @Test

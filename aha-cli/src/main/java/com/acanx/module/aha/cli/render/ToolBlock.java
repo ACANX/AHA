@@ -31,11 +31,14 @@ final class ToolBlock {
     /** 区块之间留一个空行。 */
     static final String SEPARATOR = "";
 
-    /** 成功时结果预览最大行数（折行之后）。 */
-    static final int PREVIEW_LINES = 5;
+    /** 单个块折叠阈值：超过该行数后折叠（issue #322）。 */
+    static final int FOLD_THRESHOLD = 500;
 
-    /** 失败时错误正文最大行数。 */
-    static final int FAILURE_LINES = 40;
+    /** 成功结果正文最多显示行数（= 折叠阈值）。 */
+    static final int PREVIEW_LINES = FOLD_THRESHOLD;
+
+    /** 失败正文最多显示行数（= 折叠阈值）。 */
+    static final int FAILURE_LINES = FOLD_THRESHOLD;
 
     /** 命令行数超过该值时中间省略。 */
     static final int COMMAND_ELIDE_LINES = 40;
@@ -202,23 +205,22 @@ final class ToolBlock {
         }
         String[] source = content.split("\n", -1);
         int limit = available(width);
-        List<String> lines = new ArrayList<>();
-        boolean truncated = false;
-        outer:
+        // 先折行再统计总行数：折叠提示里的「共 M 行」必须与终端实际行数一致
+        List<String> wrapped = new ArrayList<>();
         for (String line : source) {
-            for (String part : TextWidth.wrap(line, limit)) {
-                if (lines.size() >= maxLines) {
-                    truncated = true;
-                    break outer;
-                }
-                String indented = " ".repeat(INDENT) + part;
-                String row = dim ? style.muted(indented) : indented;
-                lines.add(kind == null ? row : style.blockLine(kind, row, width));
-            }
+            wrapped.addAll(TextWidth.wrap(line, limit));
         }
-        if (truncated) {
-            String note = style.muted(" ".repeat(INDENT) + "… 输出共 " + source.length
-                    + " 行，此处显示前 " + maxLines + " 行");
+        int total = wrapped.size();
+        int shown = Math.min(maxLines, total);
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < shown; i++) {
+            String indented = " ".repeat(INDENT) + wrapped.get(i);
+            String row = dim ? style.muted(indented) : indented;
+            lines.add(kind == null ? row : style.blockLine(kind, row, width));
+        }
+        if (total > shown) {
+            String note = style.muted(" ".repeat(INDENT) + "… 已折叠 " + (total - shown)
+                    + " 行（共 " + total + " 行）");
             lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
         return lines;
