@@ -280,6 +280,50 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 | 模型与档位 | `--model` 或运行时 `Model`；档位取运行时 `Tier`（Ultra / Pro / Standard / Flash / Fallback），未配置时只显示模型 | 宽度不足时去掉档位 |
 | 工作目录 | 进程启动目录 | 超过 3 层截断为 `…/末三层`；宽度不足时先缩到 1 层 |
 
+#### 布局与示例（issue #330）
+
+状态栏占底部保留区的**第二行**（第一行是输入框下边框，两行高度恒定）：
+
+```text
+> 用户输入                                          ← JLine 输入行
+──────────────────────────────────────────────────  ← 保留区第 1 行：输入框下边框
+自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA     ← 保留区第 2 行：状态栏（空闲）
+```
+
+忙碌时阶段在前、三项在后（宽度不足时只保阶段）：
+
+```text
+⠋ 等待响应… · 自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA
+⠸ 执行工具 shell-exec… 1.2s · 完全授权 · glm-4-plus/Pro · …/GitRepo/ACANX/AHA
+```
+
+三档模式（最左段，任何宽度都保留）：
+
+| 模式 | 触发 | 示例首段 |
+|---|---|---|
+| 自动 | 默认 | `自动` |
+| 完全授权 | `--yes`，或会话内输入 `a` | `完全授权` |
+| 严格 | `--strict` | `严格` |
+
+宽度压缩（`StatusBar.text`，`width - 1` 为上限）：
+
+```text
+80 列  自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA
+40 列  自动 · deepseek-chat/Standard · …/AHA        （目录先缩到 1 层）
+24 列  自动 · deepseek-chat                         （再去掉档位）
+12 列  自动 · deep                （最后按显示宽度硬截断）
+```
+
+目录截断规则：超过 **3 层** → `…/末三层`（Windows 用 `…\`）：
+
+```text
+C:\work\AHA\GitRepo\ACANX\AHA   →  …\AHA\GitRepo\ACANX\AHA
+/home/acanx/Agent/CNXNC            →  原样（不足 3 层）
+```
+
+非 TTY（管道 / CI / 重定向）不显示：`StatusSurface.NONE` 时 `StatusLine` 整体关闭，
+不会往输出里写任何转义序列。
+
 - 耗时是**这次操作**的信息，属于工具区块的末行（见 3.6），不放状态行
 - token / 缓存 / 上下文占比属 issue #331（等 0.6 用量落库），本轮只留接口位置
 
