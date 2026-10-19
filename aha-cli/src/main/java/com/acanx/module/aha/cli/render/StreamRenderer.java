@@ -94,7 +94,8 @@ public final class StreamRenderer implements Renderer {
 
     @Override
     public void cancelled() {
-        status.idle();
+        // 中断是用户主动行为：短暂保留「已中断」，不要直接回空闲（#359）
+        status.finish(RunState.INTERRUPTED, null);
     }
 
     @Override

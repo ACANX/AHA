@@ -130,13 +130,15 @@ final class StatusLine {
     }
 
     /**
-     * 结束态：完成 / 失败（保留 {@value #AUTO_IDLE_SECONDS} 秒后回到空闲）。
+     * 结束态：完成 / 失败 / 已中断（保留 {@value #AUTO_IDLE_SECONDS} 秒后回到空闲）。
      *
-     * @param next   只能是 {@link RunState#DONE} 或 {@link RunState#FAILED}
-     * @param reason 失败时的单行原因摘要（可空）
+     * @param next   只能是 {@link RunState#DONE}、{@link RunState#FAILED} 或
+     *               {@link RunState#INTERRUPTED}
+     * @param reason 失败时的单行原因摘要（可空；中断态不使用）
      */
     synchronized void finish(RunState next, String reason) {
-        if (!enabled || (next != RunState.DONE && next != RunState.FAILED)) {
+        if (!enabled || (next != RunState.DONE && next != RunState.FAILED
+                && next != RunState.INTERRUPTED)) {
             return;
         }
         cancelIdle();
@@ -232,6 +234,7 @@ final class StatusLine {
             case AWAITING_APPROVAL -> framePrefix() + " 等待审批…";
             case DONE -> "✓ 完成";
             case FAILED -> "✗ 失败";
+            case INTERRUPTED -> "⏹ 已中断";
             default -> "";
         };
         if (state == RunState.REQUESTING || state == RunState.TOOL_RUNNING) {
