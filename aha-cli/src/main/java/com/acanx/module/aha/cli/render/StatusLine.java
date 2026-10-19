@@ -64,21 +64,6 @@ final class StatusLine {
     private int frame;
 
     /**
-     * 创建状态行。
-     *
-     * @param surface 状态行载体
-     * @param enabled 是否启用（调用方按终端能力决定）
-     * @param unicode 编码是否支持盲文帧
-     * @param width   终端宽度；{@code <= 0} 表示未知
-     * @param model   模型名，可为 {@code null}
-     * @param style   样式（用于输入框下边框）
-     */
-    StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width, String model,
-               Style style) {
-        this(surface, enabled, unicode, width, StatusBar.legacy(model), style);
-    }
-
-    /**
      * 创建状态行（issue #330：底部常驻三项）。
      *
      * @param surface 状态行载体

@@ -20,7 +20,7 @@ class StatusLineTest {
 
     @Test
     void disabledStatusPaintsNothing() {
-        StatusLine status = new StatusLine(surface, false, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, false, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -31,7 +31,7 @@ class StatusLineTest {
     @Test
     void unknownWidthDisablesStatus() {
         // 宽度未知时无法判断是否会长出两行，宁可不显示
-        StatusLine status = new StatusLine(surface, true, true, 0, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 0, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
 
@@ -41,7 +41,7 @@ class StatusLineTest {
     @Test
     void unavailableSurfaceDisablesStatus() {
         // 终端不支持滚动区域时载体是 NONE，此处不应有任何绘制
-        StatusLine status = new StatusLine(StatusSurface.NONE, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(StatusSurface.NONE, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -51,7 +51,7 @@ class StatusLineTest {
 
     @Test
     void showPaintsFramePhaseModelAndElapsed() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "deepseek-chat", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("deepseek-chat"), Style.of(false));
 
         status.show("等待响应…");
 
@@ -63,7 +63,7 @@ class StatusLineTest {
 
     @Test
     void asciiFramesAreUsedWhenUnicodeIsUnavailable() {
-        StatusLine status = new StatusLine(surface, true, false, 40, null, Style.of(false));
+        StatusLine status = new StatusLine(surface, true, false, 40, StatusBar.legacy(null), Style.of(false));
 
         status.show("等待响应…");
 
@@ -72,7 +72,7 @@ class StatusLineTest {
 
     @Test
     void longTextIsTruncatedByDisplayWidth() {
-        StatusLine status = new StatusLine(surface, true, true, 12, "model", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 12, StatusBar.legacy("model"), Style.of(false));
 
         status.show("这是一个非常长的阶段描述文本");
 
@@ -82,7 +82,7 @@ class StatusLineTest {
     @Test
     void idleShowsTheModelInsteadOfReleasingTheArea() {
         // 底部那一行兼着输入行下边框的职责，回合结束不能撤掉
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
         status.show("等待响应…");
 
         status.idle();
@@ -129,7 +129,7 @@ class StatusLineTest {
 
     @Test
     void idleWithoutShowStillShowsIdleText() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.idle();
 
@@ -138,7 +138,7 @@ class StatusLineTest {
 
     @Test
     void repaintAdvancesTheFrame() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -149,7 +149,7 @@ class StatusLineTest {
 
     @Test
     void paintAfterIdleDoesNothing() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
         status.show("等待响应…");
         status.idle();
         int painted = surface.painted().size();
@@ -160,7 +160,7 @@ class StatusLineTest {
     }
     @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "deepseek-chat",
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("deepseek-chat"),
                 Style.of(ColorDepth.ANSI256));
 
         status.show("等待响应…");
@@ -177,7 +177,7 @@ class StatusLineTest {
 
     @Test
     void frameFallsBackToBrightMagentaOn16ColourTerminals() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "m", Style.of(ColorDepth.ANSI16));
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("m"), Style.of(ColorDepth.ANSI16));
 
         status.show("等待响应…");
         status.paint();
@@ -187,7 +187,7 @@ class StatusLineTest {
 
     @Test
     void borderIsNotStyledWhenColourIsOff() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
