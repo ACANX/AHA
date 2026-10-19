@@ -128,8 +128,8 @@
                                     <content>
                                         <VBox spacing="4">
                                             <TextField fx:id="sessionSearch" id="aha.session.search"/>
-                                            <Button fx:id="newSessionButton"/>
                                             <ListView fx:id="sessionList" id="aha.session.list"/>
+                                            <Button fx:id="newSessionButton"/>
                                         </VBox>
                                     </content>
                                 </TitledPane>
