@@ -237,7 +237,7 @@ public final class ChatCommand implements Runnable {
                     ? (toolName, permission, arguments) -> true
                     : new ConsoleToolApprover(question -> askForAnswer(out, answers, awaitingAnswer,
                             question), () -> statusBar.setMode(StatusBar.Mode.FULL),
-                            renderer::awaitingApproval, renderer::approvalResolved);
+                            renderer::awaitingApproval, renderer::approvalResolved, renderer::cancelled);
             AgentService configured = CliContext.service(approver);
             if (strict && configured instanceof LocalAgentService local) {
                 // 严格模式：取消一切自动放行（连 READ 都走审批）

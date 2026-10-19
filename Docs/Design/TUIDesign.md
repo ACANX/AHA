@@ -375,7 +375,7 @@ tty == true  &&  width > 0  &&  surface.available()
 
 #### 运行状态位（issue #342）
 
-状态行只回答「现在在干什么」。七态与触发条件：
+状态行只回答「现在在干什么」。八态与触发条件：
 
 | 状态 | 触发 | 展示 | 耗时 |
 |---|---|---|---|
@@ -384,6 +384,7 @@ tty == true  &&  width > 0  &&  surface.available()
 | 生成中 | 首个正文增量 | `⠋ 生成中…` | — |
 | 工具执行中 | 工具调用事件 | `⠋ 执行工具 <名>…` | ✅ 每秒刷新 |
 | 等待审批 | `ConsoleToolApprover` 问答开始 | `⠋ 等待审批…` | — |
+| 已中断 | ESC / Ctrl+C（`Renderer.cancelled()`） | `⏹ 已中断`（保留 2s 后回空闲） | — |
 | 完成 | 流正常结束（`endTurn`） | `✓ 完成`（保留 2s 后回空闲） | — |
 | 失败 | `ERROR` 事件 | `✗ 失败 · 单行原因`（保留 2s） | — |
 
@@ -391,7 +392,8 @@ tty == true  &&  width > 0  &&  surface.available()
 
 - 状态切换**立即重绘**（验收 ≤ 200ms），耗时由 120ms ticker 刷新，不额外抖动输入区；
 - 工具授权问答前后由 `ConsoleToolApprover` 回调 `Renderer.awaitingApproval()` / `approvalResolved()`；
-- **ESC / Ctrl+C 中断**调用 `Renderer.cancelled()`，立即回到空闲；
+- **ESC / Ctrl+C 中断**调用 `Renderer.cancelled()`，短暂显示 `⏹ 已中断`（2s）后回空闲；
+  审批问答中被中断（无输入 / 用户打断）同样落到该状态；
 - 失败原因只取**首行**，避免刷屏；
 - 完成 / 失败态保留 2s，随后自动回到空闲（显示静态三项）。
 

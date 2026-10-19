@@ -184,6 +184,16 @@ class StatusLineTest {
     }
 
     @Test
+    void interruptedIsVisibleTerminalState() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.finish(RunState.INTERRUPTED, null);
+
+        assertThat(surface.last()).isEqualTo("⏹ 已中断");
+    }
+
+    @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
         StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("model-x"),
                 Style.of(ColorDepth.ANSI256));

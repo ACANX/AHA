@@ -48,6 +48,9 @@ final class ConsoleToolApprover implements ToolApprover {
     /** 审批问答结束（状态行回到工具执行）。 */
     private final Runnable onResolved;
 
+    /** 审批问答被中断（ESC / Ctrl+C / EOF）：状态行切「已中断」。 */
+    private final Runnable onCancelled;
+
     /**
      * 授权的问答通道。
      *
@@ -71,7 +74,7 @@ final class ConsoleToolApprover implements ToolApprover {
      * @param prompt 问答通道
      */
     ConsoleToolApprover(ToolPrompt prompt) {
-        this(prompt, null, null, null);
+        this(prompt, null, null, null, null);
     }
 
     /**
@@ -84,10 +87,25 @@ final class ConsoleToolApprover implements ToolApprover {
      */
     ConsoleToolApprover(ToolPrompt prompt, Runnable onSessionAllow, Runnable onAwaiting,
                         Runnable onResolved) {
+        this(prompt, onSessionAllow, onAwaiting, onResolved, null);
+    }
+
+    /**
+     * 构造裁决器，并分别接审批开始 / 结束 / 中断回调。
+     *
+     * @param prompt         问答通道
+     * @param onSessionAllow 会话内首次「始终允许」时的回调
+     * @param onAwaiting     审批开始前回调（状态行切「等待审批」）
+     * @param onResolved     审批正常结束后回调（状态行回到工具执行）
+     * @param onCancelled    审批被中断时回调（状态行切「已中断」）
+     */
+    ConsoleToolApprover(ToolPrompt prompt, Runnable onSessionAllow, Runnable onAwaiting,
+                        Runnable onResolved, Runnable onCancelled) {
         this.prompt = prompt;
         this.onSessionAllow = onSessionAllow;
         this.onAwaiting = onAwaiting;
         this.onResolved = onResolved;
+        this.onCancelled = onCancelled;
     }
 
     /**
@@ -105,7 +123,7 @@ final class ConsoleToolApprover implements ToolApprover {
             } catch (UserInterruptException | EndOfFileException e) {
                 return null;
             }
-        }, null, null, null);
+        }, null, null, null, null);
     }
 
     @Override
@@ -119,13 +137,16 @@ final class ConsoleToolApprover implements ToolApprover {
         String answer;
         try {
             answer = prompt.ask(question(toolName, permission, arguments));
-        } finally {
-            if (onResolved != null) {
-                onResolved.run();
-            }
+        } catch (RuntimeException e) {
+            notifyCancelled();
+            throw e;
         }
         if (answer == null) {
+            notifyCancelled();
             return false;
+        }
+        if (onResolved != null) {
+            onResolved.run();
         }
         return switch (answer.trim().toLowerCase()) {
             case "y", "yes" -> true;
@@ -143,6 +164,12 @@ final class ConsoleToolApprover implements ToolApprover {
                 yield false;
             }
         };
+    }
+
+    private void notifyCancelled() {
+        if (onCancelled != null) {
+            onCancelled.run();
+        }
     }
 
     /**

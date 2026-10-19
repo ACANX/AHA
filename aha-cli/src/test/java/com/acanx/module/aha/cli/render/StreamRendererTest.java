@@ -68,6 +68,21 @@ class StreamRendererTest {
     }
 
     @Test
+    void cancelledShowsInterruptedState() {
+        RecordingStatusSurface surface = new RecordingStatusSurface();
+        PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
+        StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("model-x"), Style.of(false)),
+                true, ToolEnvironment.none());
+
+        renderer.beginTurn();
+        renderer.cancelled();
+
+        assertThat(surface.last()).isEqualTo("⏹ 已中断");
+        assertThat(surface.last()).doesNotContain("请求中");
+    }
+
+    @Test
     void toolExecutionShowsItsOwnStatus() {
         RecordingStatusSurface surface = new RecordingStatusSurface();
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
