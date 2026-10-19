@@ -121,9 +121,8 @@ public final class JLineStatusSurface implements StatusSurface {
             suspended = false;
         }
         resizeIfNeeded();
-        // 每次先清空再写：多行 Status 的增量重绘会残留旧行（会话行被横线覆盖）
-        status.update(java.util.List.of());
-        lastSize = lines.size();
+        // 不能用 update(empty) 先清空：JLine Status 从 0 行增长到 3 行时
+        // Display.removeFirstOldLines 会越界（toIndex = 3 / IndexOutOfBoundsException）
         int columns = terminal.getSize().getColumns();
         List<AttributedString> attributed = new ArrayList<>(lines.size());
         for (String line : lines) {
