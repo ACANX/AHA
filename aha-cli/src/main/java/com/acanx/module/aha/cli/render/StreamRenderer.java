@@ -9,6 +9,9 @@ import com.acanx.module.aha.common.event.ToolResultEvent;
 import com.acanx.module.aha.common.event.UsageEvent;
 
 import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +29,8 @@ import com.acanx.module.aha.common.tool.ToolKind;
  * @since 0.1.0
  */
 public final class StreamRenderer implements Renderer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(StreamRenderer.class);
 
     private final LineWrapper wrapper;
     private final Style style;
@@ -120,7 +125,12 @@ public final class StreamRenderer implements Renderer {
                     generating = true;
                     status.runState(RunState.GENERATING, null);
                 }
-                wrapper.write(markdown.feed(content.delta()));
+                String rendered = markdown.feed(content.delta());
+                LOG.debug("ContentEvent delta={} chars: {}", content.delta().length(),
+                        preview(content.delta()));
+                LOG.debug("MarkdownStream rendered={} chars: {}", rendered.length(),
+                        preview(rendered));
+                wrapper.write(rendered);
             }
             case ToolCallEvent call -> {
                 // 区块前留空行：连续多次工具调用不隔开就会糊成一片
@@ -224,6 +234,14 @@ public final class StreamRenderer implements Renderer {
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    private static String preview(String text) {
+        if (text == null) {
+            return "null";
+        }
+        String escaped = text.replace("\\", "\\\\").replace("\n", "\\n");
+        return escaped.length() <= 80 ? escaped : escaped.substring(0, 80) + "…";
     }
 
     private static String asText(Object value) {

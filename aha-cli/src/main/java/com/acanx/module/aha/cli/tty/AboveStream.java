@@ -1,5 +1,8 @@
 package com.acanx.module.aha.cli.tty;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -25,6 +28,8 @@ import java.util.function.Consumer;
  * @since 0.1.0
  */
 public final class AboveStream extends OutputStream {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AboveStream.class);
 
     private final Consumer<String> lines;
 
@@ -134,9 +139,12 @@ public final class AboveStream extends OutputStream {
      * 推出一行并清空缓冲。
      */
     private void emit() {
-        synchronized (lock) {
-            lines.accept(buffer.toString(charset));
-        }
+        String line = buffer.toString(charset);
         buffer.reset();
+        LOG.debug("AboveStream emit: {} chars, blank={}: {}", line.length(), line.isBlank(),
+                line.length() <= 80 ? line.replace("\n", "\\n") : line.substring(0, 80) + "…");
+        synchronized (lock) {
+            lines.accept(line);
+        }
     }
 }
