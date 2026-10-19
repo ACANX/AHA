@@ -24,6 +24,7 @@
 <?import javafx.scene.control.SeparatorMenuItem?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
@@ -117,6 +118,13 @@
                                 <Button fx:id="newSessionButton"/>
                                 <Label fx:id="sessionSection"/>
                                 <ListView fx:id="sessionList" id="aha.session.list"/>
+                                <!-- 工作空间：按项目（主工作目录）分组会话；默认折叠 -->
+                                <TitledPane fx:id="workspacePane" id="aha.workspace"
+                                            text="工作空间" expanded="false" animated="false">
+                                    <content>
+                                        <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="4"/>
+                                    </content>
+                                </TitledPane>
                                 <Button fx:id="providerButton"/>
                                 <Button fx:id="toolsButton"/>
                                 <Button fx:id="memoryButton"/>

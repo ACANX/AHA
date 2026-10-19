@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,6 +55,9 @@ public final class ChatController {
     private final AgentService service;
 
     private final SessionConfig sessionConfig;
+
+    /** 下一次新建会话时要绑定的工作目录（{@code null} 表示纯聊天）。 */
+    private String pendingWorkspace;
 
     private final Executor executor;
 
@@ -149,6 +153,21 @@ public final class ChatController {
     }
 
     /**
+     * 在指定工作空间下新建会话。
+     *
+     * @param workspace 工作目录；{@code null} 表示纯聊天
+     * @return 新会话 ID
+     */
+    public synchronized String newSession(String workspace) {
+        this.pendingWorkspace = workspace;
+        try {
+            return newSession();
+        } finally {
+            this.pendingWorkspace = null;
+        }
+    }
+
+    /**
      * 当前会话 ID。
      *
      * @return 会话 ID；尚未创建时为 {@code null}
@@ -183,6 +202,7 @@ public final class ChatController {
             service.closeSession(this.sessionId);
         }
         this.sessionId = sessionId;
+        this.pendingWorkspace = null;
         List<ChatMessage> history = service.loadHistory(sessionId, HISTORY_LIMIT);
         ui.accept(view::clearConversation);
         int shown = 0;
@@ -288,10 +308,23 @@ public final class ChatController {
      */
     public synchronized String ensureSession() {
         if (sessionId == null) {
-            sessionId = service.createSession(sessionConfig);
+            sessionId = service.createSession(configWithWorkspace());
             LOG.info("已创建会话 {}", sessionId);
         }
         return sessionId;
+    }
+
+    /** 当前配置 + 待绑定工作目录。 */
+    private SessionConfig configWithWorkspace() {
+        if (pendingWorkspace == null || (sessionConfig.extras() != null
+                && sessionConfig.extras().containsKey("workspace"))) {
+            return sessionConfig;
+        }
+        Map<String, Object> extras = new LinkedHashMap<>(
+                sessionConfig.extras() == null ? Map.of() : sessionConfig.extras());
+        extras.put("workspace", pendingWorkspace);
+        return new SessionConfig(sessionConfig.model(), sessionConfig.tier(),
+                sessionConfig.systemPrompt(), extras);
     }
 
     /** 单行化：工具输出可能是几十行，回放时压成一行提示。 */

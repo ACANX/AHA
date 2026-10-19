@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.view;
 
 import com.acanx.module.aha.common.AppVersion;
 import com.acanx.module.aha.common.model.SessionSummary;
+import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
 import com.acanx.module.aha.desktop.chat.ChatView;
@@ -32,12 +33,14 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
@@ -53,6 +56,7 @@ import javafx.scene.layout.VBox;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.nio.file.Path;
 import java.util.Map;
@@ -267,6 +271,8 @@ public final class DesktopShell implements ChatView {
 
     /** 切换会话动作（点会话列表）。 */
     private Consumer<String> onSessionSelected = id -> { };
+
+    private Consumer<String> onNewSessionIn = workspace -> onNewSession.run();
 
     /** 重命名会话动作（会话 ID, 新标题）。 */
     private BiConsumer<String, String> onSessionRename = (id, title) -> { };
@@ -974,6 +980,7 @@ public final class DesktopShell implements ChatView {
      */
     public void refreshSessions(List<SessionSummary> summaries, String currentId) {
         this.sessionSummaries = summaries == null ? List.of() : List.copyOf(summaries);
+        refreshWorkspacePane();
         this.currentSessionId = currentId;
         applySessionFilter(sessionSearch == null ? "" : sessionSearch.getText());
     }
@@ -1396,6 +1403,11 @@ public final class DesktopShell implements ChatView {
         });
         sessionList.setContextMenu(buildSessionMenu());
 
+        workspacePane.setText("工作空间");
+        workspacePane.setExpanded(false);
+        themed(workspacePane, () -> "-fx-text-fill: " + Palette.MUTED + ";"
+                + "-fx-background-color: transparent;");
+
         sessionSection.setText("会话");
         themed(sessionSection, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
 
@@ -1538,6 +1550,88 @@ public final class DesktopShell implements ChatView {
                     + "-fx-text-fill: "
                     + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
                     + (current ? "-fx-font-weight: bold;" : ""));
+        }
+    }
+
+    /**
+     * 工作空间内新建会话：返回目标工作目录（{@code null} 表示纯聊天）。
+     *
+     * @param handler 处理函数
+     */
+    public void onNewSessionIn(Consumer<String> handler) {
+        this.onNewSessionIn = handler == null ? workspace -> onNewSession.run() : handler;
+    }
+
+    /** 按工作空间分组渲染会话：当前项目优先，纯聊天最后。 */
+    private void refreshWorkspacePane() {
+        if (workspaceList == null) {
+            return;
+        }
+        workspaceList.getChildren().clear();
+        Map<String, List<SessionSummary>> groups = new LinkedHashMap<>();
+        for (SessionSummary summary : sessionSummaries) {
+            groups.computeIfAbsent(summary.workspace(), key -> new ArrayList<>()).add(summary);
+        }
+        String current = currentWorkspace();
+        List<String> order = new ArrayList<>(groups.keySet());
+        order.sort((left, right) -> {
+            if (Objects.equals(left, current)) {
+                return -1;
+            }
+            if (Objects.equals(right, current)) {
+                return 1;
+            }
+            if (left == null) {
+                return 1;
+            }
+            if (right == null) {
+                return -1;
+            }
+            return left.compareTo(right);
+        });
+        for (String workspace : order) {
+            workspaceList.getChildren().add(workspaceGroup(workspace, groups.get(workspace)));
+        }
+    }
+
+    private VBox workspaceGroup(String workspace, List<SessionSummary> summaries) {
+        String title = workspace == null ? "纯聊天" : workspaceName(workspace);
+        Label name = new Label(title);
+        themed(name, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-font-weight: bold;");
+        if (workspace != null) {
+            name.setTooltip(new Tooltip(workspace));
+        }
+        Button add = new Button("＋");
+        add.setTooltip(new Tooltip(workspace == null ? "新建纯聊天会话" : "在 " + workspace + " 下新建会话"));
+        add.setOnAction(event -> onNewSessionIn.accept(workspace));
+        themed(add, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
+        HBox head = new HBox(ShellLayout.GAP / 2.0, name, add);
+        head.setAlignment(Pos.CENTER_LEFT);
+        VBox group = new VBox(2, head);
+        long now = System.currentTimeMillis();
+        for (SessionSummary summary : summaries) {
+            Hyperlink link = new Hyperlink(SessionList.item(summary, now).line());
+            link.setTooltip(new Tooltip(summary.title() + "\n" + summary.id()));
+            link.setOnAction(event -> onSessionSelected.accept(summary.id()));
+            themed(link, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-border-color: transparent;"
+                    + "-fx-padding: 0 0 0 12;");
+            group.getChildren().add(link);
+        }
+        return group;
+    }
+
+    /** 当前项目根（工作空间）。 */
+    private static String currentWorkspace() {
+        Path root = SystemPromptLoader.findProjectRoot(Path.of(""));
+        return root == null ? null : root.toAbsolutePath().normalize().toString();
+    }
+
+    private static String workspaceName(String workspace) {
+        try {
+            Path name = Path.of(workspace).getFileName();
+            return name == null ? workspace : name.toString();
+        } catch (RuntimeException e) {
+            return workspace;
         }
     }
 

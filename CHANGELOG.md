@@ -16,6 +16,11 @@
   - `SqliteMemoryStore.listSessions` 从 `session.config_json` 解析 `workspace`，不新增表列；
   - `LocalAgentService.createSession` 未显式指定时自动补当前项目根（`SystemPromptLoader.findProjectRoot`）；
   - 旧会话保持无 `workspace`，界面归入「纯聊天」。
+- **桌面端「工作空间」手风琴（issue #379 阶段 2）**：
+  - 左栏「会话」与「供应商」之间新增「工作空间」折叠面板（默认折叠）；
+  - 展开后按项目根分组会话，当前项目优先，「纯聊天」单列一组；
+  - 组内「＋」在对应工作目录下新建会话，点击会话直接打开并回放历史；
+  - `ChatController.newSession(workspace)` 支持把工作目录写入会话配置。
 
 ## [0.1.5] - 待发布
 

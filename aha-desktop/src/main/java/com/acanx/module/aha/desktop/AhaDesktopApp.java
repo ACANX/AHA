@@ -379,6 +379,15 @@ public final class AhaDesktopApp extends Application {
             refreshSessions(shell, controller);
         });
 
+        shell.onNewSessionIn(workspace -> {
+            controller.newSession(workspace);
+            shell.clearConversation();
+            shell.appendNotice(workspace == null
+                    ? "已新建纯聊天会话。"
+                    : "已在工作空间 " + workspace + " 下新建会话。");
+            refreshSessions(shell, controller);
+        });
+
         // 会话列表：左栏展示 + 切换 + 重命名 + 删除 + 导出（GUIDesign 第 4.5 节）
         shell.onSessionSelected(sessionId -> {
             int shown = controller.openSession(sessionId);
