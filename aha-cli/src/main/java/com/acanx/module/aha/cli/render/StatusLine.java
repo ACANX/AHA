@@ -212,7 +212,7 @@ final class StatusLine {
         summary = null;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
-        surface.update(List.of(rule(), fieldLine(), status.text(width)));
+        surface.update(List.of(rule(), fieldLine(), staticLine()));
     }
 
     /**
@@ -228,7 +228,7 @@ final class StatusLine {
         if (state == RunState.IDLE) {
             surface.update(List.of(rule(), fieldLine(), status.text(width)));
         } else {
-            surface.update(List.of(dynamicLine(), fieldLine(), status.text(width)));
+            surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
         }
     }
 
@@ -239,7 +239,7 @@ final class StatusLine {
         if (!enabled || state == RunState.IDLE) {
             return;
         }
-        surface.update(List.of(dynamicLine(), fieldLine(), status.text(width)));
+        surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
         frame++;
     }
 
@@ -280,7 +280,24 @@ final class StatusLine {
      */
     private String fieldLine() {
         String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
-        return " " + style.muted("会话") + "  " + style.muted(id);
+        String location = status.location();
+        String text = " " + style.muted("会话") + "  " + style.muted(id);
+        if (!location.isEmpty()) {
+            text += "  ·  " + style.muted(location);
+        }
+        return clamp(text);
+    }
+
+    /**
+     * 静态指标行：模式 / 供应商 / 档位 / 模型 / 强度。
+     *
+     * <p>前导一个空格：JLine {@code Status} 的第一列在部分终端上会被占用，
+     * 不加空格时首个字符会被吞掉（曾出现「自动」显示成「动」）。</p>
+     *
+     * @return 文案
+     */
+    private String staticLine() {
+        return " " + status.summary(width);
     }
 
     /**
