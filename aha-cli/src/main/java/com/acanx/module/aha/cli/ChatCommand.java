@@ -205,7 +205,7 @@ public final class ChatCommand implements Runnable {
             // 状态行先于输出流创建：printAbove 前后要暂停/恢复底部区域，
             // 否则多次输出后 Status 的行缓冲会与正文错位
             StatusSurface statusSurface = capabilities.tty()
-                    ? JLineStatusSurface.create(terminal, capabilities.colored(), reader)
+                    ? JLineStatusSurface.create(terminal, capabilities.colored())
                     : StatusSurface.NONE;
             AtomicReference<Renderer> rendererRef = new AtomicReference<>();
             PrintStream out = capabilities.tty()
@@ -221,7 +221,7 @@ public final class ChatCommand implements Runnable {
                                 if (current != null) {
                                     current.resumeStatus();
                                 }
-                            }, reader), false, encoding.charset())
+                            }), false, encoding.charset())
                     : System.out;
             // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
             // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
