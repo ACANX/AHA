@@ -143,6 +143,8 @@
                 <!-- 中栏：消息流 + 输入区 -->
                 <VBox fx:id="centerColumn" id="aha.center">
                     <children>
+                        <!-- 当前会话的标题与元信息（条数 / 时间），从会话列表标题里移出来 -->
+                        <Label fx:id="conversationHeader" id="aha.conversation.header"/>
                         <ScrollPane fx:id="messageScroll">
                             <content>
                                 <VBox fx:id="messages" id="aha.messages"/>

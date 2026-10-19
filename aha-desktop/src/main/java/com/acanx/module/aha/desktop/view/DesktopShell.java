@@ -117,6 +117,9 @@ public final class DesktopShell implements ChatView {
     /** 消息流容器 id。 */
     public static final String MESSAGES_ID = "aha.messages";
 
+    /** 中栏顶部的当前会话标题 / 元信息。 */
+    public static final String CONVERSATION_HEADER_ID = "aha.conversation.header";
+
     /** 消息流右键菜单「复制全部消息」的 id。 */
     public static final String MESSAGES_COPY_ALL_ID = "aha.messages.copy.all";
 
@@ -346,6 +349,9 @@ public final class DesktopShell implements ChatView {
     /** 当前会话 ID（列表里高亮它）。 */
     private String currentSessionId;
 
+    /** 「会话」分组是否展开（与工作空间一样可折叠）。 */
+    private boolean sessionSectionExpanded = true;
+
     /** 工具来源（工具列表对话框用）。 */
     private Supplier<List<ToolDescriptor>> toolSource = List::of;
 
@@ -469,6 +475,9 @@ public final class DesktopShell implements ChatView {
     /** 左栏「会话」分组标题。 */
     @FXML
     private Label sessionSection;
+
+    @FXML
+    private Label conversationHeader;
 
     /** 左栏「工作空间」折叠面板。 */
     @FXML
@@ -1014,6 +1023,7 @@ public final class DesktopShell implements ChatView {
     public void refreshSessions(List<SessionSummary> summaries, String currentId) {
         this.sessionSummaries = summaries == null ? List.of() : List.copyOf(summaries);
         this.currentSessionId = currentId;
+        refreshConversationHeader();
         refreshWorkspacePane();
         applySessionFilter(sessionSearch == null ? "" : sessionSearch.getText());
     }
@@ -1442,7 +1452,8 @@ public final class DesktopShell implements ChatView {
         themed(workspacePane, () -> "-fx-text-fill: " + Palette.MUTED + ";"
                 + "-fx-background-color: transparent;");
 
-        sessionSection.setText("会话");
+        sessionSection.setText("▾ 会话");
+        sessionSection.setOnMouseClicked(event -> toggleSessionSection());
         themed(sessionSection, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
 
         navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
@@ -1543,7 +1554,11 @@ public final class DesktopShell implements ChatView {
         SessionList.Item selected = sessionList.getSelectionModel().getSelectedItem();
         String keep = selected != null ? selected.id() : currentSessionId;
         long now = System.currentTimeMillis();
-        List<SessionList.Item> items = SessionList.filter(sessionSummaries, query).stream()
+        // 已归属工作空间的会话只在工作空间面板里出现，避免重复
+        List<SessionSummary> ungrouped = sessionSummaries.stream()
+                .filter(summary -> summary.workspace() == null)
+                .toList();
+        List<SessionList.Item> items = SessionList.filter(ungrouped, query).stream()
                 .map(summary -> SessionList.item(summary, now))
                 .toList();
         sessionList.getItems().setAll(items);
@@ -1573,7 +1588,7 @@ public final class DesktopShell implements ChatView {
                 return;
             }
             boolean current = Objects.equals(item.id(), currentSessionId);
-            setText((current ? "● " : "○ ") + item.line());
+            setText((current ? "● " : "○ ") + item.title());
             setTooltip(new Tooltip(item.tooltip()));
             // 单元格背景必须显式给：ListView 的 -fx-control-inner-background 未必传到 cell 上，
             // 暗色下会露出 modena 默认白底（issue #49）；选中态另行覆盖
@@ -1630,6 +1645,35 @@ public final class DesktopShell implements ChatView {
      */
     public void onAddWorkspace(Consumer<String> handler) {
         this.onAddWorkspace = handler == null ? this::addWorkspace : handler;
+    }
+
+    /** 「会话」分组折叠 / 展开。 */
+    private void toggleSessionSection() {
+        sessionSectionExpanded = !sessionSectionExpanded;
+        sessionSection.setText((sessionSectionExpanded ? "▾" : "▸") + " 会话");
+        for (javafx.scene.Node node : List.of(sessionSearch, newSessionButton, sessionList)) {
+            node.setVisible(sessionSectionExpanded);
+            node.setManaged(sessionSectionExpanded);
+        }
+    }
+
+    /** 把当前会话的标题 / 条数 / 时间放到中栏顶部。 */
+    private void refreshConversationHeader() {
+        if (conversationHeader == null) {
+            return;
+        }
+        SessionSummary current = currentSessionId == null ? null : sessionSummaries.stream()
+                .filter(summary -> Objects.equals(summary.id(), currentSessionId))
+                .findFirst()
+                .orElse(null);
+        boolean visible = current != null;
+        conversationHeader.setVisible(visible);
+        conversationHeader.setManaged(visible);
+        if (visible) {
+            conversationHeader.setText(current.title() + "　·　"
+                    + SessionList.meta(current.messageCount(), current.createdAt(),
+                    System.currentTimeMillis()));
+        }
     }
 
     /** 按工作空间分组渲染会话：当前项目优先；纯聊天留在主会话列表，不进工作空间。 */
@@ -1717,11 +1761,10 @@ public final class DesktopShell implements ChatView {
         if (collapsed) {
             return group;
         }
-        long now = System.currentTimeMillis();
         for (SessionSummary summary : summaries) {
             boolean current = Objects.equals(summary.id(), currentSessionId);
             String status = current ? "● 进行中" : "○ 已结束";
-            Hyperlink link = new Hyperlink(status + " · " + SessionList.item(summary, now).line());
+            Hyperlink link = new Hyperlink(status + " · " + summary.title());
             link.setTooltip(new Tooltip(status + "\n" + summary.title() + "\n" + summary.id()
                     + (current ? "" : "\n点击可打开并继续对话")));
             link.setOnAction(event -> onSessionSelected.accept(summary.id()));
@@ -1833,6 +1876,12 @@ public final class DesktopShell implements ChatView {
         centerColumn.setSpacing(ShellLayout.GAP);
         centerColumn.setPadding(new Insets(ShellLayout.GAP));
         centerColumn.setId(CENTER_ID);
+
+        conversationHeader.setId(CONVERSATION_HEADER_ID);
+        conversationHeader.setVisible(false);
+        conversationHeader.setManaged(false);
+        themed(conversationHeader, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 12px;"
+                + "-fx-padding: 0 0 4 2;");
 
         messages.setId(MESSAGES_ID);
         messages.setSpacing(ShellLayout.GAP);
