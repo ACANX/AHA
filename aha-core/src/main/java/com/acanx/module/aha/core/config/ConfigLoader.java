@@ -481,10 +481,12 @@ public final class ConfigLoader {
         } else if (legacyModel != null && legacyModel.isString()
                 && !legacyModel.asString().isBlank()) {
             String name = legacyModel.asString();
-            provider.set("Models", YAML_MAPPER.createObjectNode()
-                    .putObject(name).put("Name", name));
-            provider.set("Tier", YAML_MAPPER.createObjectNode()
-                    .put(ModelTier.STANDARD.configName(), name));
+            ObjectNode nextModels = YAML_MAPPER.createObjectNode();
+            nextModels.putObject(name).put("Name", name);
+            provider.set("Models", nextModels);
+            ObjectNode tier = YAML_MAPPER.createObjectNode();
+            tier.put(ModelTier.STANDARD.configName(), name);
+            provider.set("Tier", tier);
         }
         provider.remove("Model");
         provider.remove("DefaultTier");
