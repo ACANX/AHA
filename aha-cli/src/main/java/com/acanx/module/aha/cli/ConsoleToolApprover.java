@@ -39,6 +39,9 @@ final class ConsoleToolApprover implements ToolApprover {
 
     private final ToolPrompt prompt;
 
+    /** 会话内首次「始终允许」时的回调（状态栏据此切到「完全授权」）。 */
+    private final Runnable onSessionAllow;
+
     /**
      * 授权的问答通道。
      *
@@ -62,7 +65,18 @@ final class ConsoleToolApprover implements ToolApprover {
      * @param prompt 问答通道
      */
     ConsoleToolApprover(ToolPrompt prompt) {
+        this(prompt, null);
+    }
+
+    /**
+     * 构造裁决器，并在会话内首次「始终允许」时回调。
+     *
+     * @param prompt         问答通道
+     * @param onSessionAllow 回调；{@code null} 表示不需要
+     */
+    ConsoleToolApprover(ToolPrompt prompt, Runnable onSessionAllow) {
         this.prompt = prompt;
+        this.onSessionAllow = onSessionAllow;
     }
 
     /**
@@ -80,7 +94,7 @@ final class ConsoleToolApprover implements ToolApprover {
             } catch (UserInterruptException | EndOfFileException e) {
                 return null;
             }
-        });
+        }, null);
     }
 
     @Override
@@ -96,6 +110,9 @@ final class ConsoleToolApprover implements ToolApprover {
             case "y", "yes" -> true;
             case "a", "all" -> {
                 sessionAllowed.add(permission);
+                if (onSessionAllow != null) {
+                    onSessionAllow.run();
+                }
                 PrintStream out = System.out;
                 out.println("已允许本次会话内全部 " + permission + " 操作。");
                 yield true;

@@ -1,9 +1,9 @@
 # AHA TUI 设计（当前实现）
 
-**文档版本**：v1.11.0
+**文档版本**：v1.12.0
 **状态**：已实现（0.1.x）
 **生效日期**：2026-10-07
-**最后更新**：2026-10-07
+**最后更新**：2026-10-19
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -25,6 +25,7 @@
 | v1.9.0 | 2026-10-07 | 启动标志新增**像素风**（48x48 / 24x24 半块字符）并与线框风并存，用 `--logo` 切换；§5.3 重写为两种风格与宽度门槛 | @ACANX |
 | v1.10.0 | 2026-10-07 | 像素风画法拆到独立文档 `PixelLogoDesign.md`，§5.3 只留指针、§8 登记 | @ACANX |
 | v1.11.0 | 2026-10-07 | §8 指向设计文档的链接改到新位置 `../AHA/AHA-Design-V1.md` | @ACANX |
+| v1.12.0 | 2026-10-19 | 状态行升级为底部常驻状态栏：模式 / 模型与档位 / 工作目录三项（issue #330） | @ACANX / CNXNC |
 | v1.12.0 | 2026-10-19 | §3.5 补删除线与嵌套列表（issue #335） | @ACANX |
 
 ---
@@ -261,17 +262,103 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 | 转圈帧（Unicode） | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` |
 | 转圈帧（降级） | `|/-\` |
 | 阶段文案 | `等待响应…` / `执行工具 <工具名>… <实时秒数>` |
-| 空闲文案 | 模型名 |
+| 空闲文案 | `模式 · 模型/档位 · 工作目录`（静态三项，issue #330） |
 | 刷新间隔 | `TICK_MS = 120`（`StatusLine`） |
 | 截断宽度 | `width - 1`（避免折成两行） |
 | 载体 | `JLineStatusSurface` → `org.jline.utils.Status` |
 | 保留区内容 | 两行：**第一行是输入框下边线**（高亮紫），第二行是状态文本 |
 | 行数恒定 | 空闲时也照常输出边线行，否则底部区域收缩、下边线会突然消失 |
 
-**只显示「转圈帧 + 阶段」**，不显示耗时、模型名、用量：
+**忙碌帧**显示「转圈帧 + 阶段」（宽度允许时追加 `· 模式 · 模型/档位 · 工作目录`）；
+**空闲帧**只显示静态三项。宽度不足时先保阶段，三项由空闲帧继续展示。
 
-- 耗时是**这次操作**的信息，属于工具区块的末行（见 3.6），放在状态行会与「现在在干什么」混淆
-- 模型名与用量在空闲态与 `[usage]` 行已有位置
+静态三项的来源与截断（`StatusBar`）：
+
+| 项 | 来源 | 截断 / 降级 |
+|---|---|---|
+| 运行模式 | 自动（默认）/ 完全授权（`--yes`，或会话内输入 `a`）/ 严格（`--strict`） | 不截断；始终排在最前 |
+| 模型与档位 | `--model` 或运行时 `Model`；档位取运行时 `Tier`（Ultra / Pro / Standard / Flash / Fallback），未配置时只显示模型 | 宽度不足时去掉档位 |
+| 工作目录 | 进程启动目录 | 超过 3 层截断为 `…/末三层`；宽度不足时先缩到 1 层 |
+
+#### 布局与示例（issue #330 / #353）
+
+状态栏占底部保留区的**第二行**（第一行是输入框下边框，两行高度恒定）。字段顺序固定：
+
+```text
+运行模式 · 供应商 · 档位 · 模型名 · 思考强度 · 目录 (分支)
+```
+
+CLI 的输入行**没有 `> ` 提示符**（prompt 只带上下边线），所以状态栏上方只有边线：
+
+```text
+（用户输入显示在边线之上）
+──────────────────────────────────────────────────────────────  ← 输入框下边框
+自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
+```
+
+> `<model>` 是占位：具体模型名以 `ModelDefault.yml` 的当前默认为准，不在设计文档里写死版本。
+
+忙碌时阶段在前、字段在后（宽度不足时只保阶段）：
+
+```text
+⠋ 等待响应… · 自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
+⠸ 执行工具 shell-exec… 1.2s · 完全授权 · OpenAI · Pro · <model> · high · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (feature/x)
+```
+
+三档模式（最左段，任何宽度都保留）：
+
+| 模式 | 触发 | 示例首段 |
+|---|---|---|
+| 自动 | 默认 | `自动` |
+| 完全授权 | `--yes`，或会话内输入 `a` | `完全授权` |
+| 严格 | `--strict` | `严格` |
+
+字段来源与缺失处理：
+
+| 字段 | 来源 | 缺失时 |
+|---|---|---|
+| 运行模式 | 默认 / `--yes` / `--strict`；会话内 `a` 转完全授权 | — |
+| 供应商 | `RuntimeDescriptor.attributes.Provider`（`Model.yml` 的配置键） | `-`（不省略，供应商是排查「连的是哪个后端」的第一信息） |
+| 档位 | `attributes.Tier`（Ultra / Pro / Standard / Flash / Fallback） | 省略该段 |
+| 模型名 | `--model`，否则 `attributes.Model` | `-` |
+| 思考强度 | **数据源待定**（issue #353） | `-`（不编造「低 / 中 / 高」） |
+| 目录 | 工作目录；**完整路径优先** | 省略目录段 |
+| Git 分支 | 目录向上找 `.git` 读 `HEAD`；detached 显示 7 位短 sha | 不展示 |
+
+目录展示规则（`StatusBar.shorten`）：
+
+```text
+≤ 128 字符  →  完整路径原样展示（不做「保留末 N 层」的头部省略）
+> 128 字符  →  从**中间**省略：保留首尾，形如 /home/acanx/…/GitRepo/ACANX/AHA
+```
+
+分隔符**统一用 `/`**：Windows 的 `C:\work\AHA` 也显示为 `C:/work/AHA`
+（`\` 与 `\\` 在状态栏里看起来像转义，跨平台也不一致）。
+
+宽度压缩（`StatusBar.text`，`width - 1` 为上限）——顺序：
+**目录+分支 → 思考强度 → 档位 → 硬截断**，模式与供应商始终保留：
+
+```text
+宽终端    完整：自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
+变窄      丢目录与分支，再丢强度、档位
+极窄      自动 · DeepSeek · <model>…（按显示宽度硬截断）
+```
+
+Git 分支探测（`GitBranch`，**不执行 `git` 子进程**）：
+
+```text
+<目录>/.git/HEAD = `ref: refs/heads/dev`         → dev
+                  = `ref: refs/heads/feature/x`  → feature/x
+                  = `<40 位 sha>`                → 前 7 位（detached HEAD）
+.git 是文件（worktree）→ 读 `gitdir:` 指向的目录下的 HEAD
+找不到 .git / 读取失败 → 不展示
+```
+
+非 TTY（管道 / CI / 重定向）不显示：`StatusSurface.NONE` 时 `StatusLine` 整体关闭，
+不会往输出里写任何转义序列。
+
+- 耗时是**这次操作**的信息，属于工具区块的末行（见 3.6），不放状态行
+- token / 缓存 / 上下文占比属 issue #331（等 0.6 用量落库），本轮只留接口位置
 
 **为什么空闲时不隐藏**：底部那一行兼着输入行的下分隔线，撤掉会让输入区突然失去框线。
 因此 `StatusLine#idle()` 是「换成空闲文案」而不是 `hide()`。
@@ -743,7 +830,9 @@ CJK_SAMPLE = "中文字符";   // → cjk：决定是否提示切换 UTF-8
 | `Style.java` | SGR 样式：色带、强调、色号表、`fill`（先截断后上色） |
 | `ToolKind.java` | 工具分类：标签、判定名单、目标参数 |
 | `ToolBlock.java` | 区块内容：首行、结果行、预览、摘要 |
-| `StatusLine.java` | 状态行：帧、阶段、120ms 节流、截断 |
+| `StatusLine.java` | 状态行：帧、阶段、120ms 节流、截断、静态三项 |
+| `StatusBar.java` | 状态栏字段：模式 / 供应商 / 档位 / 模型 / 强度 / 目录(分支)、截断与宽度压缩 |
+| `GitBranch.java` | Git 分支探测：`.git/HEAD`、worktree、detached 短 sha |
 | `MarkdownStream.java` | 流式 Markdown：块级判定 + 行内委托 |
 | `InlineScanner.java` | 行内构造：代码、强调、侧翼规则、递归上限 |
 | `LineWrapper.java` | 按显示宽度折行；跳过 ANSI 序列不计宽 |

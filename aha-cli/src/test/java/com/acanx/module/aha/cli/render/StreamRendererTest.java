@@ -31,7 +31,7 @@ class StreamRendererTest {
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         // 状态行不进输出流（它走底部常驻区），因此这里用空载体避免干扰正文断言
         return new StreamRenderer(out, Style.of(color), width,
-                new StatusLine(StatusSurface.NONE, false, true, width, null, Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(StatusSurface.NONE, false, true, width, StatusBar.legacy(null), Style.of(false)), true, ToolEnvironment.none());
     }
 
     private String output() {
@@ -55,7 +55,7 @@ class StreamRendererTest {
         RecordingStatusSurface surface = new RecordingStatusSurface();
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
-                new StatusLine(surface, true, true, 60, "deepseek-chat", Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("model-x"), Style.of(false)), true, ToolEnvironment.none());
 
         renderer.beginTurn();
         // 状态行只回答「在干什么」：耗时归工具区块末行，不在这里
@@ -64,7 +64,7 @@ class StreamRendererTest {
 
         // 写正文前状态行回到空闲文案（而非撤掉底部区域——那一行还兼着输入行下边框）
         renderer.onEvent(new ContentEvent("s", "答案"));
-        assertThat(surface.last()).isEqualTo("deepseek-chat");
+        assertThat(surface.last()).isEqualTo("model-x");
         assertThat(output()).contains("答案");
     }
 
@@ -73,7 +73,7 @@ class StreamRendererTest {
         RecordingStatusSurface surface = new RecordingStatusSurface();
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
-                new StatusLine(surface, true, true, 60, "m", Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("m"), Style.of(false)), true, ToolEnvironment.none());
 
         renderer.onEvent(new ToolCallEvent("s", "shell-exec", Map.of("command", "ls")));
 

@@ -50,7 +50,7 @@ final class StatusLine {
 
     private final boolean enabled;
 
-    private final String model;
+    private final StatusBar status;
 
     private final Style style;
 
@@ -64,23 +64,23 @@ final class StatusLine {
     private int frame;
 
     /**
-     * 创建状态行。
+     * 创建状态行（issue #330：底部常驻三项）。
      *
      * @param surface 状态行载体
      * @param enabled 是否启用（调用方按终端能力决定）
      * @param unicode 编码是否支持盲文帧
      * @param width   终端宽度；{@code <= 0} 表示未知
-     * @param model   模型名，可为 {@code null}
+     * @param statusBar 状态栏（模式 / 模型与档位 / 工作目录）
      * @param style   样式（用于输入框下边框）
      */
-    StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width, String model,
-               Style style) {
+    StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width,
+               StatusBar statusBar, Style style) {
         this.surface = surface == null ? StatusSurface.NONE : surface;
         this.frames = unicode ? UNICODE_FRAMES : ASCII_FRAMES;
         this.bar = unicode ? "─" : "-";
         this.width = width;
         this.enabled = enabled && width > 0 && this.surface.available();
-        this.model = model;
+        this.status = statusBar == null ? StatusBar.legacy("") : statusBar;
         this.style = style == null ? Style.of(false) : style;
     }
 
@@ -132,7 +132,7 @@ final class StatusLine {
         toolStartedAt = 0;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
-        surface.update(List.of(rule(), model == null ? "" : model));
+        surface.update(List.of(rule(), status.text(width)));
     }
 
     /**
@@ -159,21 +159,39 @@ final class StatusLine {
     }
 
     /**
-     * 组装状态行文案：只有转圈帧与当前阶段。
+     * 组装状态行文案：转圈帧 + 当前阶段（+ 静态三项）。
      *
-     * <p>不显示耗时与用量：耗时属于**这次操作**的信息，已由工具区块的末行承担；
-     * 状态行只回答「它现在在干什么」。</p>
+     * <p>不显示用量：用量四项等 0.6 落库（issue #331）；状态行回答「在干什么」，
+     * 并在右侧常驻「模式 / 模型与档位 / 工作目录」（issue #330）。</p>
      *
      * @return 文案
      */
     private String compose() {
+        String phaseText = phaseText();
+        if (status.legacy()) {
+            return clamp(phaseText);
+        }
+        String combined = phaseText + " · " + status.text(width);
+        if (TextWidth.width(combined) <= width - 1) {
+            return combined;
+        }
+        // 宽度不够时先保阶段（它每秒都在变），三项由空闲帧继续展示
+        return clamp(phaseText);
+    }
+
+    /**
+     * 转圈帧 + 阶段 + 工具耗时。
+     *
+     * @return 阶段文案
+     */
+    private String phaseText() {
         StringBuilder text = new StringBuilder(frames[frame % frames.length])
                 .append(' ').append(phase);
         if (toolStartedAt > 0) {
             text.append(' ').append(String.format("%.1fs",
                     (System.nanoTime() - toolStartedAt) / 1_000_000_000.0));
         }
-        return clamp(text.toString());
+        return text.toString();
     }
 
     /**

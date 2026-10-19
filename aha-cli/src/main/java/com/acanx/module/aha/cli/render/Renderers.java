@@ -31,7 +31,7 @@ public final class Renderers {
      */
     public static Renderer of(TerminalCapabilities capabilities, OutputEncoding encoding,
                              String model, PrintStream out) {
-        return of(capabilities, encoding, model, out, StatusSurface.NONE);
+        return of(capabilities, encoding, StatusBar.legacy(model), out, StatusSurface.NONE);
     }
 
     /**
@@ -50,6 +50,21 @@ public final class Renderers {
      */
     public static Renderer of(TerminalCapabilities capabilities, OutputEncoding encoding,
                              String model, PrintStream out, StatusSurface statusSurface) {
+        return of(capabilities, encoding, StatusBar.legacy(model), out, statusSurface);
+    }
+
+    /**
+     * 创建渲染器，状态栏显示静态三项（issue #330）。
+     *
+     * @param capabilities  终端能力
+     * @param encoding      输出编码
+     * @param statusBar     状态栏（模式 / 模型与档位 / 工作目录）
+     * @param out           输出流
+     * @param statusSurface 状态行载体
+     * @return 渲染器
+     */
+    public static Renderer of(TerminalCapabilities capabilities, OutputEncoding encoding,
+                             StatusBar statusBar, PrintStream out, StatusSurface statusSurface) {
         boolean color = capabilities != null && capabilities.colored();
         ColorDepth depth = color ? capabilities.depth() : ColorDepth.NONE;
         int width = capabilities == null ? 0 : capabilities.width();
@@ -58,7 +73,7 @@ public final class Renderers {
         // 状态行只在 TTY 下启用；具体能否显示由载体自己判断（终端不支持时为 NONE）
         Style style = Style.of(depth);
         // 状态行的第一行是输入框下边框，因此它也要拿到样式
-        StatusLine status = new StatusLine(statusSurface, tty, unicode, width, model, style);
+        StatusLine status = new StatusLine(statusSurface, tty, unicode, width, statusBar, style);
         // 执行环境：明细行要如实告诉用户「在哪个终端、哪个目录」下跑的
         return new StreamRenderer(out, style, width, status, unicode, ToolEnvironment.current());
     }
