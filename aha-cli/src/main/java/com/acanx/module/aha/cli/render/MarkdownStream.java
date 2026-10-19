@@ -238,8 +238,21 @@ final class MarkdownStream {
      * 输出一行围栏代码：可选行号 + 语法高亮。
      */
     private void appendFenceLine() {
-        out.append(style.lineNumber(lineNumberPrefix()));
-        out.append(CodeHighlighter.highlight(pending.toString(), fenceLanguage, style));
+        String code = pending.toString();
+        String prefix = lineNumberPrefix();
+        int prefixWidth = TextWidth.width(prefix);
+        int limit = width > 0 ? Math.max(8, width - 1 - prefixWidth) : 0;
+        // 代码行折行：续行用行号前缀等宽的空格占位，保持代码列对齐
+        java.util.List<String> parts = limit > 0
+                ? TextWidth.wrap(code, limit)
+                : java.util.List.of(code);
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                out.append('\n');
+            }
+            out.append(i == 0 ? style.lineNumber(prefix) : " ".repeat(prefixWidth));
+            out.append(CodeHighlighter.highlight(parts.get(i), fenceLanguage, style));
+        }
         pending.setLength(0);
     }
 
