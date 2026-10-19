@@ -51,4 +51,12 @@ public interface Renderer {
      */
     default void cancelled() {
     }
+
+    /**
+     * 恢复状态区：printAbove 之后重绘完整的状态行（issue #371）。
+     *
+     * <p>默认空实现：非交互渲染器无需处理。</p>
+     */
+    default void resumeStatus() {
+    }
 }

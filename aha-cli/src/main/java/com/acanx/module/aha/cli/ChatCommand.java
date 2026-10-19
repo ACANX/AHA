@@ -207,10 +207,16 @@ public final class ChatCommand implements Runnable {
             StatusSurface statusSurface = capabilities.tty()
                     ? JLineStatusSurface.create(terminal, capabilities.colored())
                     : StatusSurface.NONE;
+            AtomicReference<Renderer> rendererRef = new AtomicReference<>();
             PrintStream out = capabilities.tty()
                     ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset(),
-                            statusSurface::hide, statusSurface::restore), false,
-                            encoding.charset())
+                            statusSurface::hide,
+                            () -> {
+                                Renderer current = rendererRef.get();
+                                if (current != null) {
+                                    current.resumeStatus();
+                                }
+                            }), false, encoding.charset())
                     : System.out;
             // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
             // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
@@ -231,6 +237,7 @@ public final class ChatCommand implements Runnable {
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
             Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
                     statusSurface);
+            rendererRef.set(renderer);
 
             // 工具授权发生在回合线程上，而 reader 由主线程持有，
             // 因此授权问答走队列：主线程把接下来的输入递给它

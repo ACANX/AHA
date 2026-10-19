@@ -196,6 +196,23 @@ final class StatusLine {
     }
 
     /**
+     * 恢复状态区：按当前状态重绘完整三行（动态横线 / 状态字段 / 静态参数）。
+     *
+     * <p>printAbove 之前状态区被 {@code suspend()} 让出；恢复时不能只调
+     * {@code Status.restore()}（会用旧内容重绘、与正文混排），必须重新 {@code update}。</p>
+     */
+    synchronized void resume() {
+        if (!enabled) {
+            return;
+        }
+        if (state == RunState.IDLE) {
+            surface.update(List.of(rule(), fieldLine(), status.text(width)));
+        } else {
+            surface.update(List.of(dynamicLine(), fieldLine(), status.text(width)));
+        }
+    }
+
+    /**
      * 刷新一帧。
      */
     synchronized void paint() {
