@@ -32,6 +32,12 @@ public final class StreamRenderer implements Renderer {
 
     private final boolean unicode;
 
+    /** 本回合是否已进入「生成中」（首个正文增量只切一次）。 */
+    private boolean generating;
+
+    /** 失败摘要（ERROR 事件设置，endTurn 时展示）。 */
+    private String failureSummary;
+
     private final int width;
 
     /** 当前工具调用开始时间：结果行要显示耗时。 */
@@ -68,19 +74,37 @@ public final class StreamRenderer implements Renderer {
     @Override
     public void beginTurn() {
         // 首次响应可能等好几秒，没有反馈用户会以为卡住了
-        status.show("等待响应…");
+        generating = false;
+        failureSummary = null;
+        status.runState(RunState.REQUESTING, "请求中…");
+    }
+
+    @Override
+    public void awaitingApproval() {
+        status.runState(RunState.AWAITING_APPROVAL, null);
+    }
+
+    @Override
+    public void approvalResolved() {
+        status.runState(RunState.TOOL_RUNNING, "执行工具…");
+    }
+
+    @Override
+    public void cancelled() {
+        status.idle();
     }
 
     @Override
     public void onEvent(AgentEvent event) {
         switch (event) {
             case ContentEvent content -> {
-                // 状态行占着行首，正文要写进来之前必须先清掉，否则两者混在同一行
-                status.idle();
+                if (!generating) {
+                    generating = true;
+                    status.runState(RunState.GENERATING, null);
+                }
                 wrapper.write(markdown.feed(content.delta()));
             }
             case ToolCallEvent call -> {
-                status.idle();
                 // 区块前留空行：连续多次工具调用不隔开就会糊成一片
                 wrapper.ensureLineStart();
                 wrapper.newline();
@@ -104,7 +128,7 @@ public final class StreamRenderer implements Renderer {
                 status.tool(call.toolName());
             }
             case ToolResultEvent result -> {
-                status.idle();
+                status.runState(RunState.GENERATING, null);
                 long millis = toolRunning ? (System.nanoTime() - toolStartedAt) / 1_000_000L : 0L;
                 toolRunning = false;
                 boolean ok = result.success();
@@ -116,7 +140,7 @@ public final class StreamRenderer implements Renderer {
                         : ToolBlock.failureDetail(result.result(), millis), style, width, unicode));
             }
             case ErrorEvent error -> {
-                status.idle();
+                failureSummary = error.message();
                 block(style.error("[error] " + error.code()));
                 for (String line : ToolBlock.body(error.message(), style, width,
                         ToolBlock.FAILURE_LINES, false)) {
@@ -135,9 +159,14 @@ public final class StreamRenderer implements Renderer {
 
     @Override
     public void endTurn() {
-        status.idle();
         wrapper.write(markdown.flush());
         wrapper.ensureLineStart();
+        // 结束态保留 2 秒后回到空闲（#342：完成 / 失败都要肉眼可辨）
+        if (failureSummary != null) {
+            status.finish(RunState.FAILED, failureSummary);
+        } else {
+            status.finish(RunState.DONE, null);
+        }
     }
 
     /**

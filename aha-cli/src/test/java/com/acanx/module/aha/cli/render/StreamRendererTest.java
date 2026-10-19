@@ -58,13 +58,12 @@ class StreamRendererTest {
                 new StatusLine(surface, true, true, 60, StatusBar.legacy("model-x"), Style.of(false)), true, ToolEnvironment.none());
 
         renderer.beginTurn();
-        // 状态行只回答「在干什么」：耗时归工具区块末行，不在这里
-        assertThat(surface.last()).isEqualTo("⠋ 等待响应…");
-        assertThat(output()).doesNotContain("等待响应…");
+        // 状态行只回答「在干什么」（#342：请求中 → 生成中）
+        assertThat(surface.last()).isEqualTo("⠋ 请求中…");
+        assertThat(output()).doesNotContain("请求中…");
 
-        // 写正文前状态行回到空闲文案（而非撤掉底部区域——那一行还兼着输入行下边框）
         renderer.onEvent(new ContentEvent("s", "答案"));
-        assertThat(surface.last()).isEqualTo("model-x");
+        assertThat(surface.last()).isEqualTo("⠋ 生成中…");
         assertThat(output()).contains("答案");
     }
 

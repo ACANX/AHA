@@ -42,6 +42,12 @@ final class ConsoleToolApprover implements ToolApprover {
     /** 会话内首次「始终允许」时的回调（状态栏据此切到「完全授权」）。 */
     private final Runnable onSessionAllow;
 
+    /** 即将进入审批问答（状态行切「等待审批」）。 */
+    private final Runnable onAwaiting;
+
+    /** 审批问答结束（状态行回到工具执行）。 */
+    private final Runnable onResolved;
+
     /**
      * 授权的问答通道。
      *
@@ -65,7 +71,7 @@ final class ConsoleToolApprover implements ToolApprover {
      * @param prompt 问答通道
      */
     ConsoleToolApprover(ToolPrompt prompt) {
-        this(prompt, null);
+        this(prompt, null, null, null);
     }
 
     /**
@@ -73,10 +79,15 @@ final class ConsoleToolApprover implements ToolApprover {
      *
      * @param prompt         问答通道
      * @param onSessionAllow 回调；{@code null} 表示不需要
+     * @param onAwaiting     审批开始前回调（状态行切「等待审批」）
+     * @param onResolved     审批结束后回调（状态行回到工具执行）
      */
-    ConsoleToolApprover(ToolPrompt prompt, Runnable onSessionAllow) {
+    ConsoleToolApprover(ToolPrompt prompt, Runnable onSessionAllow, Runnable onAwaiting,
+                        Runnable onResolved) {
         this.prompt = prompt;
         this.onSessionAllow = onSessionAllow;
+        this.onAwaiting = onAwaiting;
+        this.onResolved = onResolved;
     }
 
     /**
@@ -94,7 +105,7 @@ final class ConsoleToolApprover implements ToolApprover {
             } catch (UserInterruptException | EndOfFileException e) {
                 return null;
             }
-        }, null);
+        }, null, null, null);
     }
 
     @Override
@@ -102,7 +113,17 @@ final class ConsoleToolApprover implements ToolApprover {
         if (sessionAllowed.contains(permission)) {
             return true;
         }
-        String answer = prompt.ask(question(toolName, permission, arguments));
+        if (onAwaiting != null) {
+            onAwaiting.run();
+        }
+        String answer;
+        try {
+            answer = prompt.ask(question(toolName, permission, arguments));
+        } finally {
+            if (onResolved != null) {
+                onResolved.run();
+            }
+        }
         if (answer == null) {
             return false;
         }
