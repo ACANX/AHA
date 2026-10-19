@@ -232,7 +232,8 @@ final class StatusLine {
         String text = "── " + dynamicText() + " ";
         int limit = width > 0 ? Math.max(1, width - 1) : 40;
         int fill = Math.max(0, limit - TextWidth.width(text));
-        return style.frame(text + bar.repeat(fill));
+        // 前缀 + 文本 + 填充可能超过终端宽度（clamp 只作用于动态文案），整体再截一次
+        return style.frame(clamp(text + bar.repeat(fill)));
     }
 
     /**
