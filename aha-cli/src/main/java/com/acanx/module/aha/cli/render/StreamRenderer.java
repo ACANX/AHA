@@ -91,8 +91,8 @@ public final class StreamRenderer implements Renderer {
 
     @Override
     public void approvalResolved() {
-        status.resume();
-        status.runState(RunState.TOOL_RUNNING, "执行工具…");
+        // 延迟重绘：立即 update 会与输入行重绘交错，导致光标错位
+        status.resumeWith(RunState.TOOL_RUNNING, "执行工具…");
     }
 
     @Override

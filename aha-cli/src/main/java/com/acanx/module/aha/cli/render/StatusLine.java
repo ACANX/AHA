@@ -67,6 +67,9 @@ final class StatusLine {
 
     private volatile RunState state = RunState.IDLE;
 
+    /** 是否处于暂停（授权问答 / printAbove 期间）：暂停时不重绘、不启动 ticker。 */
+    private boolean suspended;
+
     private String detail;
 
     private String summary;
@@ -143,9 +146,12 @@ final class StatusLine {
         detail = text;
         summary = null;
         stateStartedAt = System.nanoTime();
-        paint();
-        if (task == null) {
-            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS);
+        if (!suspended) {
+            paint();
+            if (task == null) {
+                task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                        TimeUnit.MILLISECONDS);
+            }
         }
     }
 
@@ -207,6 +213,7 @@ final class StatusLine {
             task.cancel(false);
             task = null;
         }
+        suspended = false;
         state = RunState.IDLE;
         detail = null;
         summary = null;
@@ -225,12 +232,38 @@ final class StatusLine {
         if (!enabled) {
             return;
         }
+        suspended = false;
         if (state == RunState.IDLE) {
             surface.update(List.of(rule(), fieldLine(), staticLine()));
-        } else {
-            surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
+            return;
         }
-        if (state != RunState.IDLE && task == null) {
+        // 不立即 update：交给 120ms 后的 ticker，避免与 readLine 的输入行重绘竞争
+        if (task == null) {
+            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 恢复并切换状态：只更新状态、重启 ticker，不立即重绘。
+     *
+     * <p>审批结束后立刻 {@code update} 会与主线程的输入行重绘交错，
+     * 导致光标落到错误行；延迟到 ticker 再由 {@link #paint()} 刷新。</p>
+     *
+     * @param next 目标状态
+     * @param text 状态文案
+     */
+    synchronized void resumeWith(RunState next, String text) {
+        if (!enabled || next == null) {
+            return;
+        }
+        suspended = false;
+        cancelIdle();
+        state = next;
+        detail = text;
+        summary = null;
+        stateStartedAt = System.nanoTime();
+        if (task == null) {
             task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
                     TimeUnit.MILLISECONDS);
         }
@@ -245,8 +278,7 @@ final class StatusLine {
         if (!enabled) {
             return;
         }
-        // 只停 ticker，不让出底部区域：hide() 会让 Status 高度收缩/恢复，
-        // 授权问答回车后输入行会落到错误位置（覆盖倒数第二、三行）
+        suspended = true;
         if (task != null) {
             task.cancel(false);
             task = null;
@@ -257,7 +289,7 @@ final class StatusLine {
      * 刷新一帧。
      */
     synchronized void paint() {
-        if (!enabled || state == RunState.IDLE) {
+        if (!enabled || suspended || state == RunState.IDLE) {
             return;
         }
         surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
