@@ -11,6 +11,9 @@
 ## [Unreleased]
 
 ### 修复
+- **桌面端删除会话后立刻重建空会话（2026-10-19）**：
+  - `AhaDesktopApp.onSessionDelete` 不再调用 `controller.newSession()`；
+  - 仅当删除的是当前会话时才清空对话区，后续发送才懒创建新会话。
 - **桌面端「检查更新」查不到快照包（2026-10-19）**：
   - `ChannelContract.tag(ALPHA, ...)` 的目标词由小写 `desktop-jvm` 改为大写驼峰 `Desktop-JVM`，
     与 `SnapshotJVM` 工作流实际产出的 tag 一致；

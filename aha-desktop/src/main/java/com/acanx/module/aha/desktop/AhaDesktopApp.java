@@ -400,9 +400,13 @@ public final class AhaDesktopApp extends Application {
             refreshSessions(shell, controller);
         });
         shell.onSessionDelete(sessionId -> {
+            // 删完不再立刻重建会话：当前会话已由 deleteSession 置空，
+            // 用户真正发消息时才由懒创建落库（否则删一个就多一个空会话）。
+            boolean current = sessionId != null && sessionId.equals(controller.sessionId());
             controller.deleteSession(sessionId);
-            controller.newSession();
-            shell.clearConversation();
+            if (current) {
+                shell.clearConversation();
+            }
             shell.appendNotice("已删除会话 " + shortId(sessionId) + " 及其消息。");
             refreshSessions(shell, controller);
         });
