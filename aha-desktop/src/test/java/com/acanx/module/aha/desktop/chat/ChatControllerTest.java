@@ -148,8 +148,10 @@ class ChatControllerTest {
         String second = controller.newSession();
 
         assertThat(service.closed).containsExactly(first);
-        assertThat(second).isNotEqualTo(first);
-        assertThat(service.created).hasSize(2);
+        // 懒创建：newSession 不落库，首次发送时才创建
+        assertThat(second).isNull();
+        assertThat(controller.sessionId()).isNull();
+        assertThat(service.created).hasSize(1);
     }
 
     @Test

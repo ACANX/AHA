@@ -379,10 +379,31 @@ public final class AhaDesktopApp extends Application {
             refreshSessions(shell, controller);
         });
 
+        controller.onSessionChanged(() ->
+                dispatcher.dispatch(() -> refreshSessions(shell, controller)));
+
+        shell.setWorkspaces(settings.workspaces());
+        shell.onAddWorkspace(path -> {
+            settings.addWorkspace(path);
+            settings.save();
+            shell.addWorkspace(path);
+            refreshSessions(shell, controller);
+        });
+
+        shell.onNewSessionIn(workspace -> {
+            controller.newSession(workspace);
+            shell.clearConversation();
+            shell.appendNotice(workspace == null
+                    ? "已切换到新会话，发送首条消息后出现在会话列表。"
+                    : "已切换到 " + workspace + " 下的新会话，发送首条消息后出现在列表中。");
+            refreshSessions(shell, controller);
+        });
+
         // 会话列表：左栏展示 + 切换 + 重命名 + 删除 + 导出（GUIDesign 第 4.5 节）
         shell.onSessionSelected(sessionId -> {
             int shown = controller.openSession(sessionId);
-            shell.appendNotice("已切换到会话 " + shortId(sessionId) + "，回放 " + shown + " 条消息。");
+            shell.appendNotice("已切换到会话 " + shortId(sessionId) + "，回放 " + shown
+                    + " 条消息；可直接继续输入。");
             refreshSessions(shell, controller);
         });
         shell.onSessionRename((sessionId, title) -> {
@@ -390,9 +411,13 @@ public final class AhaDesktopApp extends Application {
             refreshSessions(shell, controller);
         });
         shell.onSessionDelete(sessionId -> {
+            // 删完不再立刻重建会话：当前会话已由 deleteSession 置空，
+            // 用户真正发消息时才由懒创建落库（否则删一个就多一个空会话）。
+            boolean current = sessionId != null && sessionId.equals(controller.sessionId());
             controller.deleteSession(sessionId);
-            controller.newSession();
-            shell.clearConversation();
+            if (current) {
+                shell.clearConversation();
+            }
             shell.appendNotice("已删除会话 " + shortId(sessionId) + " 及其消息。");
             refreshSessions(shell, controller);
         });

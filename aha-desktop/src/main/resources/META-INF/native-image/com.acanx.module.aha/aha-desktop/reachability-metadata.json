@@ -479,6 +479,7 @@
     {"type": "javafx.scene.control.Tab", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.TabPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.TextArea", "allDeclaredConstructors": true, "allDeclaredMethods": true},
+    {"type": "javafx.scene.control.TitledPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.ScrollPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.ListView", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.MenuBar", "allDeclaredConstructors": true, "allDeclaredMethods": true},
