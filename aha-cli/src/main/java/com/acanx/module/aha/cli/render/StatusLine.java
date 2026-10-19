@@ -219,7 +219,7 @@ final class StatusLine {
         summary = null;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
-        surface.update(List.of(rule(), fieldLine(), staticLine()));
+        surface.update(List.of(rule(), combinedLine()));
     }
 
     /**
@@ -234,7 +234,7 @@ final class StatusLine {
         }
         suspended = false;
         if (state == RunState.IDLE) {
-            surface.update(List.of(rule(), fieldLine(), staticLine()));
+            surface.update(List.of(rule(), combinedLine()));
             return;
         }
         // 不立即 update：交给 120ms 后的 ticker，避免与 readLine 的输入行重绘竞争
@@ -292,7 +292,7 @@ final class StatusLine {
         if (!enabled || suspended || state == RunState.IDLE) {
             return;
         }
-        surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
+        surface.update(List.of(dynamicLine(), combinedLine()));
         frame++;
     }
 
@@ -332,26 +332,29 @@ final class StatusLine {
      *
      * @return 文案
      */
-    private String fieldLine() {
-        String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
-        String location = status.location();
-        String text = " " + id;
-        if (!location.isEmpty()) {
-            text += "  ·  " + location;
-        }
-        return clamp(text);
-    }
-
     /**
-     * 静态指标行：模式 / 供应商 / 档位 / 模型 / 强度。
+     * 合并行：会话 ID · 目录 (分支) · 静态指标。
+     *
+     * <p>JLine {@code Status} 的多行在 {@code printAbove} 场景下会叠加错位，
+     * 因此这里压成两行（动态横线 + 合并行），而不是三行。</p>
      *
      * <p>前导一个空格：JLine {@code Status} 的第一列在部分终端上会被占用，
      * 不加空格时首个字符会被吞掉（曾出现「自动」显示成「动」）。</p>
      *
      * @return 文案
      */
-    private String staticLine() {
-        return " " + status.summary(width);
+    private String combinedLine() {
+        String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
+        StringBuilder text = new StringBuilder(" ").append(id);
+        String location = status.location();
+        if (!location.isEmpty()) {
+            text.append("  ·  ").append(location);
+        }
+        String summary = status.summary(width);
+        if (!summary.isEmpty()) {
+            text.append("  ·  ").append(summary);
+        }
+        return clamp(text.toString());
     }
 
     /**
