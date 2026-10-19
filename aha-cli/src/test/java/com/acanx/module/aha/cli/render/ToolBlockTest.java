@@ -186,10 +186,40 @@ class ToolBlockTest {
     }
 
     @Test
+    void blockLinesShareOneBackground() {
+        Style style = Style.of(ColorDepth.ANSI256);
+
+        String head = ToolBlock.head("file-read", Map.of("path", "a.txt"), style, 40);
+        String command = ToolBlock.command("ls -la", style, ENV, 40);
+        List<String> details = ToolBlock.details("file-read", Map.of("path", "a.txt"),
+                style, 40, ENV);
+        List<String> body = ToolBlock.body("hello", style, 40, 5, true, ToolKind.READ);
+        String result = ToolBlock.result(true, "1 行", style, 40, true);
+
+        // 同一块内每行都铺同一底色，且整行铺满（块内不出现深浅断层）
+        for (String line : details) {
+            assertThat(line).contains("\u001B[48;5;236m");
+            assertThat(TextWidth.width(strip(line))).isEqualTo(39);
+        }
+        for (String line : body) {
+            assertThat(line).contains("\u001B[48;5;236m");
+            assertThat(TextWidth.width(strip(line))).isEqualTo(39);
+        }
+        assertThat(head).contains("\u001B[48;5;236m");
+        assertThat(command).contains("\u001B[48;5;236m");
+        assertThat(result).contains("\u001B[48;5;236m");
+    }
+
+    /** 去掉 ANSI 序列后的纯文本。 */
+    private static String strip(String text) {
+        return text.replaceAll("\u001B\\[[0-9;]*m", "");
+    }
+
+    @Test
     void bodyIsCappedAndReportsTheTotal() {
         String content = String.join("\n", "l1", "l2", "l3", "l4", "l5", "l6", "l7");
 
-        List<String> lines = ToolBlock.body(content, PLAIN, 0, 3, true);
+        List<String> lines = ToolBlock.body(content, PLAIN, 0, 3, true, null);
 
         assertThat(lines).hasSize(4);
         assertThat(lines.get(0)).contains("l1");
@@ -201,7 +231,7 @@ class ToolBlockTest {
         // 回归：此前按终端宽度硬截断，后面的内容「完全看不到」
         String content = "a".repeat(50) + "-TAIL";
 
-        List<String> lines = ToolBlock.body(content, PLAIN, 20, 10, false);
+        List<String> lines = ToolBlock.body(content, PLAIN, 20, 10, false, null);
 
         assertThat(lines.size()).isGreaterThan(1);
         assertThat(join(lines)).contains("-TAIL");
@@ -212,8 +242,8 @@ class ToolBlockTest {
 
     @Test
     void bodySkipsBlankOrMissingOutput() {
-        assertThat(ToolBlock.body(null, PLAIN, 0, 5, true)).isEmpty();
-        assertThat(ToolBlock.body("   ", PLAIN, 0, 5, true)).isEmpty();
+        assertThat(ToolBlock.body(null, PLAIN, 0, 5, true, null)).isEmpty();
+        assertThat(ToolBlock.body("   ", PLAIN, 0, 5, true, null)).isEmpty();
     }
 
     @Test
@@ -242,7 +272,7 @@ class ToolBlockTest {
 
     @Test
     void failureBodyIsNotDimmed() {
-        List<String> lines = ToolBlock.body("boom", Style.of(true), 0, 40, false);
+        List<String> lines = ToolBlock.body("boom", Style.of(true), 0, 40, false, null);
 
         // 成功预览用弱化色，错误正文不着色，保证可读
         assertThat(lines.get(0)).isEqualTo("  boom");
