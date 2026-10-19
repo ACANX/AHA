@@ -64,6 +64,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -126,6 +127,9 @@ public final class DesktopShell implements ChatView {
 
     /** 中栏顶部的当前会话标题 / 元信息。 */
     public static final String CONVERSATION_HEADER_ID = "aha.conversation.header";
+
+    /** 中栏输入框下方的当前会话工作目录（含 git 分支）。 */
+    public static final String CONVERSATION_PATH_ID = "aha.conversation.path";
 
     /** 消息流右键菜单「复制全部消息」的 id。 */
     public static final String MESSAGES_COPY_ALL_ID = "aha.messages.copy.all";
@@ -508,6 +512,9 @@ public final class DesktopShell implements ChatView {
 
     @FXML
     private Label conversationHeader;
+
+    @FXML
+    private Label conversationPath;
 
     /** 左栏「工作空间」折叠面板。 */
     @FXML
@@ -1724,6 +1731,67 @@ public final class DesktopShell implements ChatView {
                     + SessionList.meta(current.messageCount(), current.createdAt(),
                     System.currentTimeMillis()));
         }
+
+        String workspace = current == null ? null : current.workspace();
+        boolean showPath = workspace != null && !workspace.isBlank();
+        conversationPath.setVisible(showPath);
+        conversationPath.setManaged(showPath);
+        if (showPath) {
+            String branch = gitBranch(workspace);
+            conversationPath.setText(branch == null ? workspace : workspace + "　·　" + branch);
+        }
+    }
+
+    /**
+     * 取工作目录所在 git 仓库的当前分支。
+     *
+     * <p>直接读 {@code .git/HEAD}，不启动 git 进程：刷新会话时调用，不能阻塞 UI。
+     * 支持普通仓库（{@code .git} 目录）与 worktree（{@code .git} 文件）。</p>
+     *
+     * @param workspace 工作目录
+     * @return 分支名；不是 git 仓库或读取失败返回 {@code null}
+     */
+    private static String gitBranch(String workspace) {
+        Path current;
+        try {
+            current = Path.of(workspace).toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        while (current != null) {
+            Path dotGit = current.resolve(".git");
+            if (Files.isDirectory(dotGit)) {
+                return readGitHead(dotGit.resolve("HEAD"));
+            }
+            if (Files.isRegularFile(dotGit)) {
+                try {
+                    String line = Files.readString(dotGit).strip();
+                    if (line.startsWith("gitdir:")) {
+                        Path gitDir = current.resolve(line.substring("gitdir:".length()).strip());
+                        return readGitHead(gitDir.resolve("HEAD"));
+                    }
+                } catch (IOException e) {
+                    return null;
+                }
+                return null;
+            }
+            current = current.getParent();
+        }
+        return null;
+    }
+
+    private static String readGitHead(Path head) {
+        try {
+            String text = Files.readString(head).strip();
+            if (text.startsWith("ref:")) {
+                String ref = text.substring("ref:".length()).strip();
+                int slash = ref.lastIndexOf('/');
+                return slash >= 0 ? ref.substring(slash + 1) : ref;
+            }
+            return text.length() > 7 ? text.substring(0, 7) : text;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /** 按工作空间分组渲染会话：当前项目优先；纯聊天留在主会话列表，不进工作空间。 */
@@ -1990,6 +2058,12 @@ public final class DesktopShell implements ChatView {
         conversationHeader.setManaged(false);
         themed(conversationHeader, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 12px;"
                 + "-fx-padding: 0 0 4 2;");
+
+        conversationPath.setId(CONVERSATION_PATH_ID);
+        conversationPath.setVisible(false);
+        conversationPath.setManaged(false);
+        themed(conversationPath, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;"
+                + "-fx-padding: 2 2 0 2;");
 
         messages.setId(MESSAGES_ID);
         messages.setSpacing(ShellLayout.GAP);
