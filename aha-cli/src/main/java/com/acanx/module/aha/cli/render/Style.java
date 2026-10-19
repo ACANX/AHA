@@ -188,8 +188,29 @@ public final class Style {
                 ? BAND_16 + "\u001B[97m"
                 : BAND_BG + BAND_FG;
         return java.util.Arrays.stream(text.split("\n", -1))
-                .map(line -> fill(sgr, line.replace(RESET, ""), width))
+                .map(line -> fillBlock(sgr, line.replace(RESET, ""), width))
                 .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    /**
+     * 按可见宽度铺满一行（忽略行内 ANSI 序列）。
+     *
+     * <p>{@link TextWidth#pad} 会把 ANSI 序列的字符计入宽度，含颜色码的行会少补空格；
+     * 这里先剥离 ANSI 计算可见宽度，再补空格，最后统一收尾。</p>
+     */
+    private static String fillBlock(String sgr, String line, int width) {
+        String body = line;
+        if (width > 0) {
+            int limit = Math.max(0, width - 1);
+            int visible = TextWidth.width(stripAnsi(line));
+            body = line + " ".repeat(Math.max(0, limit - visible));
+        }
+        return sgr + body + RESET;
+    }
+
+    /** 去掉 ANSI SGR 序列。 */
+    private static String stripAnsi(String text) {
+        return text.replaceAll("\u001B\\[[0-9;]*m", "");
     }
 
     /**
