@@ -16,6 +16,7 @@
   - 会话列表纵向滚动条宽度由默认约 14px 降到 7px（暗色 / 亮色主题同步）；
   - `ShellLayout` 新增 `LEFT_MIN_WIDTH` / `LEFT_MAX_WIDTH` / `SPLITTER_WIDTH` / `clampLeftWidth`；
   - `FoldState` 支持 `setExpandedWidth`，拖拽后折叠再展开仍保持新宽度。
+  - 移除「记忆」「扩展」导航按钮及其提示中的「（0.2 后续）」字样，按正式功能入口展示。
 
 ## [0.1.5] - 待发布
 

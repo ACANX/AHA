@@ -1406,8 +1406,8 @@ public final class DesktopShell implements ChatView {
         navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
         navButton(providerButton, "供应商", this::openProviderDialog);
         navButton(toolsButton, "工具", this::openToolDialog);
-        navButton(memoryButton, "记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。"));
-        navButton(extensionButton, "扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。"));
+        navButton(memoryButton, "记忆", () -> appendNotice("记忆面板尚未接入。"));
+        navButton(extensionButton, "扩展", () -> appendNotice("扩展面板尚未接入。"));
         navButton(logButton, "日志", this::openLogPanel);
         navButton(settingsButton, "⚙ 设置", this::openSettings);
         VBox.setVgrow(leftSpacer, Priority.ALWAYS);
