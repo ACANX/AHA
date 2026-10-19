@@ -128,7 +128,8 @@ public final class ChannelContract {
             case STABLE -> "V" + version.value();
             case BETA -> "V" + version.value() + NATIVE_TAG_INFIX + kind.tagSuffix();
             // 2026-10-17 起快照 tag 不再带 `-SNAPSHOT`：5 段版本已能区分（issue #269）。
-            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.tagSuffix();
+            // 目标词用大写驼峰（`-AHA-Desktop-JVM`），与 SnapshotJVM 工作流实际产出的 tag 一致。
+            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.targetWord();
         };
     }
 
@@ -304,6 +305,9 @@ public final class ChannelContract {
     private static String[] tagPatterns(ReleaseChannel channel, UpdateKind kind) {
         String current = "^V" + VERSION_GROUP + Pattern.quote(NATIVE_TAG_INFIX + kind.tagSuffix()) + "$";
         String currentSnapshot = "^V" + VERSION_GROUP
+                + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.targetWord()) + "$";
+        // 兼容曾生成过的小写目标词快照（`-AHA-desktop-jvm`）。
+        String currentSnapshotLower = "^V" + VERSION_GROUP
                 + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix()) + "$";
         // 兼容历史上带 `-SNAPSHOT` 的快照 tag（大写目标词与上一版的小写目标词两种写法）。
         String legacySnapshotUpper = "^V" + VERSION_GROUP
@@ -319,7 +323,8 @@ public final class ChannelContract {
                     ? new String[]{current}
                     : new String[]{current,
                             "^V" + VERSION_GROUP + Pattern.quote(JVM_TAG_SUFFIX) + "$"};
-            case ALPHA -> new String[]{currentSnapshot, legacySnapshotUpper, legacySnapshotLower};
+            case ALPHA -> new String[]{currentSnapshot, currentSnapshotLower,
+                    legacySnapshotUpper, legacySnapshotLower};
         };
     }
 

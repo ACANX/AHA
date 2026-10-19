@@ -10,6 +10,13 @@
 
 ## [Unreleased]
 
+### 修复
+- **桌面端「检查更新」查不到快照包（2026-10-19）**：
+  - `ChannelContract.tag(ALPHA, ...)` 的目标词由小写 `desktop-jvm` 改为大写驼峰 `Desktop-JVM`，
+    与 `SnapshotJVM` 工作流实际产出的 tag 一致；
+  - `versionOfTag(ALPHA, ...)` 同时接受大写（`-AHA-Desktop-JVM`）与小写（`-AHA-desktop-jvm`）两种写法；
+  - 修复 `V0.1.5.00380.10200208-AHA-Desktop-JVM` 在桌面端 Alpha 通道查不到的问题。
+
 ### 新增
 - **会话记录工作空间（issue #379 阶段 1）**：
   - `SessionSummary` 新增 `workspace`（保留兼容构造器），纯聊天会话为 `null`；
