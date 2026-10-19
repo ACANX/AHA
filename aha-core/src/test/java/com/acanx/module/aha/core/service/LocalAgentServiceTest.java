@@ -90,6 +90,17 @@ class LocalAgentServiceTest {
     }
 
     @Test
+    void createSessionRecordsProjectWorkspace() {
+        newService(null);
+        String id = service.createSession(new SessionConfig("m", null, Map.of()));
+
+        assertThat(service.listSessions())
+                .filteredOn(s -> s.id().equals(id))
+                .singleElement()
+                .satisfies(s -> assertThat(s.workspace()).isNotBlank());
+    }
+
+    @Test
     void chatReturnsResponseAndPersistsHistory() {
         newService(null);
         llm.enqueue(ScriptedLlmClient.text("hi there"));

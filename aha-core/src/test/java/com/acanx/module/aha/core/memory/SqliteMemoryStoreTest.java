@@ -204,6 +204,24 @@ class SqliteMemoryStoreTest {
     }
 
     @Test
+    void listsWorkspaceFromSessionConfig() {
+        store.createSession("w1", "{\"Extras\":{\"workspace\":\"E:/proj\"}}");
+
+        assertThat(store.listSessions()).filteredOn(s -> s.id().equals("w1"))
+                .singleElement()
+                .satisfies(s -> assertThat(s.workspace()).isEqualTo("E:/proj"));
+    }
+
+    @Test
+    void missingWorkspaceIsReportedAsNull() {
+        store.createSession("w2", "{}");
+
+        assertThat(store.listSessions()).filteredOn(s -> s.id().equals("w2"))
+                .singleElement()
+                .satisfies(s -> assertThat(s.workspace()).isNull());
+    }
+
+    @Test
     void sessionsWithoutMessagesFallBackToPlaceholder() {
         assertThat(store.listSessions()).singleElement()
                 .satisfies(s -> assertThat(s.title())
