@@ -23,7 +23,7 @@ class StatusBarTest {
                 "model-x", "high", "C:\\work\\AHA\\GitRepo\\ACANX", "dev");
 
         assertThat(bar.text(0)).isEqualTo(
-                "自动 · DeepSeek · Standard · model-x · high · C:\\work\\AHA\\GitRepo\\ACANX (dev)");
+                "自动 · DeepSeek · Standard · model-x · high · C:/work/AHA/GitRepo/ACANX (dev)");
     }
 
     @Test
@@ -46,7 +46,7 @@ class StatusBarTest {
         assertThat(StatusBar.shorten("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA"))
                 .isEqualTo("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA");
         assertThat(StatusBar.shorten("/a/b")).isEqualTo("/a/b");
-        assertThat(StatusBar.shorten("C:\\a\\b")).isEqualTo("C:\\a\\b");
+        assertThat(StatusBar.shorten("C:\\a\\b")).isEqualTo("C:/a/b");
         assertThat(StatusBar.shorten("")).isEqualTo("-");
     }
 

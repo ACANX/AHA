@@ -224,13 +224,15 @@ public final class StatusBar {
         if (cwd == null || cwd.isBlank()) {
             return MISSING;
         }
-        if (cwd.length() <= MAX_PATH_CHARS) {
-            return cwd;
+        // 统一用 `/`：Windows 的 `\` / `\\` 在状态栏里看起来像转义，跨平台也不一致
+        String normalized = cwd.replace('\\', '/');
+        if (normalized.length() <= MAX_PATH_CHARS) {
+            return normalized;
         }
         int keep = MAX_PATH_CHARS - 1;   // 留一个字符给中间的省略号
         int head = keep / 2;
         int tail = keep - head;
-        return cwd.substring(0, head) + "…" + cwd.substring(cwd.length() - tail);
+        return normalized.substring(0, head) + "…" + normalized.substring(normalized.length() - tail);
     }
 
     private static String missingAsDash(String value) {
