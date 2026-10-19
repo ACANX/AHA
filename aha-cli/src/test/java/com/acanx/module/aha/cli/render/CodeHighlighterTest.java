@@ -39,6 +39,13 @@ class CodeHighlighterTest {
         assertThat(CodeHighlighter.highlight("echo hi", "shell", COLOR)).contains("\u001B[");
         assertThat(CodeHighlighter.highlight("SELECT * FROM t", "sql", COLOR)).contains("\u001B[");
         assertThat(CodeHighlighter.highlight("<a href=\"x\">", "xml", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("func main() {}", "go", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("fn main() {}", "rust", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("public class A {}", "csharp", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("int main() { return 0; }", "c", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("class A {};", "cpp", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("<?php echo 1;", "php", COLOR)).contains("\u001B[");
+        assertThat(CodeHighlighter.highlight("def hello", "ruby", COLOR)).contains("\u001B[");
     }
 
     @Test

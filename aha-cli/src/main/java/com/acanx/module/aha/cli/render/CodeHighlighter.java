@@ -129,7 +129,47 @@ final class CodeHighlighter {
                 "index", "and", "or", "not", "null", "is", "in", "like", "as", "distinct",
                 "union", "all"), "--", false),
 
-        XML(Set.of(), "<!--", false);
+        XML(Set.of(), "<!--", false),
+
+        GO(Set.of("package", "import", "func", "var", "const", "type", "struct", "interface",
+                "map", "chan", "go", "defer", "select", "case", "switch", "for", "if", "else",
+                "return", "range", "break", "continue", "fallthrough", "nil", "true", "false"),
+                "//", false),
+
+        RUST(Set.of("fn", "let", "mut", "const", "static", "struct", "enum", "impl", "trait",
+                "pub", "use", "mod", "match", "if", "else", "for", "while", "loop", "break",
+                "continue", "return", "self", "super", "crate", "as", "where", "dyn", "async",
+                "await", "move", "ref", "type", "unsafe", "extern", "true", "false"),
+                "//", false),
+
+        CSHARP(Set.of("using", "namespace", "class", "interface", "struct", "enum", "public",
+                "private", "protected", "internal", "static", "readonly", "const", "void", "int",
+                "string", "bool", "var", "new", "return", "if", "else", "for", "foreach", "while",
+                "do", "switch", "case", "break", "continue", "try", "catch", "finally", "throw",
+                "async", "await", "null", "true", "false"), "//", false),
+
+        C(Set.of("include", "define", "int", "void", "char", "float", "double", "struct",
+                "union", "enum", "typedef", "static", "const", "return", "if", "else", "for",
+                "while", "do", "switch", "case", "break", "continue", "goto", "sizeof"),
+                "//", false),
+
+        CPP(Set.of("include", "define", "int", "void", "char", "float", "double", "struct",
+                "union", "enum", "typedef", "static", "const", "return", "if", "else", "for",
+                "while", "do", "switch", "case", "break", "continue", "goto", "sizeof", "class",
+                "namespace", "template", "public", "private", "protected", "virtual", "override",
+                "new", "delete", "this", "nullptr", "true", "false", "using", "std", "auto"),
+                "//", false),
+
+        PHP(Set.of("function", "class", "interface", "extends", "implements", "public",
+                "private", "protected", "static", "const", "return", "if", "else", "elseif",
+                "for", "foreach", "while", "do", "switch", "case", "break", "continue", "echo",
+                "print", "new", "try", "catch", "finally", "throw", "null", "true", "false",
+                "namespace", "use", "array", "isset", "empty"), "//", false),
+
+        RUBY(Set.of("def", "class", "module", "end", "if", "elsif", "else", "unless", "while",
+                "until", "for", "do", "begin", "rescue", "ensure", "return", "yield", "puts",
+                "require", "include", "extend", "attr_reader", "attr_writer", "attr_accessor",
+                "nil", "true", "false", "self"), "#", false);
 
         private final Set<String> keywords;
         private final String lineComment;
@@ -175,6 +215,13 @@ final class CodeHighlighter {
                 case "shell", "bash", "sh", "zsh" -> SHELL;
                 case "sql" -> SQL;
                 case "xml", "html" -> XML;
+                case "go", "golang" -> GO;
+                case "rust", "rs" -> RUST;
+                case "csharp", "cs", "c#" -> CSHARP;
+                case "c" -> C;
+                case "cpp", "c++", "cc", "cxx" -> CPP;
+                case "php" -> PHP;
+                case "ruby", "rb" -> RUBY;
                 default -> null;
             };
         }

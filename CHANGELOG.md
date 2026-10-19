@@ -41,7 +41,8 @@
 
 ### 新增
 - **围栏代码语法高亮（issue #336）**：
-  - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML；
+  - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML /
+    Go / Rust / C# / C / C++ / PHP / Ruby；
   - 单行内区分关键字 / 字符串 / 注释 / 数字，不改变行数与换行；
   - 未知语言或未标语言回退纯文本；无色终端不产生 ANSI。
 - **工具调用分块展示：块内同底色 + 块间间隙（issue #326）**：
