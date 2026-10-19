@@ -457,6 +457,14 @@ public final class DesktopShell implements ChatView {
     @FXML
     private Label sessionSection;
 
+    /** 左栏「工作空间」折叠面板。 */
+    @FXML
+    private TitledPane workspacePane;
+
+    /** 工作空间内的分组容器。 */
+    @FXML
+    private VBox workspaceList;
+
     @FXML
     private VBox centerColumn;
 
