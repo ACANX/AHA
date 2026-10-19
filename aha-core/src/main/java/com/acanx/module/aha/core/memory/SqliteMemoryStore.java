@@ -326,6 +326,17 @@ public final class SqliteMemoryStore implements MemoryStore {
     }
 
     @Override
+    public int deleteEmptySessions() {
+        String sql = "DELETE FROM session WHERE id NOT IN "
+                + "(SELECT DISTINCT session_id FROM message)";
+        try (Statement st = connection.createStatement()) {
+            return st.executeUpdate(sql);
+        } catch (SQLException e) {
+            throw new AhaException("DB_CLEANUP_FAILED", "清理空会话失败", e);
+        }
+    }
+
+    @Override
     public void updateSessionTitle(String sessionId, String title) {
         String sql = "UPDATE session SET title = ? WHERE id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {

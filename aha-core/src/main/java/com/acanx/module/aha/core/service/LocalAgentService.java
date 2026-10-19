@@ -163,6 +163,11 @@ public final class LocalAgentService implements AgentService {
 
     @Override
     public List<SessionSummary> listSessions() {
+        // 顺手清掉历史遗留的空会话：没有标题、没有消息的条目在列表里没有价值
+        int removed = sessionManager.cleanupEmptySessions();
+        if (removed > 0) {
+            LOG.info("已清理空会话 {} 个", removed);
+        }
         return sessionManager.list();
     }
 

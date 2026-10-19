@@ -114,6 +114,15 @@ public final class SessionManager {
     }
 
     /**
+     * 清理没有任何消息的会话。
+     *
+     * @return 删除的会话数
+     */
+    public int cleanupEmptySessions() {
+        return memoryStore.deleteEmptySessions();
+    }
+
+    /**
      * 列出会话摘要（最近创建的在前），供会话列表展示。
      *
      * @return 会话摘要

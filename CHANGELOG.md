@@ -25,6 +25,10 @@
   - 组内会话显示「● 进行中 / ○ 已结束」；
   - 点击已结束会话即打开并回放历史，可直接继续输入；
   - 提示补上「可直接继续输入」。
+- **清理无内容会话（2026-10-19）**：
+  - 桌面端「新建会话」改为**懒创建**：只关闭旧会话，首次发送时才落库，不再每次开窗/新建都产生空会话；
+  - `MemoryStore.deleteEmptySessions()` / `SessionManager.cleanupEmptySessions()`；
+  - `LocalAgentService.listSessions()` 返回前自动清理没有消息的会话，历史遗留的空条目随之消失。
 
 ## [0.1.5] - 待发布
 

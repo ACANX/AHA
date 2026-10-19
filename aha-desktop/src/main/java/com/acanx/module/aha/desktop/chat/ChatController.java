@@ -142,14 +142,18 @@ public final class ChatController {
     /**
      * 开启新会话（换供应商 / 换模型后调用）。
      *
-     * @return 新会话 ID
+     * <p><b>懒创建</b>：这里只关闭旧会话并把当前会话置空，真正的记录在首次发送时
+     * 才由 {@link #ensureSession()} 落库——否则每开一次窗口、每点一次「新建会话」
+     * 都会留下一条没有标题、没有消息的空会话。</p>
+     *
+     * @return 始终为 {@code null}（尚未创建）；保留返回值以便调用方兼容
      */
     public synchronized String newSession() {
         if (sessionId != null) {
             service.closeSession(sessionId);
             sessionId = null;
         }
-        return ensureSession();
+        return null;
     }
 
     /**

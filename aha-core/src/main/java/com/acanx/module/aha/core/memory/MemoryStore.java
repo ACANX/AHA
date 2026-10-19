@@ -27,6 +27,18 @@ public interface MemoryStore {
     void createSession(String sessionId, String configJson);
 
     /**
+     * 删除没有任何消息的会话（空会话）。
+     *
+     * <p>桌面端历史上每次启动/新建都会落一条空会话记录，列表里全是无标题条目。
+     * 默认实现不做事，SQLite 实现会真正清理。</p>
+     *
+     * @return 删除的会话数
+     */
+    default int deleteEmptySessions() {
+        return 0;
+    }
+
+    /**
      * 读取会话配置 JSON。
      *
      * <p>用于会话恢复：进程重启后仍能取回该会话固化的系统提示词与模型。

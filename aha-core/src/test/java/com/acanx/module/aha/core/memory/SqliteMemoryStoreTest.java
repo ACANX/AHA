@@ -204,6 +204,17 @@ class SqliteMemoryStoreTest {
     }
 
     @Test
+    void deletesSessionsWithoutMessages() {
+        store.createSession("empty", "{}");
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "hi"));
+
+        assertThat(store.deleteEmptySessions()).isEqualTo(1);
+        assertThat(store.listSessions())
+                .extracting(com.acanx.module.aha.common.model.SessionSummary::id)
+                .containsExactly("s1");
+    }
+
+    @Test
     void listsWorkspaceFromSessionConfig() {
         store.createSession("w1", "{\"Extras\":{\"workspace\":\"E:/proj\"}}");
 
