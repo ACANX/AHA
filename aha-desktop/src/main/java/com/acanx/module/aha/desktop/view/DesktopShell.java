@@ -103,6 +103,12 @@ public final class DesktopShell implements ChatView {
     /** 左栏折叠手柄 id（常驻，可点）。 */
     public static final String LEFT_TOGGLE_ID = "aha.left.toggle";
 
+    /** 左栏窄条：只显示「会话」。 */
+    public static final String LEFT_ONLY_SESSION_ID = "aha.left.only.session";
+
+    /** 左栏窄条：只显示「工作空间」。 */
+    public static final String LEFT_ONLY_WORKSPACE_ID = "aha.left.only.workspace";
+
     /** 左栏内容区 id。 */
     public static final String LEFT_CONTENT_ID = "aha.left.content";
 
@@ -354,7 +360,10 @@ public final class DesktopShell implements ChatView {
     private String currentSessionId;
 
     /** 会话列表单行高度（px）：随条目数计算列表高度用。 */
-    private static final double SESSION_ROW_HEIGHT = 24;
+    private static final double SESSION_ROW_HEIGHT = 30;
+
+    /** 窄条快捷视图：{@code null} 两个都显示，否则只显示其中一个。 */
+    private Boolean onlySessions;
 
     /** 「会话」分组是否展开（与工作空间一样可折叠）。 */
 
@@ -383,6 +392,12 @@ public final class DesktopShell implements ChatView {
 
     @FXML
     private Button leftToggle;
+
+    @FXML
+    private Button sessionOnlyButton;
+
+    @FXML
+    private Button workspaceOnlyButton;
 
     @FXML
     private Button rightToggle;
@@ -451,7 +466,7 @@ public final class DesktopShell implements ChatView {
 
     /** 左栏折叠手柄所在的常驻窄条。 */
     @FXML
-    private HBox leftStrip;
+    private VBox leftStrip;
 
     @FXML
     private Button newSessionButton;
@@ -1505,6 +1520,8 @@ public final class DesktopShell implements ChatView {
         leftStrip.setAlignment(Pos.TOP_CENTER);
         leftStrip.setPadding(new Insets(ShellLayout.GAP, 0, 0, 0));
         leftStrip.setPrefWidth(ShellLayout.TOGGLE_STRIP_WIDTH);
+        leftStrip.setSpacing(4);
+        wirePaneShortcuts();
 
         // 左栏与其窄条的横向顺序由 FXML 决定：窄条在前、内容在后（见 desktop-shell.fxml）
         leftBox.setId(LEFT_ID);
@@ -1624,7 +1641,8 @@ public final class DesktopShell implements ChatView {
                     + (selected ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
                     + "-fx-text-fill: "
                     + (selected ? "#FFFFFF" : (current ? Palette.SUCCESS : Palette.FOREGROUND)) + ";"
-                    + (current ? "-fx-font-weight: bold;" : ""));
+                    + (current ? "-fx-font-weight: bold;" : "")
+                    + "-fx-padding: 2 6 2 6; -fx-font-size: 13px;");
         }
     }
 
@@ -1789,6 +1807,50 @@ public final class DesktopShell implements ChatView {
             group.getChildren().add(link);
         }
         return group;
+    }
+
+    /** 左栏窄条上的「只看会话 / 只看工作空间」快捷按钮。 */
+    private void wirePaneShortcuts() {
+        sessionOnlyButton.setText("会");
+        sessionOnlyButton.setTooltip(new Tooltip("只显示「会话」，再点一次恢复全部"));
+        sessionOnlyButton.setMaxWidth(Double.MAX_VALUE);
+        sessionOnlyButton.setOnAction(event -> showOnly(true));
+        themed(sessionOnlyButton, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + "; -fx-padding: 2 0 2 0;");
+
+        workspaceOnlyButton.setText("空");
+        workspaceOnlyButton.setTooltip(new Tooltip("只显示「工作空间」，再点一次恢复全部"));
+        workspaceOnlyButton.setMaxWidth(Double.MAX_VALUE);
+        workspaceOnlyButton.setOnAction(event -> showOnly(false));
+        themed(workspaceOnlyButton, () -> "-fx-background-color: transparent; -fx-text-fill: "
+                + Palette.MUTED + "; -fx-padding: 2 0 2 0;");
+    }
+
+    /**
+     * 只显示会话或只显示工作空间；再次点击同一按钮恢复两个都显示。
+     *
+     * @param sessions {@code true} 只看会话，{@code false} 只看工作空间
+     */
+    private void showOnly(boolean sessions) {
+        if (!leftFold.isExpanded()) {
+            leftFold.toggle();
+            applyPaneState();
+        }
+        if (onlySessions != null && onlySessions == sessions) {
+            onlySessions = null;
+        } else {
+            onlySessions = sessions;
+        }
+        applyOnlyState();
+    }
+
+    private void applyOnlyState() {
+        boolean showSessions = onlySessions == null || onlySessions;
+        boolean showWorkspace = onlySessions == null || !onlySessions;
+        sessionPane.setVisible(showSessions);
+        sessionPane.setManaged(showSessions);
+        workspacePane.setVisible(showWorkspace);
+        workspacePane.setManaged(showWorkspace);
     }
 
     /** 选择并添加一个工作空间目录。 */

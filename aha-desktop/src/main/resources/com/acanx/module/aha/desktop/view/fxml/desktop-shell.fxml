@@ -116,11 +116,13 @@
                 <!-- 左栏：导航与列表 -->
                 <HBox fx:id="leftBox" id="aha.left">
                     <children>
-                        <HBox fx:id="leftStrip">
+                        <VBox fx:id="leftStrip">
                             <children>
                                 <Button fx:id="leftToggle" id="aha.left.toggle"/>
+                                <Button fx:id="sessionOnlyButton" id="aha.left.only.session"/>
+                                <Button fx:id="workspaceOnlyButton" id="aha.left.only.workspace"/>
                             </children>
-                        </HBox>
+                        </VBox>
                         <VBox fx:id="leftContent" id="aha.left.content">
                             <children>
                                 <TitledPane fx:id="sessionPane" id="aha.session.pane"
