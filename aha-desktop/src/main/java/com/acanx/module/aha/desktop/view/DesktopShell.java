@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
@@ -1702,8 +1701,8 @@ public final class DesktopShell implements ChatView {
             } else {
                 collapsedWorkspaces.add(workspace);
             }
-            // 事件处理中重建整个面板：推迟到本轮事件结束后
-            Platform.runLater(this::refreshWorkspacePane);
+            // 事件处理中重建整个面板：经 FxDispatcher 推迟到本轮事件结束后
+            dispatcher.dispatch(this::refreshWorkspacePane);
         });
 
         VBox group = new VBox(2, head);
