@@ -92,6 +92,42 @@ class StatusLineTest {
     }
 
     @Test
+    void idleShowsTheThreeItemsWhenStatusBarIsUsed() {
+        // issue #330：空闲帧展示「模式 / 模型与档位 / 工作目录」
+        StatusBar bar = StatusBar.of("deepseek-chat", "Standard", "/a/b/c/d",
+                StatusBar.Mode.AUTO);
+        StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
+
+        status.idle();
+
+        assertThat(surface.last()).isEqualTo("自动 · deepseek-chat/Standard · …/b/c/d");
+    }
+
+    @Test
+    void modeSwitchIsVisibleOnTheNextIdleFrame() {
+        StatusBar bar = StatusBar.of("m", "", "/a/b/c/d", StatusBar.Mode.AUTO);
+        StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
+        status.idle();
+
+        bar.setMode(StatusBar.Mode.FULL);
+        status.idle();
+
+        assertThat(surface.last()).startsWith("完全授权");
+    }
+
+    @Test
+    void busyFrameKeepsThePhaseWhenWidthIsScarce() {
+        StatusBar bar = StatusBar.of("deepseek-chat", "Standard", "/a/b/c/d",
+                StatusBar.Mode.AUTO);
+        StatusLine status = new StatusLine(surface, true, true, 20, bar, Style.of(false));
+
+        status.show("等待响应…");
+
+        // 宽度不够时先保阶段（每秒都在变），三项由空闲帧继续展示
+        assertThat(surface.painted().get(0)).startsWith("⠋ 等待响应…");
+    }
+
+    @Test
     void idleWithoutShowStillShowsIdleText() {
         StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
 

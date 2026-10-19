@@ -252,6 +252,18 @@ public final class LocalAgentService implements AgentService {
         toolRegistry.setApprover(approver);
     }
 
+    /**
+     * 覆盖工具权限策略。
+     *
+     * <p>CLI 的严格模式用它取消一切自动放行（连 READ 都走审批）；
+     * 普通模式不调用，保持配置解析出的策略。</p>
+     *
+     * @param policy 新策略
+     */
+    public void setPermissionPolicy(PermissionPolicy policy) {
+        toolRegistry.setPermissionPolicy(policy);
+    }
+
     @Override
     public ToolResult invokeTool(String toolName, Map<String, Object> params) {
         return toolRegistry.invoke(toolName, params, new CancellationToken());
