@@ -42,8 +42,8 @@ public final class Style {
     /** 删除线。 */
     private static final String STRIKETHROUGH = "\u001B[9m";
 
-    /** 256/真彩下的工具区块底色（暗灰）。 */
-    private static final String BAND_BG = "\u001B[48;5;236m";
+    /** 256/真彩下的工具区块底色（深青）。 */
+    private static final String BAND_BG = "\u001B[48;5;23m";
 
     /** 256/真彩下工具区块的文字色。 */
     private static final String BAND_FG = "\u001B[38;5;253m";
@@ -87,8 +87,8 @@ public final class Style {
     /** 启动标志「AHA」字样色（16 色）：加粗亮黄。 */
     private static final String LOGO_WORD_16 = "\u001B[1;93m";
 
-    /** 16 色下中性区块：亮黑底 + 亮白字。 */
-    private static final String BAND_16 = "\u001B[100;97m";
+    /** 16 色下中性区块：青底 + 黑字（浅色终端也能读）。 */
+    private static final String BAND_16 = "\u001B[46;30m";
 
     private final ColorDepth depth;
 
@@ -271,6 +271,36 @@ public final class Style {
      */
     public String number(String text) {
         return paint(depth == ColorDepth.ANSI16 ? "\u001B[96m" : "\u001B[38;5;180m", text);
+    }
+
+    /**
+     * diff 新增行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffAdd(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[92m" : "\u001B[38;5;114m", text);
+    }
+
+    /**
+     * diff 删除行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffRemove(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[91m" : "\u001B[38;5;203m", text);
+    }
+
+    /**
+     * diff 上下文行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffContext(String text) {
+        return paint(DIM, text);
     }
 
     /**
