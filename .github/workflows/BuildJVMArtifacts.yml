@@ -192,7 +192,7 @@ jobs:
             echo "基线 ${base}，来源 PR #${pr}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── 2. 三条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
+  # ── 2. 六条腿（3 平台 × JDK 25/27）各出自己平台的 JVM 便携包 ──────────────────
   #    每个 runner 只能产出自己平台的桌面端包（JavaFX 原生库按平台分类器发布）；
   #    CLI-JVM 自 issue #269 起也按平台各出一份（三条 jdk25 腿都开 `upload_cli`）。
   # ── 2. 每条腿各出自己平台的 JVM 便携包 ─────────────────────────────────────
@@ -368,6 +368,13 @@ jobs:
           cli=(artifacts/cli/*.zip)
           echo "desktop=${#desktop[@]}" >> "$GITHUB_OUTPUT"
           echo "cli=${#cli[@]}" >> "$GITHUB_OUTPUT"
+          # 断言没有「无法归类」的包：分组只认两种前缀，若将来新增形态或命名漂移，
+          # 那些包会既不发布也不告警 —— 宁可让这次发布失败，也不要静默丢包。
+          leftover=(artifacts/*.zip)
+          if [ "${#leftover[@]}" -gt 0 ]; then
+            echo "::error::有 ${#leftover[@]} 个包不属于任何已知形态，将不会被发布：${leftover[*]}"
+            exit 1
+          fi
           {
             echo ""
             echo "### 拆分后的两条预发行"

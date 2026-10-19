@@ -61,9 +61,10 @@ class ReleaseFilterTest {
     }
 
     @Test
-    void jvmLineCarriesBothDesktopAndCliAssets() {
-        // 0.1.5 之前的 dev 线 JVM 包只出一条 release（`-aha-jvm`），两个形态的资产都在里面，
-        // 因此两个形态看到的是同一批 tag；issue #347 起拆成两条，见 splitJvmReleasesAreSelectedPerKind。
+    void legacyCombinedTagStillMatchesBothKinds() {
+        // 0.1.5 之前的历史形态：一条 `-aha-jvm` release 里装两个形态的资产，
+        // 因此两个形态看到的是同一批 tag。issue #347 起新版本按形态拆成两条，
+        // 新行为见 splitJvmReleasesAreSelectedPerKind。
         List<String> desktop = ReleaseFilter.select(BETA, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM)
                 .stream().map(ReleaseFilter.ChannelRelease::tag).toList();
         List<String> cli = ReleaseFilter.select(BETA, ReleaseChannel.BETA, UpdateKind.CLI_JVM)

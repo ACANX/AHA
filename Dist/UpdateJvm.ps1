@@ -101,6 +101,10 @@ $TagSuffixByKind = @{ Desktop = '-aha-desktop-jvm'; Cli = '-aha-cli-jvm' }
 $LegacyTagSuffix = '-aha-jvm'
 $TagSuffix = $TagSuffixByKind[$Kind]
 $TagSuffixes = @($TagSuffix, $LegacyTagSuffix)
+#: 任一形态的 dev 线 tag 后缀：用来求「全局最新版本」。
+#: 为什么需要：拆分后每个形态一条 release，若本次只出了另一形态的包，
+#: 本形态不能把「上一版」当成最新一版（否则会静默降级，见下方「不静默降级」）。
+$AnyKindTagSuffixes = @($TagSuffixByKind['Desktop'], $TagSuffixByKind['Cli'], $LegacyTagSuffix)
 
 #: 种类表：标题 / 是否按平台挑（CLI 平台无关）/ 落地子目录 / 状态文件 / 资产前缀 / 平铺入口。
 #:
@@ -188,6 +192,18 @@ function Get-TagVersion {
     return $null
 }
 
+# 任一形态（Desktop-JVM / Cli-JVM / 旧合并 `-aha-jvm`）的 tag → 版本号。
+# 只用于「全局最新版本」的判断，不参与资产挑选。
+function Get-AnyKindVersion {
+    param([string]$Name)
+    foreach ($suffix in $AnyKindTagSuffixes) {
+        if (-not $Name.EndsWith($suffix)) { continue }
+        $body = $Name.Substring(0, $Name.Length - $suffix.Length).TrimStart('V', 'v')
+        if ($body -match '^[0-9]+(\.[0-9]+)*$') { return $body }
+    }
+    return $null
+}
+
 # ── 资产名（issue #269）：`aha-<product>-jvm-<版本>-<平台>-jdk<JDK>.zip` ──────────
 #    旧名（0.1.3 / 0.1.4 双发别名）仍返回作为候选：`aha-desktop-<版本>-<平台>[-jdk27].zip`、
 #    `aha-cli-<版本>[-jdk27].zip`（旧 CLI-JVM 是平台无关的一份包）。
@@ -243,7 +259,9 @@ function Get-Releases {
                "设置环境变量 GITHUB_TOKEN 可提高额度。") -f $_.Exception.Message
     }
     # 按发布时间降序；注意不能用 `??`（空合并是 PowerShell 7+ 语法，5.1 会报语法错）。
-    return @($all | Where-Object { (Get-TagVersion $_.tag_name) } |
+    # 收**全部形态**的 dev 线 release：选版要按「全局最新版本」判断，
+    # 本形态的资产挑选仍由 Get-AssetFor 完成（Get-TagVersion 只认本形态）。
+    return @($all | Where-Object { (Get-AnyKindVersion $_.tag_name) } |
         Sort-Object -Property @{ Expression = {
             if ($_.published_at) { [datetime]$_.published_at } else { [datetime]$_.created_at }
         }; Descending = $true })
@@ -278,7 +296,15 @@ if ($Tag) {
 # ── -List：列出最近几版 ─────────────────────────────────────────────────────────
 if ($List) {
     Write-Host ''
+    $latestAny = $null
+    $latestMine = $null
+    foreach ($r in $releases) {
+        $v = Get-AnyKindVersion $r.tag_name
+        if ($latestAny -eq $null) { $latestAny = $v }
+        if ($latestMine -eq $null -and (Get-AssetFor (Complete-Assets $r))) { $latestMine = $v }
+    }
     Write-Host ("{0} 最近的版本（{1} / jdk{2}）：" -f $kindInfo.Title, $Repo, $Jdk)
+    Write-Host ("  全局最新：{0}    本形态最新可用：{1}" -f $latestAny, $(if ($latestMine) { $latestMine } else { '（无）' }))
     $shown = 0
     foreach ($r in $releases) {
         $r = Complete-Assets $r
@@ -298,18 +324,34 @@ if ($List) {
 # 旧实现会一路退到更旧的 release —— 而更旧的包可能是**完全不同的形态**
 # （V0.1.3.00216 还是 `bin\` + `lib\`，没有单体 jar），用户却以为拿的是最新版。
 # 所以：降级必须是用户显式说出口的（`-AllowOlder` / `-Tag`）。
-$newest = Complete-Assets $releases[0]
+# 先求「全局最新版本」（任一形态）：拆分后每个形态一条 release，
+# 若本次只出了另一形态的包，本形态不能把「上一版」当成最新一版（那会静默降级）。
+$latestVersion = $null
+foreach ($r in $releases) {
+    $v = Get-AnyKindVersion $r.tag_name
+    if ($v) { $latestVersion = $v; break }
+}
+
+$newest = $null
 $pick = $null
-$asset = Get-AssetFor $newest
-if ($asset) { $pick = @{ Release = $newest; Asset = $asset } }
+foreach ($r in $releases) {
+    if ((Get-AnyKindVersion $r.tag_name) -ne $latestVersion) { continue }
+    $candidate = Complete-Assets $r
+    $found = Get-AssetFor $candidate
+    if ($found) {
+        $newest = $candidate
+        $pick = @{ Release = $candidate; Asset = $found }
+        break
+    }
+}
 
 if (-not $pick -and $AllowOlder) {
     foreach ($r in $releases) {
-        $r = Complete-Assets $r
-        $asset = Get-AssetFor $r
-        if ($asset) {
-            Write-Host ("[注意] {0} 缺目标资产，按 -AllowOlder 退到 {1}。" -f $newest.tag_name, $r.tag_name) -ForegroundColor Yellow
-            $pick = @{ Release = $r; Asset = $asset }
+        $candidate = Complete-Assets $r
+        $found = Get-AssetFor $candidate
+        if ($found) {
+            Write-Host ("[注意] {0} 缺目标资产，按 -AllowOlder 退到 {1}。" -f $latestVersion, $candidate.tag_name) -ForegroundColor Yellow
+            $pick = @{ Release = $candidate; Asset = $found }
             break
         }
     }
@@ -317,15 +359,21 @@ if (-not $pick -and $AllowOlder) {
 
 if (-not $pick) {
     $platformNote = if ($kindInfo.ByPlatform) { $Platform } else { '平台无关' }
-    $wanted = Get-AssetName (Get-TagVersion $newest.tag_name)
-    Write-Host ("[错误] 最新一版 {0} 里没有{1}（jdk{2} / {3}）的资产。" -f $newest.tag_name, $kindInfo.Title, $Jdk, $platformNote) -ForegroundColor Red
+    $wanted = Get-AssetName $latestVersion
+    Write-Host ("[错误] 最新一版 {0} 里没有{1}（jdk{2} / {3}）的资产。" -f $latestVersion, $kindInfo.Title, $Jdk, $platformNote) -ForegroundColor Red
     Write-Host ("        要的是：{0}" -f $wanted)
-    $siblings = @($newest.assets | Where-Object { $_.name -like ($kindInfo.Prefix + '*') } | ForEach-Object { $_.name })
+    # 「这一版实际有」要跨形态收集：本次可能只出了另一形态的包。
+    $siblings = @()
+    foreach ($r in $releases) {
+        if ((Get-AnyKindVersion $r.tag_name) -ne $latestVersion) { continue }
+        $candidate = Complete-Assets $r
+        $siblings += @($candidate.assets | ForEach-Object { $_.name })
+    }
     if ($siblings.Count -gt 0) {
         Write-Host '        这一版实际有：'
         foreach ($name in $siblings) { Write-Host ("          - {0}" -f $name) }
     } else {
-        Write-Host '        这一版没有任何本种类的资产（该次构建的相关腿可能整体失败了）。'
+        Write-Host '        这一版没有任何资产（该次构建的相关腿可能整体失败了）。'
     }
     Write-Host '        怎么办：'
     Write-Host '          ① 只是 JDK 段不同？用 -Jdk 27'
