@@ -565,7 +565,8 @@ E:\GitRepo\GitHub\ACANX\AHA> powershell -NoProfile -Command "Get-ChildItem
 | 超长命令 | 超过 40 行时**中间**省略，保留首 20 行 + 尾 10 行 | 同上 |
 | 非命令类明细 | 逐条 `键  值`，标签列宽 6，值折行且续行对齐 | `ToolBlock.details` + `TextWidth.wrap` |
 | 参数值上限 | 超过 200 字符只写 `<N 字符，已省略>` | 同上 |
-| 结果区标题 | 成功为 `结果`，失败为 `错误` | `StreamRenderer#print` |
+| 结果区标题 | 成功为 `结果`，失败为 `错误`；写入类为 `差异` / `无改动` | `StreamRenderer#print` |
+| 写入类差异 | 旧内容 vs 新内容行级 diff，`+` / `-` / 空格前缀；只保留改动行前后 3 行 | `ToolBlock.diff` |
 | 成功 / 失败正文 | 超过 500 行折叠，提示「已折叠 N 行（共 M 行）」；499 / 500 行完整显示 | `ToolBlock.body` |
 | 末行 | `✓ 完成 / ✗ 失败 · 耗时 · 规模`；失败时耗时同样显示 | `ToolBlock.result` |
 | 耗时显示阈值 | 成功与失败均为 ≥ 100ms | `ToolBlock.detail` / `failureDetail` |
