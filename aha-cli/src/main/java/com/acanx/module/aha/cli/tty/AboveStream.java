@@ -46,6 +46,9 @@ public final class AboveStream extends OutputStream {
 
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
+    /** 连续空行计数：最多保留 2 个，避免模型返回大量换行时刷屏。 */
+    private int blankRun;
+
     /**
      * 创建行缓冲流。
      *
@@ -143,6 +146,14 @@ public final class AboveStream extends OutputStream {
         buffer.reset();
         LOG.debug("AboveStream emit: {} chars, blank={}: {}", line.length(), line.isBlank(),
                 line.length() <= 80 ? line.replace("\n", "\\n") : line.substring(0, 80) + "…");
+        if (line.isBlank()) {
+            blankRun++;
+            if (blankRun > 2) {
+                return;
+            }
+        } else {
+            blankRun = 0;
+        }
         synchronized (lock) {
             lines.accept(line);
         }
