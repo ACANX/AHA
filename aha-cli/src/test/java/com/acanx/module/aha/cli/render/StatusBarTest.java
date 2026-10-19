@@ -5,19 +5,39 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@link StatusBar} 测试：静态三项的文案、目录截断与宽度压缩（issue #330）。
+ * {@link StatusBar} 测试：字段顺序、缺失占位、目录截断与宽度压缩（issue #330 / #353）。
  *
  * @since 0.1.5
  */
 class StatusBarTest {
 
-    @Test
-    void textContainsModeModelTierAndShortCwd() {
-        StatusBar bar = StatusBar.of("deepseek-chat", "Standard",
-                "C:\\work\\AHA\\GitRepo\\ACANX", StatusBar.Mode.AUTO);
+    private static StatusBar sample() {
+        return StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard", "deepseek-chat", "-",
+                "/a/b/c/d", "dev");
+    }
 
-        assertThat(bar.text(0))
-                .isEqualTo("自动 · deepseek-chat/Standard · …\\AHA\\GitRepo\\ACANX");
+    @Test
+    void textFollowsTheAgreedOrder() {
+        // 模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
+                "deepseek-chat", "high", "C:\\work\\AHA\\GitRepo\\ACANX", "dev");
+
+        assertThat(bar.text(0)).isEqualTo(
+                "自动 · deepseek · Standard · deepseek-chat · high · …\\AHA\\GitRepo\\ACANX (dev)");
+    }
+
+    @Test
+    void missingProviderAndModelFallBackToDash() {
+        StatusBar bar = StatusBar.of(StatusBar.Mode.STRICT, null, null, null, "", "/a/b/c/d", "");
+
+        assertThat(bar.text(0)).isEqualTo("严格 · - · - · - · …/b/c/d");
+    }
+
+    @Test
+    void cwdIsOmittedWhenEmpty() {
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "p", "Pro", "m", "-", "", "");
+
+        assertThat(bar.text(0)).isEqualTo("自动 · p · Pro · m · -");
     }
 
     @Test
@@ -31,25 +51,30 @@ class StatusBarTest {
     }
 
     @Test
-    void emptyModelFallsBackToDash() {
-        assertThat(StatusBar.of(null, null, "/a/b/c/d", StatusBar.Mode.STRICT).text(0))
-                .isEqualTo("严格 · - · …/b/c/d");
+    void wideEnoughKeepsEveryField() {
+        assertThat(sample().text(70))
+                .isEqualTo("自动 · deepseek · Standard · deepseek-chat · - · …/b/c/d (dev)");
     }
 
     @Test
-    void narrowWidthKeepsModeAndDropsDirectoryFirst() {
-        StatusBar bar = StatusBar.of("deepseek-chat", "Standard", "/a/b/c/d",
-                StatusBar.Mode.FULL);
+    void narrowWidthDropsDirectoryThenEffortThenTier() {
+        // 45 列：目录 + 分支先丢，强度随后丢，模式/供应商/档位/模型保留
+        String middle = sample().text(45);
+        assertThat(middle).doesNotContain("…");
+        assertThat(middle).doesNotContain("(dev)");
+        assertThat(middle).doesNotContain(" · -");
+        assertThat(middle).contains("自动 · deepseek · Standard · deepseek-chat");
 
-        String text = bar.text(24);
-
-        assertThat(text).startsWith("完全授权");
-        assertThat(TextWidth.width(text)).isLessThanOrEqualTo(23);
+        // 30 列：档位也丢，仍以「自动 · deepseek」开头
+        String narrow = sample().text(30);
+        assertThat(narrow).startsWith("自动 · deepseek");
+        assertThat(narrow).doesNotContain("Standard");
+        assertThat(TextWidth.width(narrow)).isLessThanOrEqualTo(29);
     }
 
     @Test
     void modeSwitchIsReflectedImmediately() {
-        StatusBar bar = StatusBar.of("m", "", "/a/b/c/d", StatusBar.Mode.AUTO);
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "p", "Pro", "m", "-", "/a/b/c/d", "");
 
         bar.setMode(StatusBar.Mode.FULL);
 

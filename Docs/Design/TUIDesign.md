@@ -280,21 +280,26 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 | 模型与档位 | `--model` 或运行时 `Model`；档位取运行时 `Tier`（Ultra / Pro / Standard / Flash / Fallback），未配置时只显示模型 | 宽度不足时去掉档位 |
 | 工作目录 | 进程启动目录 | 超过 3 层截断为 `…/末三层`；宽度不足时先缩到 1 层 |
 
-#### 布局与示例（issue #330）
+#### 布局与示例（issue #330 / #353）
 
-状态栏占底部保留区的**第二行**（第一行是输入框下边框，两行高度恒定）：
+状态栏占底部保留区的**第二行**（第一行是输入框下边框，两行高度恒定）。字段顺序固定：
 
 ```text
-> 用户输入                                          ← JLine 输入行
-──────────────────────────────────────────────────  ← 保留区第 1 行：输入框下边框
-自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA     ← 保留区第 2 行：状态栏（空闲）
+运行模式 · 供应商 · 档位 · 模型名 · 思考强度 · 目录 (分支)
 ```
 
-忙碌时阶段在前、三项在后（宽度不足时只保阶段）：
+```text
+> 用户输入                                              ← JLine 输入行
+──────────────────────────────────────────────────────  ← 保留区第 1 行：输入框下边框
+自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
+                                                        ← 保留区第 2 行：状态栏（空闲）
+```
+
+忙碌时阶段在前、字段在后（宽度不足时只保阶段）：
 
 ```text
-⠋ 等待响应… · 自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA
-⠸ 执行工具 shell-exec… 1.2s · 完全授权 · glm-4-plus/Pro · …/GitRepo/ACANX/AHA
+⠋ 等待响应… · 自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
+⠸ 执行工具 shell-exec… 1.2s · 完全授权 · openai · Pro · gpt-5 · high · …/AHA (feature/x)
 ```
 
 三档模式（最左段，任何宽度都保留）：
@@ -305,20 +310,43 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 | 完全授权 | `--yes`，或会话内输入 `a` | `完全授权` |
 | 严格 | `--strict` | `严格` |
 
-宽度压缩（`StatusBar.text`，`width - 1` 为上限）：
+字段来源与缺失处理：
+
+| 字段 | 来源 | 缺失时 |
+|---|---|---|
+| 运行模式 | 默认 / `--yes` / `--strict`；会话内 `a` 转完全授权 | — |
+| 供应商 | `RuntimeDescriptor.attributes.Provider`（`Model.yml` 的配置键） | `-`（不省略，供应商是排查「连的是哪个后端」的第一信息） |
+| 档位 | `attributes.Tier`（Ultra / Pro / Standard / Flash / Fallback） | 省略该段 |
+| 模型名 | `--model`，否则 `attributes.Model` | `-` |
+| 思考强度 | **数据源待定**（issue #353） | `-`（不编造「低 / 中 / 高」） |
+| 目录 | 工作目录（未指定时不展示） | 省略目录段 |
+| Git 分支 | 目录向上找 `.git` 读 `HEAD`；detached 显示 7 位短 sha | 不展示 |
+
+宽度压缩（`StatusBar.text`，`width - 1` 为上限）——顺序：
+**目录+分支 → 思考强度 → 档位 → 硬截断**，模式与供应商始终保留：
 
 ```text
-80 列  自动 · deepseek-chat/Standard · …/GitRepo/ACANX/AHA
-40 列  自动 · deepseek-chat/Standard · …/AHA        （目录先缩到 1 层）
-24 列  自动 · deepseek-chat                         （再去掉档位）
-12 列  自动 · deep                （最后按显示宽度硬截断）
+80 列  自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
+43 列  自动 · deepseek · Standard · deepseek-chat          （目录+分支、强度已丢）
+40 列  自动 · deepseek · deepseek-chat                     （档位也丢）
+16 列  自动 · deepseek                                     （按显示宽度硬截断）
 ```
 
-目录截断规则：超过 **3 层** → `…/末三层`（Windows 用 `…\`）：
+目录截断：超过 **3 层** → `…/末三层`（Windows 用 `…\`）：
 
 ```text
 C:\work\AHA\GitRepo\ACANX\AHA   →  …\AHA\GitRepo\ACANX\AHA
 /home/acanx/Agent/CNXNC            →  原样（不足 3 层）
+```
+
+Git 分支探测（`GitBranch`，**不执行 `git` 子进程**）：
+
+```text
+<目录>/.git/HEAD = `ref: refs/heads/dev`         → dev
+                  = `ref: refs/heads/feature/x`  → feature/x
+                  = `<40 位 sha>`                → 前 7 位（detached HEAD）
+.git 是文件（worktree）→ 读 `gitdir:` 指向的目录下的 HEAD
+找不到 .git / 读取失败 → 不展示
 ```
 
 非 TTY（管道 / CI / 重定向）不显示：`StatusSurface.NONE` 时 `StatusLine` 整体关闭，
@@ -798,7 +826,8 @@ CJK_SAMPLE = "中文字符";   // → cjk：决定是否提示切换 UTF-8
 | `ToolKind.java` | 工具分类：标签、判定名单、目标参数 |
 | `ToolBlock.java` | 区块内容：首行、结果行、预览、摘要 |
 | `StatusLine.java` | 状态行：帧、阶段、120ms 节流、截断、静态三项 |
-| `StatusBar.java` | 静态三项：模式 / 模型与档位 / 工作目录、目录截断与宽度压缩 |
+| `StatusBar.java` | 状态栏字段：模式 / 供应商 / 档位 / 模型 / 强度 / 目录(分支)、截断与宽度压缩 |
+| `GitBranch.java` | Git 分支探测：`.git/HEAD`、worktree、detached 短 sha |
 | `MarkdownStream.java` | 流式 Markdown：块级判定 + 行内委托 |
 | `InlineScanner.java` | 行内构造：代码、强调、侧翼规则、递归上限 |
 | `LineWrapper.java` | 按显示宽度折行；跳过 ANSI 序列不计宽 |

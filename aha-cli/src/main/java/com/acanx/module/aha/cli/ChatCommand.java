@@ -18,6 +18,7 @@ import com.acanx.module.aha.cli.session.SessionCommandRegistry;
 import com.acanx.module.aha.cli.session.SlashMenuReader;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
+import com.acanx.module.aha.cli.tty.GitBranch;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
 import com.acanx.module.aha.cli.tty.OutputEncoding;
 import com.acanx.module.aha.cli.tty.StatusSurface;
@@ -209,8 +210,10 @@ public final class ChatCommand implements Runnable {
             // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
             StatusBar.Mode mode = strict ? StatusBar.Mode.STRICT
                     : (autoYes ? StatusBar.Mode.FULL : StatusBar.Mode.AUTO);
-            StatusBar statusBar = StatusBar.of(statusModel(service), statusEffort(service),
-                    Path.of("").toAbsolutePath().normalize().toString(), mode);
+            Path cwd = Path.of("").toAbsolutePath().normalize();
+            StatusBar statusBar = StatusBar.of(mode, statusProvider(service), statusTier(service),
+                    statusModel(service), statusEffort(service), cwd.toString(),
+                    GitBranch.detect(cwd));
 
             // 状态行：终端底部常驻一行，回合期间持续刷新（转圈 / 耗时 / 用量）。
             // 它靠滚动区域实现，终端不支持时自动退化为不显示；
@@ -499,16 +502,36 @@ public final class ChatCommand implements Runnable {
     }
 
     /**
-     * 状态栏展示的思考强度 / 档位：取运行时档位（Ultra / Pro / Standard / Flash / Fallback）。
-     *
-     * <p>未配置档位时返回空串，状态栏只显示模型名（不编造「中 / 高」）。</p>
+     * 状态栏展示的供应商（`Model.yml` 里的配置键）。
      *
      * @param service Agent 服务
-     * @return 档位；未知时为空串
+     * @return 供应商；未知时为空串（状态栏显示 {@code -}）
+     */
+    private String statusProvider(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Provider", "");
+    }
+
+    /**
+     * 状态栏展示的档位（Ultra / Pro / Standard / Flash / Fallback）。
+     *
+     * @param service Agent 服务
+     * @return 档位；未知时为空串（状态栏省略该段）
+     */
+    private String statusTier(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Tier", "");
+    }
+
+    /**
+     * 状态栏展示的思考强度。
+     *
+     * <p><b>暂无数据源</b>（issue #353 待拍板：`ProviderConfig.Extra.reasoning_effort` 还是
+     * `Aha.yaml` 新增项），先显示占位 {@code -}，不编造「低 / 中 / 高」。</p>
+     *
+     * @param service Agent 服务
+     * @return 强度；当前恒为空串
      */
     private String statusEffort(AgentService service) {
-        String tier = service.runtime().attributes().get("Tier");
-        return tier == null ? "" : tier.trim();
+        return "";
     }
 
     /**

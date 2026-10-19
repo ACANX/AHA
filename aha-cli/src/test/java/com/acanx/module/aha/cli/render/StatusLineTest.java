@@ -93,19 +93,20 @@ class StatusLineTest {
 
     @Test
     void idleShowsTheThreeItemsWhenStatusBarIsUsed() {
-        // issue #330：空闲帧展示「模式 / 模型与档位 / 工作目录」
-        StatusBar bar = StatusBar.of("deepseek-chat", "Standard", "/a/b/c/d",
-                StatusBar.Mode.AUTO);
+        // issue #330 / #353：模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
+                "deepseek-chat", "-", "/a/b/c/d", "dev");
         StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
 
         status.idle();
 
-        assertThat(surface.last()).isEqualTo("自动 · deepseek-chat/Standard · …/b/c/d");
+        assertThat(surface.last())
+                .isEqualTo("自动 · deepseek · Standard · deepseek-chat · - · …/b/c/d (dev)");
     }
 
     @Test
     void modeSwitchIsVisibleOnTheNextIdleFrame() {
-        StatusBar bar = StatusBar.of("m", "", "/a/b/c/d", StatusBar.Mode.AUTO);
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "p", "Pro", "m", "-", "/a/b/c/d", "");
         StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
         status.idle();
 
@@ -117,8 +118,8 @@ class StatusLineTest {
 
     @Test
     void busyFrameKeepsThePhaseWhenWidthIsScarce() {
-        StatusBar bar = StatusBar.of("deepseek-chat", "Standard", "/a/b/c/d",
-                StatusBar.Mode.AUTO);
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
+                "deepseek-chat", "-", "/a/b/c/d", "");
         StatusLine status = new StatusLine(surface, true, true, 20, bar, Style.of(false));
 
         status.show("等待响应…");
