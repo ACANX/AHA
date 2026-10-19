@@ -86,7 +86,7 @@ JVM_LEGS: dict[str, list[tuple[str, str, int, bool]]] = {
 #: 快照的发布页 tag / 发行名（ACANX 定案，2026-10-14）：
 #:   tag  = `V<快照版本>-AHA-<目标>`（5 段版本已能区分快照，不再需要 `-SNAPSHOT` 后缀）
 #:   名称 = tag + 「（PR #<N> 快照）」
-#: 与 dev 线的 `V<版本>-aha-jvm` / 正式发版的 `V<版本>` **同为 `V*` 家族**，
+#: 与 dev 线的 `V<版本>-aha-<product>-<form>` / 正式发版的 `V<版本>` **同为 `V*` 家族**，
 #: 因此必须满足两件事（都已落实）：
 #:   1. `Release.yml` 的 tag 过滤要**排除** `-AHA-*`（否则每次出快照都会触发正式发版流程）；
 #:   2. 保持 `prerelease: true`（不进 `releases/latest`）。

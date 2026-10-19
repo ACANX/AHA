@@ -298,6 +298,23 @@ class AssetSelectorTest {
     }
 
     @Test
+    void selectsEachKindFromItsOwnSplitRelease() {
+        // issue #347：dev 线 JVM 拆成两条 release 后，每个形态只在自己那条里挑包
+        ChannelRelease desktop = release("V0.1.5.00346-aha-desktop-jvm", "0.1.5.00346",
+                "aha-desktop-jvm-0.1.5.00346-windows-amd64-jdk25.zip");
+        ChannelRelease cli = release("V0.1.5.00346-aha-cli-jvm", "0.1.5.00346",
+                "aha-cli-jvm-0.1.5.00346-windows-amd64-jdk25.zip");
+
+        assertThat(AssetSelector.select(desktop, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, WINDOWS).name())
+                .isEqualTo("aha-desktop-jvm-0.1.5.00346-windows-amd64-jdk25.zip");
+        assertThat(AssetSelector.select(cli, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS).name())
+                .isEqualTo("aha-cli-jvm-0.1.5.00346-windows-amd64-jdk25.zip");
+        // 串形态取不到：拆分让两个形态在发布页上物理隔离
+        assertThatThrownBy(() -> AssetSelector.select(desktop, ReleaseChannel.BETA, UpdateKind.CLI_JVM, WINDOWS))
+                .isInstanceOf(UpdateException.class);
+    }
+
+    @Test
     void availableKeepsNewestFirstAndSkipsVersionsWithoutThisPlatformsLeg() {
         assertThat(AssetSelector.available(BETA_DESKTOP_JVM, ReleaseChannel.BETA,
                 UpdateKind.DESKTOP_JVM, WINDOWS))

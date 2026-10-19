@@ -62,14 +62,40 @@ class ReleaseFilterTest {
 
     @Test
     void jvmLineCarriesBothDesktopAndCliAssets() {
-        // dev 线的 JVM 包只出一条 release（`-aha-jvm`），桌面端与 CLI 的资产都在里面；
-        // 因此两个形态看到的是同一批 tag —— 挑资产是下一步的事（P1-3）。
+        // 0.1.5 之前的 dev 线 JVM 包只出一条 release（`-aha-jvm`），两个形态的资产都在里面，
+        // 因此两个形态看到的是同一批 tag；issue #347 起拆成两条，见 splitJvmReleasesAreSelectedPerKind。
         List<String> desktop = ReleaseFilter.select(BETA, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM)
                 .stream().map(ReleaseFilter.ChannelRelease::tag).toList();
         List<String> cli = ReleaseFilter.select(BETA, ReleaseChannel.BETA, UpdateKind.CLI_JVM)
                 .stream().map(ReleaseFilter.ChannelRelease::tag).toList();
 
         assertThat(cli).isEqualTo(desktop);
+    }
+
+    @Test
+    void splitJvmReleasesAreSelectedPerKind() {
+        // issue #347：dev 线 JVM 与原生线一样按形态各发一条 release；
+        // 旧合并 tag `-aha-jvm` 仍进两种形态的候选（历史 release 不掉线）。
+        List<ReleaseInfo> split = JSON.readValue("""
+                [
+                  {"tag_name": "V0.1.5.00346-aha-desktop-jvm", "prerelease": true, "draft": false, "assets": []},
+                  {"tag_name": "V0.1.5.00346-aha-cli-jvm", "prerelease": true, "draft": false, "assets": []},
+                  {"tag_name": "V0.1.5.00345-aha-jvm", "prerelease": true, "draft": false, "assets": []}
+                ]
+                """, new TypeReference<List<ReleaseInfo>>() {
+        });
+
+        List<String> desktop = ReleaseFilter.select(split, ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM)
+                .stream().map(ReleaseFilter.ChannelRelease::tag).toList();
+        List<String> cli = ReleaseFilter.select(split, ReleaseChannel.BETA, UpdateKind.CLI_JVM)
+                .stream().map(ReleaseFilter.ChannelRelease::tag).toList();
+
+        assertThat(desktop).containsExactly(
+                "V0.1.5.00346-aha-desktop-jvm",
+                "V0.1.5.00345-aha-jvm");
+        assertThat(cli).containsExactly(
+                "V0.1.5.00346-aha-cli-jvm",
+                "V0.1.5.00345-aha-jvm");
     }
 
     @Test

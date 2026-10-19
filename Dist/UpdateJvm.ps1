@@ -4,15 +4,20 @@
         Dist\UpdateDesktopJvm.cmd   ->  -Kind Desktop
         Dist\UpdateCliJvm.cmd       ->  -Kind Cli
 
-    dev 线的 JVM 便携包挂在发布页的**预发行版**上：
+    dev 线的 JVM 便携包挂在发布页的**预发行版**上（issue #347：桌面端与 CLI 各一条，与原生线对齐）：
 
-        tag   形如  V0.1.3.00178-aha-jvm
-        资产  桌面端  aha-desktop-<版本>-<平台>[-jdk27].zip     （平台 windows-amd64 / ubuntu-amd64 / macos-aarch64）
-              CLI     aha-cli-<版本>[-jdk27].zip                （**平台无关**，只有一份）
+                桌面端 tag   V0.1.5.00346-aha-desktop-jvm   （名称 V0.1.5.00346-AHA-Desktop-JVM）
+                CLI tag      V0.1.5.00346-aha-cli-jvm       （名称 V0.1.5.00346-AHA-Cli-JVM）
+
+        资产  桌面端  aha-desktop-jvm-<版本>-<平台>-jdk25/27.zip
+              CLI     aha-cli-jvm-<版本>-<平台>-jdk25/27.zip
+
+    0.1.5 之前的 dev 线是合并 tag `V<版本>-aha-jvm`（两个形态同一条 release），
+    历史 release 仍可读取 —— 旧后缀作为**回退**保留，见下方 `$TagSuffixes`。
 
     本脚本做五件事：
 
-      1. 查发布页，找出 `-aha-jvm` 的 release（`-Tag` 可直接指定某个版本）；
+      1. 查发布页，找出本形态的 `-aha-<product>-jvm` release（旧 `-aha-jvm` 也认；`-Tag` 可直接指定某个版本）；
       2. 挑出本机平台的资产（只有桌面端需要平台；CLI 没有平台维度）；
          **只看最新一版**：它缺本平台 / 本 JDK 段的资产时直接报错（并列出该版实际有什么），
          **不会**悄悄退到更旧的版本（见下方「为什么不静默降级」）；
@@ -30,9 +35,9 @@
         JVM 包是「**单体 jar + 启动脚本**」（issue #218 起桌面端为**包根平铺**），
         做法是「解压到暂存目录 → 把去版本号的入口**复制**到落地根 → 删掉暂存目录」，
         不存在「替换某个可执行文件」这回事；
-      * **资产名规则不同**：原生包是 `<前缀><版本>-<平台>-jdk<JDK>.zip`（平台段与 jdk 段**都必有**）；
-        JVM 包是 `aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`
-        （平台段只有桌面端有、jdk 段只有 27 有）；
+      * **资产名规则有差异**：两者自 0.1.4 起共用 `aha-<product>-<form>-<版本>-<平台>-<runtime>.zip`，
+        只有 runtime 段不同（JVM 是 `jdk25` / `jdk27`，原生是 `graalvm25`）；
+        旧名（`aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`）仍作为候选。
       * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`，
         2026-10-15 统一（issue #215），2026-10-17 架构词统一为 `aarch64`（issue #287））。
 
@@ -60,7 +65,8 @@
       UpdateJvm.ps1 -Kind Desktop -NoInstall      只解压到版本目录，不平铺到落地根
       UpdateJvm.ps1 -Kind Desktop -KeepExtract    平铺后保留暂存目录（默认自动清掉）
       UpdateJvm.ps1 -Kind Desktop -Jdk 27         取 JDK 27 变体（默认 25）
-      UpdateJvm.ps1 -Kind Desktop -Tag V0.1.3.00178-aha-jvm
+      UpdateJvm.ps1 -Kind Desktop -Tag V0.1.5.00346-aha-desktop-jvm
+      UpdateJvm.ps1 -Kind Desktop -Tag V0.1.5.00345-aha-jvm    # 旧合并 tag 仍可读
       UpdateJvm.ps1 -Kind Desktop -Platform windows-amd64
 #>
 param(
@@ -88,8 +94,13 @@ $ProgressPreference = 'SilentlyContinue'
 Write-Host '正在查询 GitHub 发布页，请稍候……'
 Write-Host ''
 
-#: dev 线 JVM 包的 tag 后缀（见 BuildJVMArtifacts.yml 的 PreRelease-AHA-JVM 作业）。
-$TagSuffix = '-aha-jvm'
+#: dev 线 JVM 包的 tag 后缀（issue #347：桌面端与 CLI 各一条，与原生线对齐）。
+#: 与 `ChannelContract.tag(BETA, …)` 逐字一致；`bin/CheckScripts.py` 会钉住三处不漂移。
+$TagSuffixByKind = @{ Desktop = '-aha-desktop-jvm'; Cli = '-aha-cli-jvm' }
+#: 0.1.5 之前的合并 tag（两个形态同一条 release），仅用于读取历史 release。
+$LegacyTagSuffix = '-aha-jvm'
+$TagSuffix = $TagSuffixByKind[$Kind]
+$TagSuffixes = @($TagSuffix, $LegacyTagSuffix)
 
 #: 种类表：标题 / 是否按平台挑（CLI 平台无关）/ 落地子目录 / 状态文件 / 资产前缀 / 平铺入口。
 #:
@@ -150,7 +161,7 @@ $downloadHeaders = @{ 'User-Agent' = 'AHA-UpdateJvm' }
 if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
 elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
-# ── tag → 版本号（`V<a.b.c.PPPPP>-aha-jvm`）────────────────────────────────────
+# ── tag → 版本号（`V<a.b.c.PPPPP>-aha-<product>-jvm`，旧 `-aha-jvm` 兼容）───────────────
 #: 删掉**整个** `<种类>\` 暂存目录（`Dist\desktop-jvm` / `Dist\cli-jvm`，含历次取件留下的
 #: 各版本子目录）；父目录空了也一并删（issue #218 后续）。入口已经平铺到落地根，这里全是副本。
 #: 返回是否真的删了一个目录；删不掉时**抛出去**，由调用方决定是报错还是只提醒 ——
@@ -169,10 +180,12 @@ function Remove-StagingDir {
 
 function Get-TagVersion {
     param([string]$Name)
-    if (-not $Name.EndsWith($TagSuffix)) { return $null }
-    $body = $Name.Substring(0, $Name.Length - $TagSuffix.Length).TrimStart('V', 'v')
-    if ($body -notmatch '^[0-9]+(\.[0-9]+)*$') { return $null }
-    return $body
+    foreach ($suffix in $TagSuffixes) {
+        if (-not $Name.EndsWith($suffix)) { continue }
+        $body = $Name.Substring(0, $Name.Length - $suffix.Length).TrimStart('V', 'v')
+        if ($body -match '^[0-9]+(\.[0-9]+)*$') { return $body }
+    }
+    return $null
 }
 
 # ── 资产名（issue #269）：`aha-<product>-jvm-<版本>-<平台>-jdk<JDK>.zip` ──────────
@@ -251,13 +264,13 @@ $releases = @()
 if ($Tag) {
     $releases = @(Complete-Assets ([pscustomobject]@{ tag_name = $Tag; assets = @(); published_at = $null; created_at = $null }))
     if (-not (Get-TagVersion $Tag)) {
-        Write-Host ("[错误] {0} 不是 {1} 的 tag（后缀必须是 {2}）" -f $Tag, $kindInfo.Title, $TagSuffix) -ForegroundColor Red
+        Write-Host ("[错误] {0} 不是 {1} 的 tag（后缀必须是 {2}）" -f $Tag, $kindInfo.Title, ($TagSuffixes -join ' 或 ')) -ForegroundColor Red
         exit 1
     }
 } else {
     $releases = @(Get-Releases)
     if ($releases.Count -eq 0) {
-        Write-Host ("[错误] 发布页上没有任何 {0} 的 release（tag 后缀 {1}）" -f $kindInfo.Title, $TagSuffix) -ForegroundColor Red
+        Write-Host ("[错误] 发布页上没有任何 {0} 的 release（tag 后缀 {1}）" -f $kindInfo.Title, ($TagSuffixes -join ' 或 ')) -ForegroundColor Red
         exit 1
     }
 }

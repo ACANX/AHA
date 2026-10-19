@@ -49,7 +49,7 @@ public final class ChannelContract {
     /** 默认 JDK 段：JVM 线的默认变体。 */
     public static final int DEFAULT_JDK = 25;
 
-    /** 旧 JVM 线 dev 预发行的 tag 后缀（0.1.3 及更早，兼容用）。 */
+    /** 旧 JVM 线 dev 预发行的 tag 后缀（0.1.5 之前的**合并**形态，仅解析兼容）。 */
     public static final String JVM_TAG_SUFFIX = "-aha-jvm";
 
     /** 原生线 dev 预发行的 tag 中缀（其后是 {@code desktop-native} / {@code cli-native}）。 */
@@ -313,6 +313,8 @@ public final class ChannelContract {
                 + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix() + SNAPSHOT_TAG_SUFFIX) + "$";
         return switch (channel) {
             case STABLE -> new String[]{"^V" + VERSION_GROUP + "$"};
+            // JVM 形态自 issue #347 起与原生线一样：每个形态一条 release（`-aha-desktop-jvm` /
+            // `-aha-cli-jvm`）。旧合并 tag `-aha-jvm` 仍解析，否则 0.1.5 之前的 dev 包会查不到。
             case BETA -> kind.nativeImage()
                     ? new String[]{current}
                     : new String[]{current,

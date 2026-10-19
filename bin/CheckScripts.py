@@ -128,8 +128,11 @@ JAVA_KIND_RE = re.compile(
     r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)', re.M)
 JAVA_CONST_RE = re.compile(r'\b([A-Z_]{3,})\s*=\s*"([^"]+)"')
 
-#: `Dist/UpdateJvm.ps1`：`$TagSuffix = '-aha-jvm'` 与 `Prefix = 'aha-desktop-'`。
-PS_JVM_TAG_RE = re.compile(r"\$TagSuffix\s*=\s*'([^']+)'")
+#: `Dist/UpdateJvm.ps1`：`$TagSuffixByKind = @{ Desktop = '-aha-desktop-jvm'; Cli = '-aha-cli-jvm' }`、
+#: `$LegacyTagSuffix = '-aha-jvm'`（0.1.5 之前的合并 tag，仅用于读历史 release）与 `Prefix = 'aha-desktop-'`。
+PS_JVM_TAG_MAP_RE = re.compile(
+    r"\$TagSuffixByKind\s*=\s*@\{\s*Desktop\s*=\s*'([^']+)';\s*Cli\s*=\s*'([^']+)'\s*\}")
+PS_JVM_LEGACY_TAG_RE = re.compile(r"\$LegacyTagSuffix\s*=\s*'([^']+)'")
 PS_JVM_PREFIX_RE = re.compile(r"Prefix\s*=\s*'([^']+)'")
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
@@ -843,14 +846,35 @@ def check_release_channel_contract() -> list[str]:
                 f"通道契约：原生资产前缀在 Java（{java_name}）拼成 "
                 f"{'aha-'+product+'-'+form+'-'!r}，而 Python / PowerShell 写的是 {py_prefix!r}")
 
-    # ── ② JVM 线：资产前缀与旧 tag 别名 ─────────────────────────────────────
+    # ── ② JVM 线：两种 tag 后缀（issue #347）与旧合并后缀兼容，加资产前缀 ──────
     jvm_ps1_text = JVM_PS1.read_text(encoding="utf-8-sig")
-    jvm_tag = PS_JVM_TAG_RE.search(jvm_ps1_text)
-    if jvm_tag is None:
-        problems.append("通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffix`，无法与 Java 对齐")
-    elif jvm_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+    tag_map = PS_JVM_TAG_MAP_RE.search(jvm_ps1_text)
+    legacy_tag = PS_JVM_LEGACY_TAG_RE.search(jvm_ps1_text)
+    if tag_map is None:
         problems.append(
-            f"通道契约：dev 线 JVM tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {jvm_tag.group(1)!r}，"
+            "通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffixByKind`（Desktop / Cli 两种 tag 后缀），"
+            "无法与 Java 对齐")
+    if legacy_tag is None:
+        problems.append(
+            "通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$LegacyTagSuffix`（旧 `-aha-jvm` 兼容），"
+            "历史 release 会取不到")
+    if tag_map is not None:
+        ps_by_kind = {"DESKTOP_JVM": tag_map.group(1), "CLI_JVM": tag_map.group(2)}
+        for name in ("DESKTOP_JVM", "CLI_JVM"):
+            value = java_kinds.get(name)
+            if value is None:
+                problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {name}")
+                continue
+            _target, product, form = value
+            expected = f"{native_infix}{product}-{form}"
+            if ps_by_kind[name] != expected:
+                problems.append(
+                    f"通道契约：JVM 的 {name} tag 后缀在 PowerShell 是 {ps_by_kind[name]!r}，"
+                    f"Java 拼成 {expected!r}（NATIVE_TAG_INFIX + product + '-' + form）；"
+                    "这会让该形态的取件永远找不到包")
+    if legacy_tag is not None and legacy_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+        problems.append(
+            f"通道契约：旧合并 tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {legacy_tag.group(1)!r}，"
             f"Java 侧 JVM_TAG_SUFFIX 是 {java_consts.get('JVM_TAG_SUFFIX')!r}")
     ps_prefixes = set(PS_JVM_PREFIX_RE.findall(jvm_ps1_text))
     for name in ("DESKTOP_JVM", "CLI_JVM"):

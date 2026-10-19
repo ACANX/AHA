@@ -13,7 +13,8 @@ rem    UpdateDesktopJvm.cmd -List            list recent versions      (--list w
 rem    UpdateDesktopJvm.cmd -DryRun          preview only, no download (--dry-run)
 rem    UpdateDesktopJvm.cmd -Force           re-download even if already newest
 rem    UpdateDesktopJvm.cmd -Jdk 27          JDK branch, default 25
-rem    UpdateDesktopJvm.cmd -Tag V0.1.3.00178-aha-jvm
+rem    UpdateDesktopJvm.cmd -Tag V0.1.5.00346-aha-desktop-jvm
+rem    (the old combined tag V<version>-aha-jvm is still readable)
 rem    UpdateDesktopJvm.cmd -Platform windows-amd64
 
 rem  Chinese documentation: README.commands.md in this directory.

@@ -10,13 +10,12 @@ name: BuildJVMArtifacts
 # ── 为什么单独一个工作流（四条隔离）───────────────────────────────────────────
 # 1. **不参与快检查**：Build.yml 每次 push / PR 只做编译与单测（快检查）；
 #    本线只在 push 到 dev 时跑，不拖慢每次 PR，也不与 Build.yml 的作业互相牵连。
-# 2. **不影响发版流程**：预发行 tag 带 `-aha-jvm` 后缀，与正式发版（`V<版本号>`）及
-#    原生线（`-aha-desktop-native` / `-aha-cli-native`）区分，不进 releases/latest。
+# 2. **不影响发版流程**：预发行 tag 带 `-aha-<product>-<form>` 后缀（桌面端 / CLI 各一条），与正式发版
+#    （`V<版本号>`）及原生线（`-aha-desktop-native` / `-aha-cli-native`）同族但互不混淆，不进 releases/latest。
 # 3. **不是必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它。
 # 4. **可被打断**：同一分支的新一次运行会取消上一次（见 concurrency）。
 # 5. **可被复用**：暴露 `workflow_call`（输入 pr / version / matrix / publish），
 #    快照线 SnapshotJVM.yml 直接调用它，**不复制**构建与打包步骤——两套实现必然漂移。
-#    默认矩阵与发布行为与改造前逐条一致（push dev 行为不变）。
 #
 # ── JDK 轴：25（基线）+ 27 ──────────────────────────────────────────────────
 # 矩阵同时出 **JDK 25**（默认，release=25）与 **JDK 27**（`-Dmaven.compiler.release=27`）
@@ -336,7 +335,7 @@ jobs:
             {
               echo "### JVM dev：本次无可发布产物"
               echo ""
-              echo "三条腿都没有产出可用的包，因此**未创建预发行版**。"
+              echo "各腿都没有产出可用的包，因此**未创建预发行版**（Desktop-JVM / Cli-JVM 均不建）。"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -354,30 +353,64 @@ jobs:
             echo "> 解压即可运行：桌面端需 JDK 25（包内含本平台 OpenJFX）；CLI 包平台无关。"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: GenerateChecksums
+      - name: GroupAssetsByForm
+        id: group
         if: steps.collect.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # 按形态分组：两条预发行各装自己的包，SHA256SUMS 也只覆盖自己那几行（issue #347）。
+          # 这与原生线「每个目标一条 release」的结构一致。
+          mkdir -p artifacts/desktop artifacts/cli
+          for f in artifacts/aha-desktop-jvm-*.zip; do mv -n "$f" artifacts/desktop/; done
+          for f in artifacts/aha-cli-jvm-*.zip;     do mv -n "$f" artifacts/cli/; done
+          desktop=(artifacts/desktop/*.zip)
+          cli=(artifacts/cli/*.zip)
+          echo "desktop=${#desktop[@]}" >> "$GITHUB_OUTPUT"
+          echo "cli=${#cli[@]}" >> "$GITHUB_OUTPUT"
+          {
+            echo ""
+            echo "### 拆分后的两条预发行"
+            echo ""
+            echo "| 形态 | 包数 | tag |"
+            echo "|---|---|---|"
+            echo "| Desktop-JVM | ${#desktop[@]} | \`V${{ needs.BuildVersion.outputs.version }}-aha-desktop-jvm\` |"
+            echo "| Cli-JVM | ${#cli[@]} | \`V${{ needs.BuildVersion.outputs.version }}-aha-cli-jvm\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: GenerateDesktopChecksums
+        if: steps.collect.outputs.any == 'true' && steps.group.outputs.desktop != '0'
         run: |
           set -euo pipefail
           # 每个 zip 一行：用户拿到任一资产都能自己核一遍。
           # 「没有校验和」是有代价的（升级器要退到包内清单 + 落地前自证），所以宁可多写一行。
-          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts/desktop
 
-      - name: PublishPreRelease
-        if: steps.collect.outputs.any == 'true'
+      - name: GenerateCliChecksums
+        if: steps.collect.outputs.any == 'true' && steps.group.outputs.cli != '0'
+        run: |
+          set -euo pipefail
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py sums --dir artifacts/cli
+
+      # ── 两条预发行：Desktop-JVM / Cli-JVM（与原生线的 -AHA-Desktop-Native-Image / -AHA-Cli-Native-Image 对齐）──
+      # tag 用小写 `-aha-<product>-<form>`（与 ChannelContract.tag(BETA, …) 逐字一致，客户端零改动）；
+      # 名称用大写 `V<版本>-AHA-<目标>`（与原生 dev 线一致，也是用户看到的标题）。
+      # 不用大写 `-AHA-…` 做 tag：那会和快照 tag `V<5 段>-AHA-<目标>` 撞车，令 SnapshotCleanup 误判。
+      - name: PublishDesktopPreRelease
+        if: steps.collect.outputs.any == 'true' && steps.group.outputs.desktop != '0'
         uses: softprops/action-gh-release@v3
         with:
-          # tag 带 -aha-jvm 后缀与正式发版（V*）和原生线（-aha-desktop-native / -aha-cli-native）区分。
-          tag_name: V${{ needs.BuildVersion.outputs.version }}-aha-jvm
-          name: V${{ needs.BuildVersion.outputs.version }}-AHA-JVM
+          tag_name: V${{ needs.BuildVersion.outputs.version }}-aha-desktop-jvm
+          name: V${{ needs.BuildVersion.outputs.version }}-AHA-Desktop-JVM
           prerelease: true
           files: |
-            artifacts/*.zip
-            artifacts/SHA256SUMS
+            artifacts/desktop/*.zip
+            artifacts/desktop/SHA256SUMS
           body: |
             ## 这是什么
 
-            以 `dev` 分支最新合并的代码构建的 **JVM 便携包**（非原生镜像）：
-            解压即可运行，桌面端需本机 JDK 25，CLI 包平台无关。
+            以 `dev` 分支最新合并的代码构建的**桌面端 JVM 便携包**（非原生镜像）：
+            解压即可运行，需要本机 JDK 25（包内含本平台 OpenJFX）。
 
             > ⚠️ **dev 预发行产物，不是正式发行包。** 正式版本请用 `V<版本号>` 的
             > 发版页面；这里的东西用来「验证 dev 最新合并」。
@@ -388,13 +421,47 @@ jobs:
             - 来源 PR：#${{ needs.BuildVersion.outputs.pr }}
 
             ## 包含什么
-            - `aha-desktop-<版本>-<平台>.zip` / `aha-cli-<版本>.zip`：**JDK 25 基线**，
-              Java 25 字节码，需 JDK 25；
-            - `aha-desktop-<版本>-<平台>-jdk27.zip` / `aha-cli-<版本>-jdk27.zip`：**JDK 27**，
-              Java 27 字节码（major=71），需 JDK 27。
+            - `aha-desktop-jvm-<版本>-<平台>-jdk25.zip`：**JDK 25 基线**，Java 25 字节码，需 JDK 25；
+            - `aha-desktop-jvm-<版本>-<平台>-jdk27.zip`：**JDK 27**，Java 27 字节码（major=71），需 JDK 27。
+
+            > CLI 的 JVM 包在另一条预发行：`V${{ needs.BuildVersion.outputs.version }}-AHA-Cli-JVM`。
 
             ## 怎么用
             1. 按你的系统与 JDK 选对应包（`-jdk27` 后缀的需 JDK 27）；
-            2. 解压后运行 `bin/AhaDesktop.bat`（Windows）或 `bin/AhaDesktop.sh`（Linux/macOS），
-               CLI 运行 `bin/AhaCli.bat` / `bin/AhaCli.sh`；
+            2. 解压后运行 `bin/AhaDesktop.bat`（Windows）或 `bin/AhaDesktop.sh`（Linux/macOS）；
+            3. 配置与数据在 `AHA_HOME`（默认 `~/.aha`）。
+
+      - name: PublishCliPreRelease
+        if: steps.collect.outputs.any == 'true' && steps.group.outputs.cli != '0'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: V${{ needs.BuildVersion.outputs.version }}-aha-cli-jvm
+          name: V${{ needs.BuildVersion.outputs.version }}-AHA-Cli-JVM
+          prerelease: true
+          files: |
+            artifacts/cli/*.zip
+            artifacts/cli/SHA256SUMS
+          body: |
+            ## 这是什么
+
+            以 `dev` 分支最新合并的代码构建的 **CLI JVM 便携包**（非原生镜像）：
+            解压即可运行，需要本机 JDK 25；jar 本身平台无关，按平台出包只为便于按平台取件与核对。
+
+            > ⚠️ **dev 预发行产物，不是正式发行包。** 正式版本请用 `V<版本号>` 的
+            > 发版页面；这里的东西用来「验证 dev 最新合并」。
+
+            ## 版本
+            - 本版版本号：`${{ needs.BuildVersion.outputs.version }}`
+            - 基线版本：`${{ needs.BuildVersion.outputs.base }}`（读自根 pom.xml）
+            - 来源 PR：#${{ needs.BuildVersion.outputs.pr }}
+
+            ## 包含什么
+            - `aha-cli-jvm-<版本>-<平台>-jdk25.zip`：**JDK 25 基线**，Java 25 字节码，需 JDK 25；
+            - `aha-cli-jvm-<版本>-<平台>-jdk27.zip`：**JDK 27**，Java 27 字节码（major=71），需 JDK 27。
+
+            > 桌面端的 JVM 包在另一条预发行：`V${{ needs.BuildVersion.outputs.version }}-AHA-Desktop-JVM`。
+
+            ## 怎么用
+            1. 按你的系统与 JDK 选对应包（`-jdk27` 后缀的需 JDK 27）；
+            2. 解压后运行 `bin/AhaCli.bat`（Windows）或 `bin/AhaCli.sh`（Linux/macOS）；
             3. 配置与数据在 `AHA_HOME`（默认 `~/.aha`）。

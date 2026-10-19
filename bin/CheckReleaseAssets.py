@@ -4,7 +4,7 @@
 两种用法：
 
     # ① 发布前预演：对着一个已有 release（快照 tag 也行）核对「矩阵要求的资产缺哪些」
-    python3 bin/CheckReleaseAssets.py --tag V0.1.4.00294-aha-jvm --version 0.1.4
+    python3 bin/CheckReleaseAssets.py --tag V0.1.4 --version 0.1.4
 
     # ② 发布作业里：对着本地已下载的资产目录核对
     python3 bin/CheckReleaseAssets.py --dir assets --version 0.1.4
