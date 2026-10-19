@@ -172,6 +172,9 @@ public final class DesktopShell implements ChatView {
     /** 左栏「工作空间」折叠面板。 */
     public static final String WORKSPACE_ID = "aha.workspace";
 
+    /** 工作空间搜索框。 */
+    public static final String WORKSPACE_SEARCH_ID = "aha.workspace.search";
+
     /** 工作空间内的分组容器。 */
     public static final String WORKSPACE_LIST_ID = "aha.workspace.list";
 
@@ -513,6 +516,9 @@ public final class DesktopShell implements ChatView {
     /** 工作空间内的分组容器。 */
     @FXML
     private VBox workspaceList;
+
+    @FXML
+    private TextField workspaceSearch;
 
     @FXML
     private VBox centerColumn;
@@ -1496,6 +1502,16 @@ public final class DesktopShell implements ChatView {
         themed(workspacePane, () -> "-fx-text-fill: " + Palette.MUTED + ";"
                 + "-fx-background-color: transparent;");
 
+        workspaceSearch.setId(WORKSPACE_SEARCH_ID);
+        workspaceSearch.setPromptText("⌕ 搜索工作空间");
+        workspaceSearch.setMaxWidth(Double.MAX_VALUE);
+        themed(workspaceSearch, () -> "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";"
+                + "-fx-prompt-text-fill: " + Palette.MUTED + ";");
+        workspaceSearch.textProperty().addListener((observable, old, now) -> refreshWorkspacePane());
+
         sessionPane.setText("会话");
         sessionPane.setExpanded(true);
         // 允许在左栏空间不足时压缩，让列表内部的滚动条出现
@@ -1730,6 +1746,13 @@ public final class DesktopShell implements ChatView {
         }
         String current = currentWorkspace();
         List<String> order = new ArrayList<>(groups.keySet());
+        String query = workspaceSearch == null ? ""
+                : workspaceSearch.getText() == null ? "" : workspaceSearch.getText().strip();
+        if (!query.isEmpty()) {
+            String needle = query.toLowerCase(java.util.Locale.ROOT);
+            order.removeIf(workspace -> !workspace.toLowerCase(java.util.Locale.ROOT).contains(needle)
+                    && !workspaceName(workspace).toLowerCase(java.util.Locale.ROOT).contains(needle));
+        }
         order.sort((left, right) -> {
             if (Objects.equals(left, current)) {
                 return -1;

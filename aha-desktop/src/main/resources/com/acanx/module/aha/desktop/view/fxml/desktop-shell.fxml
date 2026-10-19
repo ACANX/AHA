@@ -139,7 +139,10 @@
                                 <TitledPane fx:id="workspacePane" id="aha.workspace"
                                             text="工作空间" expanded="false" animated="false">
                                     <content>
-                                        <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="2"/>
+                                        <VBox spacing="4">
+                                            <TextField fx:id="workspaceSearch" id="aha.workspace.search"/>
+                                            <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="2"/>
+                                        </VBox>
                                     </content>
                                 </TitledPane>
                                 <Region fx:id="leftSpacer"/>
