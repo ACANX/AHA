@@ -211,6 +211,147 @@ final class ToolBlock {
         return lines;
     }
 
+    /** diff 上下文行数（改动行前后各保留多少行）。 */
+    static final int DIFF_CONTEXT = 3;
+
+    /**
+     * 差异行：类型（{@code +} 新增 / {@code -} 删除 / 空格上下文）与文本。
+     */
+    record DiffLine(char type, String text) {
+    }
+
+    /**
+     * 生成「改动前后」差异块（issue #323）。
+     *
+     * <p>只保留改动行及其前后 {@value #DIFF_CONTEXT} 行上下文；无改动时返回空列表。
+     * 无颜色环境靠行首的 {@code +} / {@code -} / 空格区分。</p>
+     *
+     * @param oldText 旧内容（文件不存在时可为 {@code null}）
+     * @param newText 新内容
+     * @param style   样式
+     * @param width   终端宽度
+     * @param kind    工具类别（决定块底色）；{@code null} 时不铺底
+     * @return 差异行；无改动时为空
+     */
+    static List<String> diff(String oldText, String newText, Style style, int width,
+                             ToolKind kind) {
+        List<DiffLine> all = lineDiff(lines(oldText), lines(newText));
+        boolean changed = all.stream().anyMatch(line -> line.type() != ' ');
+        if (!changed) {
+            return List.of();
+        }
+        boolean[] keep = new boolean[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).type() == ' ') {
+                continue;
+            }
+            int from = Math.max(0, i - DIFF_CONTEXT);
+            int to = Math.min(all.size() - 1, i + DIFF_CONTEXT);
+            for (int j = from; j <= to; j++) {
+                keep[j] = true;
+            }
+        }
+        List<String> out = new ArrayList<>();
+        int index = 0;
+        while (index < all.size()) {
+            if (!keep[index]) {
+                index++;
+                continue;
+            }
+            if (!out.isEmpty()) {
+                String ellipsis = style.muted(" ".repeat(INDENT) + "…");
+                out.add(kind == null ? ellipsis : style.blockLine(kind, ellipsis, width));
+            }
+            while (index < all.size() && keep[index]) {
+                DiffLine line = all.get(index);
+                String text = " ".repeat(INDENT) + line.type() + " " + line.text();
+                String colored = switch (line.type()) {
+                    case '+' -> style.diffAdd(text);
+                    case '-' -> style.diffRemove(text);
+                    default -> style.diffContext(text);
+                };
+                out.add(kind == null ? colored : style.blockLine(kind, colored, width));
+                index++;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 行级 diff：剥离公共前后缀后对中间段做 LCS。
+     */
+    private static List<DiffLine> lineDiff(List<String> before, List<String> after) {
+        int n = before.size();
+        int m = after.size();
+        int prefix = 0;
+        while (prefix < n && prefix < m && before.get(prefix).equals(after.get(prefix))) {
+            prefix++;
+        }
+        int suffix = 0;
+        while (suffix < n - prefix && suffix < m - prefix
+                && before.get(n - 1 - suffix).equals(after.get(m - 1 - suffix))) {
+            suffix++;
+        }
+        List<DiffLine> out = new ArrayList<>();
+        for (int i = 0; i < prefix; i++) {
+            out.add(new DiffLine(' ', before.get(i)));
+        }
+        out.addAll(lcsDiff(before.subList(prefix, n - suffix), after.subList(prefix, m - suffix)));
+        for (int i = n - suffix; i < n; i++) {
+            out.add(new DiffLine(' ', before.get(i)));
+        }
+        return out;
+    }
+
+    /**
+     * LCS diff；中间段过大时退化为「全删 + 全增」，避免二次方内存。
+     */
+    private static List<DiffLine> lcsDiff(List<String> before, List<String> after) {
+        int n = before.size();
+        int m = after.size();
+        List<DiffLine> out = new ArrayList<>();
+        if (n == 0 || m == 0 || (long) n * m > 250_000L) {
+            before.forEach(line -> out.add(new DiffLine('-', line)));
+            after.forEach(line -> out.add(new DiffLine('+', line)));
+            return out;
+        }
+        int[][] lcs = new int[n + 1][m + 1];
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                lcs[i][j] = before.get(i).equals(after.get(j))
+                        ? lcs[i + 1][j + 1] + 1
+                        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+            }
+        }
+        int i = 0;
+        int j = 0;
+        while (i < n && j < m) {
+            if (before.get(i).equals(after.get(j))) {
+                out.add(new DiffLine(' ', before.get(i)));
+                i++;
+                j++;
+            } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+                out.add(new DiffLine('-', before.get(i++)));
+            } else {
+                out.add(new DiffLine('+', after.get(j++)));
+            }
+        }
+        while (i < n) {
+            out.add(new DiffLine('-', before.get(i++)));
+        }
+        while (j < m) {
+            out.add(new DiffLine('+', after.get(j++)));
+        }
+        return out;
+    }
+
+    private static List<String> lines(String text) {
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        return List.of(text.split("\n", -1));
+    }
+
     /**
      * 块内上下内边距：整行纯底色空行。
      *
