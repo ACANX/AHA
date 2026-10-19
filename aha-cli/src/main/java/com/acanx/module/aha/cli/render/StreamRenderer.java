@@ -38,6 +38,9 @@ public final class StreamRenderer implements Renderer {
     /** 失败摘要（ERROR 事件设置，endTurn 时展示）。 */
     private String failureSummary;
 
+    /** 当前工具块类别（结果正文据此沿用同一底色）；非工具块时为 {@code null}。 */
+    private ToolKind currentKind;
+
     private final int width;
 
     /** 当前工具调用开始时间：结果行要显示耗时。 */
@@ -122,6 +125,7 @@ public final class StreamRenderer implements Renderer {
                         block(line);
                     }
                 }
+                currentKind = ToolKind.of(call.toolName());
                 toolStartedAt = System.nanoTime();
                 toolRunning = true;
                 // 工具执行是第二段「无输出」的等待：shell / http 可能跑好几秒，
@@ -133,18 +137,22 @@ public final class StreamRenderer implements Renderer {
                 long millis = toolRunning ? (System.nanoTime() - toolStartedAt) / 1_000_000L : 0L;
                 toolRunning = false;
                 boolean ok = result.success();
-                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.PREVIEW_LINES, true)
-                        : ToolBlock.body(result.result(), style, width, ToolBlock.FAILURE_LINES, false),
+                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.PREVIEW_LINES,
+                                true, currentKind)
+                        : ToolBlock.body(result.result(), style, width, ToolBlock.FAILURE_LINES,
+                                false, currentKind),
                         ok);
                 block(ToolBlock.result(ok, ok
                         ? ToolBlock.detail(true, result.result(), millis)
                         : ToolBlock.failureDetail(result.result(), millis), style, width, unicode));
+                currentKind = null;
             }
             case ErrorEvent error -> {
                 failureSummary = error.message();
+                currentKind = null;
                 block(style.error("[error] " + error.code()));
                 for (String line : ToolBlock.body(error.message(), style, width,
-                        ToolBlock.FAILURE_LINES, false)) {
+                        ToolBlock.FAILURE_LINES, false, null)) {
                     block(line);
                 }
             }
@@ -202,7 +210,8 @@ public final class StreamRenderer implements Renderer {
         if (lines.isEmpty()) {
             return;
         }
-        block(style.muted(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误")));
+        String label = style.muted(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
+        block(currentKind == null ? label : style.blockLine(currentKind, label, width));
         for (String line : lines) {
             block(line);
         }

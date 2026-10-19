@@ -116,7 +116,7 @@ final class ToolBlock {
             }
             text.append(parts.get(i));
         }
-        return style.command(text.toString());
+        return style.blockLine(ToolKind.EXEC, style.command(text.toString()), width);
     }
 
     /**
@@ -139,12 +139,13 @@ final class ToolBlock {
         if (ToolKind.of(toolName) == ToolKind.EXEC) {
             return lines;
         }
+        ToolKind kind = ToolKind.of(toolName);
         for (Map.Entry<String, String> entry : ToolKind.summary(args).entrySet()) {
             String value = entry.getValue();
             if (value != null && value.length() > ARG_VALUE_LIMIT) {
                 value = "<" + value.length() + " 字符，已省略>";
             }
-            add(lines, entry.getKey(), value, style, width, false);
+            add(lines, entry.getKey(), value, style, width, false, kind);
         }
         return lines;
     }
@@ -178,7 +179,8 @@ final class ToolBlock {
      * @param dim      是否弱化
      * @return 正文行（含可能的省略提示行）
      */
-    static List<String> body(Object output, Style style, int width, int maxLines, boolean dim) {
+    static List<String> body(Object output, Style style, int width, int maxLines, boolean dim,
+                             ToolKind kind) {
         if (output == null) {
             return List.of();
         }
@@ -198,12 +200,14 @@ final class ToolBlock {
                     break outer;
                 }
                 String indented = " ".repeat(INDENT) + part;
-                lines.add(dim ? style.muted(indented) : indented);
+                String row = dim ? style.muted(indented) : indented;
+                lines.add(kind == null ? row : style.blockLine(kind, row, width));
             }
         }
         if (truncated) {
-            lines.add(style.muted(" ".repeat(INDENT) + "… 输出共 " + source.length
-                    + " 行，此处显示前 " + maxLines + " 行"));
+            String note = style.muted(" ".repeat(INDENT) + "… 输出共 " + source.length
+                    + " 行，此处显示前 " + maxLines + " 行");
+            lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
         return lines;
     }
@@ -275,7 +279,7 @@ final class ToolBlock {
      * @param elide 超长时是否中间省略
      */
     private static void add(List<String> lines, String label, String value, Style style,
-                            int width, boolean elide) {
+                            int width, boolean elide, ToolKind kind) {
         if (value == null || value.isBlank()) {
             return;
         }
@@ -292,7 +296,8 @@ final class ToolBlock {
         }
         for (int i = 0; i < wrapped.size(); i++) {
             String prefix = i == 0 ? head : " ".repeat(TextWidth.width(head));
-            lines.add(style.muted(" ".repeat(INDENT) + prefix + wrapped.get(i)));
+            String line = style.muted(" ".repeat(INDENT) + prefix + wrapped.get(i));
+            lines.add(style.blockLine(kind, line, width));
         }
     }
 
