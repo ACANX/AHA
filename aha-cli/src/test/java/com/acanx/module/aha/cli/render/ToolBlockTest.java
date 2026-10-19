@@ -299,6 +299,55 @@ class ToolBlockTest {
     }
 
     @Test
+    void diffShowsAddedLines() {
+        List<String> diff = ToolBlock.diff("", "a\nb", PLAIN, 0, null);
+
+        assertThat(diff).hasSize(2);
+        assertThat(diff).allMatch(line -> line.contains("+ "));
+    }
+
+    @Test
+    void diffShowsRemovedLines() {
+        List<String> diff = ToolBlock.diff("a\nb", "", PLAIN, 0, null);
+
+        assertThat(diff).hasSize(2);
+        assertThat(diff).allMatch(line -> line.contains("- "));
+    }
+
+    @Test
+    void diffShowsMixedChanges() {
+        List<String> diff = ToolBlock.diff("a\nb\nc", "a\nx\nc", PLAIN, 0, null);
+
+        assertThat(diff).anyMatch(line -> line.contains("- b"));
+        assertThat(diff).anyMatch(line -> line.contains("+ x"));
+        assertThat(diff).anyMatch(line -> line.contains(" a"));
+        assertThat(diff).anyMatch(line -> line.contains(" c"));
+    }
+
+    @Test
+    void diffReturnsEmptyWhenUnchanged() {
+        assertThat(ToolBlock.diff("a\nb", "a\nb", PLAIN, 0, null)).isEmpty();
+    }
+
+    @Test
+    void diffKeepsContextAroundDistantChange() {
+        StringBuilder before = new StringBuilder();
+        StringBuilder after = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            before.append("line").append(i).append('\n');
+            after.append(i == 50 ? "changed" : "line" + i).append('\n');
+        }
+
+        List<String> diff = ToolBlock.diff(before.toString(), after.toString(), PLAIN, 0, null);
+
+        // 只保留改动行前后各 3 行，而不是整份 100 行
+        assertThat(diff.size()).isLessThanOrEqualTo(8);
+        assertThat(diff).anyMatch(line -> line.contains("- line50"));
+        assertThat(diff).anyMatch(line -> line.contains("+ changed"));
+        assertThat(diff).noneMatch(line -> line.contains("line0\n") || line.contains("line99"));
+    }
+
+    @Test
     void detailCombinesDurationAndScale() {
         assertThat(ToolBlock.detail(true, "a\nb\nc", 1500)).isEqualTo("1.5s · 3 行");
         assertThat(ToolBlock.detail(true, "abc", 0)).isEqualTo("3 字符");
