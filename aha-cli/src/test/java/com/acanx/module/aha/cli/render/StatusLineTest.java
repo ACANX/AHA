@@ -160,6 +160,30 @@ class StatusLineTest {
         assertThat(surface.painted()).hasSize(painted);
     }
     @Test
+    void generatingAndApprovalStatesHaveTheirOwnLabels() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.runState(RunState.GENERATING, null);
+        assertThat(surface.last()).contains("生成中…");
+
+        status.runState(RunState.AWAITING_APPROVAL, null);
+        assertThat(surface.last()).contains("等待审批…");
+    }
+
+    @Test
+    void doneAndFailedAreVisibleTerminalStates() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.finish(RunState.DONE, null);
+        assertThat(surface.last()).isEqualTo("✓ 完成");
+
+        status.finish(RunState.FAILED, "连接超时\n第二行不展示");
+        assertThat(surface.last()).isEqualTo("✗ 失败 · 连接超时");
+    }
+
+    @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
         StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("model-x"),
                 Style.of(ColorDepth.ANSI256));

@@ -236,7 +236,8 @@ public final class ChatCommand implements Runnable {
             ToolApprover approver = autoYes
                     ? (toolName, permission, arguments) -> true
                     : new ConsoleToolApprover(question -> askForAnswer(out, answers, awaitingAnswer,
-                            question), () -> statusBar.setMode(StatusBar.Mode.FULL));
+                            question), () -> statusBar.setMode(StatusBar.Mode.FULL),
+                            renderer::awaitingApproval, renderer::approvalResolved);
             AgentService configured = CliContext.service(approver);
             if (strict && configured instanceof LocalAgentService local) {
                 // 严格模式：取消一切自动放行（连 READ 都走审批）
@@ -360,6 +361,7 @@ public final class ChatCommand implements Runnable {
             if (token.isCancelled()) {
                 // 被打断的说明由回合线程输出：此刻主线程正回到 readLine，
                 // 只有这里调 printAbove 才落在正确的位置
+                renderer.cancelled();
                 out.println("[已中断]");
             }
             // 放在每轮回答之后：先让用户看到本轮结果，再来处理上下文
