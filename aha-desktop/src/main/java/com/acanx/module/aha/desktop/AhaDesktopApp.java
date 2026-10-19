@@ -394,8 +394,8 @@ public final class AhaDesktopApp extends Application {
             controller.newSession(workspace);
             shell.clearConversation();
             shell.appendNotice(workspace == null
-                    ? "已新建纯聊天会话。"
-                    : "已在工作空间 " + workspace + " 下新建会话。");
+                    ? "已切换到新会话，发送首条消息后出现在会话列表。"
+                    : "已切换到 " + workspace + " 下的新会话，发送首条消息后出现在列表中。");
             refreshSessions(shell, controller);
         });
 

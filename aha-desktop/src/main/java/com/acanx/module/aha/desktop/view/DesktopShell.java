@@ -1639,12 +1639,6 @@ public final class DesktopShell implements ChatView {
         }
         workspaceList.getChildren().clear();
 
-        Button addSpace = new Button("＋ 添加工作空间");
-        addSpace.setTooltip(new Tooltip("把一个项目目录加入工作空间"));
-        addSpace.setOnAction(event -> chooseWorkspace());
-        themed(addSpace, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
-        workspaceList.getChildren().add(addSpace);
-
         Map<String, List<SessionSummary>> groups = new LinkedHashMap<>();
         for (SessionSummary summary : sessionSummaries) {
             if (summary.workspace() == null) {
@@ -1676,6 +1670,14 @@ public final class DesktopShell implements ChatView {
         for (String workspace : order) {
             workspaceList.getChildren().add(workspaceGroup(workspace, groups.get(workspace)));
         }
+
+        // 放在已有工作空间之后：作为「新增」入口，尺寸比组头更小
+        Button addSpace = new Button("＋ 添加工作空间");
+        addSpace.setTooltip(new Tooltip("把一个项目目录加入工作空间"));
+        addSpace.setOnAction(event -> chooseWorkspace());
+        themed(addSpace, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";"
+                + "-fx-font-size: 11px; -fx-padding: 1 6 1 6;");
+        workspaceList.getChildren().add(addSpace);
     }
 
     private VBox workspaceGroup(String workspace, List<SessionSummary> summaries) {

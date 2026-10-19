@@ -152,6 +152,12 @@ public final class ChatController {
      * @return 始终为 {@code null}（尚未创建）；保留返回值以便调用方兼容
      */
     public synchronized String newSession() {
+        this.pendingWorkspace = null;
+        return closeAndReset();
+    }
+
+    /** 关闭当前会话并把当前会话置空（懒创建）。 */
+    private String closeAndReset() {
         if (sessionId != null) {
             service.closeSession(sessionId);
             sessionId = null;
@@ -166,12 +172,10 @@ public final class ChatController {
      * @return 新会话 ID
      */
     public synchronized String newSession(String workspace) {
+        // 保留 pendingWorkspace 到 ensureSession() 真正创建为止：
+        // 之前在这里 finally 清空，导致发送首条消息时工作空间已经丢了。
         this.pendingWorkspace = workspace;
-        try {
-            return newSession();
-        } finally {
-            this.pendingWorkspace = null;
-        }
+        return closeAndReset();
     }
 
     /**
@@ -326,6 +330,7 @@ public final class ChatController {
         if (sessionId == null) {
             sessionId = service.createSession(configWithWorkspace());
             LOG.info("已创建会话 {}", sessionId);
+            this.pendingWorkspace = null;
             onSessionChanged.run();
         }
         return sessionId;
