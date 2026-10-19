@@ -43,6 +43,9 @@ public final class JLineStatusSurface implements StatusSurface {
 
     private boolean suspended;
 
+    /** 上一次更新的行数：行数变化时先清空，避免旧帧残留在新行上。 */
+    private int lastSize;
+
     private JLineStatusSurface(Terminal terminal, Status status, boolean color, Object lock) {
         this.terminal = terminal;
         this.status = status;
@@ -118,6 +121,11 @@ public final class JLineStatusSurface implements StatusSurface {
             suspended = false;
         }
         resizeIfNeeded();
+        // 行数变化（2 ↔ 3）时 Display 会保留旧行内容，导致动态状态残留在静态行
+        if (lines.size() != lastSize) {
+            status.update(java.util.List.of());
+            lastSize = lines.size();
+        }
         int columns = terminal.getSize().getColumns();
         List<AttributedString> attributed = new ArrayList<>(lines.size());
         for (String line : lines) {
