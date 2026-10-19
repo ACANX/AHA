@@ -456,7 +456,7 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
 | 通道 | 版本形态 | tag | 资产名 | 产出线 |
 |---|---|---|---|---|
 | **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| 四组合 × 三平台 = **12 份**，见下 | `Release.yml` |
-| **Beta** | `x.y.z.PPPPP` | `V<版本>-aha-<product>-<form>` | 同一文法（旧 `-aha-jvm` 兼做一个周期） | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
+| **Beta** | `x.y.z.PPPPP` | `V<版本>-aha-<product>-<form>`（JVM 与原生一样**每个形态一条**，issue #347） | 同一文法（旧合并 `-aha-jvm` 仅解析兼容） | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
 | **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<product>-<form>` | 同一文法 | 快照线（同上，7 天有效期） |
 
 **资产名文法（唯一一处定义，issue [#269](https://github.com/ACANX/AHA/issues/269)）**：

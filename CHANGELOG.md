@@ -12,6 +12,14 @@
 
 ## [0.1.5] - 待发布
 
+### 变更
+- **dev 线 JVM 预发行按形态拆分（issue #347）**：
+  - 由一条 `V<版本>-AHA-JVM` 改为两条：`V<版本>-AHA-Desktop-JVM`（tag `-aha-desktop-jvm`）与
+    `V<版本>-AHA-Cli-JVM`（tag `-aha-cli-jvm`），与原生线「每个目标一条」对齐；
+  - 每条 release 只装本形态的包，`SHA256SUMS` 也只覆盖自己那几行；
+  - 旧合并 tag `-aha-jvm` 不再新发，但保留解析与取件兼容（历史 release 仍可下载）；
+  - `Dist/UpdateJvm.ps1` 按种类选择新后缀并回退旧后缀，`bin/CheckScripts.py` 的契约守卫同步升级。
+
 ### 新增
 - **Markdown 富文本渲染基线补齐（issue #335）**：
   - 行内**删除线**（`~~文本~~`，SGR 9）—— 单个 `~` 仍是字面量，不影响 `~/x`；

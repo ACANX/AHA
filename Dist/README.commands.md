@@ -90,7 +90,8 @@ bin\AhaDesktop.bat               :: 源码根：找不到单体 jar 时自动解
 ### 2.4 从发布页一键取件（dev 线，Windows）
 
 ```bat
-Dist\UpdateDesktopJvm.cmd                :: 取下最新的桌面端 JVM 便携包（dev 线的 V<版本>-aha-jvm）
+Dist\UpdateDesktopJvm.cmd                :: 取下最新的桌面端 JVM 便携包（dev 线的 V<版本>-aha-desktop-jvm）
+Dist\UpdateCliJvm.cmd                    :: 取下最新的 CLI JVM 便携包（dev 线的 V<版本>-aha-cli-jvm）
 Dist\UpdateDesktopJvm.cmd -List          :: 列出最近几版
 Dist\UpdateDesktopJvm.cmd -Jdk 27        :: 取 JDK 27 变体
 Dist\UpdateDesktopJvm.cmd -DryRun        :: 只预览：会下载哪个包、解压到哪里
@@ -256,12 +257,20 @@ Dist\aha-cli-native.exe version
 > 交互式模式下 `Ctrl+C` 只打断当前生成，不退出进程；生成或工具执行中按 `ESC` 同样只中断当前任务（见 #341）。
 
 **dev 分支的 JVM 便携包**由 CI 的 `BuildJVMArtifacts.yml` 在每次合并到 `dev` 后产出，
-挂到发布页（预发行 tag `V<版本>-aha-jvm`），每个平台出 **JDK 25** 与 **JDK 27** 两份：
+挂到发布页；**每个形态一条预发行**（与原生线一致，issue #347）：
+
+| 形态 | 预发行名称 | tag |
+|---|---|---|
+| 桌面端 | `V<版本>-AHA-Desktop-JVM` | `V<版本>-aha-desktop-jvm` |
+| CLI | `V<版本>-AHA-Cli-JVM` | `V<版本>-aha-cli-jvm` |
+
+每个平台出 **JDK 25** 与 **JDK 27** 两份：
 
 - `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` / `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip`：**JDK 25 基线**（Java 25 字节码，需 JDK 25）；
 - `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk27.zip` / `aha-cli-jvm-<版本>-<系统>-<架构>-jdk27.zip`：**JDK 27**（Java 27 字节码，需 JDK 27）。
 
 > 这是**验证 dev 最新合并**用的预发行产物；正式版本仍用 Release 页的 `V<版本号>` 资产。
+> 0.1.5 之前的合并 tag `V<版本>-aha-jvm` 仍可读（`-Tag` 指定即可），只是不再新发。
 
 ## 5. 日常检查
 
