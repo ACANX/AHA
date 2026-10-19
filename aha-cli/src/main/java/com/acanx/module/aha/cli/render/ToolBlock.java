@@ -212,12 +212,12 @@ final class ToolBlock {
                     break outer;
                 }
                 String indented = " ".repeat(INDENT) + part;
-                String row = dim ? style.muted(indented) : indented;
+                String row = dim ? style.blockText(indented) : indented;
                 lines.add(kind == null ? row : style.blockLine(kind, row, width));
             }
         }
         if (truncated) {
-            String note = style.muted(" ".repeat(INDENT) + "… 输出共 " + source.length
+            String note = style.blockText(" ".repeat(INDENT) + "… 输出共 " + source.length
                     + " 行，此处显示前 " + maxLines + " 行");
             lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
@@ -308,7 +308,7 @@ final class ToolBlock {
         }
         for (int i = 0; i < wrapped.size(); i++) {
             String prefix = i == 0 ? head : " ".repeat(TextWidth.width(head));
-            String line = style.muted(" ".repeat(INDENT) + prefix + wrapped.get(i));
+            String line = style.blockText(" ".repeat(INDENT) + prefix + wrapped.get(i));
             lines.add(style.blockLine(kind, line, width));
         }
     }

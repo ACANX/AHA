@@ -220,7 +220,7 @@ public final class StreamRenderer implements Renderer {
         if (lines.isEmpty()) {
             return;
         }
-        String label = style.muted(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
+        String label = style.blockText(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
         block(currentKind == null ? label : style.blockLine(currentKind, label, width));
         for (String line : lines) {
             block(line);

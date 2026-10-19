@@ -45,8 +45,8 @@ public final class Style {
     /** 256/真彩下的工具区块底色（深青）。 */
     private static final String BAND_BG = "\u001B[48;5;23m";
 
-    /** 256/真彩下工具区块的文字色。 */
-    private static final String BAND_FG = "\u001B[38;5;253m";
+    /** 256/真彩下工具区块的文字色（亮白，保证深青底上的对比度）。 */
+    private static final String BAND_FG = "\u001B[38;5;231m";
 
     /** 256/真彩下失败区块的底色（暗红）。 */
     private static final String FAIL_BG = "\u001B[48;5;52m";
@@ -87,8 +87,8 @@ public final class Style {
     /** 启动标志「AHA」字样色（16 色）：加粗亮黄。 */
     private static final String LOGO_WORD_16 = "\u001B[1;93m";
 
-    /** 16 色下中性区块：青底 + 黑字（浅色终端也能读）。 */
-    private static final String BAND_16 = "\u001B[46;30m";
+    /** 16 色下中性区块：青底 + 亮白字。 */
+    private static final String BAND_16 = "\u001B[46;97m";
 
     private final ColorDepth depth;
 
@@ -188,7 +188,7 @@ public final class Style {
                 ? BAND_16 + "\u001B[97m"
                 : BAND_BG + BAND_FG;
         return java.util.Arrays.stream(text.split("\n", -1))
-                .map(line -> fillBlock(sgr, line.replace(RESET, ""), width))
+                .map(line -> fillBlock(sgr, line.replace(RESET, "").replace(DIM, ""), width))
                 .collect(java.util.stream.Collectors.joining("\n"));
     }
 
@@ -271,6 +271,16 @@ public final class Style {
      */
     public String number(String text) {
         return paint(depth == ColorDepth.ANSI16 ? "\u001B[96m" : "\u001B[38;5;180m", text);
+    }
+
+    /**
+     * 工具块内的正文色：亮色，保证深青底上的对比度。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String blockText(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[97m" : "\u001B[38;5;231m", text);
     }
 
     /**
