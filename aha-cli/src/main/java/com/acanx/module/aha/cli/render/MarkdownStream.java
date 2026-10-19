@@ -139,7 +139,10 @@ final class MarkdownStream {
             prefixDone = true;
         }
         if (inFence) {
-            appendFenceLine();
+            // 最后一行若已由 endLine 处理（pending 为空），不能再补一个空行号
+            if (pending.length() > 0) {
+                appendFenceLine();
+            }
         } else {
             resolve(true);
         }
