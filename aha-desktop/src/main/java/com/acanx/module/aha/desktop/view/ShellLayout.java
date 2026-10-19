@@ -11,7 +11,7 @@ package com.acanx.module.aha.desktop.view;
 public final class ShellLayout {
 
     /** 左栏宽度（px）：导航与列表。 */
-    public static final double LEFT_WIDTH = 220;
+    public static final double LEFT_WIDTH = 286;
 
     /** 右栏宽度（px）：本轮上下文。 */
     public static final double RIGHT_WIDTH = 280;
