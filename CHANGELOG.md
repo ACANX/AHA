@@ -49,6 +49,10 @@
   - 有色 TTY 下代码块每行前置 3 位行号（`  1 │ `），无色 / 非 TTY 保持原样；
   - 围栏语言标识支持 ` ```java title="x" ` 等附加信息（只取第一个 token）；
   - 行号不改变行数，代码内容仍完整。
+- **BigModelCN 补充最新 GLM 模型**：
+  - 新增 `glm-5.4`（旗舰推理模型），`Tier` 的 Ultra / Pro / Standard 指向它；
+  - 保留 `glm-5.3` / `glm-5.3-flashx` / `glm-5.3-flash` 作为 Flash / Fallback；
+  - 桌面端预设与候选模型同步。
 - **围栏代码语法高亮（issue #336）**：
   - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML /
     Go / Rust / C# / C / C++ / PHP / Ruby；

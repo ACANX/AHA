@@ -143,6 +143,9 @@ Model:
       BaseUrl: https://open.bigmodel.cn/api/paas/v4
       ApiKey: '${AHA_API_KEY_BIG_MODEL_CN}'
       Models:
+        glm-5.4:
+          Name: glm-5.4
+          Reasoning: true
         glm-5.3:
           Name: glm-5.3
           Reasoning: true
@@ -151,9 +154,9 @@ Model:
         glm-5.3-flash:
           Name: glm-5.3-flash
       Tier:
-        Ultra: glm-5.3
-        Pro: glm-5.3
-        Standard: glm-5.3
+        Ultra: glm-5.4
+        Pro: glm-5.4
+        Standard: glm-5.4
         Flash: glm-5.3-flashx
         Fallback: glm-5.3-flash
       TimeoutSeconds: 120

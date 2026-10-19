@@ -198,7 +198,7 @@ class ProviderFormTest {
         assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-6-sol");
         assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic-messages");
         assertThat(ProviderForm.preset("Gemini").adapter()).isEqualTo("gemini");
-        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.3");
+        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.4");
         assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen3.7-plus");
         assertThat(ProviderForm.preset("Moonshot").model()).isEqualTo("kimi-k2.7-code");
         assertThat(ProviderForm.preset("MiniMax").model()).isEqualTo("MiniMax-M2.7");
