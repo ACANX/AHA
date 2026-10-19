@@ -10,6 +10,13 @@
 
 ## [Unreleased]
 
+### 新增
+- **会话记录工作空间（issue #379 阶段 1）**：
+  - `SessionSummary` 新增 `workspace`（保留兼容构造器），纯聊天会话为 `null`；
+  - `SqliteMemoryStore.listSessions` 从 `session.config_json` 解析 `workspace`，不新增表列；
+  - `LocalAgentService.createSession` 未显式指定时自动补当前项目根（`SystemPromptLoader.findProjectRoot`）；
+  - 旧会话保持无 `workspace`，界面归入「纯聊天」。
+
 ## [0.1.5] - 待发布
 
 ### 变更
