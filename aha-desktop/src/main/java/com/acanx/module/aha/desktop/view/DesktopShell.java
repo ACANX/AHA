@@ -352,6 +352,9 @@ public final class DesktopShell implements ChatView {
     /** 当前会话 ID（列表里高亮它）。 */
     private String currentSessionId;
 
+    /** 会话列表单行高度（px）：随条目数计算列表高度用。 */
+    private static final double SESSION_ROW_HEIGHT = 24;
+
     /** 「会话」分组是否展开（与工作空间一样可折叠）。 */
 
     /** 工具来源（工具列表对话框用）。 */
@@ -1447,9 +1450,14 @@ public final class DesktopShell implements ChatView {
         sessionSearch.setMaxWidth(Double.MAX_VALUE);
 
         sessionList.setId(SESSION_LIST_ID);
-        sessionList.setPrefHeight(200);
+        // 高度随会话数量自然伸缩：内容少时不出现滚动条，超出左栏可用高度才滚动
+        sessionList.setFixedCellSize(SESSION_ROW_HEIGHT);
+        sessionList.setMinHeight(0);
         sessionList.setMaxWidth(Double.MAX_VALUE);
-        sessionList.setMinHeight(120);
+        sessionList.prefHeightProperty().bind(
+                Bindings.size(sessionList.getItems())
+                        .multiply(SESSION_ROW_HEIGHT)
+                        .add(4));
         themed(sessionList, () -> "-fx-background-color: transparent; -fx-control-inner-background: "
                 + Palette.BLOCK_BACKGROUND + ";");
         sessionList.setCellFactory(view -> new SessionCell());
@@ -1474,6 +1482,8 @@ public final class DesktopShell implements ChatView {
 
         sessionPane.setText("会话");
         sessionPane.setExpanded(true);
+        // 允许在左栏空间不足时压缩，让列表内部的滚动条出现
+        sessionPane.setMinHeight(0);
         themed(sessionPane, () -> "-fx-text-fill: " + Palette.MUTED
                 + "; -fx-background-color: transparent;");
 
