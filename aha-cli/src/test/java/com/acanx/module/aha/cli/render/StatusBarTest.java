@@ -5,32 +5,32 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * {@link StatusBar} 测试：字段顺序、缺失占位、目录截断与宽度压缩（issue #330 / #353）。
+ * {@link StatusBar} 测试：字段顺序、缺失占位、完整路径与超长中间省略、宽度压缩（issue #330 / #353）。
  *
  * @since 0.1.5
  */
 class StatusBarTest {
 
     private static StatusBar sample() {
-        return StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard", "deepseek-chat", "-",
+        return StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard", "model-x", "-",
                 "/a/b/c/d", "dev");
     }
 
     @Test
     void textFollowsTheAgreedOrder() {
-        // 模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)
-        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
-                "deepseek-chat", "high", "C:\\work\\AHA\\GitRepo\\ACANX", "dev");
+        // 模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)；路径不足 128 字符时完整展示
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard",
+                "model-x", "high", "C:\\work\\AHA\\GitRepo\\ACANX", "dev");
 
         assertThat(bar.text(0)).isEqualTo(
-                "自动 · deepseek · Standard · deepseek-chat · high · …\\AHA\\GitRepo\\ACANX (dev)");
+                "自动 · DeepSeek · Standard · model-x · high · C:\\work\\AHA\\GitRepo\\ACANX (dev)");
     }
 
     @Test
     void missingProviderAndModelFallBackToDash() {
         StatusBar bar = StatusBar.of(StatusBar.Mode.STRICT, null, null, null, "", "/a/b/c/d", "");
 
-        assertThat(bar.text(0)).isEqualTo("严格 · - · - · - · …/b/c/d");
+        assertThat(bar.text(0)).isEqualTo("严格 · - · - · - · /a/b/c/d");
     }
 
     @Test
@@ -41,35 +41,45 @@ class StatusBarTest {
     }
 
     @Test
-    void shortCwdKeepsTheTailLevels() {
-        // 保留末 3 层：GitRepo / ACANX / AHA
-        assertThat(StatusBar.shorten("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA", 3))
-                .isEqualTo("…/GitRepo/ACANX/AHA");
-        assertThat(StatusBar.shorten("/a/b", 3)).isEqualTo("/a/b");
-        assertThat(StatusBar.shorten("", 3)).isEqualTo("-");
-        assertThat(StatusBar.shorten("C:\\a\\b\\c\\d", 2)).isEqualTo("…\\c\\d");
+    void pathIsCompleteWhenBelowTheLimit() {
+        // 完整路径优先：不做「保留末 N 层」的头部省略
+        assertThat(StatusBar.shorten("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA"))
+                .isEqualTo("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA");
+        assertThat(StatusBar.shorten("/a/b")).isEqualTo("/a/b");
+        assertThat(StatusBar.shorten("C:\\a\\b")).isEqualTo("C:\\a\\b");
+        assertThat(StatusBar.shorten("")).isEqualTo("-");
+    }
+
+    @Test
+    void longPathIsElidedInTheMiddle() {
+        String longPath = "/" + "a".repeat(200);
+
+        String out = StatusBar.shorten(longPath);
+
+        assertThat(out).hasSize(StatusBar.MAX_PATH_CHARS);
+        assertThat(out).contains("…");
+        assertThat(out).startsWith("/aaa");
+        assertThat(out).endsWith("aaa");
     }
 
     @Test
     void wideEnoughKeepsEveryField() {
-        assertThat(sample().text(70))
-                .isEqualTo("自动 · deepseek · Standard · deepseek-chat · - · …/b/c/d (dev)");
+        assertThat(sample().text(80))
+                .isEqualTo("自动 · DeepSeek · Standard · model-x · - · /a/b/c/d (dev)");
     }
 
     @Test
     void narrowWidthDropsDirectoryThenEffortThenTier() {
-        // 45 列：目录 + 分支先丢，强度随后丢，模式/供应商/档位/模型保留
-        String middle = sample().text(45);
-        assertThat(middle).doesNotContain("…");
+        // 55 列：目录 + 分支先丢，强度与档位保留
+        String middle = sample().text(55);
         assertThat(middle).doesNotContain("(dev)");
-        assertThat(middle).doesNotContain(" · -");
-        assertThat(middle).contains("自动 · deepseek · Standard · deepseek-chat");
+        assertThat(middle).contains("自动 · DeepSeek · Standard · model-x · -");
 
-        // 30 列：档位也丢，仍以「自动 · deepseek」开头
-        String narrow = sample().text(30);
-        assertThat(narrow).startsWith("自动 · deepseek");
+        // 35 列：强度与档位也丢，仍以「自动 · DeepSeek」开头
+        String narrow = sample().text(35);
+        assertThat(narrow).startsWith("自动 · DeepSeek");
         assertThat(narrow).doesNotContain("Standard");
-        assertThat(TextWidth.width(narrow)).isLessThanOrEqualTo(29);
+        assertThat(TextWidth.width(narrow)).isLessThanOrEqualTo(34);
     }
 
     @Test
@@ -84,7 +94,7 @@ class StatusBarTest {
 
     @Test
     void legacyKeepsTheSingleValue() {
-        assertThat(StatusBar.legacy("deepseek-chat").text(80)).isEqualTo("deepseek-chat");
+        assertThat(StatusBar.legacy("model-x").text(80)).isEqualTo("model-x");
     }
 
     @Test

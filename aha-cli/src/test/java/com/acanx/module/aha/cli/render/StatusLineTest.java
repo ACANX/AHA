@@ -51,7 +51,7 @@ class StatusLineTest {
 
     @Test
     void showPaintsFramePhaseModelAndElapsed() {
-        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("deepseek-chat"), Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("model-x"), Style.of(false));
 
         status.show("等待响应…");
 
@@ -94,14 +94,14 @@ class StatusLineTest {
     @Test
     void idleShowsTheThreeItemsWhenStatusBarIsUsed() {
         // issue #330 / #353：模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)
-        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
-                "deepseek-chat", "-", "/a/b/c/d", "dev");
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard",
+                "model-x", "-", "/a/b/c/d", "dev");
         StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
 
         status.idle();
 
         assertThat(surface.last())
-                .isEqualTo("自动 · deepseek · Standard · deepseek-chat · - · …/b/c/d (dev)");
+                .isEqualTo("自动 · DeepSeek · Standard · model-x · - · /a/b/c/d (dev)");
     }
 
     @Test
@@ -118,8 +118,8 @@ class StatusLineTest {
 
     @Test
     void busyFrameKeepsThePhaseWhenWidthIsScarce() {
-        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "deepseek", "Standard",
-                "deepseek-chat", "-", "/a/b/c/d", "");
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard",
+                "model-x", "-", "/a/b/c/d", "");
         StatusLine status = new StatusLine(surface, true, true, 20, bar, Style.of(false));
 
         status.show("等待响应…");
@@ -161,7 +161,7 @@ class StatusLineTest {
     }
     @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
-        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("deepseek-chat"),
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("model-x"),
                 Style.of(ColorDepth.ANSI256));
 
         status.show("等待响应…");

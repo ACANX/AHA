@@ -19,8 +19,8 @@ import java.util.List;
  */
 public final class StatusBar {
 
-    /** 目录默认保留的尾部层数。 */
-    static final int KEEP_LEVELS = 3;
+    /** 路径超过该字符数时从中间省略（issue #353：完整路径优先，超长才截）。 */
+    static final int MAX_PATH_CHARS = 128;
 
     /** 缺失值的占位（供应商 / 模型 / 强度）。 */
     private static final String MISSING = "-";
@@ -207,34 +207,30 @@ public final class StatusBar {
         if (cwd.isEmpty()) {
             return "";
         }
-        String dir = shorten(cwd, KEEP_LEVELS);
+        String dir = shorten(cwd);
         return branch.isEmpty() ? dir : dir + " (" + branch + ")";
     }
 
     /**
-     * 目录截断：保留末尾 {@code keep} 层，前缀 {@code …}。
+     * 目录展示规则：**完整路径优先**，只有超过 {@link #MAX_PATH_CHARS} 个字符时才**从中间省略**。
      *
-     * @param cwd  原始路径（可空）
-     * @param keep 保留层数
-     * @return 截断后的路径；不足 {@code keep} 层时原样返回
+     * <p>不做「保留末尾 N 层」那种头部省略——路径前缀（挂载点 / 盘符 / 工作区根）往往正是
+     * 判断「这是哪个环境」的关键，掐掉头部反而更难排查。</p>
+     *
+     * @param cwd 原始路径（可空）
+     * @return 完整路径；超长时形如 {@code /home/acanx/…/GitRepo/ACANX/AHA}
      */
-    static String shorten(String cwd, int keep) {
+    static String shorten(String cwd) {
         if (cwd == null || cwd.isBlank()) {
             return MISSING;
         }
-        String normalized = cwd.replace('\\', '/');
-        List<String> parts = new ArrayList<>();
-        for (String part : normalized.split("/")) {
-            if (!part.isEmpty()) {
-                parts.add(part);
-            }
-        }
-        if (keep <= 0 || parts.size() <= keep) {
+        if (cwd.length() <= MAX_PATH_CHARS) {
             return cwd;
         }
-        String tail = String.join("/", parts.subList(parts.size() - keep, parts.size()));
-        boolean windows = cwd.indexOf('\\') >= 0;
-        return windows ? "…\\" + tail.replace('/', '\\') : "…/" + tail;
+        int keep = MAX_PATH_CHARS - 1;   // 留一个字符给中间的省略号
+        int head = keep / 2;
+        int tail = keep - head;
+        return cwd.substring(0, head) + "…" + cwd.substring(cwd.length() - tail);
     }
 
     private static String missingAsDash(String value) {

@@ -288,18 +288,21 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 运行模式 · 供应商 · 档位 · 模型名 · 思考强度 · 目录 (分支)
 ```
 
+CLI 的输入行**没有 `> ` 提示符**（prompt 只带上下边线），所以状态栏上方只有边线：
+
 ```text
-> 用户输入                                              ← JLine 输入行
-──────────────────────────────────────────────────────  ← 保留区第 1 行：输入框下边框
-自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
-                                                        ← 保留区第 2 行：状态栏（空闲）
+（用户输入显示在边线之上）
+──────────────────────────────────────────────────────────────  ← 输入框下边框
+自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
 ```
+
+> `<model>` 是占位：具体模型名以 `ModelDefault.yml` 的当前默认为准，不在设计文档里写死版本。
 
 忙碌时阶段在前、字段在后（宽度不足时只保阶段）：
 
 ```text
-⠋ 等待响应… · 自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
-⠸ 执行工具 shell-exec… 1.2s · 完全授权 · openai · Pro · gpt-5 · high · …/AHA (feature/x)
+⠋ 等待响应… · 自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
+⠸ 执行工具 shell-exec… 1.2s · 完全授权 · OpenAI · Pro · <model> · high · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (feature/x)
 ```
 
 三档模式（最左段，任何宽度都保留）：
@@ -319,24 +322,23 @@ glm-4-plus                      ← 空闲态：换模型名，边框保留
 | 档位 | `attributes.Tier`（Ultra / Pro / Standard / Flash / Fallback） | 省略该段 |
 | 模型名 | `--model`，否则 `attributes.Model` | `-` |
 | 思考强度 | **数据源待定**（issue #353） | `-`（不编造「低 / 中 / 高」） |
-| 目录 | 工作目录（未指定时不展示） | 省略目录段 |
+| 目录 | 工作目录；**完整路径优先** | 省略目录段 |
 | Git 分支 | 目录向上找 `.git` 读 `HEAD`；detached 显示 7 位短 sha | 不展示 |
+
+目录展示规则（`StatusBar.shorten`）：
+
+```text
+≤ 128 字符  →  完整路径原样展示（不做「保留末 N 层」的头部省略）
+> 128 字符  →  从**中间**省略：保留首尾，形如 /home/acanx/…/GitRepo/ACANX/AHA
+```
 
 宽度压缩（`StatusBar.text`，`width - 1` 为上限）——顺序：
 **目录+分支 → 思考强度 → 档位 → 硬截断**，模式与供应商始终保留：
 
 ```text
-80 列  自动 · deepseek · Standard · deepseek-chat · - · …/GitRepo/ACANX/AHA (dev)
-43 列  自动 · deepseek · Standard · deepseek-chat          （目录+分支、强度已丢）
-40 列  自动 · deepseek · deepseek-chat                     （档位也丢）
-16 列  自动 · deepseek                                     （按显示宽度硬截断）
-```
-
-目录截断：超过 **3 层** → `…/末三层`（Windows 用 `…\`）：
-
-```text
-C:\work\AHA\GitRepo\ACANX\AHA   →  …\AHA\GitRepo\ACANX\AHA
-/home/acanx/Agent/CNXNC            →  原样（不足 3 层）
+宽终端    完整：自动 · DeepSeek · Standard · <model> · - · /home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA (dev)
+变窄      丢目录与分支，再丢强度、档位
+极窄      自动 · DeepSeek · <model>…（按显示宽度硬截断）
 ```
 
 Git 分支探测（`GitBranch`，**不执行 `git` 子进程**）：
