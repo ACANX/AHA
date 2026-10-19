@@ -196,7 +196,7 @@ class ProviderFormTest {
         assertThat(ProviderForm.preset("DeepSeek").baseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(ProviderForm.preset("DeepSeek").model()).isEqualTo("deepseek-v4-flash");
         assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-6-sol");
-        assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic");
+        assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic-messages");
         assertThat(ProviderForm.preset("Gemini").adapter()).isEqualTo("gemini");
         assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.3");
         assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen3.7-plus");
@@ -275,9 +275,10 @@ class ProviderFormTest {
         assertThat(config.hasModels()).isTrue();
         assertThat(config.configuredModel(com.acanx.module.aha.core.config.ModelTier.ULTRA))
                 .isEqualTo("u1");
-        assertThat(config.defaultTier()).isEqualTo("Fallback");
-        assertThat(config.model()).isEqualTo("f1");
-        assertThat(config.effectiveModel(null)).isEqualTo("f1");
+        // 新格式默认档固定 Standard：旧 Draft.defaultTier 不再生效
+        assertThat(config.defaultTier()).isEqualTo("Standard");
+        assertThat(config.model()).isEqualTo("s1");
+        assertThat(config.effectiveModel(null)).isEqualTo("s1");
         // 未配置的档位回退 Standard
         assertThat(config.modelFor(com.acanx.module.aha.core.config.ModelTier.PRO)).isEqualTo("s1");
     }

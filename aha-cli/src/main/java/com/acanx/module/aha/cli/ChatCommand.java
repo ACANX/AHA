@@ -6,6 +6,7 @@ import com.acanx.module.aha.cli.render.Renderer;
 import com.acanx.module.aha.cli.render.StartupBanner;
 import com.acanx.module.aha.cli.render.StartupLogo;
 import com.acanx.module.aha.cli.render.StartupPixelLogo;
+import com.acanx.module.aha.cli.render.StatusBar;
 import com.acanx.module.aha.cli.render.Style;
 import com.acanx.module.aha.cli.render.Renderers;
 import com.acanx.module.aha.cli.render.TextWidth;
@@ -17,6 +18,7 @@ import com.acanx.module.aha.cli.session.SessionCommandRegistry;
 import com.acanx.module.aha.cli.session.SlashMenuReader;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
+import com.acanx.module.aha.cli.tty.GitBranch;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
 import com.acanx.module.aha.cli.tty.OutputEncoding;
 import com.acanx.module.aha.cli.tty.StatusSurface;
@@ -25,6 +27,10 @@ import com.acanx.module.aha.cli.tty.TerminalHandover;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
 import com.acanx.module.aha.common.tool.CancellationToken;
+import com.acanx.module.aha.common.tool.ToolApprover;
+import com.acanx.module.aha.common.tool.ToolPermission;
+import com.acanx.module.aha.core.agent.PermissionPolicy;
+import com.acanx.module.aha.core.service.LocalAgentService;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
@@ -33,6 +39,9 @@ import org.jline.reader.LineReader;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.ParameterException;
+import picocli.CommandLine.Spec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
@@ -50,6 +59,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -88,6 +98,15 @@ public final class ChatCommand implements Runnable {
             description = "自动授权 WRITE/EXECUTE/ADMIN 工具，不再逐次确认")
     boolean autoYes;
 
+    /** 严格模式：所有工具调用都需确认（含只读）。 */
+    @Option(names = "--strict",
+            description = "严格模式：所有工具调用都需确认（含只读）；与 --yes 互斥")
+    boolean strict;
+
+    /** picocli 命令模型（参数冲突时用它报错）。 */
+    @Spec
+    CommandSpec spec;
+
     /** 关闭 ANSI 颜色。 */
     @Option(names = "--no-color", description = "关闭 ANSI 颜色（也受 NO_COLOR 环境变量影响）")
     boolean noColor;
@@ -99,6 +118,9 @@ public final class ChatCommand implements Runnable {
 
     @Override
     public void run() {
+        if (autoYes && strict) {
+            throw new ParameterException(spec.commandLine(), "--yes 与 --strict 不能同时使用");
+        }
         AgentService service = CliContext.service();
         // 先确保全局记忆文件存在，再解析身份：否则本轮解析不到它，
         // 启动信息与 /memory view 会各说一套（一个只报项目级、一个列出两份）。
@@ -184,6 +206,15 @@ public final class ChatCommand implements Runnable {
                     ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset()), false,
                             encoding.charset())
                     : System.out;
+            // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
+            // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
+            StatusBar.Mode mode = strict ? StatusBar.Mode.STRICT
+                    : (autoYes ? StatusBar.Mode.FULL : StatusBar.Mode.AUTO);
+            Path cwd = Path.of("").toAbsolutePath().normalize();
+            StatusBar statusBar = StatusBar.of(mode, statusProvider(service), statusTier(service),
+                    statusModel(service), statusEffort(service), cwd.toString(),
+                    GitBranch.detect(cwd));
+
             // 状态行：终端底部常驻一行，回合期间持续刷新（转圈 / 耗时 / 用量）。
             // 它靠滚动区域实现，终端不支持时自动退化为不显示；
             // 非 TTY（管道 / CI）没有可保留的区域，直接用空实现。
@@ -195,17 +226,24 @@ public final class ChatCommand implements Runnable {
                     describePromptSource(opened), opened.promptChars(),
                     handover(terminal, statusSurface));
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
-            Renderer renderer = Renderers.of(capabilities, encoding, statusModel(service), out,
+            Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
                     statusSurface);
 
             // 工具授权发生在回合线程上，而 reader 由主线程持有，
             // 因此授权问答走队列：主线程把接下来的输入递给它
             BlockingQueue<String> answers = new LinkedBlockingQueue<>();
             AtomicBoolean awaitingAnswer = new AtomicBoolean();
-            CliContext.service(autoYes
+            ToolApprover approver = autoYes
                     ? (toolName, permission, arguments) -> true
                     : new ConsoleToolApprover(question -> askForAnswer(out, answers, awaitingAnswer,
-                            question)));
+                            question), () -> statusBar.setMode(StatusBar.Mode.FULL),
+                            renderer::awaitingApproval, renderer::approvalResolved, renderer::cancelled);
+            AgentService configured = CliContext.service(approver);
+            if (strict && configured instanceof LocalAgentService local) {
+                // 严格模式：取消一切自动放行（连 READ 都走审批）
+                local.setPermissionPolicy(
+                        PermissionPolicy.autoApprove(EnumSet.noneOf(ToolPermission.class)));
+            }
 
             // 单线程执行器：回合串行执行，期间的输入排队
             ExecutorService turns = Executors.newSingleThreadExecutor(
@@ -323,6 +361,7 @@ public final class ChatCommand implements Runnable {
             if (token.isCancelled()) {
                 // 被打断的说明由回合线程输出：此刻主线程正回到 readLine，
                 // 只有这里调 printAbove 才落在正确的位置
+                renderer.cancelled();
                 out.println("[已中断]");
             }
             // 放在每轮回答之后：先让用户看到本轮结果，再来处理上下文
@@ -462,6 +501,39 @@ public final class ChatCommand implements Runnable {
             return model;
         }
         return service.runtime().attributes().get("Model");
+    }
+
+    /**
+     * 状态栏展示的供应商（`Model.yml` 里的配置键）。
+     *
+     * @param service Agent 服务
+     * @return 供应商；未知时为空串（状态栏显示 {@code -}）
+     */
+    private String statusProvider(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Provider", "");
+    }
+
+    /**
+     * 状态栏展示的档位（Ultra / Pro / Standard / Flash / Fallback）。
+     *
+     * @param service Agent 服务
+     * @return 档位；未知时为空串（状态栏省略该段）
+     */
+    private String statusTier(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Tier", "");
+    }
+
+    /**
+     * 状态栏展示的思考强度。
+     *
+     * <p><b>暂无数据源</b>（issue #353 待拍板：`ProviderConfig.Extra.reasoning_effort` 还是
+     * `Aha.yaml` 新增项），先显示占位 {@code -}，不编造「低 / 中 / 高」。</p>
+     *
+     * @param service Agent 服务
+     * @return 强度；当前恒为空串
+     */
+    private String statusEffort(AgentService service) {
+        return "";
     }
 
     /**

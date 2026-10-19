@@ -27,8 +27,39 @@
   - 每条 release 只装本形态的包，`SHA256SUMS` 也只覆盖自己那几行；
   - 旧合并 tag `-aha-jvm` 不再新发，但保留解析与取件兼容（历史 release 仍可下载）；
   - `Dist/UpdateJvm.ps1` 按种类选择新后缀并回退旧后缀，`bin/CheckScripts.py` 的契约守卫同步升级。
+- **模型配置格式重构（issue #357）**：
+  - `Models` 由「档位 → 模型名」改为「**模型 ID → 模型定义**」，支持 `Name`（实际模型名）、
+    `Reasoning`、`Input`（文本 / 图片）、`ContextWindow`、`MaxTokens`、`ThinkingLevelMap`（思考强度映射）；
+  - 档位独立为 `Tier` 节点；默认档固定 `Standard`，`Standard` 缺失时按全局 `DefaultTier` →
+    档位强弱顺序兜底；
+  - 供应商级 `DefaultTier` / `Model` 不再写入；旧格式（字符串 `Models`、`Adapter` 键、
+    旧 `Model`、`anthropic` 枚举值）读取时自动迁移，首次写盘即新格式；
+  - `Adapter` 改名 `ApiType`，枚举 `anthropic` 统一为 `anthropic-messages`（与 pi agent 对齐，
+    `--adapter` 保留为 CLI 兼容别名）；
+  - 新增 `Example/.aha/Model.yml` 参考示例；`ModelDefault.yml`、`ConfigurationGuide.md`、
+    `ReferenceGuide.md` 同步新格式。
 
 ### 新增
+- **CLI 运行状态位（issue #342）**：
+  - 状态行八态：空闲 / 请求中 / 生成中 / 工具执行中 / 等待审批 / 完成 / 失败 / 已中断；
+  - 请求中与工具执行中显示实时耗时（120ms 刷新）；
+  - 完成 / 失败保留 2 秒后回到空闲；失败只显示单行原因；
+  - ESC / Ctrl+C 中断显示「已中断」，保留 2 秒后回到空闲；
+  - 审批问答前后由 `ConsoleToolApprover` 回调切换「等待审批」。
+- **中断状态独立展示（issue #359）**：
+  - 新增 `INTERRUPTED` 运行状态：ESC / Ctrl+C 后显示 `⏹ 已中断`（不显示 `✗` 与失败原因），
+    保留 2s 后回空闲；
+  - 审批问答被中断（Ctrl+C / EOF / 无输入）同样落到该状态，不再误切回「执行工具」；
+  - `ConsoleToolApprover` 新增 `onCancelled` 回调；单测覆盖中断文案与回调。
+- **CLI 底部状态栏：静态字段（issue #330 / #353）**：
+  - 空闲时在输入框下方常驻显示「运行模式 · 供应商 · 档位 · 模型 · 思考强度 · 目录 (分支)」，
+    不随输出滚动消失；忙碌时阶段在前、字段在后（宽度不足先保阶段）；
+  - 供应商取运行时 `Provider`；思考强度暂无数据源时显示 `-`（不编造数值）；
+  - 目录是 Git 仓库时展示当前分支（`feature/x` 完整保留，detached 显示 7 位短 sha）；
+  - 目录超过 3 层截断为 `…/末三层`；宽度不足时依次丢目录+分支、强度、档位，
+    模式与供应商始终保留；
+  - 新增 `--strict`（严格模式：含只读在内所有工具调用都需确认），与 `--yes` 互斥；
+    会话内输入 `a` 后状态栏即时切到「完全授权」。
 - **Markdown 富文本渲染基线补齐（issue #335）**：
   - 行内**删除线**（`~~文本~~`，SGR 9）—— 单个 `~` 仍是字面量，不影响 `~/x`；
   - **嵌套列表**保留缩进层级，符号与顶层统一（不再出现顶层 `• `、嵌套 `- ` 两套记号）；

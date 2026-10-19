@@ -20,7 +20,7 @@ class StatusLineTest {
 
     @Test
     void disabledStatusPaintsNothing() {
-        StatusLine status = new StatusLine(surface, false, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, false, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -31,7 +31,7 @@ class StatusLineTest {
     @Test
     void unknownWidthDisablesStatus() {
         // 宽度未知时无法判断是否会长出两行，宁可不显示
-        StatusLine status = new StatusLine(surface, true, true, 0, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 0, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
 
@@ -41,7 +41,7 @@ class StatusLineTest {
     @Test
     void unavailableSurfaceDisablesStatus() {
         // 终端不支持滚动区域时载体是 NONE，此处不应有任何绘制
-        StatusLine status = new StatusLine(StatusSurface.NONE, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(StatusSurface.NONE, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -51,7 +51,7 @@ class StatusLineTest {
 
     @Test
     void showPaintsFramePhaseModelAndElapsed() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "deepseek-chat", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("model-x"), Style.of(false));
 
         status.show("等待响应…");
 
@@ -63,7 +63,7 @@ class StatusLineTest {
 
     @Test
     void asciiFramesAreUsedWhenUnicodeIsUnavailable() {
-        StatusLine status = new StatusLine(surface, true, false, 40, null, Style.of(false));
+        StatusLine status = new StatusLine(surface, true, false, 40, StatusBar.legacy(null), Style.of(false));
 
         status.show("等待响应…");
 
@@ -72,7 +72,7 @@ class StatusLineTest {
 
     @Test
     void longTextIsTruncatedByDisplayWidth() {
-        StatusLine status = new StatusLine(surface, true, true, 12, "model", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 12, StatusBar.legacy("model"), Style.of(false));
 
         status.show("这是一个非常长的阶段描述文本");
 
@@ -82,7 +82,7 @@ class StatusLineTest {
     @Test
     void idleShowsTheModelInsteadOfReleasingTheArea() {
         // 底部那一行兼着输入行下边框的职责，回合结束不能撤掉
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
         status.show("等待响应…");
 
         status.idle();
@@ -92,8 +92,45 @@ class StatusLineTest {
     }
 
     @Test
+    void idleShowsTheThreeItemsWhenStatusBarIsUsed() {
+        // issue #330 / #353：模式 → 供应商 → 档位 → 模型 → 强度 → 目录 (分支)
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard",
+                "model-x", "-", "/a/b/c/d", "dev");
+        StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
+
+        status.idle();
+
+        assertThat(surface.last())
+                .isEqualTo("自动 · DeepSeek · Standard · model-x · - · /a/b/c/d (dev)");
+    }
+
+    @Test
+    void modeSwitchIsVisibleOnTheNextIdleFrame() {
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "p", "Pro", "m", "-", "/a/b/c/d", "");
+        StatusLine status = new StatusLine(surface, true, true, 80, bar, Style.of(false));
+        status.idle();
+
+        bar.setMode(StatusBar.Mode.FULL);
+        status.idle();
+
+        assertThat(surface.last()).startsWith("完全授权");
+    }
+
+    @Test
+    void busyFrameKeepsThePhaseWhenWidthIsScarce() {
+        StatusBar bar = StatusBar.of(StatusBar.Mode.AUTO, "DeepSeek", "Standard",
+                "model-x", "-", "/a/b/c/d", "");
+        StatusLine status = new StatusLine(surface, true, true, 20, bar, Style.of(false));
+
+        status.show("等待响应…");
+
+        // 宽度不够时先保阶段（每秒都在变），三项由空闲帧继续展示
+        assertThat(surface.painted().get(0)).startsWith("⠋ 等待响应…");
+    }
+
+    @Test
     void idleWithoutShowStillShowsIdleText() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.idle();
 
@@ -102,7 +139,7 @@ class StatusLineTest {
 
     @Test
     void repaintAdvancesTheFrame() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
@@ -113,7 +150,7 @@ class StatusLineTest {
 
     @Test
     void paintAfterIdleDoesNothing() {
-        StatusLine status = new StatusLine(surface, true, true, 80, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"), Style.of(false));
         status.show("等待响应…");
         status.idle();
         int painted = surface.painted().size();
@@ -123,8 +160,42 @@ class StatusLineTest {
         assertThat(surface.painted()).hasSize(painted);
     }
     @Test
+    void generatingAndApprovalStatesHaveTheirOwnLabels() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.runState(RunState.GENERATING, null);
+        assertThat(surface.last()).contains("生成中…");
+
+        status.runState(RunState.AWAITING_APPROVAL, null);
+        assertThat(surface.last()).contains("等待审批…");
+    }
+
+    @Test
+    void doneAndFailedAreVisibleTerminalStates() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.finish(RunState.DONE, null);
+        assertThat(surface.last()).isEqualTo("✓ 完成");
+
+        status.finish(RunState.FAILED, "连接超时\n第二行不展示");
+        assertThat(surface.last()).isEqualTo("✗ 失败 · 连接超时");
+    }
+
+    @Test
+    void interruptedIsVisibleTerminalState() {
+        StatusLine status = new StatusLine(surface, true, true, 80, StatusBar.legacy("m"),
+                Style.of(false));
+
+        status.finish(RunState.INTERRUPTED, null);
+
+        assertThat(surface.last()).isEqualTo("⏹ 已中断");
+    }
+
+    @Test
     void surfaceAlwaysReceivesAFramedBorderLine() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "deepseek-chat",
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("model-x"),
                 Style.of(ColorDepth.ANSI256));
 
         status.show("等待响应…");
@@ -141,7 +212,7 @@ class StatusLineTest {
 
     @Test
     void frameFallsBackToBrightMagentaOn16ColourTerminals() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "m", Style.of(ColorDepth.ANSI16));
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("m"), Style.of(ColorDepth.ANSI16));
 
         status.show("等待响应…");
         status.paint();
@@ -151,7 +222,7 @@ class StatusLineTest {
 
     @Test
     void borderIsNotStyledWhenColourIsOff() {
-        StatusLine status = new StatusLine(surface, true, true, 40, "m", Style.of(false));
+        StatusLine status = new StatusLine(surface, true, true, 40, StatusBar.legacy("m"), Style.of(false));
 
         status.show("等待响应…");
         status.paint();
