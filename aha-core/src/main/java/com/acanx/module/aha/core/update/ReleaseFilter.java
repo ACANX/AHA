@@ -48,7 +48,7 @@ public final class ReleaseFilter {
     /**
      * 候选版本：一条「属于本通道本形态」的 release。
      *
-     * @param tag         tag（如 {@code V0.1.3.00242-aha-jvm}）
+     * @param tag         tag（如 {@code V0.1.5.00346-aha-desktop-jvm}）
      * @param version     版本（已从 tag 解析）
      * @param prerelease  是否预发行
      * @param publishedAt 发布时间（可能为 {@code null}）

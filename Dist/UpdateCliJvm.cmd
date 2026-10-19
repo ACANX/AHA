@@ -13,7 +13,8 @@ rem    UpdateCliJvm.cmd -List            list recent versions      (--list works
 rem    UpdateCliJvm.cmd -DryRun          preview only, no download (--dry-run)
 rem    UpdateCliJvm.cmd -Force           re-download even if already newest
 rem    UpdateCliJvm.cmd -Jdk 27          JDK branch, default 25
-rem    UpdateCliJvm.cmd -Tag V0.1.3.00178-aha-jvm
+rem    UpdateCliJvm.cmd -Tag V0.1.5.00346-aha-cli-jvm
+rem    (the old combined tag V<version>-aha-jvm is still readable)
 rem    (the CLI package is platform independent - no -Platform needed)
 
 rem  Chinese documentation: README.commands.md in this directory.

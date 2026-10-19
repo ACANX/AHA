@@ -106,6 +106,20 @@ class ChannelContractTest {
     }
 
     @Test
+    void betaJvmTagsAreSplitPerForm() {
+        // issue #347：dev 线 JVM 与原生线一样，每个形态一条 release
+        assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, BUILD))
+                .isEqualTo("V0.1.3.00242-aha-desktop-jvm");
+        assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_JVM, BUILD))
+                .isEqualTo("V0.1.3.00242-aha-cli-jvm");
+        // 两种新 tag 互不串味：形态混升是硬约束禁止的
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
+                "V0.1.3.00242-aha-cli-jvm")).isEmpty();
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
+                "V0.1.3.00242-aha-desktop-jvm")).isEmpty();
+    }
+
+    @Test
     void acceptsLegacyTagsFromBeforeTheRename() {
         // 0.1.3 的 dev JVM tag 是 -aha-jvm（两个 JVM 形态共用）。
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
