@@ -96,6 +96,9 @@ public final class DesktopShell implements ChatView {
     /** 左栏内容区 id。 */
     public static final String LEFT_CONTENT_ID = "aha.left.content";
 
+    /** 左栏与中栏之间的拖拽条。 */
+    public static final String LEFT_SPLITTER_ID = "aha.left.splitter";
+
     /** 中栏容器 id。 */
     public static final String CENTER_ID = "aha.center";
 
