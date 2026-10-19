@@ -100,6 +100,9 @@ public final class DesktopShell implements ChatView {
     /** 左栏内容区 id。 */
     public static final String LEFT_CONTENT_ID = "aha.left.content";
 
+    /** 左栏与中栏之间的拖拽条。 */
+    public static final String LEFT_SPLITTER_ID = "aha.left.splitter";
+
     /** 中栏容器 id。 */
     public static final String CENTER_ID = "aha.center";
 
@@ -446,6 +449,9 @@ public final class DesktopShell implements ChatView {
     /** 左栏底部的撑高垫（把导航按钮顶到上方）。 */
     @FXML
     private Region leftSpacer;
+
+    @FXML
+    private Region leftSplitter;
 
     /** 左栏「会话」分组标题。 */
     @FXML
@@ -1369,6 +1375,7 @@ public final class DesktopShell implements ChatView {
         leftContent.setPrefWidth(ShellLayout.LEFT_WIDTH);
         leftContent.setMinWidth(ShellLayout.LEFT_WIDTH);
         leftContent.setMaxWidth(ShellLayout.LEFT_WIDTH);
+        wireLeftSplitter();
         // 与中栏之间给一条分隔线，否则暗色下三栏会糊成一片
         themed(leftContent, () -> "-fx-border-color: " + Palette.BORDER
                 + "; -fx-border-width: 0 1 0 0;");
@@ -1420,8 +1427,8 @@ public final class DesktopShell implements ChatView {
         navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
         navButton(providerButton, "供应商", this::openProviderDialog);
         navButton(toolsButton, "工具", this::openToolDialog);
-        navButton(memoryButton, "记忆（0.2 后续）", () -> appendNotice("记忆面板将在 0.2 后续接入。"));
-        navButton(extensionButton, "扩展（0.2 后续）", () -> appendNotice("扩展面板将在 0.2 后续接入。"));
+        navButton(memoryButton, "记忆", () -> appendNotice("记忆面板尚未接入。"));
+        navButton(extensionButton, "扩展", () -> appendNotice("扩展面板尚未接入。"));
         navButton(logButton, "日志", this::openLogPanel);
         navButton(settingsButton, "⚙ 设置", this::openSettings);
         VBox.setVgrow(leftSpacer, Priority.ALWAYS);
@@ -1678,6 +1685,40 @@ public final class DesktopShell implements ChatView {
     }
 
     /** 中栏：消息流与输入区（节点本身在 desktop-shell.fxml 里）。 */
+    /**
+     * 左栏与中栏之间的拖拽条：拖动时实时调整左栏宽度。
+     *
+     * <p>宽度只在本运行内保留（不写 {@code DesktopSettings}）：先把交互做出来，
+     * 持久化作为后续增量。</p>
+     */
+    private void wireLeftSplitter() {
+        leftSplitter.setPrefWidth(ShellLayout.SPLITTER_WIDTH);
+        leftSplitter.setMinWidth(ShellLayout.SPLITTER_WIDTH);
+        leftSplitter.setMaxWidth(ShellLayout.SPLITTER_WIDTH);
+        leftSplitter.setCursor(Cursor.H_RESIZE);
+        themed(leftSplitter, () -> "-fx-background-color: " + Palette.BORDER + ";");
+        final double[] drag = new double[2];
+        leftSplitter.setOnMousePressed(event -> {
+            drag[0] = leftContent.getWidth();
+            drag[1] = event.getSceneX();
+        });
+        leftSplitter.setOnMouseDragged(event -> {
+            if (!leftFold.isExpanded()) {
+                return;
+            }
+            applyLeftWidth(drag[0] + (event.getSceneX() - drag[1]));
+        });
+    }
+
+    /** 应用左栏宽度：同时改 pref/min/max，否则会被原先锁死的 220 拉回去。 */
+    private void applyLeftWidth(double width) {
+        double clamped = ShellLayout.clampLeftWidth(width);
+        leftFold.setExpandedWidth(clamped);
+        leftContent.setPrefWidth(clamped);
+        leftContent.setMinWidth(clamped);
+        leftContent.setMaxWidth(clamped);
+    }
+
     private void wireCenterColumn() {
         // 中栏吃掉剩余宽度：三栏里只有它会随窗口伸缩
         HBox.setHgrow(centerColumn, Priority.ALWAYS);
@@ -1863,6 +1904,8 @@ public final class DesktopShell implements ChatView {
     private void applyPaneState() {
         applyFold(leftFold, leftContent, leftToggle);
         applyFold(rightFold, rightContent, rightToggle);
+        leftSplitter.setVisible(leftFold.isExpanded());
+        leftSplitter.setManaged(leftFold.isExpanded());
         collapseLeft.setSelected(!leftFold.isExpanded());
         collapseRight.setSelected(!rightFold.isExpanded());
     }
@@ -1871,6 +1914,8 @@ public final class DesktopShell implements ChatView {
         content.setVisible(fold.isContentVisible());
         content.setManaged(fold.isContentManaged());
         content.setPrefWidth(fold.expandedWidth());
+        content.setMinWidth(fold.isContentVisible() ? fold.expandedWidth() : 0);
+        content.setMaxWidth(fold.isContentVisible() ? fold.expandedWidth() : 0);
         toggle.setText(fold.glyph());
         toggle.setTooltip(new Tooltip(fold.tooltip()));
     }

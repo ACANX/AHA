@@ -29,6 +29,12 @@
   - 桌面端「新建会话」改为**懒创建**：只关闭旧会话，首次发送时才落库，不再每次开窗/新建都产生空会话；
   - `MemoryStore.deleteEmptySessions()` / `SessionManager.cleanupEmptySessions()`；
   - `LocalAgentService.listSessions()` 返回前自动清理没有消息的会话，历史遗留的空条目随之消失。
+- **桌面端左栏可拖拽调宽 + 会话列表滚动条减半（2026-10-19）**：
+  - 左栏与中栏之间新增 5px 拖拽条，宽度限制 160–480px，折叠时自动隐藏；
+  - 会话列表纵向滚动条宽度由默认约 14px 降到 7px（暗色 / 亮色主题同步）；
+  - `ShellLayout` 新增 `LEFT_MIN_WIDTH` / `LEFT_MAX_WIDTH` / `SPLITTER_WIDTH` / `clampLeftWidth`；
+  - `FoldState` 支持 `setExpandedWidth`，拖拽后折叠再展开仍保持新宽度。
+  - 移除「记忆」「扩展」导航按钮及其提示中的「（0.2 后续）」字样，按正式功能入口展示。
 
 ## [0.1.5] - 待发布
 

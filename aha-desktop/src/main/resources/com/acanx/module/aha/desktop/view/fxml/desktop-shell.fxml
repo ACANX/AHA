@@ -137,6 +137,9 @@
                     </children>
                 </HBox>
 
+                <!-- 左/中之间的拖拽条：手动调节左栏宽度 -->
+                <Region fx:id="leftSplitter" id="aha.left.splitter"/>
+
                 <!-- 中栏：消息流 + 输入区 -->
                 <VBox fx:id="centerColumn" id="aha.center">
                     <children>

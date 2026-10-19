@@ -22,7 +22,7 @@ public final class FoldState {
 
     private final String name;
 
-    private final double expandedWidth;
+    private double expandedWidth;
 
     private boolean expanded;
 
@@ -54,6 +54,18 @@ public final class FoldState {
      */
     public boolean isExpanded() {
         return expanded;
+    }
+
+    /**
+     * 调整展开时的内容宽度（用户拖拽分栏时调用）。
+     *
+     * @param width 新宽度（px），必须为正
+     */
+    public void setExpandedWidth(double width) {
+        if (width <= 0) {
+            throw new IllegalArgumentException("宽度必须为正：" + width);
+        }
+        this.expandedWidth = width;
     }
 
     /**
