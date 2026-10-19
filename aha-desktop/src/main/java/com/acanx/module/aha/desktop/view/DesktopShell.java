@@ -1865,6 +1865,12 @@ public final class DesktopShell implements ChatView {
         } else {
             onlySessions = sessions;
         }
+        // 点图标进入单面板视图时，目标面板默认展开，不用再点一次
+        if (sessions) {
+            sessionPane.setExpanded(true);
+        } else {
+            workspacePane.setExpanded(true);
+        }
         applyOnlyState();
     }
 
