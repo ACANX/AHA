@@ -1375,17 +1375,17 @@ public final class DesktopShell implements ChatView {
         clearItem.setOnAction(event -> clearConversation());
 
         configMenu.setText("配置(_C)");
-        configProviderItem.setText("供应商…");
+        configProviderItem.setText("供应商");
         configProviderItem.setOnAction(event -> openProviderDialog());
-        configMemoryItem.setText("记忆…");
+        configMemoryItem.setText("记忆");
         configMemoryItem.setOnAction(event -> appendNotice("记忆面板尚未接入。"));
-        configExtensionItem.setText("扩展…");
+        configExtensionItem.setText("扩展");
         configExtensionItem.setOnAction(event -> appendNotice("扩展面板尚未接入。"));
-        configSettingsItem.setText("设置…");
+        configSettingsItem.setText("设置");
         configSettingsItem.setOnAction(event -> openSettings());
 
         toolsMenu.setText("工具(_T)");
-        logItem.setText("日志…");
+        logItem.setText("日志");
         logItem.setOnAction(event -> openLogPanel());
         toolListItem.setText("工具列表");
         toolListItem.setOnAction(event -> openToolDialog());
@@ -1418,7 +1418,7 @@ public final class DesktopShell implements ChatView {
         });
 
         helpMenu.setText("帮助(_H)");
-        checkUpdateItem.setText("检查更新…");
+        checkUpdateItem.setText("检查更新");
         checkUpdateItem.setOnAction(event -> {
             if (onCheckUpdate == null) {
                 appendNotice("检查更新尚不可用（未接线）。");
