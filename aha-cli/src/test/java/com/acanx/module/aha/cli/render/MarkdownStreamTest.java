@@ -104,6 +104,15 @@ class MarkdownStreamTest {
     }
 
     @Test
+    void fenceContentIsHighlightedWhenColorEnabled() {
+        String output = colored().feed("```java\nint n = 42; // note\n```\n");
+
+        assertThat(output).contains("int").contains("42").contains("// note").contains(ESC);
+        // 高亮不改变行数
+        assertThat(output.split("\n", -1)).hasSize(4);
+    }
+
+    @Test
     void textAfterFenceIsParsedAgain() {
         assertThat(plain().feed("```\nx\n```\n## 标题\n")).isEqualTo("```\nx\n```\n## 标题\n");
     }
