@@ -305,7 +305,8 @@ final class StatusLine {
      */
     private String rule() {
         int cells = width > 0 ? Math.max(1, width - 1) : 40;
-        return style.frame(bar.repeat(cells));
+        // 首列留空：JLine Status 的第一列在部分终端会残留上一帧字符（如正文行号）
+        return style.frame(" " + bar.repeat(Math.max(0, cells - 1)));
     }
 
     /**
@@ -319,7 +320,7 @@ final class StatusLine {
         if (state == RunState.IDLE) {
             return rule();
         }
-        String text = "── " + dynamicText() + " ";
+        String text = " ── " + dynamicText() + " ";
         int limit = width > 0 ? Math.max(1, width - 1) : 40;
         int fill = Math.max(0, limit - TextWidth.width(text));
         // 前缀 + 文本 + 填充可能超过终端宽度（clamp 只作用于动态文案），整体再截一次
@@ -334,9 +335,9 @@ final class StatusLine {
     private String fieldLine() {
         String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
         String location = status.location();
-        String text = " " + style.muted("会话") + "  " + style.muted(id);
+        String text = " 会话  " + id;
         if (!location.isEmpty()) {
-            text += "  ·  " + style.muted(location);
+            text += "  ·  " + location;
         }
         return clamp(text);
     }
