@@ -410,6 +410,8 @@ jobs:
           tag_name: V${{ needs.BuildVersion.outputs.version }}-aha-desktop-jvm
           name: V${{ needs.BuildVersion.outputs.version }}-AHA-Desktop-JVM
           prerelease: true
+          # 包或校验和没匹配上就失败：宁可这次不发，也不要建一个缺资产的 release。
+          fail_on_unmatched_files: true
           files: |
             artifacts/desktop/*.zip
             artifacts/desktop/SHA256SUMS
@@ -445,6 +447,8 @@ jobs:
           tag_name: V${{ needs.BuildVersion.outputs.version }}-aha-cli-jvm
           name: V${{ needs.BuildVersion.outputs.version }}-AHA-Cli-JVM
           prerelease: true
+          # 同 Desktop：包或校验和没匹配上就失败。
+          fail_on_unmatched_files: true
           files: |
             artifacts/cli/*.zip
             artifacts/cli/SHA256SUMS

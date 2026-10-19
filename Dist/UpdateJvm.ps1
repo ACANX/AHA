@@ -332,14 +332,12 @@ foreach ($r in $releases) {
     if ($v) { $latestVersion = $v; break }
 }
 
-$newest = $null
 $pick = $null
 foreach ($r in $releases) {
     if ((Get-AnyKindVersion $r.tag_name) -ne $latestVersion) { continue }
     $candidate = Complete-Assets $r
     $found = Get-AssetFor $candidate
     if ($found) {
-        $newest = $candidate
         $pick = @{ Release = $candidate; Asset = $found }
         break
     }
