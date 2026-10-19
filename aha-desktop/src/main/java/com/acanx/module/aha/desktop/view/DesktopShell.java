@@ -2244,7 +2244,9 @@ public final class DesktopShell implements ChatView {
     }
 
     /**
-     * 加一行「左侧竖条 + 标签 + 内容」的消息（与会话流一致，不用气泡）。
+     * 加一条消息气泡：用户靠右，助手 / 系统 / 错误靠左。
+     *
+     * <p>左右分栏与聊天软件一致——一眼就能分清「我说的」和「它说的」。</p>
      *
      * @param who    说话人标签
      * @param body   内容控件
@@ -2252,17 +2254,40 @@ public final class DesktopShell implements ChatView {
      */
     private void addRow(String who, javafx.scene.Node body, String accent) {
         removeEmptyState();
+        boolean self = "你".equals(who);
+        if (self) {
+            // 紫色气泡上用白字，避免沿用正文前景色后对比度不足
+            themed(body, () -> "-fx-text-fill: #FFFFFF;");
+            body.setMaxWidth(ShellLayout.BUBBLE_MAX_WIDTH - 20);
+        }
+
+        Label whoLabel = new Label(who);
+        themed(whoLabel, () -> "-fx-text-fill: " + (self ? "#E8E0FF" : accent)
+                + "; -fx-font-size: 12px;");
+
+        VBox bubble = new VBox(2, whoLabel, body);
+        bubble.setPadding(new Insets(6, 10, 6, 10));
+        bubble.setMaxWidth(ShellLayout.BUBBLE_MAX_WIDTH);
+        themed(bubble, () -> "-fx-background-color: "
+                + (self ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
+                + "-fx-background-radius: 8;");
+
         Region bar = new Region();
         bar.setMinWidth(2);
         bar.setPrefWidth(2);
         themed(bar, () -> "-fx-background-color: " + accent + ";");
 
-        Label whoLabel = new Label(who);
-        themed(whoLabel, () -> "-fx-text-fill: " + accent + "; -fx-font-size: 12px;");
-
-        VBox column = new VBox(2, whoLabel, body);
-        HBox.setHgrow(column, Priority.ALWAYS);
-        HBox row = new HBox(ShellLayout.GAP, bar, column);
+        HBox row;
+        if (self) {
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            row = new HBox(ShellLayout.GAP, spacer, bubble, bar);
+            row.setAlignment(Pos.TOP_RIGHT);
+        } else {
+            HBox.setHgrow(bubble, Priority.ALWAYS);
+            bubble.setMaxWidth(Double.MAX_VALUE);
+            row = new HBox(ShellLayout.GAP, bar, bubble);
+        }
         messages.getChildren().add(row);
     }
 
