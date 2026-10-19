@@ -148,6 +148,12 @@ public final class DesktopShell implements ChatView {
     /** 会话列表 id。 */
     public static final String SESSION_LIST_ID = "aha.session.list";
 
+    /** 左栏「工作空间」折叠面板。 */
+    public static final String WORKSPACE_ID = "aha.workspace";
+
+    /** 工作空间内的分组容器。 */
+    public static final String WORKSPACE_LIST_ID = "aha.workspace.list";
+
     /** 工具卡片节点 id 前缀（后接句柄）。 */
     public static final String TOOL_CARD_ID_PREFIX = "aha.toolcard.";
 
