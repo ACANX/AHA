@@ -61,10 +61,10 @@ class ToolBlockTest {
     void headCarriesKindToolNameAndProgram() {
         // 色带行必须定宽铺满，只放短标识：长内容走各自的明细行
         assertThat(ToolBlock.head("file-read", Map.of("path", "Docs/PLAN.md"), PLAIN, 0))
-                .isEqualTo("[读取文件] file-read");
+                .isEqualTo(" [读取文件] file-read");
         // 命令类多一段程序名——它是「这次操作干了什么」最省字的说法
         assertThat(ToolBlock.head("shell-exec", Map.of("command", "powershell -NoProfile -X"),
-                PLAIN, 0)).isEqualTo("[执行命令] shell-exec  powershell");
+                PLAIN, 0)).isEqualTo(" [执行命令] shell-exec  powershell");
     }
 
     @Test
@@ -74,7 +74,7 @@ class ToolBlockTest {
 
         assertThat(head).contains("执行命令").contains("shell-exec").contains("ls");
         // 背景色带必须铺满：只上色不铺底看起来就是一段彩色文字，不成为“区块”
-        assertThat(head).contains("\u001B[48;5;236m");
+        assertThat(head).contains("\u001B[48;5;23m");
         assertThat(TextWidth.width(head.replaceAll("\u001B\\[[0-9;]*m", "")))
                 .isEqualTo(39);
     }
@@ -84,10 +84,10 @@ class ToolBlockTest {
         String line = ToolBlock.command("ls -la", PLAIN, ENV, 0);
 
         // 在哪个目录、用什么终端、跑了什么——一行说全
-        assertThat(line).isEqualTo("E:\\repo> ls -la");
+        assertThat(line).isEqualTo(" E:\\repo> ls -la");
         // POSIX 用 $，提示符字符本身就是平台信号
         assertThat(ToolBlock.command("ls", PLAIN, new ToolEnvironment("/bin/sh -c", "/tmp/p"), 0))
-                .isEqualTo("/tmp/p$ ls");
+                .isEqualTo(" /tmp/p$ ls");
     }
 
     @Test
@@ -175,14 +175,23 @@ class ToolBlockTest {
         String ok = ToolBlock.result(true, "0.1s", PLAIN, 0, true);
         String fail = ToolBlock.result(false, "权限不足", PLAIN, 0, true);
 
-        assertThat(ok).startsWith("✓ 完成").contains("0.1s");
-        assertThat(fail).startsWith("✗ 失败").contains("权限不足");
+        assertThat(ok).startsWith(" ✓ 完成").contains("0.1s");
+        assertThat(fail).startsWith(" ✗ 失败").contains("权限不足");
     }
 
     @Test
     void resultDegradesMarkersWhenSymbolsUnavailable() {
-        assertThat(ToolBlock.result(true, null, PLAIN, 0, false)).startsWith("[ok] 完成");
-        assertThat(ToolBlock.result(false, null, PLAIN, 0, false)).startsWith("[fail] 失败");
+        assertThat(ToolBlock.result(true, null, PLAIN, 0, false)).startsWith(" [ok] 完成");
+        assertThat(ToolBlock.result(false, null, PLAIN, 0, false)).startsWith(" [fail] 失败");
+    }
+
+    @Test
+    void blockHasTopAndBottomPadding() {
+        String pad = ToolBlock.padding(ToolKind.EXEC, Style.of(ColorDepth.ANSI256), 40);
+
+        // 上下内边距是整行纯底色空行
+        assertThat(pad).contains("\u001B[48;5;23m");
+        assertThat(TextWidth.width(strip(pad))).isEqualTo(39);
     }
 
     @Test
@@ -198,16 +207,16 @@ class ToolBlockTest {
 
         // 同一块内每行都铺同一底色，且整行铺满（块内不出现深浅断层）
         for (String line : details) {
-            assertThat(line).contains("\u001B[48;5;236m");
+            assertThat(line).contains("\u001B[48;5;23m");
             assertThat(TextWidth.width(strip(line))).isEqualTo(39);
         }
         for (String line : body) {
-            assertThat(line).contains("\u001B[48;5;236m");
+            assertThat(line).contains("\u001B[48;5;23m");
             assertThat(TextWidth.width(strip(line))).isEqualTo(39);
         }
-        assertThat(head).contains("\u001B[48;5;236m");
-        assertThat(command).contains("\u001B[48;5;236m");
-        assertThat(result).contains("\u001B[48;5;236m");
+        assertThat(head).contains("\u001B[48;5;23m");
+        assertThat(command).contains("\u001B[48;5;23m");
+        assertThat(result).contains("\u001B[48;5;23m");
     }
 
     /** 去掉 ANSI 序列后的纯文本。 */

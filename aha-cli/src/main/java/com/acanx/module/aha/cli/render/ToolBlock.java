@@ -49,14 +49,14 @@ final class ToolBlock {
     /** 参数值超过该长度时只报规模，避免把整个文件内容铺到终端。 */
     static final int ARG_VALUE_LIMIT = 200;
 
-    /** 明细行缩进（显示宽度）。 */
-    static final int INDENT = 2;
+    /** 明细行缩进（显示宽度，含块内左边距）。 */
+    static final int INDENT = 3;
 
     /** 明细行标签列宽（显示宽度）。 */
     private static final int LABEL_WIDTH = 6;
 
     /** 命令换行后的续行缩进（显示宽度）。 */
-    private static final int CONTINUATION_INDENT = 2;
+    private static final int CONTINUATION_INDENT = 3;
 
     private ToolBlock() {
     }
@@ -79,8 +79,8 @@ final class ToolBlock {
         String tail = program == null ? "" : "  " + program;
         // 无色时没有色带可依，改用结构标记区分类型
         String body = style.colored()
-                ? kind.label() + "  " + toolName + tail
-                : "[" + kind.label() + "] " + toolName + tail;
+                ? " " + kind.label() + "  " + toolName + tail
+                : " [" + kind.label() + "] " + toolName + tail;
         return style.toolBand(kind, body, width);
     }
 
@@ -116,7 +116,7 @@ final class ToolBlock {
             }
             text.append(parts.get(i));
         }
-        return style.blockLine(ToolKind.EXEC, style.command(text.toString()), width);
+        return style.blockLine(ToolKind.EXEC, style.command(" " + text), width);
     }
 
     /**
@@ -151,6 +151,18 @@ final class ToolBlock {
     }
 
     /**
+     * 块内上下内边距：整行纯底色空行。
+     *
+     * @param kind  工具类别
+     * @param style 样式
+     * @param width 终端宽度
+     * @return 已着色空行
+     */
+    static String padding(ToolKind kind, Style style, int width) {
+        return style.blockLine(kind, "", width);
+    }
+
+    /**
      * 工具结果行。
      *
      * @param success 是否成功
@@ -164,7 +176,7 @@ final class ToolBlock {
         String mark = success
                 ? (unicode ? "✓" : "[ok]")
                 : (unicode ? "✗" : "[fail]");
-        String body = mark + " " + (success ? "完成" : "失败")
+        String body = " " + mark + " " + (success ? "完成" : "失败")
                 + (detail == null || detail.isBlank() ? "" : " · " + detail);
         return style.resultBand(success, body, width);
     }
