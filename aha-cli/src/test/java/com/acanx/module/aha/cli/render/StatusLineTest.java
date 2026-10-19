@@ -100,8 +100,8 @@ class StatusLineTest {
 
         status.idle();
 
-        assertThat(surface.staticLine()).contains("/a/b/c/d (dev)")
-                .contains("自动 · DeepSeek · Standard · model-x · -");
+        assertThat(surface.staticLine()).contains("自动 · DeepSeek · Standard · model-x · -");
+        assertThat(surface.fieldLine()).contains("/a/b/c/d (dev)");
     }
 
     @Test
@@ -199,7 +199,7 @@ class StatusLineTest {
 
         status.idle();
 
-        assertThat(surface.staticLine()).contains("SESSION-1");
+        assertThat(surface.fieldLine()).contains("SESSION-1");
     }
 
     @Test
