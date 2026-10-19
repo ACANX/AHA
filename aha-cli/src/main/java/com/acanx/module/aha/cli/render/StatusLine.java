@@ -245,11 +245,12 @@ final class StatusLine {
         if (!enabled) {
             return;
         }
+        // 只停 ticker，不让出底部区域：hide() 会让 Status 高度收缩/恢复，
+        // 授权问答回车后输入行会落到错误位置（覆盖倒数第二、三行）
         if (task != null) {
             task.cancel(false);
             task = null;
         }
-        surface.hide();
     }
 
     /**

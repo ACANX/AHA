@@ -210,7 +210,12 @@ public final class ChatCommand implements Runnable {
             AtomicReference<Renderer> rendererRef = new AtomicReference<>();
             PrintStream out = capabilities.tty()
                     ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset(),
-                            statusSurface::hide,
+                            () -> {
+                                Renderer current = rendererRef.get();
+                                if (current != null) {
+                                    current.suspendStatus();
+                                }
+                            },
                             () -> {
                                 Renderer current = rendererRef.get();
                                 if (current != null) {
