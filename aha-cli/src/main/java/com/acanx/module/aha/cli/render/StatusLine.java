@@ -335,7 +335,7 @@ final class StatusLine {
     private String fieldLine() {
         String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
         String location = status.location();
-        String text = " 会话  " + id;
+        String text = " " + id;
         if (!location.isEmpty()) {
             text += "  ·  " + location;
         }
