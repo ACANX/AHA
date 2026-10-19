@@ -61,6 +61,14 @@ public interface StatusSurface {
     void hide();
 
     /**
+     * 恢复状态行（与 {@link #hide()} 配对，用于 printAbove 前后暂停/恢复）。
+     *
+     * <p>默认空实现：不支持原地重绘的载体无需处理。</p>
+     */
+    default void restore() {
+    }
+
+    /**
      * 关闭并恢复终端滚动区域。
      */
     void close();

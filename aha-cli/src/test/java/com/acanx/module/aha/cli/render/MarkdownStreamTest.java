@@ -104,6 +104,21 @@ class MarkdownStreamTest {
     }
 
     @Test
+    void fenceShowsLineNumbersWhenColorEnabled() {
+        String output = colored().feed("```java\nint a;\nint b;\n```\n");
+
+        assertThat(output).contains("  1 │").contains("  2 │");
+    }
+
+    @Test
+    void fenceLanguageWithExtraInfoIsRecognized() {
+        // 围栏可能带 title 等附加信息，语言取第一个 token
+        String output = colored().feed("```java title=\"x\"\nint a;\n```\n");
+
+        assertThat(output).contains("int").contains(ESC);
+    }
+
+    @Test
     void fenceContentIsHighlightedWhenColorEnabled() {
         String output = colored().feed("```java\nint n = 42; // note\n```\n");
 

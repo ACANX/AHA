@@ -3,6 +3,7 @@ package com.acanx.module.aha.cli.tty;
 import org.jline.terminal.Size;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.InfoCmp;
 import org.jline.utils.Status;
 import org.slf4j.Logger;
@@ -35,14 +36,21 @@ public final class JLineStatusSurface implements StatusSurface {
 
     private final boolean color;
 
+    /** 与 LineReader 共享的锁：Status.update 与 printAbove 必须串行。 */
+    private final Object lock;
+
     private Size size;
 
     private boolean suspended;
 
-    private JLineStatusSurface(Terminal terminal, Status status, boolean color) {
+    /** 上一次更新的行数：行数变化时先清空，避免旧帧残留在新行上。 */
+    private int lastSize;
+
+    private JLineStatusSurface(Terminal terminal, Status status, boolean color, Object lock) {
         this.terminal = terminal;
         this.status = status;
         this.color = color;
+        this.lock = lock == null ? this : lock;
         this.size = terminal.getSize();
     }
 
@@ -54,6 +62,18 @@ public final class JLineStatusSurface implements StatusSurface {
      * @return 状态行载体
      */
     public static StatusSurface create(Terminal terminal, boolean color) {
+        return create(terminal, color, null);
+    }
+
+    /**
+     * 创建状态行载体，并与 LineReader 共享同一把锁。
+     *
+     * @param terminal JLine 终端
+     * @param color    是否解析 ANSI 颜色
+     * @param lock     与 printAbove 共享的锁；{@code null} 表示用自身
+     * @return 状态行载体
+     */
+    public static StatusSurface create(Terminal terminal, boolean color, Object lock) {
         if (terminal == null) {
             return StatusSurface.NONE;
         }
@@ -76,7 +96,7 @@ public final class JLineStatusSurface implements StatusSurface {
             // 不用内置边框：它无法上色，而输入框的上下两条线需要同一种高亮紫。
             // 改为把下边线作为保留区的第一行（由 StatusLine 生成），占用高度不变。
             status.setBorder(false);
-            return new JLineStatusSurface(terminal, status, color);
+            return new JLineStatusSurface(terminal, status, color, lock);
         } catch (RuntimeException e) {
             LOG.warn("状态行不可用，已禁用: {}", e.getMessage());
             return StatusSurface.NONE;
@@ -90,16 +110,56 @@ public final class JLineStatusSurface implements StatusSurface {
 
     @Override
     public void update(List<String> lines) {
+        synchronized (lock) {
+            doUpdate(lines);
+        }
+    }
+
+    private void doUpdate(List<String> lines) {
         if (suspended) {
             status.restore();
             suspended = false;
         }
         resizeIfNeeded();
+        // 不能用 update(empty) 先清空：JLine Status 从 0 行增长到 3 行时
+        // Display.removeFirstOldLines 会越界（toIndex = 3 / IndexOutOfBoundsException）
+        int columns = terminal.getSize().getColumns();
         List<AttributedString> attributed = new ArrayList<>(lines.size());
         for (String line : lines) {
-            attributed.add(color ? AttributedString.fromAnsi(line) : new AttributedString(line));
+            AttributedString text = color
+                    ? AttributedString.fromAnsi(line)
+                    : new AttributedString(line);
+            attributed.add(fit(text, columns));
         }
         status.update(attributed);
+    }
+
+    /**
+     * 把一行补齐 / 截断到终端列宽。
+     *
+     * <p>JLine 的 {@code Status} 在 {@code printAbove} 重绘时，如果状态行长度与
+     * {@code Display} 的列宽不一致，会在 {@code columnLength} 里越界
+     * （{@code Index 188 out of bounds for length 188}）。统一到 columns 可避免。</p>
+     *
+     * @param text    行内容
+     * @param columns 终端列宽；{@code <= 0} 时不处理
+     * @return 与列宽一致的行
+     */
+    private static AttributedString fit(AttributedString text, int columns) {
+        if (columns <= 0) {
+            return text;
+        }
+        int length = text.columnLength();
+        if (length > columns) {
+            return text.columnSubSequence(0, columns);
+        }
+        if (length < columns) {
+            AttributedStringBuilder builder = new AttributedStringBuilder();
+            builder.append(text);
+            builder.append(" ".repeat(columns - length));
+            return builder.toAttributedString();
+        }
+        return text;
     }
 
     @Override
@@ -107,6 +167,14 @@ public final class JLineStatusSurface implements StatusSurface {
         if (!suspended) {
             status.suspend();
             suspended = true;
+        }
+    }
+
+    @Override
+    public void restore() {
+        if (suspended) {
+            status.restore();
+            suspended = false;
         }
     }
 

@@ -1,5 +1,8 @@
 package com.acanx.module.aha.cli.tty;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -26,11 +29,25 @@ import java.util.function.Consumer;
  */
 public final class AboveStream extends OutputStream {
 
+    private static final Logger LOG = LoggerFactory.getLogger(AboveStream.class);
+
     private final Consumer<String> lines;
 
     private final Charset charset;
 
+    /** printAbove 前暂停状态区（避免与 Status 重绘交错）。 */
+    private final Runnable suspend;
+
+    /** printAbove 后恢复状态区。 */
+    private final Runnable resume;
+
+    /** 与 LineReader 共享的锁：printAbove 与 Status.update 必须串行。 */
+    private final Object lock;
+
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+    /** 连续空行计数：最多保留 2 个，避免模型返回大量换行时刷屏。 */
+    private int blankRun;
 
     /**
      * 创建行缓冲流。
@@ -39,8 +56,37 @@ public final class AboveStream extends OutputStream {
      * @param charset 字节到字符串的编码（应与控制台一致）
      */
     public AboveStream(Consumer<String> lines, Charset charset) {
+        this(lines, charset, null, null);
+    }
+
+    /**
+     * 创建行缓冲流，并在每行上抛前后暂停 / 恢复状态区。
+     *
+     * @param lines   每完成一行的回调
+     * @param charset 字节到字符串的编码
+     * @param suspend 上抛前回调（可空）
+     * @param resume  上抛后回调（可空）
+     */
+    public AboveStream(Consumer<String> lines, Charset charset, Runnable suspend, Runnable resume) {
+        this(lines, charset, suspend, resume, null);
+    }
+
+    /**
+     * 创建行缓冲流，并与 LineReader 共享同一把锁。
+     *
+     * @param lines   每完成一行的回调
+     * @param charset 字节到字符串的编码
+     * @param suspend 上抛前回调（可空）
+     * @param resume  上抛后回调（可空）
+     * @param lock    与 Status.update 共享的锁；{@code null} 表示用自身
+     */
+    public AboveStream(Consumer<String> lines, Charset charset, Runnable suspend, Runnable resume,
+                       Object lock) {
         this.lines = lines;
         this.charset = charset == null ? Charset.defaultCharset() : charset;
+        this.suspend = suspend;
+        this.resume = resume;
+        this.lock = lock == null ? this : lock;
     }
 
     @Override
@@ -54,8 +100,19 @@ public final class AboveStream extends OutputStream {
 
     @Override
     public synchronized void write(byte[] bytes, int offset, int length) {
-        for (int i = offset; i < offset + length; i++) {
-            write(bytes[i]);
+        // 一次写入可能包含多行（授权提示等）：整段只暂停 / 恢复一次状态区，
+        // 否则每行都 suspend/restore，会与输入行重绘交错导致错位
+        if (suspend != null) {
+            suspend.run();
+        }
+        try {
+            for (int i = offset; i < offset + length; i++) {
+                write(bytes[i]);
+            }
+        } finally {
+            if (resume != null) {
+                resume.run();
+            }
         }
     }
 
@@ -68,7 +125,16 @@ public final class AboveStream extends OutputStream {
     @Override
     public synchronized void flush() {
         if (buffer.size() > 0) {
-            emit();
+            if (suspend != null) {
+                suspend.run();
+            }
+            try {
+                emit();
+            } finally {
+                if (resume != null) {
+                    resume.run();
+                }
+            }
         }
     }
 
@@ -76,7 +142,20 @@ public final class AboveStream extends OutputStream {
      * 推出一行并清空缓冲。
      */
     private void emit() {
-        lines.accept(buffer.toString(charset));
+        String line = buffer.toString(charset);
         buffer.reset();
+        LOG.debug("AboveStream emit: {} chars, blank={}: {}", line.length(), line.isBlank(),
+                line.length() <= 80 ? line.replace("\n", "\\n") : line.substring(0, 80) + "…");
+        if (line.isBlank()) {
+            blankRun++;
+            if (blankRun > 2) {
+                return;
+            }
+        } else {
+            blankRun = 0;
+        }
+        synchronized (lock) {
+            lines.accept(line);
+        }
     }
 }
