@@ -1834,19 +1834,20 @@ public final class DesktopShell implements ChatView {
 
     /** 左栏窄条上的「只看会话 / 只看工作空间」快捷按钮。 */
     private void wirePaneShortcuts() {
-        sessionOnlyButton.setText("会");
+        // 用图标而不是汉字：气泡代表会话，文件夹代表工作空间
+        sessionOnlyButton.setText("\uD83D\uDCAC");
         sessionOnlyButton.setTooltip(new Tooltip("只显示「会话」，再点一次恢复全部"));
         sessionOnlyButton.setMaxWidth(Double.MAX_VALUE);
         sessionOnlyButton.setOnAction(event -> showOnly(true));
         themed(sessionOnlyButton, () -> "-fx-background-color: transparent; -fx-text-fill: "
-                + Palette.MUTED + "; -fx-padding: 2 0 2 0;");
+                + Palette.MUTED + "; -fx-font-size: 14px; -fx-padding: 2 0 2 0;");
 
-        workspaceOnlyButton.setText("空");
+        workspaceOnlyButton.setText("\uD83D\uDCC1");
         workspaceOnlyButton.setTooltip(new Tooltip("只显示「工作空间」，再点一次恢复全部"));
         workspaceOnlyButton.setMaxWidth(Double.MAX_VALUE);
         workspaceOnlyButton.setOnAction(event -> showOnly(false));
         themed(workspaceOnlyButton, () -> "-fx-background-color: transparent; -fx-text-fill: "
-                + Palette.MUTED + "; -fx-padding: 2 0 2 0;");
+                + Palette.MUTED + "; -fx-font-size: 14px; -fx-padding: 2 0 2 0;");
     }
 
     /**
