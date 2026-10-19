@@ -205,7 +205,9 @@ final class CodeHighlighter {
             if (name == null || name.isBlank()) {
                 return null;
             }
-            return switch (name.trim().toLowerCase(Locale.ROOT)) {
+            // 围栏可能带附加信息（如 `java title="x"`），只取第一个 token
+            String token = name.trim().split("\\s+", 2)[0];
+            return switch (token.toLowerCase(Locale.ROOT)) {
                 case "java" -> JAVA;
                 case "python", "py" -> PYTHON;
                 case "javascript", "js", "jsx" -> JAVASCRIPT;

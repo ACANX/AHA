@@ -57,12 +57,18 @@ final class StatusLine {
 
     private final Style style;
 
+    /** 会话 ID（倒数第二行占位）。 */
+    private final String sessionId;
+
     private ScheduledFuture<?> task;
 
     /** 完成 / 失败态自动回到空闲的定时器。 */
     private ScheduledFuture<?> idleTask;
 
     private volatile RunState state = RunState.IDLE;
+
+    /** 是否处于暂停（授权问答 / printAbove 期间）：暂停时不重绘、不启动 ticker。 */
+    private boolean suspended;
 
     private String detail;
 
@@ -84,6 +90,22 @@ final class StatusLine {
      */
     StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width,
                StatusBar statusBar, Style style) {
+        this(surface, enabled, unicode, width, statusBar, style, null);
+    }
+
+    /**
+     * 创建状态行，并指定倒数第二行展示的会话 ID。
+     *
+     * @param surface   状态行载体
+     * @param enabled   是否启用
+     * @param unicode   编码是否支持盲文帧
+     * @param width     终端宽度
+     * @param statusBar 状态栏
+     * @param style     样式
+     * @param sessionId 会话 ID（可空，空时显示 {@code -}）
+     */
+    StatusLine(StatusSurface surface, boolean enabled, boolean unicode, int width,
+               StatusBar statusBar, Style style, String sessionId) {
         this.surface = surface == null ? StatusSurface.NONE : surface;
         this.frames = unicode ? UNICODE_FRAMES : ASCII_FRAMES;
         this.bar = unicode ? "─" : "-";
@@ -91,6 +113,7 @@ final class StatusLine {
         this.enabled = enabled && width > 0 && this.surface.available();
         this.status = statusBar == null ? StatusBar.legacy("") : statusBar;
         this.style = style == null ? Style.of(false) : style;
+        this.sessionId = sessionId;
     }
 
     /**
@@ -123,9 +146,12 @@ final class StatusLine {
         detail = text;
         summary = null;
         stateStartedAt = System.nanoTime();
-        paint();
-        if (task == null) {
-            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS);
+        if (!suspended) {
+            paint();
+            if (task == null) {
+                task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                        TimeUnit.MILLISECONDS);
+            }
         }
     }
 
@@ -187,22 +213,86 @@ final class StatusLine {
             task.cancel(false);
             task = null;
         }
+        suspended = false;
         state = RunState.IDLE;
         detail = null;
         summary = null;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
-        surface.update(List.of(rule(), status.text(width)));
+        surface.update(List.of(rule(), fieldLine(), staticLine()));
+    }
+
+    /**
+     * 恢复状态区：按当前状态重绘完整三行（动态横线 / 状态字段 / 静态参数）。
+     *
+     * <p>printAbove 之前状态区被 {@code suspend()} 让出；恢复时不能只调
+     * {@code Status.restore()}（会用旧内容重绘、与正文混排），必须重新 {@code update}。</p>
+     */
+    synchronized void resume() {
+        if (!enabled) {
+            return;
+        }
+        suspended = false;
+        if (state == RunState.IDLE) {
+            surface.update(List.of(rule(), fieldLine(), staticLine()));
+            return;
+        }
+        // 不立即 update：交给 120ms 后的 ticker，避免与 readLine 的输入行重绘竞争
+        if (task == null) {
+            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 恢复并切换状态：只更新状态、重启 ticker，不立即重绘。
+     *
+     * <p>审批结束后立刻 {@code update} 会与主线程的输入行重绘交错，
+     * 导致光标落到错误行；延迟到 ticker 再由 {@link #paint()} 刷新。</p>
+     *
+     * @param next 目标状态
+     * @param text 状态文案
+     */
+    synchronized void resumeWith(RunState next, String text) {
+        if (!enabled || next == null) {
+            return;
+        }
+        suspended = false;
+        cancelIdle();
+        state = next;
+        detail = text;
+        summary = null;
+        stateStartedAt = System.nanoTime();
+        if (task == null) {
+            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 暂停状态区：停掉 120ms ticker 并让出底部区域。
+     *
+     * <p>授权问答等需要独占输入行的场景使用；恢复走 {@link #resume()}。</p>
+     */
+    synchronized void suspend() {
+        if (!enabled) {
+            return;
+        }
+        suspended = true;
+        if (task != null) {
+            task.cancel(false);
+            task = null;
+        }
     }
 
     /**
      * 刷新一帧。
      */
     synchronized void paint() {
-        if (!enabled || state == RunState.IDLE) {
+        if (!enabled || suspended || state == RunState.IDLE) {
             return;
         }
-        surface.update(List.of(rule(), compose()));
+        surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
         frame++;
     }
 
@@ -219,14 +309,61 @@ final class StatusLine {
     }
 
     /**
-     * 组装状态行文案：转圈帧 + 当前阶段（+ 静态三项）。
+     * 动态状态行：`── ⠋ 生成中… ─────`（空闲时退化为纯横线）。
      *
-     * <p>不显示用量：用量四项等 0.6 落库（issue #331）；状态行回答「在干什么」，
-     * 并在右侧常驻「模式 / 模型与档位 / 工作目录」（issue #330）。</p>
+     * <p>动态参数放在横线内（左对齐，右侧用横线填充），不再与静态参数挤在同一行。</p>
+     *
+     * @return 已着色文本
+     */
+    private String dynamicLine() {
+        if (state == RunState.IDLE) {
+            return rule();
+        }
+        String text = "── " + dynamicText() + " ";
+        int limit = width > 0 ? Math.max(1, width - 1) : 40;
+        int fill = Math.max(0, limit - TextWidth.width(text));
+        // 前缀 + 文本 + 填充可能超过终端宽度（clamp 只作用于动态文案），整体再截一次
+        return style.frame(clamp(text + bar.repeat(fill)));
+    }
+
+    /**
+     * 状态字段行：暂未实现字段的占位（倒第二行）。
      *
      * @return 文案
      */
-    private String compose() {
+    /**
+     * 会话行：会话 ID · 目录 (分支)。
+     *
+     * <p>前导一个空格：JLine {@code Status} 的第一列在部分终端上会被占用，
+     * 不加空格时首个字符会被吞掉（曾出现「自动」显示成「动」）。</p>
+     *
+     * @return 文案
+     */
+    private String fieldLine() {
+        String id = sessionId == null || sessionId.isBlank() ? "-" : sessionId;
+        String location = status.location();
+        String text = " " + id;
+        if (!location.isEmpty()) {
+            text += "  ·  " + location;
+        }
+        return clamp(text);
+    }
+
+    /**
+     * 静态指标行：模式 / 供应商 / 档位 / 模型 / 强度。
+     *
+     * @return 文案
+     */
+    private String staticLine() {
+        return " " + status.summary(width);
+    }
+
+    /**
+     * 动态状态文案：转圈帧 + 当前阶段 + 耗时 / 失败原因。
+     *
+     * @return 文案
+     */
+    private String dynamicText() {
         String text = switch (state) {
             case REQUESTING -> framePrefix() + " " + (detail == null ? "请求中…" : detail);
             case GENERATING -> framePrefix() + " 生成中…";
@@ -246,14 +383,6 @@ final class StatusLine {
         if (state == RunState.FAILED && summary != null && !summary.isBlank()) {
             text += " · " + summary.lines().findFirst().orElse("");
         }
-        if (status.legacy()) {
-            return clamp(text);
-        }
-        String combined = text + " · " + status.text(width);
-        if (TextWidth.width(combined) <= width - 1) {
-            return combined;
-        }
-        // 宽度不够时先保状态（它每秒都在变），三项由空闲帧继续展示
         return clamp(text);
     }
 

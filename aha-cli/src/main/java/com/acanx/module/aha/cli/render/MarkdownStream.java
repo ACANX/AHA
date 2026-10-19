@@ -37,6 +37,9 @@ final class MarkdownStream {
     private final boolean box;
     private final int width;
 
+    /** 围栏代码是否显示行号。 */
+    private final boolean lineNumbers;
+
     private final StringBuilder out = new StringBuilder();
     private final StringBuilder prefix = new StringBuilder();
     private final StringBuilder pending = new StringBuilder();
@@ -45,6 +48,9 @@ final class MarkdownStream {
     private int headingLevel;
     private boolean prefixDone;
     private boolean inFence;
+
+    /** 围栏内当前行号（从 1 开始）。 */
+    private int fenceLine = 1;
     /** 当前围栏的语言标识（用于语法高亮）；非围栏时为 {@code null}。 */
     private String fenceLanguage;
     private boolean pendingHasDelimiter;
@@ -65,10 +71,23 @@ final class MarkdownStream {
      * @param width   终端宽度；{@code <= 0} 表示未知
      */
     MarkdownStream(Style style, boolean unicode, int width) {
+        this(style, unicode, width, style != null && style.colored() && unicode);
+    }
+
+    /**
+     * 创建渲染器，并显式指定围栏代码是否显示行号。
+     *
+     * @param style       样式
+     * @param unicode     编码是否支持制表符与扩展符号
+     * @param width       终端宽度；{@code <= 0} 表示未知
+     * @param lineNumbers 围栏代码是否显示行号
+     */
+    MarkdownStream(Style style, boolean unicode, int width, boolean lineNumbers) {
         this.style = style;
         this.bullet = unicode ? "•" : "-";
         this.box = unicode;
         this.width = width;
+        this.lineNumbers = lineNumbers;
     }
 
     /** 行级样式。 */
@@ -120,8 +139,10 @@ final class MarkdownStream {
             prefixDone = true;
         }
         if (inFence) {
-            out.append(CodeHighlighter.highlight(pending.toString(), fenceLanguage, style));
-            pending.setLength(0);
+            // 最后一行若已由 endLine 处理（pending 为空），不能再补一个空行号
+            if (pending.length() > 0) {
+                appendFenceLine();
+            }
         } else {
             resolve(true);
         }
@@ -216,13 +237,70 @@ final class MarkdownStream {
         pendingHasDelimiter = false;
     }
 
+    /**
+     * 输出一行围栏代码：可选行号 + 语法高亮。
+     */
+    private void appendFenceLine() {
+        String code = pending.toString();
+        String prefix = lineNumberPrefix();
+        int prefixWidth = TextWidth.width(prefix);
+        int limit = width > 0 ? Math.max(8, width - 1 - prefixWidth) : 0;
+        // 代码行折行：续行用行号前缀等宽的空格占位，保持代码列对齐
+        java.util.List<String> parts = limit > 0
+                ? TextWidth.wrap(code, limit)
+                : java.util.List.of(code);
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                out.append('\n');
+            }
+            out.append(i == 0 ? style.lineNumber(prefix) : " ".repeat(prefixWidth));
+            out.append(CodeHighlighter.highlight(parts.get(i), fenceLanguage, style));
+        }
+        pending.setLength(0);
+    }
+
+    /**
+     * 行号前缀：3 位右对齐 + 分隔符；未开启行号时返回空串。
+     *
+     * @return 行号前缀
+     */
+    private String lineNumberPrefix() {
+        if (!lineNumbers) {
+            return "";
+        }
+        String number = String.format("%3d", fenceLine++);
+        return number + (box ? " │ " : " | ");
+    }
+
+    /**
+     * 从围栏语言标识中取第一个 token（去掉 `title="…"` 等附加信息）。
+     *
+     * @param info 反引号之后的整段文本
+     * @return 语言标识；没有时返回 {@code null}
+     */
+    private static String normalizeLanguage(String info) {
+        if (info == null) {
+            return null;
+        }
+        String text = info.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        int end = 0;
+        while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
+            end++;
+        }
+        return end == 0 ? null : text.substring(0, end);
+    }
+
     private void endLine() {
         if (!prefixDone) {
             String p = prefix.toString();
             int ticks = leadingCount(p, ch -> ch == '`');
             if (!inFence && ticks >= 3) {
-                // 打开围栏：语言标识取反引号之后的部分
-                fenceLanguage = p.substring(ticks).trim();
+                // 打开围栏：语言标识取反引号之后的部分（可能带 title 等附加信息）
+                fenceLanguage = normalizeLanguage(p.substring(ticks));
+                fenceLine = 1;
                 out.append(style.muted(p));
                 prefix.setLength(0);
                 resetLineState();
@@ -239,8 +317,7 @@ final class MarkdownStream {
         // 行尾允许闭定界符落在缓冲区末尾（如 _italic_ 后紧跟换行）；
         // 围栏内部不做行内解析，否则代码里的 ** 会被当成强调
         if (inFence) {
-            out.append(CodeHighlighter.highlight(pending.toString(), fenceLanguage, style));
-            pending.setLength(0);
+            appendFenceLine();
         } else {
             resolve(true);
         }
@@ -294,6 +371,12 @@ final class MarkdownStream {
 
     private void decidePrefix() {
         String p = prefix.toString();
+        // 围栏内部：行首缓冲直接并入 pending，整行在 endLine 时统一加行号 / 高亮。
+        // 不能在这里按 MAX_PREFIX 提前 flush，否则行号会插到代码中间。
+        if (inFence) {
+            decideWhileInFence(p);
+            return;
+        }
         int ticks = leadingCount(p, ch -> ch == '`');
         // 围栏行需要完整缓冲到行尾才能拿到语言标识；普通行仍按 MAX_PREFIX 早判
         if (p.length() > MAX_PREFIX && ticks < 3) {
@@ -362,7 +445,10 @@ final class MarkdownStream {
      */
     private void decideWhileInFence(String p) {
         if (!allSame(p, '`')) {
-            emitPrefixLiteral();
+            // 内容行：把行首缓冲并入 pending，整行在 endLine 时统一加行号 / 高亮
+            pending.append(prefix);
+            prefix.setLength(0);
+            prefixDone = true;
             return;
         }
         if (p.length() >= 3) {
@@ -370,6 +456,7 @@ final class MarkdownStream {
             flushPrefixMuted();
             inFence = false;
             fenceLanguage = null;
+            fenceLine = 1;
         }
     }
 
