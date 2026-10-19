@@ -69,6 +69,20 @@
                             <MenuItem fx:id="copyItem"/>
                         </items>
                     </Menu>
+                    <Menu fx:id="configMenu">
+                        <items>
+                            <MenuItem fx:id="configProviderItem"/>
+                            <Menu fx:id="configToolsMenu">
+                                <items>
+                                    <MenuItem fx:id="configToolsItem"/>
+                                    <MenuItem fx:id="configLogItem"/>
+                                </items>
+                            </Menu>
+                            <MenuItem fx:id="configMemoryItem"/>
+                            <MenuItem fx:id="configExtensionItem"/>
+                            <MenuItem fx:id="configSettingsItem"/>
+                        </items>
+                    </Menu>
                     <Menu fx:id="sessionMenu">
                         <items>
                             <MenuItem fx:id="clearItem"/>
@@ -131,12 +145,6 @@
                                         <VBox fx:id="workspaceList" id="aha.workspace.list" spacing="2"/>
                                     </content>
                                 </TitledPane>
-                                <Button fx:id="providerButton"/>
-                                <Button fx:id="toolsButton"/>
-                                <Button fx:id="memoryButton"/>
-                                <Button fx:id="extensionButton"/>
-                                <Button fx:id="logButton"/>
-                                <Button fx:id="settingsButton"/>
                                 <Region fx:id="leftSpacer"/>
                             </children>
                         </VBox>

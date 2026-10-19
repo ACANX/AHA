@@ -450,22 +450,34 @@ public final class DesktopShell implements ChatView {
     private Button newSessionButton;
 
     @FXML
-    private Button providerButton;
+    private Menu configMenu;
 
     @FXML
-    private Button toolsButton;
+    private MenuItem configProviderItem;
 
     @FXML
-    private Button memoryButton;
+    private Menu configToolsMenu;
 
     @FXML
-    private Button extensionButton;
+    private MenuItem configToolsItem;
 
     @FXML
-    private Button logButton;
+    private MenuItem configLogItem;
 
     @FXML
-    private Button settingsButton;
+    private MenuItem configMemoryItem;
+
+    @FXML
+    private MenuItem configExtensionItem;
+
+    @FXML
+    private MenuItem configSettingsItem;
+
+
+
+
+
+
 
     /** 左栏底部的撑高垫（把导航按钮顶到上方）。 */
     @FXML
@@ -1343,6 +1355,21 @@ public final class DesktopShell implements ChatView {
         clearItem.setText("清空对话");
         clearItem.setOnAction(event -> clearConversation());
 
+        configMenu.setText("配置(_C)");
+        configProviderItem.setText("供应商…");
+        configProviderItem.setOnAction(event -> openProviderDialog());
+        configToolsMenu.setText("工具");
+        configToolsItem.setText("工具列表…");
+        configToolsItem.setOnAction(event -> openToolDialog());
+        configLogItem.setText("日志…");
+        configLogItem.setOnAction(event -> openLogPanel());
+        configMemoryItem.setText("记忆…");
+        configMemoryItem.setOnAction(event -> appendNotice("记忆面板尚未接入。"));
+        configExtensionItem.setText("扩展…");
+        configExtensionItem.setOnAction(event -> appendNotice("扩展面板尚未接入。"));
+        configSettingsItem.setText("设置…");
+        configSettingsItem.setOnAction(event -> openSettings());
+
         toolsMenu.setText("工具(_T)");
         toolListItem.setText("工具列表");
         toolListItem.setOnAction(event -> openToolDialog());
@@ -1460,12 +1487,6 @@ public final class DesktopShell implements ChatView {
                 + "; -fx-background-color: transparent;");
 
         navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
-        navButton(providerButton, "供应商", this::openProviderDialog);
-        navButton(toolsButton, "工具", this::openToolDialog);
-        navButton(memoryButton, "记忆", () -> appendNotice("记忆面板尚未接入。"));
-        navButton(extensionButton, "扩展", () -> appendNotice("扩展面板尚未接入。"));
-        navButton(logButton, "日志", this::openLogPanel);
-        navButton(settingsButton, "⚙ 设置", this::openSettings);
         VBox.setVgrow(leftSpacer, Priority.ALWAYS);
 
         // 常驻窄条上的折叠手柄：设置与事件都在这儿
