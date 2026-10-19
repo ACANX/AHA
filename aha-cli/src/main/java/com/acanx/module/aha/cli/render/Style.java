@@ -162,10 +162,34 @@ public final class Style {
         if (!color) {
             return text;
         }
+        // 整块底色统一：失败也用同一中性底，靠红色前景区分，避免块内出现深浅断层
         String sgr = success
                 ? (depth == ColorDepth.ANSI16 ? BAND_16 : BAND_BG + BAND_FG)
-                : (depth == ColorDepth.ANSI16 ? FAIL_16 : FAIL_BG + FAIL_FG);
+                : (depth == ColorDepth.ANSI16 ? BAND_16 + "\u001B[91m"
+                        : BAND_BG + "\u001B[38;5;203m");
         return fill(sgr, text, width);
+    }
+
+    /**
+     * 工具块正文行：与块头 / 块尾使用同一底色，整行铺满，避免块内出现深浅断层。
+     *
+     * <p>行内已有的 {@code RESET} 会被去掉，否则它会清掉背景色；统一由本方法收尾。</p>
+     *
+     * @param kind  工具类别（预留给按类别区分底色，当前统一中性底）
+     * @param text  文本（可含换行，逐行铺底）
+     * @param width 终端宽度；{@code <= 0} 时不铺底
+     * @return 已着色文本
+     */
+    public String blockLine(ToolKind kind, String text, int width) {
+        if (!color || text == null) {
+            return text;
+        }
+        String sgr = depth == ColorDepth.ANSI16
+                ? BAND_16 + "\u001B[97m"
+                : BAND_BG + BAND_FG;
+        return java.util.Arrays.stream(text.split("\n", -1))
+                .map(line -> fill(sgr, line.replace(RESET, ""), width))
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 
     /**
