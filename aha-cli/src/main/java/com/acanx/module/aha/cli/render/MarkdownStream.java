@@ -181,6 +181,11 @@ final class MarkdownStream {
 
     /**
      * 结算表格并输出。
+     *
+     * <p><b>结束时必须复位行级状态</b>：表格内的换行由 {@link #stepTable(int)} 自己消费，
+     * 从不经过 {@link #endLine()}，而进入表格时 {@code prefixDone} 被置为 {@code true}。
+     * 若不复位，紧跟表格的第一行会带着「行首已判定」的旧状态进入行内流程——
+     * 标题 / 列表 / 引用 / 围栏的标记全被当成正文原样吐出（只坏这一行，下一行就恢复正常）。</p>
      */
     private void flushTable() {
         if (tableLine.length() > 0) {
@@ -188,11 +193,22 @@ final class MarkdownStream {
             tableLine.setLength(0);
         }
         inTable = false;
-        if (tableRows.isEmpty()) {
-            return;
+        if (!tableRows.isEmpty()) {
+            out.append(TableRenderer.render(tableRows, style, width, box));
+            tableRows.clear();
+            // 表格渲染结果以换行结尾：下一个字符属于新行，与 endLine() 的收尾保持一致
+            lastEmitted = '\n';
         }
-        out.append(TableRenderer.render(tableRows, style, width, box));
-        tableRows.clear();
+        resetLineState();
+    }
+
+    /** 复位行级状态：行结束或整块构造（表格）结算后调用。 */
+    private void resetLineState() {
+        kind = LineKind.PLAIN;
+        headingLevel = 0;
+        prefix.setLength(0);
+        prefixDone = false;
+        pendingHasDelimiter = false;
     }
 
     private void endLine() {
@@ -210,10 +226,7 @@ final class MarkdownStream {
         flushPending();
         out.append('\n');
         lastEmitted = '\n';
-        kind = LineKind.PLAIN;
-        headingLevel = 0;
-        prefixDone = false;
-        pendingHasDelimiter = false;
+        resetLineState();
     }
 
     /**

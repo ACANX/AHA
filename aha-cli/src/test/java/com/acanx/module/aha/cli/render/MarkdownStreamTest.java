@@ -307,6 +307,42 @@ class MarkdownStreamTest {
     }
 
     @Test
+    void headingAfterTableIsStillAHeading() {
+        // 回归：表格内的换行不经过 endLine()，曾把 prefixDone 留在 true，
+        // 导致表格后的第一行丢掉行首判定，`### ` 被当正文原样输出
+        String out = colored().feed("| a | b |\n|---|---|\n| 1 | 2 |\n### 标题\n");
+
+        assertThat(out).contains(ESC + "1m" + ESC + "36m标题" + ESC + "0m");
+        assertThat(out).doesNotContain("### 标题");
+    }
+
+    @Test
+    void listAfterTableUsesTheConfiguredBullet() {
+        String out = plain().feed("| a | b |\n|---|---|\n| 1 | 2 |\n- 条目\n");
+
+        assertThat(out).contains("• 条目");
+        assertThat(out).doesNotContain("\n- 条目");
+    }
+
+    @Test
+    void quoteAfterTableIsStillMuted() {
+        // 无色时引用行保留 `> ` 标记，颜色关掉无从区分；改用有色断言：
+        // 正文必须在 QUOTE 行样式里（单独被 DIM 包裹），而不是作为 PLAIN 文本原样吐出
+        String out = colored().feed("| a | b |\n|---|---|\n| 1 | 2 |\n> 引用\n");
+
+        assertThat(out).contains(ESC + "2m引用" + ESC + "0m");
+    }
+
+    @Test
+    void fenceAfterTableKeepsTheFollowingCodeLiteral() {
+        // 围栏标记若被当成正文，围栏内的 **x** 就会被误解析成强调
+        String out = plain().feed("| a | b |\n|---|---|\n| 1 | 2 |\n```\n**x**\n```\n");
+
+        assertThat(out).contains("```");
+        assertThat(out).contains("**x**");
+    }
+
+    @Test
     void pipeInsideAFenceIsNotATable() {
         MarkdownStream stream = plain();
 
