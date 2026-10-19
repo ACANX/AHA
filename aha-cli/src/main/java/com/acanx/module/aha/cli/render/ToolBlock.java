@@ -31,11 +31,14 @@ final class ToolBlock {
     /** 区块之间留一个空行。 */
     static final String SEPARATOR = "";
 
-    /** 成功时结果预览最大行数（折行之后）。 */
-    static final int PREVIEW_LINES = 5;
+    /** 单个块折叠阈值：超过该行数后折叠（issue #322）。 */
+    static final int FOLD_THRESHOLD = 500;
 
-    /** 失败时错误正文最大行数。 */
-    static final int FAILURE_LINES = 40;
+    /** 成功结果正文最多显示行数（= 折叠阈值）。 */
+    static final int PREVIEW_LINES = FOLD_THRESHOLD;
+
+    /** 失败正文最多显示行数（= 折叠阈值）。 */
+    static final int FAILURE_LINES = FOLD_THRESHOLD;
 
     /** 命令行数超过该值时中间省略。 */
     static final int COMMAND_ELIDE_LINES = 40;
@@ -76,12 +79,70 @@ final class ToolBlock {
     static String head(String toolName, Map<String, Object> args, Style style, int width) {
         ToolKind kind = ToolKind.of(toolName);
         String program = kind.programOf(args);
-        String tail = program == null ? "" : "  " + program;
+        String target = kind == ToolKind.EXEC ? null : kind.targetOf(args);
+        String range = kind == ToolKind.EXEC ? null : rangeOf(args);
+        StringBuilder tail = new StringBuilder();
+        if (program != null) {
+            tail.append("  ").append(program);
+        }
+        if (target != null) {
+            tail.append("  ").append(TextWidth.truncate(target, 40));
+        }
+        if (range != null) {
+            tail.append("  ").append(range);
+        }
         // 无色时没有色带可依，改用结构标记区分类型
         String body = style.colored()
                 ? " " + kind.label() + "  " + toolName + tail
                 : " [" + kind.label() + "] " + toolName + tail;
         return style.toolBand(kind, body, width);
+    }
+
+    /**
+     * 读取范围（行号区间）：把 {@code offset/limit}、{@code start/end}、
+     * {@code startLine/endLine} 统一成 {@code 起-止} 形式。
+     *
+     * @param args 调用参数
+     * @return 区间文本；未指定范围时返回 {@code null}
+     */
+    private static String rangeOf(Map<String, Object> args) {
+        if (args == null) {
+            return null;
+        }
+        Integer offset = intValue(args.get("offset"));
+        Integer limit = intValue(args.get("limit"));
+        Integer start = intValue(args.get("start"));
+        Integer end = intValue(args.get("end"));
+        if (start == null) {
+            start = intValue(args.get("startLine"));
+        }
+        if (end == null) {
+            end = intValue(args.get("endLine"));
+        }
+        if (offset != null) {
+            int from = offset + 1;
+            int to = limit == null ? from : from + limit - 1;
+            return from + "-" + to;
+        }
+        if (start != null || end != null) {
+            int from = start == null ? 1 : start;
+            return end == null ? from + "-" : from + "-" + end;
+        }
+        return limit == null ? null : "1-" + limit;
+    }
+
+    private static Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
@@ -202,23 +263,22 @@ final class ToolBlock {
         }
         String[] source = content.split("\n", -1);
         int limit = available(width);
-        List<String> lines = new ArrayList<>();
-        boolean truncated = false;
-        outer:
+        // 先折行再统计总行数：折叠提示里的「共 M 行」必须与终端实际行数一致
+        List<String> wrapped = new ArrayList<>();
         for (String line : source) {
-            for (String part : TextWidth.wrap(line, limit)) {
-                if (lines.size() >= maxLines) {
-                    truncated = true;
-                    break outer;
-                }
-                String indented = " ".repeat(INDENT) + part;
-                String row = dim ? style.muted(indented) : indented;
-                lines.add(kind == null ? row : style.blockLine(kind, row, width));
-            }
+            wrapped.addAll(TextWidth.wrap(line, limit));
         }
-        if (truncated) {
-            String note = style.muted(" ".repeat(INDENT) + "… 输出共 " + source.length
-                    + " 行，此处显示前 " + maxLines + " 行");
+        int total = wrapped.size();
+        int shown = Math.min(maxLines, total);
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < shown; i++) {
+            String indented = " ".repeat(INDENT) + wrapped.get(i);
+            String row = dim ? style.muted(indented) : indented;
+            lines.add(kind == null ? row : style.blockLine(kind, row, width));
+        }
+        if (total > shown) {
+            String note = style.muted(" ".repeat(INDENT) + "… 已折叠 " + (total - shown)
+                    + " 行（共 " + total + " 行）");
             lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
         return lines;

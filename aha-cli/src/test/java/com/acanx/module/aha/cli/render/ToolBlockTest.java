@@ -61,10 +61,22 @@ class ToolBlockTest {
     void headCarriesKindToolNameAndProgram() {
         // 色带行必须定宽铺满，只放短标识：长内容走各自的明细行
         assertThat(ToolBlock.head("file-read", Map.of("path", "Docs/PLAN.md"), PLAIN, 0))
-                .isEqualTo(" [读取文件] file-read");
+                .isEqualTo(" [读取文件] file-read  Docs/PLAN.md");
         // 命令类多一段程序名——它是「这次操作干了什么」最省字的说法
         assertThat(ToolBlock.head("shell-exec", Map.of("command", "powershell -NoProfile -X"),
                 PLAIN, 0)).isEqualTo(" [执行命令] shell-exec  powershell");
+    }
+
+    @Test
+    void readHeadShowsPathAndRange() {
+        String head = ToolBlock.head("file-read",
+                Map.of("path", "a.txt", "offset", 10, "limit", 50), PLAIN, 0);
+
+        assertThat(head).contains("file-read").contains("a.txt").contains("11-60");
+
+        String ranged = ToolBlock.head("file-read",
+                Map.of("path", "b.txt", "startLine", 3, "endLine", 9), PLAIN, 0);
+        assertThat(ranged).contains("b.txt").contains("3-9");
     }
 
     @Test
@@ -232,7 +244,38 @@ class ToolBlockTest {
 
         assertThat(lines).hasSize(4);
         assertThat(lines.get(0)).contains("l1");
-        assertThat(lines.get(3)).contains("输出共 7 行");
+        assertThat(lines.get(3)).contains("已折叠 4 行（共 7 行）");
+    }
+
+    private static String numberedLines(int count) {
+        return java.util.stream.IntStream.rangeClosed(1, count)
+                .mapToObj(i -> "l" + i)
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    @Test
+    void bodyFoldsOnlyAbove500Lines() {
+        assertThat(ToolBlock.body(numberedLines(499), PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null))
+                .hasSize(499);
+        assertThat(ToolBlock.body(numberedLines(500), PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null))
+                .hasSize(500);
+
+        List<String> folded = ToolBlock.body(numberedLines(501), PLAIN, 0,
+                ToolBlock.FOLD_THRESHOLD, true, null);
+
+        assertThat(folded).hasSize(501);
+        assertThat(folded.get(500)).contains("已折叠 1 行（共 501 行）");
+    }
+
+    @Test
+    void foldingDoesNotChangePayload() {
+        String raw = numberedLines(501);
+
+        ToolBlock.body(raw, PLAIN, 0, ToolBlock.FOLD_THRESHOLD, true, null);
+
+        // 折叠只影响终端显示：回灌给模型的原始输出保持完整
+        assertThat(raw.split("\n", -1)).hasSize(501);
+        assertThat(raw).contains("l501");
     }
 
     @Test

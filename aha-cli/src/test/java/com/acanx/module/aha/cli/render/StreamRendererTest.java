@@ -158,17 +158,19 @@ class StreamRendererTest {
     @Test
     void longToolOutputIsPreviewedInsteadOfDumped() {
         // 工具输出可能极长（读文件、跑命令），全量贴进对话只会淹没上下文：
-        // 只给前几行，并明确告知还有多少行
+        // 超过 500 行才折叠，并明确告知折叠了多少行
         StreamRenderer renderer = renderer(false, 0);
         renderer.onEvent(new ToolCallEvent("s", "shell-exec", Map.of("command", "x".repeat(900))));
-        renderer.onEvent(new ToolResultEvent("s", "shell-exec",
-                String.join("\n", "l1", "l2", "l3", "l4", "l5", "l6")));
+        String output = java.util.stream.IntStream.rangeClosed(1, 501)
+                .mapToObj(i -> "l" + i)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        renderer.onEvent(new ToolResultEvent("s", "shell-exec", output));
 
         String text = output();
-        // 结果区有明确标题，正文按行给出，超出上限时报总数
-        assertThat(text).contains("结果").contains("l1").contains("l5");
-        assertThat(text).doesNotContain("l6");
-        assertThat(text).contains("输出共 6 行");
+        // 结果区有明确标题，正文按行给出，超出阈值时提示折叠行数
+        assertThat(text).contains("结果").contains("l1").contains("l500");
+        assertThat(text).doesNotContain("l501");
+        assertThat(text).contains("已折叠 1 行（共 501 行）");
     }
 
     @Test

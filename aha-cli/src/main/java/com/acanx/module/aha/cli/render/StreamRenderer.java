@@ -138,9 +138,9 @@ public final class StreamRenderer implements Renderer {
                 long millis = toolRunning ? (System.nanoTime() - toolStartedAt) / 1_000_000L : 0L;
                 toolRunning = false;
                 boolean ok = result.success();
-                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.PREVIEW_LINES,
+                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.FOLD_THRESHOLD,
                                 true, currentKind)
-                        : ToolBlock.body(result.result(), style, width, ToolBlock.FAILURE_LINES,
+                        : ToolBlock.body(result.result(), style, width, ToolBlock.FOLD_THRESHOLD,
                                 false, currentKind),
                         ok);
                 block(ToolBlock.result(ok, ok
@@ -154,7 +154,7 @@ public final class StreamRenderer implements Renderer {
                 currentKind = null;
                 block(style.error("[error] " + error.code()));
                 for (String line : ToolBlock.body(error.message(), style, width,
-                        ToolBlock.FAILURE_LINES, false, null)) {
+                        ToolBlock.FOLD_THRESHOLD, false, null)) {
                     block(line);
                 }
             }
