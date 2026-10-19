@@ -423,7 +423,10 @@ final class MarkdownStream {
      */
     private void decideWhileInFence(String p) {
         if (!allSame(p, '`')) {
-            emitPrefixLiteral();
+            // 内容行：把行首缓冲并入 pending，整行在 endLine 时统一加行号 / 高亮
+            pending.append(prefix);
+            prefix.setLength(0);
+            prefixDone = true;
             return;
         }
         if (p.length() >= 3) {
