@@ -364,6 +364,7 @@ final class ToolBlock {
         return style.blockLine(kind, "", width);
     }
 
+
     /**
      * 工具结果行。
      *
@@ -414,11 +415,11 @@ final class ToolBlock {
         List<String> lines = new ArrayList<>();
         for (int i = 0; i < shown; i++) {
             String indented = " ".repeat(INDENT) + wrapped.get(i);
-            String row = dim ? style.muted(indented) : indented;
+            String row = dim ? style.blockText(indented) : indented;
             lines.add(kind == null ? row : style.blockLine(kind, row, width));
         }
         if (total > shown) {
-            String note = style.muted(" ".repeat(INDENT) + "… 已折叠 " + (total - shown)
+            String note = style.blockText(" ".repeat(INDENT) + "… 已折叠 " + (total - shown)
                     + " 行（共 " + total + " 行）");
             lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
@@ -509,7 +510,7 @@ final class ToolBlock {
         }
         for (int i = 0; i < wrapped.size(); i++) {
             String prefix = i == 0 ? head : " ".repeat(TextWidth.width(head));
-            String line = style.muted(" ".repeat(INDENT) + prefix + wrapped.get(i));
+            String line = style.blockText(" ".repeat(INDENT) + prefix + wrapped.get(i));
             lines.add(style.blockLine(kind, line, width));
         }
     }

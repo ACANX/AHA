@@ -9,6 +9,9 @@ import com.acanx.module.aha.common.event.ToolResultEvent;
 import com.acanx.module.aha.common.event.UsageEvent;
 
 import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +29,8 @@ import com.acanx.module.aha.common.tool.ToolKind;
  * @since 0.1.0
  */
 public final class StreamRenderer implements Renderer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(StreamRenderer.class);
 
     private final LineWrapper wrapper;
     private final Style style;
@@ -91,11 +96,19 @@ public final class StreamRenderer implements Renderer {
     @Override
     public void awaitingApproval() {
         status.runState(RunState.AWAITING_APPROVAL, null);
+        // 授权问答会独占输入行：暂停 120ms ticker 与状态区，避免与输入重绘交错
+        status.suspend();
     }
 
     @Override
     public void approvalResolved() {
-        status.runState(RunState.TOOL_RUNNING, "执行工具…");
+        // 延迟重绘：立即 update 会与输入行重绘交错，导致光标错位
+        status.resumeWith(RunState.TOOL_RUNNING, "执行工具…");
+    }
+
+    @Override
+    public void resumeStatus() {
+        status.resume();
     }
 
     @Override
@@ -112,7 +125,12 @@ public final class StreamRenderer implements Renderer {
                     generating = true;
                     status.runState(RunState.GENERATING, null);
                 }
-                wrapper.write(markdown.feed(content.delta()));
+                String rendered = markdown.feed(content.delta());
+                LOG.debug("ContentEvent delta={} chars: {}", content.delta().length(),
+                        preview(content.delta()));
+                LOG.debug("MarkdownStream rendered={} chars: {}", rendered.length(),
+                        preview(rendered));
+                wrapper.write(rendered);
             }
             case ToolCallEvent call -> {
                 // 区块前留空行：连续多次工具调用不隔开就会糊成一片
@@ -218,6 +236,14 @@ public final class StreamRenderer implements Renderer {
         }
     }
 
+    private static String preview(String text) {
+        if (text == null) {
+            return "null";
+        }
+        String escaped = text.replace("\\", "\\\\").replace("\n", "\\n");
+        return escaped.length() <= 80 ? escaped : escaped.substring(0, 80) + "…";
+    }
+
     private static String asText(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
@@ -244,7 +270,7 @@ public final class StreamRenderer implements Renderer {
         if (lines.isEmpty()) {
             return;
         }
-        String label = style.muted(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
+        String label = style.blockText(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
         block(currentKind == null ? label : style.blockLine(currentKind, label, width));
         for (String line : lines) {
             block(line);

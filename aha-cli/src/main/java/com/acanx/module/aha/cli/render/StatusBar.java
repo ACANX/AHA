@@ -197,6 +197,65 @@ public final class StatusBar {
     }
 
     /**
+     * 静态指标（不含目录 / 分支）：模式 · 供应商 · 档位 · 模型 · 强度。
+     *
+     * @param width 终端宽度；{@code <= 0} 表示不限宽
+     * @return 文案（不含换行）
+     */
+    String summary(int width) {
+        Context current = context;
+        if (legacy) {
+            return current.model();
+        }
+        String mode = current.mode().label();
+        String provider = missingAsDash(current.provider());
+        String tier = current.tier();
+        String model = missingAsDash(current.model());
+        String effort = missingAsDash(current.effort());
+
+        List<List<String>> variants = new ArrayList<>();
+        List<String> full = new ArrayList<>();
+        full.add(mode);
+        full.add(provider);
+        int tierIndex = -1;
+        if (!tier.isEmpty()) {
+            tierIndex = full.size();
+            full.add(tier);
+        }
+        full.add(model);
+        int effortIndex = full.size();
+        full.add(effort);
+        variants.add(full);
+
+        List<String> noEffort = new ArrayList<>(full);
+        noEffort.remove(effortIndex);
+        variants.add(noEffort);
+
+        List<String> core = new ArrayList<>(noEffort);
+        if (tierIndex >= 0) {
+            core.remove(tierIndex);
+        }
+        variants.add(core);
+
+        for (List<String> variant : variants) {
+            String text = String.join(" · ", variant);
+            if (width <= 0 || TextWidth.width(text) <= width - 1) {
+                return text;
+            }
+        }
+        return clamp(String.join(" · ", core), Math.max(1, width - 1));
+    }
+
+    /**
+     * 目录段（含分支）：`缩短后的路径 (分支)`；无目录时为空串。
+     *
+     * @return 目录段
+     */
+    String location() {
+        return directory(context.cwd(), context.branch());
+    }
+
+    /**
      * 目录段：`缩短后的路径 (分支)`；无目录时为空串。
      *
      * @param cwd    工作目录

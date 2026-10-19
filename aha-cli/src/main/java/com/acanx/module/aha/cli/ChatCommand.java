@@ -202,9 +202,26 @@ public final class ChatCommand implements Runnable {
             Style frameStyle = Style.of(capabilities.colored()
                     ? capabilities.depth() : TerminalCapabilities.ColorDepth.NONE);
             String prompt = "\n" + rule(encoding.symbols(), capabilities.width(), frameStyle) + "\n";
+            // 状态行先于输出流创建：printAbove 前后要暂停/恢复底部区域，
+            // 否则多次输出后 Status 的行缓冲会与正文错位
+            StatusSurface statusSurface = capabilities.tty()
+                    ? JLineStatusSurface.create(terminal, capabilities.colored())
+                    : StatusSurface.NONE;
+            AtomicReference<Renderer> rendererRef = new AtomicReference<>();
             PrintStream out = capabilities.tty()
-                    ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset()), false,
-                            encoding.charset())
+                    ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset(),
+                            () -> {
+                                Renderer current = rendererRef.get();
+                                if (current != null) {
+                                    current.suspendStatus();
+                                }
+                            },
+                            () -> {
+                                Renderer current = rendererRef.get();
+                                if (current != null) {
+                                    current.resumeStatus();
+                                }
+                            }), false, encoding.charset())
                     : System.out;
             // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
             // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
@@ -218,16 +235,14 @@ public final class ChatCommand implements Runnable {
             // 状态行：终端底部常驻一行，回合期间持续刷新（转圈 / 耗时 / 用量）。
             // 它靠滚动区域实现，终端不支持时自动退化为不显示；
             // 非 TTY（管道 / CI）没有可保留的区域，直接用空实现。
-            StatusSurface statusSurface = capabilities.tty()
-                    ? JLineStatusSurface.create(terminal, capabilities.colored())
-                    : StatusSurface.NONE;
             SessionContext sessionContext = new SessionContext(
                     sessionId, service, CliContext.config(), out,
                     describePromptSource(opened), opened.promptChars(),
                     handover(terminal, statusSurface));
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
             Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
-                    statusSurface);
+                    statusSurface, sessionId);
+            rendererRef.set(renderer);
 
             // 工具授权发生在回合线程上，而 reader 由主线程持有，
             // 因此授权问答走队列：主线程把接下来的输入递给它
