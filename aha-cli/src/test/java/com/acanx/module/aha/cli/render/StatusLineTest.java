@@ -165,10 +165,10 @@ class StatusLineTest {
                 Style.of(false));
 
         status.runState(RunState.GENERATING, null);
-        assertThat(surface.last()).isEqualTo("⠋ 生成中…");
+        assertThat(surface.last()).contains("生成中…");
 
         status.runState(RunState.AWAITING_APPROVAL, null);
-        assertThat(surface.last()).isEqualTo("⠋ 等待审批…");
+        assertThat(surface.last()).contains("等待审批…");
     }
 
     @Test

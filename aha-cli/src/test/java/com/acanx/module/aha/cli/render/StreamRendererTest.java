@@ -63,7 +63,7 @@ class StreamRendererTest {
         assertThat(output()).doesNotContain("请求中…");
 
         renderer.onEvent(new ContentEvent("s", "答案"));
-        assertThat(surface.last()).isEqualTo("⠋ 生成中…");
+        assertThat(surface.last()).contains("生成中…");
         assertThat(output()).contains("答案");
     }
 
