@@ -106,7 +106,7 @@ public final class ModelCommand implements Runnable {
             System.out.printf("配置文件: %s%s%n", store.path(),
                     store.exists() ? "" : "（尚未创建，当前使用内置默认）");
             System.out.printf("供应商: %s%n", providerId);
-            System.out.printf("适配器: %s%n", provider.adapter());
+            System.out.printf("ApiType: %s%n", provider.adapter());
             boolean legacy = !provider.hasModels();
             System.out.printf("规则: %s%n", legacy ? "老规则（仅 Model，Model 生效）" : "新规则（Models 档位，DefaultTier 优先）");
             System.out.printf("默认档位: %s%n", provider.effectiveTier(model.defaultTier()).configName());

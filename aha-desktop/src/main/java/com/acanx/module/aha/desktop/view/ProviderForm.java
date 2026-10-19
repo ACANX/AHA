@@ -20,7 +20,7 @@ import java.util.Objects;
 public final class ProviderForm {
 
     /** 适配器可选值（与 core 的适配器实现对应）。 */
-    public static final String[] ADAPTERS = {"openai-compatible", "anthropic", "gemini"};
+    public static final String[] ADAPTERS = {"openai-compatible", "anthropic-messages", "gemini"};
 
     /**
      * 已知供应商的预设（ID → 适配器 / 基础地址 / Standard 档模型）。
@@ -40,7 +40,7 @@ public final class ProviderForm {
 
     static {
         PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-6-sol"});
-        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-5"});
+        PRESETS.put("Anthropic", new String[]{"anthropic-messages", "https://api.anthropic.com", "claude-sonnet-5-5"});
         PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"});
         PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-v4-flash"});
         PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3"});
@@ -178,7 +178,7 @@ public final class ProviderForm {
                 source == null || source.baseUrl() == null ? "" : source.baseUrl(),
                 source == null || source.apiKey() == null ? "" : source.apiKey(),
                 source == null || source.model() == null ? "" : source.model(),
-                source == null ? Map.of() : new LinkedHashMap<>(source.modelsOrEmpty()),
+                source == null ? Map.of() : new LinkedHashMap<>(source.tierModelNames()),
                 source == null ? null : source.defaultTier(),
                 String.valueOf(source == null || source.timeoutSeconds() <= 0 ? 60 : source.timeoutSeconds()),
                 String.valueOf(source == null || source.maxRetries() < 0 ? 2 : source.maxRetries()));

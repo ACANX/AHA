@@ -81,7 +81,7 @@ PR 上的试包（**快照包**）拿到本机跑过之后，用**一条评论**
 | **B** | JVM 桌面端便携包 | B1 **开窗**（无 `UnsatisfiedLinkError`、无「JavaFX runtime components are missing」）· B2 亮/暗主题对比 · B3 字体观感 · B4 各界面打开不崩 |
 | **C** | 原生镜像包 | C1 单文件免 JDK 能跑 · C2 CLI `--version` / `--help` 退出码 0、桌面端开窗 · C3 与同版本 JVM 包行为对照 |
 
-**为什么必测里没有「真实对话」**：适配器只有 openai-compatible / anthropic / gemini（**没有本地 mock**），
+**为什么必测里没有「真实对话」**：适配器只有 openai-compatible / anthropic-messages / gemini（**没有本地 mock**），
 任何真实对话都要打 provider 请求、花 token，而 token 由 **owner 的 key** 承担、快照又是**按 PR 出的**
 —— 所以它降级为可选（§5.8）。必测部分用**工具直调** + 配置/本地命令 + 开窗观感，已覆盖「机器验不了」的那部分。
 

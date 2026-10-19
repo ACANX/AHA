@@ -629,7 +629,7 @@ aha tool invoke shell-exec -p command="git status" --yes
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |---|---|---|---|---|
 | `<id>` | string（位置 0） | **是** | — | 供应商 ID（PascalCase，如 `DeepSeek`） |
-| `--adapter <id>` | enum | **是** | — | `openai-compatible` / `anthropic` / `gemini` |
+| `--api-type <id>` | enum | **是** | — | `openai-compatible` / `anthropic-messages` / `gemini`（`--adapter` 为兼容别名） |
 | `--base-url <url>` | string | **是** | — | **基础地址**（不含端点路径，见下方提示） |
 | `--model <name>` | string | **是** | — | 模型名 |
 | `--api-key <key>` | string | 否 | `${AHA_API_KEY_<ID>}` | API Key |
@@ -645,7 +645,7 @@ aha tool invoke shell-exec -p command="git status" --yes
 
 ```bash
 # 接入中转站
-aha provider add Relay --adapter openai-compatible \
+aha provider add Relay --api-type openai-compatible \
   --base-url https://relay.example.com/v1 \
   --model gpt-4o --api-key sk-xxx --default
 ```
@@ -655,7 +655,7 @@ aha provider add Relay --adapter openai-compatible \
 | 值 | 协议 | 端点拼接 |
 |---|---|---|
 | `openai-compatible` | OpenAI Chat Completions | `{BaseUrl}/chat/completions` |
-| `anthropic` | Anthropic Messages | `{BaseUrl}/v1/messages` |
+| `anthropic-messages` | Anthropic Messages | `{BaseUrl}/v1/messages` |
 | `gemini` | Google Gemini | `{BaseUrl}/v1beta/models/{model}:generateContent` |
 
 #### `aha provider remove <id>`

@@ -27,6 +27,17 @@
   - 每条 release 只装本形态的包，`SHA256SUMS` 也只覆盖自己那几行；
   - 旧合并 tag `-aha-jvm` 不再新发，但保留解析与取件兼容（历史 release 仍可下载）；
   - `Dist/UpdateJvm.ps1` 按种类选择新后缀并回退旧后缀，`bin/CheckScripts.py` 的契约守卫同步升级。
+- **模型配置格式重构（issue #357）**：
+  - `Models` 由「档位 → 模型名」改为「**模型 ID → 模型定义**」，支持 `Name`（实际模型名）、
+    `Reasoning`、`Input`（文本 / 图片）、`ContextWindow`、`MaxTokens`、`ThinkingLevelMap`（思考强度映射）；
+  - 档位独立为 `Tier` 节点；默认档固定 `Standard`，`Standard` 缺失时按全局 `DefaultTier` →
+    档位强弱顺序兜底；
+  - 供应商级 `DefaultTier` / `Model` 不再写入；旧格式（字符串 `Models`、`Adapter` 键、
+    旧 `Model`、`anthropic` 枚举值）读取时自动迁移，首次写盘即新格式；
+  - `Adapter` 改名 `ApiType`，枚举 `anthropic` 统一为 `anthropic-messages`（与 pi agent 对齐，
+    `--adapter` 保留为 CLI 兼容别名）；
+  - 新增 `Example/.aha/Model.yml` 参考示例；`ModelDefault.yml`、`ConfigurationGuide.md`、
+    `ReferenceGuide.md` 同步新格式。
 
 ### 新增
 - **CLI 运行状态位（issue #342）**：

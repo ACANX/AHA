@@ -141,7 +141,7 @@ public final class ProviderCommand implements Runnable {
                     && !provider.apiKey().isBlank()
                     && !com.acanx.module.aha.core.config.ConfigLoader
                             .isUnresolvedPlaceholder(provider.apiKey());
-            System.out.printf("供应商: %s%n适配器: %s%nBaseUrl: %s%nAPI Key: %s%n",
+            System.out.printf("供应商: %s%nApiType: %s%nBaseUrl: %s%nAPI Key: %s%n",
                     id, provider.adapter(), provider.baseUrl(),
                     apiKeyConfigured ? "已配置" : "未配置（请设置对应环境变量）");
             System.out.printf("默认档位: %s%n", provider.effectiveTier(model.defaultTier()).configName());
@@ -199,8 +199,9 @@ public final class ProviderCommand implements Runnable {
         @Parameters(index = "0", description = "供应商 ID（PascalCase，如 DeepSeek）")
         String id;
 
-        @Option(names = "--adapter", required = true,
-                description = "适配器: openai-compatible | anthropic | gemini")
+        @Option(names = {"--api-type", "--adapter"}, required = true,
+                description = "ApiType: openai-compatible | anthropic-messages | gemini"
+                        + "（--adapter 为兼容别名）")
         String adapter;
 
         @Option(names = "--base-url", required = true,

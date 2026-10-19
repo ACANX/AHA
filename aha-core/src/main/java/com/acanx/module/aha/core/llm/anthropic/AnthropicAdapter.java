@@ -37,7 +37,7 @@ import java.util.Map;
 public final class AnthropicAdapter implements LlmProviderAdapter {
 
     /** 供应商 ID。 */
-    public static final String PROVIDER_ID = "anthropic";
+    public static final String PROVIDER_ID = "anthropic-messages";
 
     private static final String API_VERSION = "2023-06-01";
 
