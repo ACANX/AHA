@@ -40,6 +40,10 @@
     `ReferenceGuide.md` 同步新格式。
 
 ### 新增
+- **BigModelCN 补充最新 GLM 模型**：
+  - 新增 `glm-5.4`（旗舰推理模型），`Tier` 的 Ultra / Pro / Standard 指向它；
+  - 保留 `glm-5.3` / `glm-5.3-flashx` / `glm-5.3-flash` 作为 Flash / Fallback；
+  - 桌面端预设与候选模型同步。
 - **围栏代码语法高亮（issue #336）**：
   - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML /
     Go / Rust / C# / C / C++ / PHP / Ruby；
