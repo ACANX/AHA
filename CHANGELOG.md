@@ -10,6 +10,13 @@
 
 ## [Unreleased]
 
+### 新增
+- **桌面端左栏可拖拽调宽 + 会话列表滚动条减半（2026-10-19）**：
+  - 左栏与中栏之间新增 5px 拖拽条，宽度限制 160–480px，折叠时自动隐藏；
+  - 会话列表纵向滚动条宽度由默认约 14px 降到 7px（暗色 / 亮色主题同步）；
+  - `ShellLayout` 新增 `LEFT_MIN_WIDTH` / `LEFT_MAX_WIDTH` / `SPLITTER_WIDTH` / `clampLeftWidth`；
+  - `FoldState` 支持 `setExpandedWidth`，拖拽后折叠再展开仍保持新宽度。
+
 ## [0.1.5] - 待发布
 
 ### 变更
