@@ -45,6 +45,8 @@ final class MarkdownStream {
     private int headingLevel;
     private boolean prefixDone;
     private boolean inFence;
+    /** 当前围栏的语言标识（用于语法高亮）；非围栏时为 {@code null}。 */
+    private String fenceLanguage;
     private boolean pendingHasDelimiter;
 
     /** 表格缓冲。 */
@@ -117,7 +119,10 @@ final class MarkdownStream {
             prefix.setLength(0);
             prefixDone = true;
         }
-        if (!inFence) {
+        if (inFence) {
+            out.append(CodeHighlighter.highlight(pending.toString(), fenceLanguage, style));
+            pending.setLength(0);
+        } else {
             resolve(true);
         }
         flushPending();
@@ -213,6 +218,19 @@ final class MarkdownStream {
 
     private void endLine() {
         if (!prefixDone) {
+            String p = prefix.toString();
+            int ticks = leadingCount(p, ch -> ch == '`');
+            if (!inFence && ticks >= 3) {
+                // 打开围栏：语言标识取反引号之后的部分
+                fenceLanguage = p.substring(ticks).trim();
+                out.append(style.muted(p));
+                prefix.setLength(0);
+                resetLineState();
+                inFence = true;
+                out.append('\n');
+                lastEmitted = '\n';
+                return;
+            }
             // 未判定的行首按纯文本吐出（例如只有一个 "#"）
             out.append(prefix);
             prefix.setLength(0);
@@ -220,7 +238,10 @@ final class MarkdownStream {
         }
         // 行尾允许闭定界符落在缓冲区末尾（如 _italic_ 后紧跟换行）；
         // 围栏内部不做行内解析，否则代码里的 ** 会被当成强调
-        if (!inFence) {
+        if (inFence) {
+            out.append(CodeHighlighter.highlight(pending.toString(), fenceLanguage, style));
+            pending.setLength(0);
+        } else {
             resolve(true);
         }
         flushPending();
@@ -273,7 +294,13 @@ final class MarkdownStream {
 
     private void decidePrefix() {
         String p = prefix.toString();
-        if (p.length() > MAX_PREFIX) {
+        int ticks = leadingCount(p, ch -> ch == '`');
+        // 围栏行需要完整缓冲到行尾才能拿到语言标识；普通行仍按 MAX_PREFIX 早判
+        if (p.length() > MAX_PREFIX && ticks < 3) {
+            flushPrefix();
+            return;
+        }
+        if (p.length() > 64) {
             flushPrefix();
             return;
         }
@@ -342,6 +369,7 @@ final class MarkdownStream {
             kind = LineKind.QUOTE;
             flushPrefixMuted();
             inFence = false;
+            fenceLanguage = null;
         }
     }
 
@@ -402,15 +430,15 @@ final class MarkdownStream {
     }
 
     private void decideFence(String p) {
-        if (!allSame(p, '`')) {
-            flushPrefix();
+        int ticks = leadingCount(p, ch -> ch == '`');
+        if (ticks >= 3) {
+            // 继续缓冲整行：endLine 时解析语言标识并进入围栏
             return;
         }
+        // 还不足 3 个反引号：继续缓冲（可能还在围栏标记内），
+        // 长度达到 3 才说明这只是一段普通行内代码/文本
         if (p.length() >= 3) {
-            // 围栏行本身弱化；其内部内容原样输出
-            kind = LineKind.QUOTE;
-            flushPrefixMuted();
-            inFence = true;
+            flushPrefix();
         }
     }
 
