@@ -30,6 +30,12 @@ public final class AboveStream extends OutputStream {
 
     private final Charset charset;
 
+    /** printAbove 前暂停状态区（避免与 Status 重绘交错）。 */
+    private final Runnable suspend;
+
+    /** printAbove 后恢复状态区。 */
+    private final Runnable resume;
+
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
     /**
@@ -39,8 +45,22 @@ public final class AboveStream extends OutputStream {
      * @param charset 字节到字符串的编码（应与控制台一致）
      */
     public AboveStream(Consumer<String> lines, Charset charset) {
+        this(lines, charset, null, null);
+    }
+
+    /**
+     * 创建行缓冲流，并在每行上抛前后暂停 / 恢复状态区。
+     *
+     * @param lines   每完成一行的回调
+     * @param charset 字节到字符串的编码
+     * @param suspend 上抛前回调（可空）
+     * @param resume  上抛后回调（可空）
+     */
+    public AboveStream(Consumer<String> lines, Charset charset, Runnable suspend, Runnable resume) {
         this.lines = lines;
         this.charset = charset == null ? Charset.defaultCharset() : charset;
+        this.suspend = suspend;
+        this.resume = resume;
     }
 
     @Override
@@ -76,7 +96,16 @@ public final class AboveStream extends OutputStream {
      * 推出一行并清空缓冲。
      */
     private void emit() {
-        lines.accept(buffer.toString(charset));
+        if (suspend != null) {
+            suspend.run();
+        }
+        try {
+            lines.accept(buffer.toString(charset));
+        } finally {
+            if (resume != null) {
+                resume.run();
+            }
+        }
         buffer.reset();
     }
 }

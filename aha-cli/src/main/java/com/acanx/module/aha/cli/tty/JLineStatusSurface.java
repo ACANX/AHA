@@ -144,6 +144,14 @@ public final class JLineStatusSurface implements StatusSurface {
     }
 
     @Override
+    public void restore() {
+        if (suspended) {
+            status.restore();
+            suspended = false;
+        }
+    }
+
+    @Override
     public void close() {
         if (suspended) {
             status.restore();
