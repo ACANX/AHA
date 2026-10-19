@@ -121,6 +121,7 @@ public final class StreamRenderer implements Renderer {
                 wrapper.ensureLineStart();
                 wrapper.newline();
                 toolArgs = call.args() == null ? Map.of() : call.args();
+                block(ToolBlock.padding(currentKind, style, width));
                 block(ToolBlock.head(call.toolName(), toolArgs, style, width));
                 if (ToolKind.of(call.toolName()) == ToolKind.EXEC) {
                     // 命令单独一行，像在终端里敲下去的样子：目录 + 提示符 + 命令全文
@@ -153,6 +154,7 @@ public final class StreamRenderer implements Renderer {
                 block(ToolBlock.result(ok, ok
                         ? ToolBlock.detail(true, result.result(), millis)
                         : ToolBlock.failureDetail(result.result(), millis), style, width, unicode));
+                block(ToolBlock.padding(currentKind, style, width));
                 currentKind = null;
             }
             case ErrorEvent error -> {
