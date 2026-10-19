@@ -53,11 +53,16 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Window;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.io.File;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -282,6 +287,11 @@ public final class DesktopShell implements ChatView {
     private Consumer<String> onSessionSelected = id -> { };
 
     private Consumer<String> onNewSessionIn = workspace -> onNewSession.run();
+
+    /** 用户手动添加的工作空间（持久化由宿主负责）。 */
+    private final Set<String> extraWorkspaces = new LinkedHashSet<>();
+
+    private Consumer<String> onAddWorkspace = this::addWorkspace;
 
     /** 重命名会话动作（会话 ID, 新标题）。 */
     private BiConsumer<String, String> onSessionRename = (id, title) -> { };
@@ -1583,15 +1593,65 @@ public final class DesktopShell implements ChatView {
         this.onNewSessionIn = handler == null ? workspace -> onNewSession.run() : handler;
     }
 
-    /** 按工作空间分组渲染会话：当前项目优先，纯聊天最后。 */
+    /**
+     * 设置已保存的工作空间目录（启动时由宿主注入）。
+     *
+     * @param workspaces 目录列表
+     */
+    public void setWorkspaces(List<String> workspaces) {
+        extraWorkspaces.clear();
+        if (workspaces != null) {
+            workspaces.stream().filter(Objects::nonNull).map(String::strip)
+                    .filter(path -> !path.isEmpty()).forEach(extraWorkspaces::add);
+        }
+        refreshWorkspacePane();
+    }
+
+    /**
+     * 添加工作空间目录并刷新。
+     *
+     * @param path 目录绝对路径
+     */
+    public void addWorkspace(String path) {
+        if (path == null || path.isBlank()) {
+            return;
+        }
+        extraWorkspaces.add(path.strip());
+        refreshWorkspacePane();
+    }
+
+    /**
+     * 添加工作空间回调（宿主可在此持久化）。
+     *
+     * @param handler 处理函数
+     */
+    public void onAddWorkspace(Consumer<String> handler) {
+        this.onAddWorkspace = handler == null ? this::addWorkspace : handler;
+    }
+
+    /** 按工作空间分组渲染会话：当前项目优先；纯聊天留在主会话列表，不进工作空间。 */
     private void refreshWorkspacePane() {
         if (workspaceList == null) {
             return;
         }
         workspaceList.getChildren().clear();
+
+        Button addSpace = new Button("＋ 添加工作空间");
+        addSpace.setTooltip(new Tooltip("把一个项目目录加入工作空间"));
+        addSpace.setOnAction(event -> chooseWorkspace());
+        themed(addSpace, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
+        workspaceList.getChildren().add(addSpace);
+
         Map<String, List<SessionSummary>> groups = new LinkedHashMap<>();
         for (SessionSummary summary : sessionSummaries) {
+            if (summary.workspace() == null) {
+                // 纯聊天没有工作空间：只在主会话列表里出现
+                continue;
+            }
             groups.computeIfAbsent(summary.workspace(), key -> new ArrayList<>()).add(summary);
+        }
+        for (String extra : extraWorkspaces) {
+            groups.putIfAbsent(extra, List.of());
         }
         String current = currentWorkspace();
         List<String> order = new ArrayList<>(groups.keySet());
@@ -1616,14 +1676,11 @@ public final class DesktopShell implements ChatView {
     }
 
     private VBox workspaceGroup(String workspace, List<SessionSummary> summaries) {
-        String title = workspace == null ? "纯聊天" : workspaceName(workspace);
-        Label name = new Label(title);
+        Label name = new Label(workspaceName(workspace));
         themed(name, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-font-weight: bold;");
-        if (workspace != null) {
-            name.setTooltip(new Tooltip(workspace));
-        }
+        name.setTooltip(new Tooltip(workspace));
         Button add = new Button("＋");
-        add.setTooltip(new Tooltip(workspace == null ? "新建纯聊天会话" : "在 " + workspace + " 下新建会话"));
+        add.setTooltip(new Tooltip("在 " + workspace + " 下新建会话"));
         add.setOnAction(event -> onNewSessionIn.accept(workspace));
         themed(add, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
         HBox head = new HBox(ShellLayout.GAP / 2.0, name, add);
@@ -1642,6 +1699,17 @@ public final class DesktopShell implements ChatView {
             group.getChildren().add(link);
         }
         return group;
+    }
+
+    /** 选择并添加一个工作空间目录。 */
+    private void chooseWorkspace() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("选择工作空间目录");
+        Window owner = workspaceList.getScene() == null ? null : workspaceList.getScene().getWindow();
+        File dir = chooser.showDialog(owner);
+        if (dir != null) {
+            onAddWorkspace.accept(dir.getAbsolutePath());
+        }
     }
 
     /** 当前项目根（工作空间）。 */

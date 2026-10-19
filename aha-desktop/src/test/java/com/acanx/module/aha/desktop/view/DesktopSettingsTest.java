@@ -52,6 +52,17 @@ class DesktopSettingsTest {
     }
 
     @Test
+    void workspacesRoundTrip() throws IOException {
+        DesktopSettings settings = DesktopSettings.load(file());
+        settings.addWorkspace("E:/proj/a");
+        settings.addWorkspace("E:/proj/b");
+        settings.save();
+
+        assertThat(DesktopSettings.load(file()).workspaces())
+                .containsExactly("E:/proj/a", "E:/proj/b");
+    }
+
+    @Test
     void neverWritesTheChannelKeyUnlessTheUserSetIt() throws IOException {
         DesktopSettings settings = DesktopSettings.load(file());
 
