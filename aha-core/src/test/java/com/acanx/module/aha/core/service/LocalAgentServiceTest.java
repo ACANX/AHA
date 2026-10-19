@@ -92,10 +92,15 @@ class LocalAgentServiceTest {
     @Test
     void createSessionRecordsProjectWorkspace() {
         newService(null);
-        String id = service.createSession(new SessionConfig("m", null, Map.of()));
+        try {
+            String id = service.createSession(new SessionConfig("m", null, Map.of()));
 
-        // 空会话会被 listSessions 清理，这里直接看落库的配置
-        assertThat(service.memoryStore().loadSession(id)).contains("\"workspace\"");
+            // 空会话会被 listSessions 清理，这里直接看落库的配置
+            assertThat(service.memoryStore().loadSession(id)).contains("\"workspace\"");
+        } finally {
+            // 不关服务时 SQLite 文件被占用，Windows 上 @TempDir 清理会失败
+            service.shutdown();
+        }
     }
 
     @Test
