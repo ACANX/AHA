@@ -72,12 +72,6 @@
                     <Menu fx:id="configMenu">
                         <items>
                             <MenuItem fx:id="configProviderItem"/>
-                            <Menu fx:id="configToolsMenu">
-                                <items>
-                                    <MenuItem fx:id="configToolsItem"/>
-                                    <MenuItem fx:id="configLogItem"/>
-                                </items>
-                            </Menu>
                             <MenuItem fx:id="configMemoryItem"/>
                             <MenuItem fx:id="configExtensionItem"/>
                             <MenuItem fx:id="configSettingsItem"/>
@@ -91,6 +85,7 @@
                     <Menu fx:id="toolsMenu">
                         <items>
                             <MenuItem fx:id="toolListItem"/>
+                            <MenuItem fx:id="logItem"/>
                             <SeparatorMenuItem/>
                             <MenuItem fx:id="revokeItem"/>
                         </items>

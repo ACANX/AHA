@@ -427,6 +427,9 @@ public final class DesktopShell implements ChatView {
     private MenuItem toolListItem;
 
     @FXML
+    private MenuItem logItem;
+
+    @FXML
     private MenuItem revokeItem;
 
     @FXML
@@ -454,15 +457,6 @@ public final class DesktopShell implements ChatView {
 
     @FXML
     private MenuItem configProviderItem;
-
-    @FXML
-    private Menu configToolsMenu;
-
-    @FXML
-    private MenuItem configToolsItem;
-
-    @FXML
-    private MenuItem configLogItem;
 
     @FXML
     private MenuItem configMemoryItem;
@@ -1358,11 +1352,6 @@ public final class DesktopShell implements ChatView {
         configMenu.setText("配置(_C)");
         configProviderItem.setText("供应商…");
         configProviderItem.setOnAction(event -> openProviderDialog());
-        configToolsMenu.setText("工具");
-        configToolsItem.setText("工具列表…");
-        configToolsItem.setOnAction(event -> openToolDialog());
-        configLogItem.setText("日志…");
-        configLogItem.setOnAction(event -> openLogPanel());
         configMemoryItem.setText("记忆…");
         configMemoryItem.setOnAction(event -> appendNotice("记忆面板尚未接入。"));
         configExtensionItem.setText("扩展…");
@@ -1371,6 +1360,8 @@ public final class DesktopShell implements ChatView {
         configSettingsItem.setOnAction(event -> openSettings());
 
         toolsMenu.setText("工具(_T)");
+        logItem.setText("日志…");
+        logItem.setOnAction(event -> openLogPanel());
         toolListItem.setText("工具列表");
         toolListItem.setOnAction(event -> openToolDialog());
         // 会话内「始终允许」必须有一个显眼的撤回入口（GUIDesign 第 5.1 节）
