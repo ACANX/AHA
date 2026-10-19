@@ -234,6 +234,46 @@ public final class Style {
     }
 
     /**
+     * 代码关键字（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String keyword(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[94m" : "\u001B[38;5;81m", text);
+    }
+
+    /**
+     * 代码字符串（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String string(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[92m" : "\u001B[38;5;114m", text);
+    }
+
+    /**
+     * 代码注释（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String comment(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
+     * 代码数字（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String number(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[96m" : "\u001B[38;5;180m", text);
+    }
+
+    /**
      * 强调（Markdown 的斜体 / 粗体 / 粗斜体）。
      *
      * @param level 强调级别：1 斜体、2 粗体、3 粗斜体
