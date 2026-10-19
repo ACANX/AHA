@@ -156,6 +156,9 @@ public final class DesktopShell implements ChatView {
     /** 会话搜索框 id。 */
     public static final String SESSION_SEARCH_ID = "aha.session.search";
 
+    /** 左栏「会话」折叠面板（与「工作空间」同为 TitledPane）。 */
+    public static final String SESSION_PANE_ID = "aha.session.pane";
+
     /** 会话列表 id。 */
     public static final String SESSION_LIST_ID = "aha.session.list";
 
@@ -350,7 +353,6 @@ public final class DesktopShell implements ChatView {
     private String currentSessionId;
 
     /** 「会话」分组是否展开（与工作空间一样可折叠）。 */
-    private boolean sessionSectionExpanded = true;
 
     /** 工具来源（工具列表对话框用）。 */
     private Supplier<List<ToolDescriptor>> toolSource = List::of;
@@ -472,9 +474,9 @@ public final class DesktopShell implements ChatView {
     @FXML
     private Region leftSplitter;
 
-    /** 左栏「会话」分组标题。 */
+    /** 左栏「会话」折叠面板。 */
     @FXML
-    private Label sessionSection;
+    private TitledPane sessionPane;
 
     @FXML
     private Label conversationHeader;
@@ -1452,9 +1454,10 @@ public final class DesktopShell implements ChatView {
         themed(workspacePane, () -> "-fx-text-fill: " + Palette.MUTED + ";"
                 + "-fx-background-color: transparent;");
 
-        sessionSection.setText("▾ 会话");
-        sessionSection.setOnMouseClicked(event -> toggleSessionSection());
-        themed(sessionSection, () -> "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: 11px;");
+        sessionPane.setText("会话");
+        sessionPane.setExpanded(true);
+        themed(sessionPane, () -> "-fx-text-fill: " + Palette.MUTED
+                + "; -fx-background-color: transparent;");
 
         navButton(newSessionButton, "＋ 新建会话", () -> onNewSession.run());
         navButton(providerButton, "供应商", this::openProviderDialog);
@@ -1645,16 +1648,6 @@ public final class DesktopShell implements ChatView {
      */
     public void onAddWorkspace(Consumer<String> handler) {
         this.onAddWorkspace = handler == null ? this::addWorkspace : handler;
-    }
-
-    /** 「会话」分组折叠 / 展开。 */
-    private void toggleSessionSection() {
-        sessionSectionExpanded = !sessionSectionExpanded;
-        sessionSection.setText((sessionSectionExpanded ? "▾" : "▸") + " 会话");
-        for (javafx.scene.Node node : List.of(sessionSearch, newSessionButton, sessionList)) {
-            node.setVisible(sessionSectionExpanded);
-            node.setManaged(sessionSectionExpanded);
-        }
     }
 
     /** 把当前会话的标题 / 条数 / 时间放到中栏顶部。 */

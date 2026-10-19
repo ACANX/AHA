@@ -114,10 +114,16 @@
                         </HBox>
                         <VBox fx:id="leftContent" id="aha.left.content">
                             <children>
-                                <TextField fx:id="sessionSearch" id="aha.session.search"/>
-                                <Button fx:id="newSessionButton"/>
-                                <Label fx:id="sessionSection"/>
-                                <ListView fx:id="sessionList" id="aha.session.list"/>
+                                <TitledPane fx:id="sessionPane" id="aha.session.pane"
+                                            text="会话" expanded="true" animated="false">
+                                    <content>
+                                        <VBox spacing="4">
+                                            <TextField fx:id="sessionSearch" id="aha.session.search"/>
+                                            <Button fx:id="newSessionButton"/>
+                                            <ListView fx:id="sessionList" id="aha.session.list"/>
+                                        </VBox>
+                                    </content>
+                                </TitledPane>
                                 <!-- 工作空间：按项目（主工作目录）分组会话；默认折叠 -->
                                 <TitledPane fx:id="workspacePane" id="aha.workspace"
                                             text="工作空间" expanded="false" animated="false">
