@@ -22,8 +22,9 @@ class StatusBarTest {
 
     @Test
     void shortCwdKeepsTheTailLevels() {
+        // 保留末 3 层：GitRepo / ACANX / AHA
         assertThat(StatusBar.shorten("/home/acanx/Agent/CNXNC/GitRepo/ACANX/AHA", 3))
-                .isEqualTo("…/CNXNC/GitRepo/ACANX/AHA");
+                .isEqualTo("…/GitRepo/ACANX/AHA");
         assertThat(StatusBar.shorten("/a/b", 3)).isEqualTo("/a/b");
         assertThat(StatusBar.shorten("", 3)).isEqualTo("-");
         assertThat(StatusBar.shorten("C:\\a\\b\\c\\d", 2)).isEqualTo("…\\c\\d");
