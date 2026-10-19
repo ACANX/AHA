@@ -36,6 +36,9 @@ public final class AboveStream extends OutputStream {
     /** printAbove 后恢复状态区。 */
     private final Runnable resume;
 
+    /** 与 LineReader 共享的锁：printAbove 与 Status.update 必须串行。 */
+    private final Object lock;
+
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
     /**
@@ -57,10 +60,25 @@ public final class AboveStream extends OutputStream {
      * @param resume  上抛后回调（可空）
      */
     public AboveStream(Consumer<String> lines, Charset charset, Runnable suspend, Runnable resume) {
+        this(lines, charset, suspend, resume, null);
+    }
+
+    /**
+     * 创建行缓冲流，并与 LineReader 共享同一把锁。
+     *
+     * @param lines   每完成一行的回调
+     * @param charset 字节到字符串的编码
+     * @param suspend 上抛前回调（可空）
+     * @param resume  上抛后回调（可空）
+     * @param lock    与 Status.update 共享的锁；{@code null} 表示用自身
+     */
+    public AboveStream(Consumer<String> lines, Charset charset, Runnable suspend, Runnable resume,
+                       Object lock) {
         this.lines = lines;
         this.charset = charset == null ? Charset.defaultCharset() : charset;
         this.suspend = suspend;
         this.resume = resume;
+        this.lock = lock == null ? this : lock;
     }
 
     @Override
@@ -116,7 +134,9 @@ public final class AboveStream extends OutputStream {
      * 推出一行并清空缓冲。
      */
     private void emit() {
-        lines.accept(buffer.toString(charset));
+        synchronized (lock) {
+            lines.accept(buffer.toString(charset));
+        }
         buffer.reset();
     }
 }

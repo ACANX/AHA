@@ -36,14 +36,18 @@ public final class JLineStatusSurface implements StatusSurface {
 
     private final boolean color;
 
+    /** 与 LineReader 共享的锁：Status.update 与 printAbove 必须串行。 */
+    private final Object lock;
+
     private Size size;
 
     private boolean suspended;
 
-    private JLineStatusSurface(Terminal terminal, Status status, boolean color) {
+    private JLineStatusSurface(Terminal terminal, Status status, boolean color, Object lock) {
         this.terminal = terminal;
         this.status = status;
         this.color = color;
+        this.lock = lock == null ? this : lock;
         this.size = terminal.getSize();
     }
 
@@ -55,6 +59,18 @@ public final class JLineStatusSurface implements StatusSurface {
      * @return 状态行载体
      */
     public static StatusSurface create(Terminal terminal, boolean color) {
+        return create(terminal, color, null);
+    }
+
+    /**
+     * 创建状态行载体，并与 LineReader 共享同一把锁。
+     *
+     * @param terminal JLine 终端
+     * @param color    是否解析 ANSI 颜色
+     * @param lock     与 printAbove 共享的锁；{@code null} 表示用自身
+     * @return 状态行载体
+     */
+    public static StatusSurface create(Terminal terminal, boolean color, Object lock) {
         if (terminal == null) {
             return StatusSurface.NONE;
         }
@@ -77,7 +93,7 @@ public final class JLineStatusSurface implements StatusSurface {
             // 不用内置边框：它无法上色，而输入框的上下两条线需要同一种高亮紫。
             // 改为把下边线作为保留区的第一行（由 StatusLine 生成），占用高度不变。
             status.setBorder(false);
-            return new JLineStatusSurface(terminal, status, color);
+            return new JLineStatusSurface(terminal, status, color, lock);
         } catch (RuntimeException e) {
             LOG.warn("状态行不可用，已禁用: {}", e.getMessage());
             return StatusSurface.NONE;
@@ -91,6 +107,12 @@ public final class JLineStatusSurface implements StatusSurface {
 
     @Override
     public void update(List<String> lines) {
+        synchronized (lock) {
+            doUpdate(lines);
+        }
+    }
+
+    private void doUpdate(List<String> lines) {
         if (suspended) {
             status.restore();
             suspended = false;
