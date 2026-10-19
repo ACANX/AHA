@@ -131,6 +131,13 @@ public final class ChatController {
                 LOG.warn("对话失败", e);
                 ui.accept(() -> view.setBusy(false));
                 ui.accept(() -> view.showError("SEND_FAILED", String.valueOf(e.getMessage())));
+            } finally {
+                // 消息落库后才刷新：此时标题 / 条数 / 工作空间分组才是最终值。
+                // 不能在 ensureSession() 里立刻刷新——那时会话还没有任何消息，
+                // listSessions() 的空会话清理会把它当垃圾删掉。
+                if (sessionId() != null) {
+                    onSessionChanged.run();
+                }
             }
         });
     }
@@ -331,7 +338,6 @@ public final class ChatController {
             sessionId = service.createSession(configWithWorkspace());
             LOG.info("已创建会话 {}", sessionId);
             this.pendingWorkspace = null;
-            onSessionChanged.run();
         }
         return sessionId;
     }

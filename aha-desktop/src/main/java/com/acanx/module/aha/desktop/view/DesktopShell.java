@@ -1693,7 +1693,12 @@ public final class DesktopShell implements ChatView {
         add.setTooltip(new Tooltip("在 " + workspace + " 下新建会话"));
         add.setOnAction(event -> onNewSessionIn.accept(workspace));
         add.setOnMouseClicked(event -> event.consume());
-        themed(add, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
+        // 比组头更小：18×18、10px 字号、无内边距
+        add.setMinSize(18, 18);
+        add.setPrefSize(18, 18);
+        add.setMaxSize(18, 18);
+        themed(add, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED
+                + "; -fx-font-size: 10px; -fx-padding: 0;");
 
         HBox head = new HBox(4, caret, name, add);
         head.setAlignment(Pos.CENTER_LEFT);

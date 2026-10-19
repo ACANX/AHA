@@ -119,7 +119,8 @@ public final class SessionManager {
      * @return 删除的会话数
      */
     public int cleanupEmptySessions() {
-        return memoryStore.deleteEmptySessions();
+        // 内存中的活跃会话必须保留：刚创建、尚未写入首条消息时它还没有 message
+        return memoryStore.deleteEmptySessions(sessions.keySet());
     }
 
     /**

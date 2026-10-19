@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -326,11 +327,20 @@ public final class SqliteMemoryStore implements MemoryStore {
     }
 
     @Override
-    public int deleteEmptySessions() {
-        String sql = "DELETE FROM session WHERE id NOT IN "
-                + "(SELECT DISTINCT session_id FROM message)";
-        try (Statement st = connection.createStatement()) {
-            return st.executeUpdate(sql);
+    public int deleteEmptySessions(Collection<String> keep) {
+        StringBuilder sql = new StringBuilder("DELETE FROM session WHERE id NOT IN "
+                + "(SELECT DISTINCT session_id FROM message)");
+        List<String> kept = keep == null ? List.of() : List.copyOf(keep);
+        if (!kept.isEmpty()) {
+            sql.append(" AND id NOT IN (")
+                    .append(String.join(",", java.util.Collections.nCopies(kept.size(), "?")))
+                    .append(")");
+        }
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            for (int index = 0; index < kept.size(); index++) {
+                ps.setString(index + 1, kept.get(index));
+            }
+            return ps.executeUpdate();
         } catch (SQLException e) {
             throw new AhaException("DB_CLEANUP_FAILED", "清理空会话失败", e);
         }
