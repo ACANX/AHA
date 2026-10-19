@@ -2,7 +2,7 @@
 
 > 待办编号：TD-00060
 > 标题：Milestone 8（V0.1.5）未完成 Issue 的优先级与依赖排序
-> 状态：◐ 进行中（规划已产出，按批次执行）
+> 状态：◑ 进行中（批 2 部分完成：#330 状态栏、#342 状态位已合并；#326 工具块待合）
 > 跟踪 Issue：[Milestone 8](https://github.com/ACANX/AHA/milestone/8)（各单仍由自身 Issue 跟踪，本文件只管「先做哪个」）
 > 所属主题：—
 > 创建日期：2026-10-19
@@ -34,6 +34,62 @@ Milestone 描述：**「0.1.5 收尾：移除旧资产名别名（守卫版本�
 3. #339 / #327 可立即并行；#331 可先做占位、数据源等 0.6；#321 上游阻塞；#75 缺 Windows 真机。
 
 ---
+
+## 进度更新（2026-10-19）
+
+> 依据：`gh issue list --milestone 8 --state all`（原 21 open / 12 closed，含后续新增单）。
+
+### 已完成（已关闭）
+
+| Issue | 状态 | 依据 |
+|---|---|---|
+| [#330](https://github.com/ACANX/AHA/issues/330) 状态栏静态三项 | ✅ CLOSED | PR [#352](https://github.com/ACANX/AHA/pull/352) 合并 |
+| [#335](https://github.com/ACANX/AHA/issues/335) Markdown 基线 | ✅ CLOSED | PR [#345](https://github.com/ACANX/AHA/pull/345) 合并 |
+| [#333](https://github.com/ACANX/AHA/issues/333) 斜杠命令下拉 | ✅ CLOSED | — |
+| [#328](https://github.com/ACANX/AHA/issues/328) 输入框外观 | ✅ CLOSED | — |
+| [#341](https://github.com/ACANX/AHA/issues/341) ESC 中断 | ✅ CLOSED | — |
+| [#357](https://github.com/ACANX/AHA/issues/357) Model.yml 重构 | ✅ CLOSED | PR [#360](https://github.com/ACANX/AHA/pull/360) 合并 |
+| [#359](https://github.com/ACANX/AHA/issues/359) 中断独立状态 | ✅ CLOSED | PR [#362](https://github.com/ACANX/AHA/pull/362) 合并 |
+
+### 已实现、待关单
+
+| Issue | 状态 | 说明 |
+|---|---|---|
+| [#342](https://github.com/ACANX/AHA/issues/342) 运行状态位 | 🟡 已实现（PR [#356](https://github.com/ACANX/AHA/pull/356) 合并），Issue 仍 OPEN | 八态（含「已中断」）；核实后关单 |
+| [#332](https://github.com/ACANX/AHA/issues/332) 斜杠命令 | 🟡 代码已注册，待逐条验收 | 见「一、盘点 A」 |
+| [#322](https://github.com/ACANX/AHA/issues/322) 分块框架 | 🟡 框架已在用，待拍板折叠口径 | 见「四、待拍板」#1 |
+
+### 进行中 / 待办（按批次）
+
+| 批次 | 内容 | 状态 |
+|---|---|---|
+| 批 1 | #269 文档旧名 9 处；#321 决策 | ⏳ 未做 / 上游阻塞 |
+| 批 2 | #330 ✅；#329、#340 | ⏳ #329 / #340 未做 |
+| 批 3 | #342 ✅（待关单）；#336 / #337 / #338、#331、#339 | ⏳ 未做 |
+| 批 4 | #323 / #324 / #325 / #326、#327 | 🟡 #326 已实现（PR [#363](https://github.com/ACANX/AHA/pull/363) 待合）；其余未做 |
+| 批 5 | #334 → 0.1.5 发版 → #303 | ⏳ 未做 |
+
+### 新增 Issue（原盘点之后创建）
+
+| Issue | 说明 | 状态 |
+|---|---|---|
+| [#346](https://github.com/ACANX/AHA/issues/346) 表格块边界 | 空行应终止表格 | OPEN，独立 |
+| [#354](https://github.com/ACANX/AHA/issues/354) TUI 自适应宽高与底部四行 | 含分块正文与 unified diff | OPEN |
+| [#355](https://github.com/ACANX/AHA/issues/355) 状态栏后续项 | 思考强度数据源 / `--workspace` / 供应商显示名 | OPEN |
+| [#358](https://github.com/ACANX/AHA/issues/358) 状态栏动态 / 静态分栏 | 目标「倒数第四行横线」受 JLine 限制，已记技术约束 | OPEN，阻塞 |
+| [#364](https://github.com/ACANX/AHA/issues/364) 工具块背景渐变 | 需先调研 pi-code-agent 再定方案 | OPEN，待调研 |
+
+### 关键路径（不变）
+
+`#269 文档收尾 → 0.1.5 发版 → #303 验收`。
+
+### 与初版盘点的差异
+
+- 初版判断「#330 未做」→ 已由 PR #352 完成；
+- 初版判断「#342 未做」→ 已由 PR #356 完成（Issue 待关）；
+- #326 已实现块内底色统一与块间空行（PR #363，待合）；
+- 新增 5 个 Issue（#346 / #354 / #355 / #358 / #364），其中 #358 受 JLine 限制阻塞、
+  #364 待调研 pi-code-agent 后再定实现方式。
 
 ## 一、盘点
 
