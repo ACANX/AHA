@@ -34,6 +34,9 @@ final class StatusLine {
     /** 刷新间隔。 */
     private static final long TICK_MS = 120;
 
+    /** 完成 / 失败态的保留时间（秒），之后回到空闲。 */
+    private static final long AUTO_IDLE_SECONDS = 2;
+
     /** 全局共享的守护调度器：状态行同一时刻只会有一个。 */
     private static final ScheduledExecutorService TICKER =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -56,10 +59,16 @@ final class StatusLine {
 
     private ScheduledFuture<?> task;
 
-    /** 工具执行的开始时间；0 表示当前不在执行工具。 */
-    private long toolStartedAt;
+    /** 完成 / 失败态自动回到空闲的定时器。 */
+    private ScheduledFuture<?> idleTask;
 
-    private String phase;
+    private volatile RunState state = RunState.IDLE;
+
+    private String detail;
+
+    private String summary;
+
+    private long stateStartedAt;
 
     private int frame;
 
@@ -90,14 +99,62 @@ final class StatusLine {
      * @param text 阶段文案（如「等待响应…」）
      */
     synchronized void show(String text) {
-        if (!enabled) {
+        runState(RunState.REQUESTING, text);
+    }
+
+    /**
+     * 切换到某个运行状态（issue #342）。
+     *
+     * <p>状态切换立即绘制（验收要求 ≤ 200ms），耗时由 120ms 的 ticker 刷新。</p>
+     *
+     * @param next 目标状态
+     * @param text 状态文案（可空，按状态取默认）
+     */
+    synchronized void runState(RunState next, String text) {
+        if (!enabled || next == null) {
             return;
         }
-        this.phase = text;
+        if (next == RunState.IDLE) {
+            idle();
+            return;
+        }
+        cancelIdle();
+        state = next;
+        detail = text;
+        summary = null;
+        stateStartedAt = System.nanoTime();
         paint();
         if (task == null) {
             task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS);
         }
+    }
+
+    /**
+     * 结束态：完成 / 失败（保留 {@value #AUTO_IDLE_SECONDS} 秒后回到空闲）。
+     *
+     * @param next   只能是 {@link RunState#DONE} 或 {@link RunState#FAILED}
+     * @param reason 失败时的单行原因摘要（可空）
+     */
+    synchronized void finish(RunState next, String reason) {
+        if (!enabled || (next != RunState.DONE && next != RunState.FAILED)) {
+            return;
+        }
+        cancelIdle();
+        if (task != null) {
+            task.cancel(false);
+            task = null;
+        }
+        state = next;
+        detail = null;
+        summary = reason;
+        paint();
+        idleTask = TICKER.schedule(() -> {
+            synchronized (StatusLine.this) {
+                if (state == next) {
+                    idle();
+                }
+            }
+        }, AUTO_IDLE_SECONDS, TimeUnit.SECONDS);
     }
 
     /**
@@ -110,8 +167,7 @@ final class StatusLine {
      * @param toolName 工具名
      */
     synchronized void tool(String toolName) {
-        this.toolStartedAt = System.nanoTime();
-        show("执行工具 " + toolName + "…");
+        runState(RunState.TOOL_RUNNING, "执行工具 " + toolName + "…");
     }
 
     /**
@@ -124,12 +180,14 @@ final class StatusLine {
         if (!enabled) {
             return;
         }
+        cancelIdle();
         if (task != null) {
             task.cancel(false);
             task = null;
         }
-        phase = null;
-        toolStartedAt = 0;
+        state = RunState.IDLE;
+        detail = null;
+        summary = null;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
         surface.update(List.of(rule(), status.text(width)));
@@ -139,7 +197,7 @@ final class StatusLine {
      * 刷新一帧。
      */
     synchronized void paint() {
-        if (!enabled || phase == null) {
+        if (!enabled || state == RunState.IDLE) {
             return;
         }
         surface.update(List.of(rule(), compose()));
@@ -167,31 +225,46 @@ final class StatusLine {
      * @return 文案
      */
     private String compose() {
-        String phaseText = phaseText();
-        if (status.legacy()) {
-            return clamp(phaseText);
+        String text = switch (state) {
+            case REQUESTING -> framePrefix() + " " + (detail == null ? "请求中…" : detail);
+            case GENERATING -> framePrefix() + " 生成中…";
+            case TOOL_RUNNING -> framePrefix() + " " + (detail == null ? "执行工具…" : detail);
+            case AWAITING_APPROVAL -> framePrefix() + " 等待审批…";
+            case DONE -> "✓ 完成";
+            case FAILED -> "✗ 失败";
+            default -> "";
+        };
+        if (state == RunState.REQUESTING || state == RunState.TOOL_RUNNING) {
+            long millis = (System.nanoTime() - stateStartedAt) / 1_000_000L;
+            if (millis >= 1000) {
+                text += " " + String.format("%.1fs", millis / 1000.0);
+            }
         }
-        String combined = phaseText + " · " + status.text(width);
+        if (state == RunState.FAILED && summary != null && !summary.isBlank()) {
+            text += " · " + summary.lines().findFirst().orElse("");
+        }
+        if (status.legacy()) {
+            return clamp(text);
+        }
+        String combined = text + " · " + status.text(width);
         if (TextWidth.width(combined) <= width - 1) {
             return combined;
         }
-        // 宽度不够时先保阶段（它每秒都在变），三项由空闲帧继续展示
-        return clamp(phaseText);
+        // 宽度不够时先保状态（它每秒都在变），三项由空闲帧继续展示
+        return clamp(text);
     }
 
-    /**
-     * 转圈帧 + 阶段 + 工具耗时。
-     *
-     * @return 阶段文案
-     */
-    private String phaseText() {
-        StringBuilder text = new StringBuilder(frames[frame % frames.length])
-                .append(' ').append(phase);
-        if (toolStartedAt > 0) {
-            text.append(' ').append(String.format("%.1fs",
-                    (System.nanoTime() - toolStartedAt) / 1_000_000_000.0));
+    /** 当前转圈帧。 */
+    private String framePrefix() {
+        return frames[frame % frames.length];
+    }
+
+    /** 取消「完成 / 失败自动回空闲」的定时器。 */
+    private void cancelIdle() {
+        if (idleTask != null) {
+            idleTask.cancel(false);
+            idleTask = null;
         }
-        return text.toString();
     }
 
     /**

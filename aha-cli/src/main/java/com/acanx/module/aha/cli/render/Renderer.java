@@ -31,4 +31,24 @@ public interface Renderer {
      * 一轮结束：补齐换行等收尾。
      */
     void endTurn();
+
+    /**
+     * 工具调用进入审批等待（issue #342）。
+     *
+     * <p>默认空实现：非交互渲染器（如测试）无需关心。</p>
+     */
+    default void awaitingApproval() {
+    }
+
+    /**
+     * 审批结束，工具继续执行（issue #342）。
+     */
+    default void approvalResolved() {
+    }
+
+    /**
+     * 回合被中断（ESC / Ctrl+C）：状态行必须立即离开非空闲态（issue #342）。
+     */
+    default void cancelled() {
+    }
 }
