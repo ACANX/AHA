@@ -355,6 +355,12 @@ final class MarkdownStream {
 
     private void decidePrefix() {
         String p = prefix.toString();
+        // 围栏内部：行首缓冲直接并入 pending，整行在 endLine 时统一加行号 / 高亮。
+        // 不能在这里按 MAX_PREFIX 提前 flush，否则行号会插到代码中间。
+        if (inFence) {
+            decideWhileInFence(p);
+            return;
+        }
         int ticks = leadingCount(p, ch -> ch == '`');
         // 围栏行需要完整缓冲到行尾才能拿到语言标识；普通行仍按 MAX_PREFIX 早判
         if (p.length() > MAX_PREFIX && ticks < 3) {

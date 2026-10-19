@@ -20,6 +20,9 @@ final class RecordingStatusSurface implements StatusSurface {
 
     private final List<String> borders = new ArrayList<>();
 
+    /** 静态参数行（最后一行）。 */
+    private final List<String> statics = new ArrayList<>();
+
     private final AtomicInteger hides = new AtomicInteger();
 
     private final boolean available;
@@ -44,7 +47,8 @@ final class RecordingStatusSurface implements StatusSurface {
         }
         // 第一行是输入框下边框，其余是状态文本——分开记录，断言时才不会互相干扰
         borders.add(lines.get(0));
-        painted.add(lines.get(lines.size() - 1));
+        painted.add(lines.size() > 1 ? lines.get(1) : lines.get(0));
+        statics.add(lines.get(lines.size() - 1));
     }
 
     @Override
@@ -57,7 +61,7 @@ final class RecordingStatusSurface implements StatusSurface {
     }
 
     /**
-     * 已绘制的帧。
+     * 已绘制的动态行（第二行）。
      *
      * @return 帧列表
      */
@@ -75,12 +79,21 @@ final class RecordingStatusSurface implements StatusSurface {
     }
 
     /**
-     * 最后一帧。
+     * 最后一帧（动态行）。
      *
      * @return 文本；从未绘制时返回 {@code null}
      */
     String last() {
         return painted.isEmpty() ? null : painted.get(painted.size() - 1);
+    }
+
+    /**
+     * 最后一行静态参数。
+     *
+     * @return 文本；从未绘制时返回 {@code null}
+     */
+    String staticLine() {
+        return statics.isEmpty() ? null : statics.get(statics.size() - 1);
     }
 
     /**

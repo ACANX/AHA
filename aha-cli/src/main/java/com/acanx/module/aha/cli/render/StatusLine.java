@@ -192,7 +192,7 @@ final class StatusLine {
         summary = null;
         // 高度必须稳定：空闲时也照常输出边框行，否则底部区域会收缩、
         // 输入行下方那条线突然消失
-        surface.update(List.of(rule(), status.text(width)));
+        surface.update(List.of(rule(), fieldLine(), status.text(width)));
     }
 
     /**
@@ -202,7 +202,7 @@ final class StatusLine {
         if (!enabled || state == RunState.IDLE) {
             return;
         }
-        surface.update(List.of(rule(), compose()));
+        surface.update(List.of(dynamicLine(), fieldLine(), status.text(width)));
         frame++;
     }
 
@@ -219,14 +219,37 @@ final class StatusLine {
     }
 
     /**
-     * 组装状态行文案：转圈帧 + 当前阶段（+ 静态三项）。
+     * 动态状态行：`── ⠋ 生成中… ─────`（空闲时退化为纯横线）。
      *
-     * <p>不显示用量：用量四项等 0.6 落库（issue #331）；状态行回答「在干什么」，
-     * 并在右侧常驻「模式 / 模型与档位 / 工作目录」（issue #330）。</p>
+     * <p>动态参数放在横线内（左对齐，右侧用横线填充），不再与静态参数挤在同一行。</p>
+     *
+     * @return 已着色文本
+     */
+    private String dynamicLine() {
+        if (state == RunState.IDLE) {
+            return rule();
+        }
+        String text = "── " + dynamicText() + " ";
+        int limit = width > 0 ? Math.max(1, width - 1) : 40;
+        int fill = Math.max(0, limit - TextWidth.width(text));
+        return style.frame(text + bar.repeat(fill));
+    }
+
+    /**
+     * 状态字段行：暂未实现字段的占位（倒第二行）。
      *
      * @return 文案
      */
-    private String compose() {
+    private String fieldLine() {
+        return " " + style.muted("状态") + "  " + style.muted("-");
+    }
+
+    /**
+     * 动态状态文案：转圈帧 + 当前阶段 + 耗时 / 失败原因。
+     *
+     * @return 文案
+     */
+    private String dynamicText() {
         String text = switch (state) {
             case REQUESTING -> framePrefix() + " " + (detail == null ? "请求中…" : detail);
             case GENERATING -> framePrefix() + " 生成中…";
@@ -246,14 +269,6 @@ final class StatusLine {
         if (state == RunState.FAILED && summary != null && !summary.isBlank()) {
             text += " · " + summary.lines().findFirst().orElse("");
         }
-        if (status.legacy()) {
-            return clamp(text);
-        }
-        String combined = text + " · " + status.text(width);
-        if (TextWidth.width(combined) <= width - 1) {
-            return combined;
-        }
-        // 宽度不够时先保状态（它每秒都在变），三项由空闲帧继续展示
         return clamp(text);
     }
 
