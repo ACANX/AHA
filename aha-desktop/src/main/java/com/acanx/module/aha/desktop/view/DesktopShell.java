@@ -2258,7 +2258,9 @@ public final class DesktopShell implements ChatView {
         if (self) {
             // 紫色气泡上用白字，避免沿用正文前景色后对比度不足
             themed(body, () -> "-fx-text-fill: #FFFFFF;");
-            body.setMaxWidth(ShellLayout.BUBBLE_MAX_WIDTH - 20);
+            if (body instanceof Region region) {
+                region.setMaxWidth(ShellLayout.BUBBLE_MAX_WIDTH - 20);
+            }
         }
 
         Label whoLabel = new Label(who);
