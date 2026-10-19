@@ -226,10 +226,30 @@ final class StatusLine {
             return;
         }
         if (state == RunState.IDLE) {
-            surface.update(List.of(rule(), fieldLine(), status.text(width)));
+            surface.update(List.of(rule(), fieldLine(), staticLine()));
         } else {
             surface.update(List.of(dynamicLine(), fieldLine(), staticLine()));
         }
+        if (state != RunState.IDLE && task == null) {
+            task = TICKER.scheduleWithFixedDelay(this::paint, TICK_MS, TICK_MS,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * 暂停状态区：停掉 120ms ticker 并让出底部区域。
+     *
+     * <p>授权问答等需要独占输入行的场景使用；恢复走 {@link #resume()}。</p>
+     */
+    synchronized void suspend() {
+        if (!enabled) {
+            return;
+        }
+        if (task != null) {
+            task.cancel(false);
+            task = null;
+        }
+        surface.hide();
     }
 
     /**

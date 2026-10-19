@@ -74,8 +74,19 @@ public final class AboveStream extends OutputStream {
 
     @Override
     public synchronized void write(byte[] bytes, int offset, int length) {
-        for (int i = offset; i < offset + length; i++) {
-            write(bytes[i]);
+        // 一次写入可能包含多行（授权提示等）：整段只暂停 / 恢复一次状态区，
+        // 否则每行都 suspend/restore，会与输入行重绘交错导致错位
+        if (suspend != null) {
+            suspend.run();
+        }
+        try {
+            for (int i = offset; i < offset + length; i++) {
+                write(bytes[i]);
+            }
+        } finally {
+            if (resume != null) {
+                resume.run();
+            }
         }
     }
 
@@ -88,7 +99,16 @@ public final class AboveStream extends OutputStream {
     @Override
     public synchronized void flush() {
         if (buffer.size() > 0) {
-            emit();
+            if (suspend != null) {
+                suspend.run();
+            }
+            try {
+                emit();
+            } finally {
+                if (resume != null) {
+                    resume.run();
+                }
+            }
         }
     }
 
@@ -96,16 +116,7 @@ public final class AboveStream extends OutputStream {
      * 推出一行并清空缓冲。
      */
     private void emit() {
-        if (suspend != null) {
-            suspend.run();
-        }
-        try {
-            lines.accept(buffer.toString(charset));
-        } finally {
-            if (resume != null) {
-                resume.run();
-            }
-        }
+        lines.accept(buffer.toString(charset));
         buffer.reset();
     }
 }

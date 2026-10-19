@@ -85,10 +85,13 @@ public final class StreamRenderer implements Renderer {
     @Override
     public void awaitingApproval() {
         status.runState(RunState.AWAITING_APPROVAL, null);
+        // 授权问答会独占输入行：暂停 120ms ticker 与状态区，避免与输入重绘交错
+        status.suspend();
     }
 
     @Override
     public void approvalResolved() {
+        status.resume();
         status.runState(RunState.TOOL_RUNNING, "执行工具…");
     }
 
