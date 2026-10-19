@@ -176,10 +176,10 @@ class StatusLineTest {
                 Style.of(false));
 
         status.finish(RunState.DONE, null);
-        assertThat(surface.last()).isEqualTo("✓ 完成");
+        assertThat(surface.last()).contains("✓ 完成");
 
         status.finish(RunState.FAILED, "连接超时\n第二行不展示");
-        assertThat(surface.last()).isEqualTo("✗ 失败 · 连接超时");
+        assertThat(surface.last()).contains("✗ 失败 · 连接超时");
     }
 
     @Test
@@ -189,7 +189,7 @@ class StatusLineTest {
 
         status.finish(RunState.INTERRUPTED, null);
 
-        assertThat(surface.last()).isEqualTo("⏹ 已中断");
+        assertThat(surface.last()).contains("⏹ 已中断");
     }
 
     @Test

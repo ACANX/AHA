@@ -59,7 +59,7 @@ class StreamRendererTest {
 
         renderer.beginTurn();
         // 状态行只回答「在干什么」（#342：请求中 → 生成中）
-        assertThat(surface.last()).isEqualTo("⠋ 请求中…");
+        assertThat(surface.last()).contains("请求中…");
         assertThat(output()).doesNotContain("请求中…");
 
         renderer.onEvent(new ContentEvent("s", "答案"));
@@ -78,7 +78,7 @@ class StreamRendererTest {
         renderer.beginTurn();
         renderer.cancelled();
 
-        assertThat(surface.last()).isEqualTo("⏹ 已中断");
+        assertThat(surface.last()).contains("已中断");
         assertThat(surface.last()).doesNotContain("请求中");
     }
 

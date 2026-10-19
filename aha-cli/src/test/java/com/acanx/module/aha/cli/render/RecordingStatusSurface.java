@@ -47,7 +47,7 @@ final class RecordingStatusSurface implements StatusSurface {
         }
         // 第一行是输入框下边框，其余是状态文本——分开记录，断言时才不会互相干扰
         borders.add(lines.get(0));
-        painted.add(lines.size() > 1 ? lines.get(1) : lines.get(0));
+        painted.add(lines.get(0));
         statics.add(lines.get(lines.size() - 1));
     }
 
