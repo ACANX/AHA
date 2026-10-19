@@ -294,6 +294,36 @@ public final class Style {
     }
 
     /**
+     * diff 新增行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffAdd(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[92m" : "\u001B[38;5;114m", text);
+    }
+
+    /**
+     * diff 删除行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffRemove(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[91m" : "\u001B[38;5;203m", text);
+    }
+
+    /**
+     * diff 上下文行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffContext(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
      * 强调（Markdown 的斜体 / 粗体 / 粗斜体）。
      *
      * @param level 强调级别：1 斜体、2 粗体、3 粗斜体

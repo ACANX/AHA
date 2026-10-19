@@ -31,11 +31,14 @@ final class ToolBlock {
     /** 区块之间留一个空行。 */
     static final String SEPARATOR = "";
 
-    /** 成功时结果预览最大行数（折行之后）。 */
-    static final int PREVIEW_LINES = 5;
+    /** 单个块折叠阈值：超过该行数后折叠（issue #322）。 */
+    static final int FOLD_THRESHOLD = 500;
 
-    /** 失败时错误正文最大行数。 */
-    static final int FAILURE_LINES = 40;
+    /** 成功结果正文最多显示行数（= 折叠阈值）。 */
+    static final int PREVIEW_LINES = FOLD_THRESHOLD;
+
+    /** 失败正文最多显示行数（= 折叠阈值）。 */
+    static final int FAILURE_LINES = FOLD_THRESHOLD;
 
     /** 命令行数超过该值时中间省略。 */
     static final int COMMAND_ELIDE_LINES = 40;
@@ -76,12 +79,70 @@ final class ToolBlock {
     static String head(String toolName, Map<String, Object> args, Style style, int width) {
         ToolKind kind = ToolKind.of(toolName);
         String program = kind.programOf(args);
-        String tail = program == null ? "" : "  " + program;
+        String target = kind == ToolKind.EXEC ? null : kind.targetOf(args);
+        String range = kind == ToolKind.EXEC ? null : rangeOf(args);
+        StringBuilder tail = new StringBuilder();
+        if (program != null) {
+            tail.append("  ").append(program);
+        }
+        if (target != null) {
+            tail.append("  ").append(TextWidth.truncate(target, 40));
+        }
+        if (range != null) {
+            tail.append("  ").append(range);
+        }
         // 无色时没有色带可依，改用结构标记区分类型
         String body = style.colored()
                 ? " " + kind.label() + "  " + toolName + tail
                 : " [" + kind.label() + "] " + toolName + tail;
         return style.toolBand(kind, body, width);
+    }
+
+    /**
+     * 读取范围（行号区间）：把 {@code offset/limit}、{@code start/end}、
+     * {@code startLine/endLine} 统一成 {@code 起-止} 形式。
+     *
+     * @param args 调用参数
+     * @return 区间文本；未指定范围时返回 {@code null}
+     */
+    private static String rangeOf(Map<String, Object> args) {
+        if (args == null) {
+            return null;
+        }
+        Integer offset = intValue(args.get("offset"));
+        Integer limit = intValue(args.get("limit"));
+        Integer start = intValue(args.get("start"));
+        Integer end = intValue(args.get("end"));
+        if (start == null) {
+            start = intValue(args.get("startLine"));
+        }
+        if (end == null) {
+            end = intValue(args.get("endLine"));
+        }
+        if (offset != null) {
+            int from = offset + 1;
+            int to = limit == null ? from : from + limit - 1;
+            return from + "-" + to;
+        }
+        if (start != null || end != null) {
+            int from = start == null ? 1 : start;
+            return end == null ? from + "-" : from + "-" + end;
+        }
+        return limit == null ? null : "1-" + limit;
+    }
+
+    private static Integer intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
@@ -150,6 +211,147 @@ final class ToolBlock {
         return lines;
     }
 
+    /** diff 上下文行数（改动行前后各保留多少行）。 */
+    static final int DIFF_CONTEXT = 3;
+
+    /**
+     * 差异行：类型（{@code +} 新增 / {@code -} 删除 / 空格上下文）与文本。
+     */
+    record DiffLine(char type, String text) {
+    }
+
+    /**
+     * 生成「改动前后」差异块（issue #323）。
+     *
+     * <p>只保留改动行及其前后 {@value #DIFF_CONTEXT} 行上下文；无改动时返回空列表。
+     * 无颜色环境靠行首的 {@code +} / {@code -} / 空格区分。</p>
+     *
+     * @param oldText 旧内容（文件不存在时可为 {@code null}）
+     * @param newText 新内容
+     * @param style   样式
+     * @param width   终端宽度
+     * @param kind    工具类别（决定块底色）；{@code null} 时不铺底
+     * @return 差异行；无改动时为空
+     */
+    static List<String> diff(String oldText, String newText, Style style, int width,
+                             ToolKind kind) {
+        List<DiffLine> all = lineDiff(lines(oldText), lines(newText));
+        boolean changed = all.stream().anyMatch(line -> line.type() != ' ');
+        if (!changed) {
+            return List.of();
+        }
+        boolean[] keep = new boolean[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).type() == ' ') {
+                continue;
+            }
+            int from = Math.max(0, i - DIFF_CONTEXT);
+            int to = Math.min(all.size() - 1, i + DIFF_CONTEXT);
+            for (int j = from; j <= to; j++) {
+                keep[j] = true;
+            }
+        }
+        List<String> out = new ArrayList<>();
+        int index = 0;
+        while (index < all.size()) {
+            if (!keep[index]) {
+                index++;
+                continue;
+            }
+            if (!out.isEmpty()) {
+                String ellipsis = style.muted(" ".repeat(INDENT) + "…");
+                out.add(kind == null ? ellipsis : style.blockLine(kind, ellipsis, width));
+            }
+            while (index < all.size() && keep[index]) {
+                DiffLine line = all.get(index);
+                String text = " ".repeat(INDENT) + line.type() + " " + line.text();
+                String colored = switch (line.type()) {
+                    case '+' -> style.diffAdd(text);
+                    case '-' -> style.diffRemove(text);
+                    default -> style.diffContext(text);
+                };
+                out.add(kind == null ? colored : style.blockLine(kind, colored, width));
+                index++;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 行级 diff：剥离公共前后缀后对中间段做 LCS。
+     */
+    private static List<DiffLine> lineDiff(List<String> before, List<String> after) {
+        int n = before.size();
+        int m = after.size();
+        int prefix = 0;
+        while (prefix < n && prefix < m && before.get(prefix).equals(after.get(prefix))) {
+            prefix++;
+        }
+        int suffix = 0;
+        while (suffix < n - prefix && suffix < m - prefix
+                && before.get(n - 1 - suffix).equals(after.get(m - 1 - suffix))) {
+            suffix++;
+        }
+        List<DiffLine> out = new ArrayList<>();
+        for (int i = 0; i < prefix; i++) {
+            out.add(new DiffLine(' ', before.get(i)));
+        }
+        out.addAll(lcsDiff(before.subList(prefix, n - suffix), after.subList(prefix, m - suffix)));
+        for (int i = n - suffix; i < n; i++) {
+            out.add(new DiffLine(' ', before.get(i)));
+        }
+        return out;
+    }
+
+    /**
+     * LCS diff；中间段过大时退化为「全删 + 全增」，避免二次方内存。
+     */
+    private static List<DiffLine> lcsDiff(List<String> before, List<String> after) {
+        int n = before.size();
+        int m = after.size();
+        List<DiffLine> out = new ArrayList<>();
+        if (n == 0 || m == 0 || (long) n * m > 250_000L) {
+            before.forEach(line -> out.add(new DiffLine('-', line)));
+            after.forEach(line -> out.add(new DiffLine('+', line)));
+            return out;
+        }
+        int[][] lcs = new int[n + 1][m + 1];
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                lcs[i][j] = before.get(i).equals(after.get(j))
+                        ? lcs[i + 1][j + 1] + 1
+                        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+            }
+        }
+        int i = 0;
+        int j = 0;
+        while (i < n && j < m) {
+            if (before.get(i).equals(after.get(j))) {
+                out.add(new DiffLine(' ', before.get(i)));
+                i++;
+                j++;
+            } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+                out.add(new DiffLine('-', before.get(i++)));
+            } else {
+                out.add(new DiffLine('+', after.get(j++)));
+            }
+        }
+        while (i < n) {
+            out.add(new DiffLine('-', before.get(i++)));
+        }
+        while (j < m) {
+            out.add(new DiffLine('+', after.get(j++)));
+        }
+        return out;
+    }
+
+    private static List<String> lines(String text) {
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        return List.of(text.split("\n", -1));
+    }
+
     /**
      * 块内上下内边距：整行纯底色空行。
      *
@@ -161,6 +363,7 @@ final class ToolBlock {
     static String padding(ToolKind kind, Style style, int width) {
         return style.blockLine(kind, "", width);
     }
+
 
     /**
      * 工具结果行。
@@ -202,23 +405,22 @@ final class ToolBlock {
         }
         String[] source = content.split("\n", -1);
         int limit = available(width);
-        List<String> lines = new ArrayList<>();
-        boolean truncated = false;
-        outer:
+        // 先折行再统计总行数：折叠提示里的「共 M 行」必须与终端实际行数一致
+        List<String> wrapped = new ArrayList<>();
         for (String line : source) {
-            for (String part : TextWidth.wrap(line, limit)) {
-                if (lines.size() >= maxLines) {
-                    truncated = true;
-                    break outer;
-                }
-                String indented = " ".repeat(INDENT) + part;
-                String row = dim ? style.blockText(indented) : indented;
-                lines.add(kind == null ? row : style.blockLine(kind, row, width));
-            }
+            wrapped.addAll(TextWidth.wrap(line, limit));
         }
-        if (truncated) {
-            String note = style.blockText(" ".repeat(INDENT) + "… 输出共 " + source.length
-                    + " 行，此处显示前 " + maxLines + " 行");
+        int total = wrapped.size();
+        int shown = Math.min(maxLines, total);
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < shown; i++) {
+            String indented = " ".repeat(INDENT) + wrapped.get(i);
+            String row = dim ? style.blockText(indented) : indented;
+            lines.add(kind == null ? row : style.blockLine(kind, row, width));
+        }
+        if (total > shown) {
+            String note = style.blockText(" ".repeat(INDENT) + "… 已折叠 " + (total - shown)
+                    + " 行（共 " + total + " 行）");
             lines.add(kind == null ? note : style.blockLine(kind, note, width));
         }
         return lines;

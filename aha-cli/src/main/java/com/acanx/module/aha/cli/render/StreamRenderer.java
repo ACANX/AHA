@@ -8,7 +8,10 @@ import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
 import com.acanx.module.aha.common.event.UsageEvent;
 
+import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import com.acanx.module.aha.common.tool.ToolKind;
@@ -37,6 +40,9 @@ public final class StreamRenderer implements Renderer {
 
     /** 失败摘要（ERROR 事件设置，endTurn 时展示）。 */
     private String failureSummary;
+
+    /** 写入类工具执行前的旧内容（用于生成 diff）；非写入类为 {@code null}。 */
+    private String writeOldContent;
 
     /** 当前工具块类别（结果正文据此沿用同一底色）；非工具块时为 {@code null}。 */
     private ToolKind currentKind;
@@ -121,6 +127,9 @@ public final class StreamRenderer implements Renderer {
                 wrapper.ensureLineStart();
                 wrapper.newline();
                 toolArgs = call.args() == null ? Map.of() : call.args();
+                currentKind = ToolKind.of(call.toolName());
+                writeOldContent = currentKind == ToolKind.WRITE
+                        ? readIfExists(toolArgs.get("path")) : null;
                 block(ToolBlock.padding(currentKind, style, width));
                 block(ToolBlock.head(call.toolName(), toolArgs, style, width));
                 if (ToolKind.of(call.toolName()) == ToolKind.EXEC) {
@@ -134,7 +143,6 @@ public final class StreamRenderer implements Renderer {
                         block(line);
                     }
                 }
-                currentKind = ToolKind.of(call.toolName());
                 toolStartedAt = System.nanoTime();
                 toolRunning = true;
                 // 工具执行是第二段「无输出」的等待：shell / http 可能跑好几秒，
@@ -146,23 +154,35 @@ public final class StreamRenderer implements Renderer {
                 long millis = toolRunning ? (System.nanoTime() - toolStartedAt) / 1_000_000L : 0L;
                 toolRunning = false;
                 boolean ok = result.success();
-                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.PREVIEW_LINES,
-                                true, currentKind)
-                        : ToolBlock.body(result.result(), style, width, ToolBlock.FAILURE_LINES,
-                                false, currentKind),
-                        ok);
+                if (currentKind == ToolKind.WRITE && toolArgs.get("content") != null) {
+                    List<String> diff = ToolBlock.diff(writeOldContent,
+                            String.valueOf(toolArgs.get("content")), style, width, currentKind);
+                    String label = style.muted(" ".repeat(ToolBlock.INDENT)
+                            + (diff.isEmpty() ? "无改动" : "差异"));
+                    block(style.blockLine(currentKind, label, width));
+                    for (String line : diff) {
+                        block(line);
+                    }
+                } else {
+                    print(ok ? ToolBlock.body(result.result(), style, width,
+                                    ToolBlock.FOLD_THRESHOLD, true, currentKind)
+                            : ToolBlock.body(result.result(), style, width,
+                                    ToolBlock.FOLD_THRESHOLD, false, currentKind),
+                            ok);
+                }
                 block(ToolBlock.result(ok, ok
                         ? ToolBlock.detail(true, result.result(), millis)
                         : ToolBlock.failureDetail(result.result(), millis), style, width, unicode));
                 block(ToolBlock.padding(currentKind, style, width));
                 currentKind = null;
+                writeOldContent = null;
             }
             case ErrorEvent error -> {
                 failureSummary = error.message();
                 currentKind = null;
                 block(style.error("[error] " + error.code()));
                 for (String line : ToolBlock.body(error.message(), style, width,
-                        ToolBlock.FAILURE_LINES, false, null)) {
+                        ToolBlock.FOLD_THRESHOLD, false, null)) {
                     block(line);
                 }
             }
@@ -194,6 +214,18 @@ public final class StreamRenderer implements Renderer {
      * @param value 值，可为 {@code null}
      * @return 文本；空值返回空串
      */
+    private static String readIfExists(Object path) {
+        if (path == null) {
+            return null;
+        }
+        try {
+            Path file = Path.of(String.valueOf(path));
+            return Files.exists(file) ? Files.readString(file) : null;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
     private static String asText(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
