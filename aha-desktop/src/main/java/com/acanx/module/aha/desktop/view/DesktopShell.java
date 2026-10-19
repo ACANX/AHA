@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
@@ -290,6 +291,9 @@ public final class DesktopShell implements ChatView {
 
     /** 用户手动添加的工作空间（持久化由宿主负责）。 */
     private final Set<String> extraWorkspaces = new LinkedHashSet<>();
+
+    /** 已折叠的工作空间（像目录一样，默认展开）。 */
+    private final Set<String> collapsedWorkspaces = new LinkedHashSet<>();
 
     private Consumer<String> onAddWorkspace = this::addWorkspace;
 
@@ -1676,16 +1680,36 @@ public final class DesktopShell implements ChatView {
     }
 
     private VBox workspaceGroup(String workspace, List<SessionSummary> summaries) {
+        boolean collapsed = collapsedWorkspaces.contains(workspace);
+        Label caret = new Label(collapsed ? "▸" : "▾");
+        themed(caret, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+
         Label name = new Label(workspaceName(workspace));
         themed(name, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-font-weight: bold;");
-        name.setTooltip(new Tooltip(workspace));
+        name.setTooltip(new Tooltip(workspace + "\n点击折叠 / 展开"));
+
         Button add = new Button("＋");
         add.setTooltip(new Tooltip("在 " + workspace + " 下新建会话"));
         add.setOnAction(event -> onNewSessionIn.accept(workspace));
+        add.setOnMouseClicked(event -> event.consume());
         themed(add, () -> "-fx-background-color: transparent; -fx-text-fill: " + Palette.MUTED + ";");
-        HBox head = new HBox(ShellLayout.GAP / 2.0, name, add);
+
+        HBox head = new HBox(4, caret, name, add);
         head.setAlignment(Pos.CENTER_LEFT);
+        head.setOnMouseClicked(event -> {
+            if (collapsedWorkspaces.contains(workspace)) {
+                collapsedWorkspaces.remove(workspace);
+            } else {
+                collapsedWorkspaces.add(workspace);
+            }
+            // 事件处理中重建整个面板：推迟到本轮事件结束后
+            Platform.runLater(this::refreshWorkspacePane);
+        });
+
         VBox group = new VBox(2, head);
+        if (collapsed) {
+            return group;
+        }
         long now = System.currentTimeMillis();
         for (SessionSummary summary : summaries) {
             boolean current = Objects.equals(summary.id(), currentSessionId);

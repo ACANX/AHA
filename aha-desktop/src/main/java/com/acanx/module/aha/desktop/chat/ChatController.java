@@ -59,6 +59,9 @@ public final class ChatController {
     /** 下一次新建会话时要绑定的工作目录（{@code null} 表示纯聊天）。 */
     private String pendingWorkspace;
 
+    /** 会话真正落库后通知宿主刷新列表（懒创建：发送首条消息时才创建）。 */
+    private Runnable onSessionChanged = () -> { };
+
     private final Executor executor;
 
     /** UI 线程投递器（生产环境是 {@code FxDispatcher::dispatch}）。 */
@@ -169,6 +172,15 @@ public final class ChatController {
         } finally {
             this.pendingWorkspace = null;
         }
+    }
+
+    /**
+     * 会话创建 / 切换后的回调（宿主用它刷新会话列表）。
+     *
+     * @param handler 回调；{@code null} 表示忽略
+     */
+    public void onSessionChanged(Runnable handler) {
+        this.onSessionChanged = handler == null ? () -> { } : handler;
     }
 
     /**
@@ -314,6 +326,7 @@ public final class ChatController {
         if (sessionId == null) {
             sessionId = service.createSession(configWithWorkspace());
             LOG.info("已创建会话 {}", sessionId);
+            onSessionChanged.run();
         }
         return sessionId;
     }

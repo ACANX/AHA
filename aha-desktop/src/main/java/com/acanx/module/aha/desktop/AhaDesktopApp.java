@@ -379,6 +379,9 @@ public final class AhaDesktopApp extends Application {
             refreshSessions(shell, controller);
         });
 
+        controller.onSessionChanged(() ->
+                dispatcher.dispatch(() -> refreshSessions(shell, controller)));
+
         shell.setWorkspaces(settings.workspaces());
         shell.onAddWorkspace(path -> {
             settings.addWorkspace(path);
