@@ -1617,7 +1617,9 @@ public final class IrVersion {
 package com.acanx.module.aha.core.llm;
 
 public interface LlmProviderAdapter {
-    String providerId();
+    default String apiType() { return providerId(); }   // issue #361：与配置 ApiType 同名
+    @Deprecated
+    String providerId();                               // 旧名，至少保留一个 minor 版本
     String supportedIrVersion();
     String convertRequest(ChatRequest irRequest, ProviderConfig config);
     ChatResponse convertResponse(String rawResponse, ProviderConfig config);

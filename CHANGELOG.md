@@ -10,6 +10,18 @@
 
 ## [Unreleased]
 
+### 变更
+- **SPI 命名统一为 ApiType（issue #361）**：
+  - `LlmProviderAdapter` 新增 `default apiType()`（与配置 `Model.Providers.<Id>.ApiType` 同名），
+    `providerId()` 标记 `@Deprecated`（至少保留一个 minor 版本）；
+  - 三个内置适配器的 `PROVIDER_ID` 改为 `API_TYPE`（旧常量保留为 deprecated 别名）；
+  - `LlmAdapterRegistry` 新增 `apiTypes()`，`find(String apiType)` 参数名对齐；
+    `providerIds()` deprecated 委托；
+  - `ProviderConfig.adapter()` 标记 `@Deprecated`，活代码统一走 `apiType()`；
+  - 日志诊断标签区分「适配器 / ApiType」与「供应商（`Providers.<Id>`）」；
+  - **迁移**：自定义适配器只实现 `providerId()` 仍可直接工作（`apiType()` 默认委托它）；
+    新代码请实现/调用 `apiType()`。旧名在阶段 3（下个大版本）移除，届时属破坏性变更。
+
 ### 新增
 - **中栏显示当前会话工作目录与 git 分支（2026-10-19）**：
   - 输入框下方显示当前会话 `workspace` 的完整路径；
@@ -75,6 +87,12 @@
     只接受单个族名），改为 `monospaceCss()`：选中 CJK 族时返回单一族名，代码区汉字可读；
   - native-image 参数补 `ttf|otf` 的 `-H:IncludeResources`，原生包同样能加载内置字体；
   - README 更新：安装系统字体从「必须」改为「可选（更好字形）」。
+- **构建：Windows runner 上 `PrunePlatformScripts` 打印中文崩溃（2026-10-20）**：
+  - #389 引入的出包裁剪脚本只有 `PackageManifest.py` 的调用带 `PYTHONUTF8`/`PYTHONIOENCODING`，
+    12 处 `PrunePlatformScripts.py` 调用在 Windows runner（Python stdout 为 cp1252）上抛
+    `UnicodeEncodeError: 'charmap' codec can't encode character '\uff1a'`；
+  - 5 条出包线统一补 UTF-8 环境变量；脚本入口 `sys.stdout.reconfigure(...)` 兜底；
+    `bin/CheckScripts.py` 增加守卫，调用行缺 UTF-8 环境即报红。
 - **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
   - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
     JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`

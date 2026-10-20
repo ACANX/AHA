@@ -23,7 +23,7 @@ public final class LlmAdapterRegistry {
      */
     public LlmAdapterRegistry() {
         ServiceLoader.load(LlmProviderAdapter.class)
-                .forEach(adapter -> adapters.put(adapter.providerId(), adapter));
+                .forEach(adapter -> adapters.put(adapter.apiType(), adapter));
     }
 
     /**
@@ -32,25 +32,38 @@ public final class LlmAdapterRegistry {
      * @param adapter 适配器
      */
     public void register(LlmProviderAdapter adapter) {
-        adapters.put(adapter.providerId(), adapter);
+        adapters.put(adapter.apiType(), adapter);
     }
 
     /**
-     * 按供应商 ID 查找适配器。
+     * 按 API 类型（与配置 {@code ApiType} 取值一致）查找适配器。
      *
-     * @param providerId 供应商 ID
+     * @param apiType API 类型 ID
      * @return 适配器
      */
-    public Optional<LlmProviderAdapter> find(String providerId) {
-        return Optional.ofNullable(adapters.get(providerId));
+    public Optional<LlmProviderAdapter> find(String apiType) {
+        return Optional.ofNullable(adapters.get(apiType));
+    }
+
+    /**
+     * 全部 API 类型。
+     *
+     * @return API 类型集合
+     */
+    public Set<String> apiTypes() {
+        return Collections.unmodifiableSet(adapters.keySet());
     }
 
     /**
      * 全部供应商 ID。
      *
-     * @return 供应商 ID 集合
+     * <p>名字与语义不符：集合里装的是适配器 / API 类型（{@code openai-compatible} 等）。</p>
+     *
+     * @return API 类型集合
+     * @deprecated 改用 {@link #apiTypes()}（issue #361）
      */
+    @Deprecated
     public Set<String> providerIds() {
-        return Collections.unmodifiableSet(adapters.keySet());
+        return apiTypes();
     }
 }
