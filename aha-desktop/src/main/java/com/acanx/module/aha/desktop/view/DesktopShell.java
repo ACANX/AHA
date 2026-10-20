@@ -2439,7 +2439,7 @@ public final class DesktopShell implements ChatView {
 
     /** 等宽代码样式（工具输出与参数区）。 */
     private static final String CODE_STYLE =
-            "-fx-font-family: " + FontFallback.MONOSPACE_CSS + "; -fx-font-size: 12px;";
+            "-fx-font-family: " + FontFallback.monospaceCss() + "; -fx-font-size: 12px;";
 
     private static String mutedStyle(int size) {
         return "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: " + size + "px;";
