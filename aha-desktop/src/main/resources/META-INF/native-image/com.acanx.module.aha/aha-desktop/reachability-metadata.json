@@ -1,5 +1,5 @@
 {
-  "comment": "AHA 桌面端原生镜像可达性元数据。生成来源与逐条理由见 Docs/Design/DesktopNativeDesign.md 与 Docs/DevLog/DevLog-20261008-13.md。其中 core.update 下的 record / enum 逐条登记：Jackson 反序列化 record 必须读它的 record components，漏登记会在**运行期**抛 UnsupportedFeatureError（2026-10-16 真机崩溃），守卫见 NativeImageMetadataTest#everyUpdateRecordAndEnumIsRegisteredForReflection。",
+  "comment": "AHA 桌面端原生镜像可达性元数据。生成来源与逐条理由见 Docs/Design/DesktopNativeDesign.md 与 Docs/DevLog/DevLog-20261008-13.md。其中 core.update 与 core.config 下的 record / enum 逐条登记：Jackson 反序列化 record 必须读它的 record components，漏登记会在**运行期**抛 UnsupportedFeatureError（2026-10-16 真机崩溃），守卫见 NativeImageMetadataTest#everyJacksonRecordAndEnumIsRegisteredForReflection。",
   "reflection": [
     {"type": "com.acanx.module.aha.core.update.AssetInfo", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.update.AssetSelector$Available", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
@@ -410,10 +410,13 @@
     {"type": "com.acanx.module.aha.core.config.LoggingConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.MemoryConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.ModelConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ModelDefinition", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.ModelTier", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.ProviderConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.RateLimitConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.SecurityConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.ShellConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
+    {"type": "com.acanx.module.aha.core.config.SystemPromptLoader$ResolvedPrompt", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.config.ToolsConfig", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.task.TaskRequest", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
     {"type": "com.acanx.module.aha.core.task.TaskResult", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true},
@@ -479,6 +482,7 @@
     {"type": "javafx.scene.control.Tab", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.TabPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.TextArea", "allDeclaredConstructors": true, "allDeclaredMethods": true},
+    {"type": "javafx.scene.control.TitledPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.ScrollPane", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.ListView", "allDeclaredConstructors": true, "allDeclaredMethods": true},
     {"type": "javafx.scene.control.MenuBar", "allDeclaredConstructors": true, "allDeclaredMethods": true},

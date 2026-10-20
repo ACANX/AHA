@@ -10,7 +10,279 @@
 
 ## [Unreleased]
 
-## [0.1.4] - 待发布
+### 新增
+- **中栏显示当前会话工作目录与 git 分支（2026-10-19）**：
+  - 输入框下方显示当前会话 `workspace` 的完整路径；
+  - 目录或其父目录存在 `.git` 时，在路径右侧追加当前分支名；
+  - 直接读 `.git/HEAD`（支持 worktree 的 `.git` 文件），不启动 git 进程；
+  - 纯聊天会话不显示这一行。
+- **菜单项去掉省略号（2026-10-19）**：
+  - 「配置」下的供应商 / 记忆 / 扩展 / 设置、工具菜单的日志、帮助里的检查更新不再自带 `…`，
+    避免看起来像被截断；
+  - 菜单宽度由 JavaFX 按最长项自适应，不再出现「供应商...」。
+- **工作空间搜索框（2026-10-19）**：
+  - 「工作空间」面板在目录列表上方新增搜索框（`aha.workspace.search`）；
+  - 按目录名或完整路径过滤，输入即筛选；
+  - 与「会话」搜索框样式一致。
+- **会话行高与左栏快捷视图（2026-10-19）**：
+  - 会话行高由 24px 调到 30px，cell 补 2/6 内边距与 13px 字号，列表高度按 `条数 × 30 + 4` 重算，标题不再重叠；
+  - 左栏窄条在折叠按钮下新增两个图标快捷按钮（💬 会话 / 📁 工作空间）：展开左栏并只显示对应面板，再点一次恢复全部。
+- **会话列表高度随内容伸缩（2026-10-19）**：
+  - 去掉写死的 `prefHeight=200` / `minHeight=120`；
+  - 行高固定 24px，列表高度按 `条目数 × 24 + 4` 计算，内容少时不出现滚动条；
+  - 超出左栏可用高度时由 `VBox` 压缩列表，内部才出现滚动条。
+- **顶部「配置」菜单（2026-10-19）**：
+  - 菜单栏在「编辑」与「会话」之间新增「配置」；
+  - 子项：供应商、记忆、扩展、设置；
+  - 「日志…」放到顶部「工具」菜单，与「工具列表…」并列；
+  - 左栏的供应商 / 工具 / 记忆 / 扩展 / 日志 / 设置按钮移除，统一从顶部菜单打开。
+- **会话列表与工作空间去重、可折叠（2026-10-19）**：
+  - 已归属工作空间的会话不再重复出现在「会话」列表；
+  - 「会话」整块改为 `TitledPane`（与「工作空间」同一种控件），可折叠 / 展开；
+  - 会话列表标题只显示标题，不再拼「N 条 · 刚刚」；
+  - 当前会话的标题、条数与时间移到中栏顶部（`aha.conversation.header`）。
+- **工作空间列表紧凑排版（2026-10-19）**：
+  - 组间距由 4px 降到 2px，组内行距降到 1px；
+  - 组头上下内边距 1px，会话链接 12px 字号、1px 行内边距；
+  - 展开多个工作空间时能一屏看到更多会话。
+- **工作空间交互修正（2026-10-19）**：
+  - 组内「＋」缩小为 18×18 / 10px，明显小于组头；
+  - 新建会话改在**首条消息落库后**刷新列表：之前 `ensureSession()` 一创建就刷新，
+    `listSessions()` 的空会话清理会把刚建、还没消息的会话当垃圾删掉，导致会话不出现；
+  - `deleteEmptySessions` 增加「保留活跃会话」参数，内存中的会话不再被误删；
+  - 会话出现在列表时已带 `workspace`，归入对应工作空间。
+  - 「＋ 添加工作空间」移到已有工作空间之后，字号与内边距小于组头；
+  - 修复组内「＋」新建会话丢失工作空间：`pendingWorkspace` 保留到首条消息落库，
+    之前 `newSession(workspace)` 在 `finally` 里清空，导致会话被创建成「纯聊天」。
+- **工作空间可折叠，并支持一个目录下多个会话（2026-10-19）**：
+  - 每个工作空间组头像目录一样可点击折叠 / 展开（`▸` / `▾`）；
+  - 组内「＋」新建会话后，首条消息落库时自动刷新列表，新会话立即出现在该工作空间下；
+  - 同一个工作空间可创建任意多个会话。
+- **桌面端对话气泡左右分栏（2026-10-19）**：
+  - 用户输入靠右显示，助手 / 系统 / 错误靠左显示；
+  - 每条消息带圆角气泡与内边距，最大宽度 720px；
+  - 「复制全部消息」仍按原顺序取文本。
+
+### 修复
+- **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
+  - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
+    JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
+    并 abort，窗口刚出来就消失；
+  - 根因：`libprism_sw.so` 的 Pisces native 用静态 JNI 命名绑定，并用 `GetFieldID` 查
+    `nativePtr` / `dataInt` / `surface`，但这些类**从未登记进 `jni-config.json`**；
+  - 补登记 `com.sun.pisces.AbstractSurface` / `JavaSurface` / `PiscesRenderer` / `Transform6`
+    与 `java.lang.OutOfMemoryError`（`JNI_ThrowNew` 会 `FindClass` 它）；
+  - `NativeImageMetadataTest` 新增 `jniConfigRegistersPiscesSoftwareRendererClasses()` 守住这 5 项。
+- **流式对话 HTTP 400：历史窗口截断后 tool 消息丢失前置 tool_calls（issue #391，2026-10-20 真机）**：
+  - `SqliteMemoryStore.loadHistory` 按 `LIMIT` 取最近 N 条时，边界可能落在 tool 消息上，
+    `assistant(tool_calls)` 被截在窗外 → 下一轮请求以 `role=tool` 开头，上游 400：
+    `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`；
+  - 新增 `MessageSanitizer`：孤立 tool 丢弃、未响应的 tool_calls 剔除、
+    无正文且零响应时整条丢弃；`loadHistory` 与 `AgentEngine#prepare` 统一调用；
+  - 新增 `MessageSanitizerTest`（孤立 tool / 部分响应 / 零响应 / 边界 / 幂等）、
+    `SqliteMemoryStoreTest`（跨窗口截断 / tool_calls 损坏）与 `AgentEngineTest`
+    （请求体里不再出现孤立 tool）回归用例。
+- **POSIX 发行包不再带 Windows 专属脚本（issue #381，2026-10-20）**：
+  - `ubuntu-amd64` / `macos-aarch64` 的四种包（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）
+    不再包含 `AhaCli.bat` / `AhaDesktop.bat` / `apply-update.cmd` / `AhaApplyUpdate.ps1`；
+  - 新增 `.github/Python/PrunePlatformScripts.py`：按平台裁剪（POSIX 删 `.bat` / `.cmd` / `.ps1`，
+    Windows 原样保留），各出包线在**生成 `AHA-PACKAGE.json` 之前**调用，清单与包内容一致；
+  - `CliReleasePackageLeg` / `DesktopPackageLeg` / `BuildMvnArtifactLeg` 的入口断言改为按平台
+    （POSIX 不再要求 `.bat`，Windows 仍要求）；
+  - `bin/CheckScripts.py` 新增 `check_platform_package_scripts()`（各出包线必须调用裁剪脚本 +
+    `--check-only` 断言），并把 `check_update_helper_packaging()` 的口径改为「Windows 包必带 helper」；
+  - `ReleaseProcess.md` §3.6 与两份装配描述符的注释同步为「按平台分发」，不再留
+    「非 Windows 包里带 .cmd/.ps1 属于暂时用不上」的相反说法。
+- **CLI：超长 CJK 行触发 JLine WCWidth 越界，渲染崩溃被误判为回合失败（issue #384，2026-10-20 真机）**：
+  - JLine 4.4.6 的 `WCWidth.charCountForGraphemeClusterBreakIterator` 会用越界 offset 调 JDK 的
+    grapheme `BreakIterator`（`IllegalArgumentException: offset is out of bounds: 76`），
+    经 `Display.update → Status.redraw → printAbove` 冒到 `ChatCommand#runTurn`，
+    整个回合被判「执行失败」且已输出内容丢失；
+  - 新增 `SafeAbovePrinter`：首次渲染异常记一条 WARN 并**永久降级为直写**
+    （暂停状态区 → 写终端 → 恢复），后续行不再重试 `printAbove`，回合不再中断；
+  - `runTurn` 的失败输出收敛：完整堆栈进日志，终端只给摘要 + 「完整堆栈见日志」，
+    不再同屏打两份堆栈；
+  - 新增 `SafeAbovePrinterTest`：正常路径、降级后不重试、suspend/resume 顺序、
+    连降级都失败时不抛出、含 CJK 的长行经 `AboveStream` 不中断。
+- **Linux 缺中文字体时界面汉显方块（issue #382，2026-10-20 真机）**：
+  - 最小化 Ubuntu / WSL 常不预装中文字体（`fc-list :lang=zh` 为 0），JavaFX 默认族
+    `System` → DejaVu Sans 不含汉字字形，合成回退也借不到字体，界面汉字全是方块；
+  - 新增 `FontFallback`：Linux 上按 `Noto Sans CJK SC` → `Source Han Sans SC` →
+    `WenQuanYi Micro Hei` → `Droid Sans Fallback` → 微软雅黑 / 苹方的顺序选第一个已安装族，
+    写进根节点 `-fx-font-family` 作为全局界面字体；精确候选全不命中时用族名特征兜底
+    （`Noto Serif CJK` 等）；Windows / macOS 不替换字体（系统自带中文，避免外观回归）；
+  - 日志面板 / 工具输出 / 参数区的等宽字体链在 `monospace` 之前补上 CJK 候选；
+  - 启动日志新增 `渲染诊断：中文字体 …`（选中族名 / 命中数量 / 缺失）；
+    Linux 上一个 CJK 族都没有时，消息区给出含 `sudo apt install fonts-noto-cjk` 的提示；
+  - 新增 `FontFallbackTest` 覆盖候选顺序、大小写不敏感、缺失降级、非 Linux 分支与等宽链位置。
+- **原生包启动即崩：`config.ModelDefinition` 未登记反射元数据（issue #383，2026-10-20 真机）**：
+  - `0.1.5.00380` 的 ubuntu 原生包（桌面 / CLI）启动即抛
+    `UnsupportedFeatureError: Record components not available for record class
+    com.acanx.module.aha.core.config.ModelDefinition`：桌面端窗口从未出现，CLI 连 `--version` 都退出码 1
+    （崩溃在 `ConfigLoader.loadDefault` 这条任何子命令都会走的启动路径上）；
+  - 补登记 `core.config` 下的 `ModelDefinition` / `ModelTier` / `SystemPromptLoader$ResolvedPrompt`
+    到桌面与 CLI 两份 `reachability-metadata.json`；
+  - 守卫由只扫 `core.update` 扩为按 `JACKSON_PACKAGES` 逐包全量扫描（`core.update` + `core.config`），
+    并写明判定口径：新增 Jackson 反序列化入口时把包加进清单，其余包不登记避免噪音；
+  - 原生管线补启动冒烟：桌面 Linux 腿用 `xvfb-run` 断言命中 `[ui-fxml-loaded]`，
+    CLI 腿的 `--version` / `--help` 冒烟失败改用 `::error::`（仍不挡合并，但不再淡化成 warning）。
+- **工作空间只放项目会话，并支持添加目录（2026-10-19）**：
+  - 「纯聊天」不再出现在工作空间面板，只保留在主会话列表；
+  - 工作空间面板顶部新增「＋ 添加工作空间」，通过目录选择器添加项目目录；
+  - 已添加目录持久化到 `desktop.properties` 的 `Ui.Workspaces`，重启后仍在；
+  - 无会话的已添加目录也会显示，可直接在其下新建会话。
+- **桌面端删除会话后立刻重建空会话（2026-10-19）**：
+  - `AhaDesktopApp.onSessionDelete` 不再调用 `controller.newSession()`；
+  - 仅当删除的是当前会话时才清空对话区，后续发送才懒创建新会话。
+- **桌面端「检查更新」查不到快照包（2026-10-19）**：
+  - `ChannelContract.tag(ALPHA, ...)` 的目标词由小写 `desktop-jvm` 改为大写驼峰 `Desktop-JVM`，
+    与 `SnapshotJVM` 工作流实际产出的 tag 一致；
+  - `versionOfTag(ALPHA, ...)` 同时接受大写（`-AHA-Desktop-JVM`）与小写（`-AHA-desktop-jvm`）两种写法；
+  - 修复 `V0.1.5.00380.10200208-AHA-Desktop-JVM` 在桌面端 Alpha 通道查不到的问题。
+
+### 新增
+- **会话记录工作空间（issue #379 阶段 1）**：
+  - `SessionSummary` 新增 `workspace`（保留兼容构造器），纯聊天会话为 `null`；
+  - `SqliteMemoryStore.listSessions` 从 `session.config_json` 解析 `workspace`，不新增表列；
+  - `LocalAgentService.createSession` 未显式指定时自动补当前项目根（`SystemPromptLoader.findProjectRoot`）；
+  - 旧会话保持无 `workspace`，界面归入「纯聊天」。
+- **桌面端「工作空间」手风琴（issue #379 阶段 2）**：
+  - 左栏「会话」与「供应商」之间新增「工作空间」折叠面板（默认折叠）；
+  - 展开后按项目根分组会话，当前项目优先，「纯聊天」单列一组；
+  - 组内「＋」在对应工作目录下新建会话，点击会话直接打开并回放历史；
+  - `ChatController.newSession(workspace)` 支持把工作目录写入会话配置。
+- **桌面端工作空间会话状态（issue #379 阶段 3）**：
+  - 组内会话显示「● 进行中 / ○ 已结束」；
+  - 点击已结束会话即打开并回放历史，可直接继续输入；
+  - 提示补上「可直接继续输入」。
+- **清理无内容会话（2026-10-19）**：
+  - 桌面端「新建会话」改为**懒创建**：只关闭旧会话，首次发送时才落库，不再每次开窗/新建都产生空会话；
+  - `MemoryStore.deleteEmptySessions()` / `SessionManager.cleanupEmptySessions()`；
+  - `LocalAgentService.listSessions()` 返回前自动清理没有消息的会话，历史遗留的空条目随之消失。
+- **桌面端左栏可拖拽调宽 + 会话列表滚动条减半（2026-10-19）**：
+  - 左栏与中栏之间新增 5px 拖拽条，宽度限制 160–480px，折叠时自动隐藏；
+  - 会话列表纵向滚动条宽度由默认约 14px 降到 7px（暗色 / 亮色主题同步）；
+  - `ShellLayout` 新增 `LEFT_MIN_WIDTH` / `LEFT_MAX_WIDTH` / `SPLITTER_WIDTH` / `clampLeftWidth`；
+  - `FoldState` 支持 `setExpandedWidth`，拖拽后折叠再展开仍保持新宽度。
+  - 移除「记忆」「扩展」导航按钮及其提示中的「（0.2 后续）」字样，按正式功能入口展示。
+
+## [0.1.5] - 待发布
+
+### 变更
+- **快照触发标签改名（2026-10-19）**：
+  - `SNAPSHOT:Desktop` → `SNAPSHOT:JVMDesktop`，`SNAPSHOT:Cli` → `SNAPSHOT:JVMCli`
+    （与原生线的 `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` 命名对称）；
+  - 同步：清单 `SnapshotPaths.yml`、判定 `SnapshotPlan.py`（含 31 条自测）、守卫 `CheckScripts.py`、
+    快照工作流注释、三份指南与 `Dist/README.commands.md` 副本；
+  - 旧标签已在 GitHub 上**直接重命名**（历史 PR 上的标记自动跟随新名，仓库里不留同名旧标签）；
+    仓库内的历史记录（Troubleshooting / DevLog / 本文件的历史段落）保留旧名，守卫按路径豁免；
+  - `bin/CheckScripts.py` 新增历史豁免：旧名只允许出现在历史载体，活代码与指南仍必须用新名。
+- **dev 线 JVM 预发行按形态拆分（issue #347）**：
+  - 由一条 `V<版本>-AHA-JVM` 改为两条：`V<版本>-AHA-Desktop-JVM`（tag `-aha-desktop-jvm`）与
+    `V<版本>-AHA-Cli-JVM`（tag `-aha-cli-jvm`），与原生线「每个目标一条」对齐；
+  - 每条 release 只装本形态的包，`SHA256SUMS` 也只覆盖自己那几行；
+  - 旧合并 tag `-aha-jvm` 不再新发，但保留解析与取件兼容（历史 release 仍可下载）；
+  - `Dist/UpdateJvm.ps1` 按种类选择新后缀并回退旧后缀，`bin/CheckScripts.py` 的契约守卫同步升级。
+- **模型配置格式重构（issue #357）**：
+  - `Models` 由「档位 → 模型名」改为「**模型 ID → 模型定义**」，支持 `Name`（实际模型名）、
+    `Reasoning`、`Input`（文本 / 图片）、`ContextWindow`、`MaxTokens`、`ThinkingLevelMap`（思考强度映射）；
+  - 档位独立为 `Tier` 节点；默认档固定 `Standard`，`Standard` 缺失时按全局 `DefaultTier` →
+    档位强弱顺序兜底；
+  - 供应商级 `DefaultTier` / `Model` 不再写入；旧格式（字符串 `Models`、`Adapter` 键、
+    旧 `Model`、`anthropic` 枚举值）读取时自动迁移，首次写盘即新格式；
+  - `Adapter` 改名 `ApiType`，枚举 `anthropic` 统一为 `anthropic-messages`（与 pi agent 对齐，
+    `--adapter` 保留为 CLI 兼容别名）；
+  - 新增 `Example/.aha/Model.yml` 参考示例；`ModelDefault.yml`、`ConfigurationGuide.md`、
+    `ReferenceGuide.md` 同步新格式。
+
+### 新增
+- **编辑 / 写入文件的差异展示（issue #323）**：
+  - `file-write` 调用展示旧内容与新内容的行级 diff；
+  - `+` / `-` 前缀在无颜色环境也能区分新增 / 删除；
+  - 只保留改动行前后 3 行上下文；无改动时显示「无改动」。
+- **浏览文件工具调用的块头信息（issue #325）**：
+  - 读取类块头补目标路径与行号区间（支持 `offset/limit`、`start/end`、`startLine/endLine`）；
+  - 块体继续展示文件内容，超过 500 行折叠（#322）；
+  - 单测覆盖全文件读取、指定区间读取与超长文件折叠。
+- **工具块折叠阈值统一为 500 行（issue #322）**：
+  - 单个块（成功 / 失败正文）超过 500 行才折叠，499 / 500 行完整显示；
+  - 折叠提示改为「已折叠 N 行（共 M 行）」；
+  - 折叠只影响终端显示，回灌给模型的原始输出不变；
+  - 补 499 / 500 / 501 边界与回灌不变单测。
+- **工具块改为青色底并补内边距（issue #365）**：
+  - 块底色由暗灰改为深青（256：`48;5;23`；16 色：`46;30`）；
+  - 块首、块尾各留一行纯底色空行，形成上下内边距；
+  - 块内每行首列留空（左内边距 1 列），正文从第 2 列开始；
+  - 折行、续行缩进与省略提示随内边距调整，块内所有行显示宽度一致。
+- **状态区三行布局（issue #371）**：
+  - 动态参数（转圈 / 阶段 / 耗时）移入第一条横线，不再与静态参数挤在同一行；
+  - 倒数第二行暂以**会话 ID** 占位（后续指标待设计）；
+  - 静态参数独占最后一行；
+  - 受 JLine 限制，输入行上方的可重绘行仍无法实现（见 #358）。
+- **围栏代码行号与语言识别增强（issue #371）**：
+  - 有色 TTY 下代码块每行前置 3 位行号（`  1 │ `），无色 / 非 TTY 保持原样；
+  - 围栏语言标识支持 ` ```java title="x" ` 等附加信息（只取第一个 token）；
+  - 行号不改变行数，代码内容仍完整。
+- **BigModelCN 补充最新 GLM 模型**：
+  - 新增 `glm-5.4`（旗舰推理模型），`Tier` 的 Ultra / Pro / Standard 指向它；
+  - 保留 `glm-5.3` / `glm-5.3-flashx` / `glm-5.3-flash` 作为 Flash / Fallback；
+  - 桌面端预设与候选模型同步。
+- **围栏代码语法高亮（issue #336）**：
+  - 支持 Java / Python / JavaScript / TypeScript / JSON / YAML / Shell / SQL / XML /
+    Go / Rust / C# / C / C++ / PHP / Ruby；
+  - 单行内区分关键字 / 字符串 / 注释 / 数字，不改变行数与换行；
+  - 未知语言或未标语言回退纯文本；无色终端不产生 ANSI。
+- **工具调用分块展示：块内同底色 + 块间间隙（issue #326）**：
+  - 工具块的首行、命令行、明细、正文、末行统一使用同一暗灰底，整行铺满，块内不再出现深浅断层；
+  - 失败块同样使用中性底 + 红色前景，避免「块头灰底、结果红底」把一块拆成两块；
+  - 连续两个工具块之间保留空行，边界一眼可辨；
+  - 新增 `Style.blockLine(...)`，并同步 `ToolBlock.command / details / body` 与 `StreamRenderer`。
+- **CLI 运行状态位（issue #342）**：
+  - 状态行八态：空闲 / 请求中 / 生成中 / 工具执行中 / 等待审批 / 完成 / 失败 / 已中断；
+  - 请求中与工具执行中显示实时耗时（120ms 刷新）；
+  - 完成 / 失败保留 2 秒后回到空闲；失败只显示单行原因；
+  - ESC / Ctrl+C 中断显示「已中断」，保留 2 秒后回到空闲；
+  - 审批问答前后由 `ConsoleToolApprover` 回调切换「等待审批」。
+- **中断状态独立展示（issue #359）**：
+  - 新增 `INTERRUPTED` 运行状态：ESC / Ctrl+C 后显示 `⏹ 已中断`（不显示 `✗` 与失败原因），
+    保留 2s 后回空闲；
+  - 审批问答被中断（Ctrl+C / EOF / 无输入）同样落到该状态，不再误切回「执行工具」；
+  - `ConsoleToolApprover` 新增 `onCancelled` 回调；单测覆盖中断文案与回调。
+- **CLI 底部状态栏：静态字段（issue #330 / #353）**：
+  - 空闲时在输入框下方常驻显示「运行模式 · 供应商 · 档位 · 模型 · 思考强度 · 目录 (分支)」，
+    不随输出滚动消失；忙碌时阶段在前、字段在后（宽度不足先保阶段）；
+  - 供应商取运行时 `Provider`；思考强度暂无数据源时显示 `-`（不编造数值）；
+  - 目录是 Git 仓库时展示当前分支（`feature/x` 完整保留，detached 显示 7 位短 sha）；
+  - 目录超过 3 层截断为 `…/末三层`；宽度不足时依次丢目录+分支、强度、档位，
+    模式与供应商始终保留；
+  - 新增 `--strict`（严格模式：含只读在内所有工具调用都需确认），与 `--yes` 互斥；
+    会话内输入 `a` 后状态栏即时切到「完全授权」。
+- **Markdown 富文本渲染基线补齐（issue #335）**：
+  - 行内**删除线**（`~~文本~~`，SGR 9）—— 单个 `~` 仍是字面量，不影响 `~/x`；
+  - **嵌套列表**保留缩进层级，符号与顶层统一（不再出现顶层 `• `、嵌套 `- ` 两套记号）；
+  - 单测补删除线、嵌套列表、粗体 + 行内代码混合、非 TTY 无 SGR 四类路径。
+- **运行时 `ESC` 中断当前对话任务（issue #341）**：
+  - 生成中按 `ESC` 停止流式输出，工具执行中按 `ESC` 终止子进程（含后代进程，不留孤儿）；
+  - 中断只影响当前任务，会话上下文与已生成正文保留，随后可直接输入下一条；
+  - 中断时丢弃尚未累积完整的工具调用，避免历史里留下半截 `tool_calls`；
+  - 斜杠候选面板展开时第一下 `ESC` 收起面板、第二下中断任务；
+  - 非交互式终端（管道 / CI）启动时明确提示「ESC 中断不可用」，不静默失灵。
+
+### 修复
+- **表格后紧跟的块级构造失效（CLI Markdown 渲染）**：
+  - 表格内的换行由表格模式自行消费、不经过行结束处理，`prefixDone` 停在 `true`，导致**紧跟表格的第一行**丢掉行首判定：
+    `### 标题`、`- 列表`、`> 引用`、```` ``` ```` 围栏全被当正文原样吐出（第二行起恢复正常）；
+  - 表格结算时统一复位行级状态（`kind` / `headingLevel` / `prefix` / `prefixDone`），并补 `lastEmitted` 保证 `_` 的词内判定正确；
+  - 单测新增表格后紧邻标题 / 列表 / 引用 / 围栏四类相邻组合用例。
+- **发布链路加固（issue #303，V0.1.4 发布事故复盘）**：
+  - 原生报告包只在主包产出后才上传，不再出现「有 report、没有主包」的孤立资产；
+  - 发布资产不齐时自动把 release 降为 **pre-release**，资产齐全后自动恢复（不完整版本不再被当成正式版推荐）；
+  - 原生腿的真实结果与「形态 × 平台」缺失矩阵写进 Job Summary，不再被 `continue-on-error` 隐藏；
+  - 新增 `bin/CheckReleaseAssets.py`：发布前按矩阵预演、发布后验收 12 份齐全；
+  - GraalVM 版本取值四级兜底（`IMPLEMENTOR_VERSION` → `native-image --version` → 路径名 → 报错），修复 Linux / Windows / macOS 三平台原生腿；
+- **旧资产名别名移除**：`check_release_matrix()` 的 0.1.5 版本门槛生效，旧前缀与旧段序不再被接受。
+
+## [0.1.4] - 2026-10-18
 
 ### 变更
 - **发布物矩阵与命名统一（issue #269）**：

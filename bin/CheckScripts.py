@@ -128,8 +128,11 @@ JAVA_KIND_RE = re.compile(
     r'^\s{4}([A-Z_]+)\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)', re.M)
 JAVA_CONST_RE = re.compile(r'\b([A-Z_]{3,})\s*=\s*"([^"]+)"')
 
-#: `Dist/UpdateJvm.ps1`：`$TagSuffix = '-aha-jvm'` 与 `Prefix = 'aha-desktop-'`。
-PS_JVM_TAG_RE = re.compile(r"\$TagSuffix\s*=\s*'([^']+)'")
+#: `Dist/UpdateJvm.ps1`：`$TagSuffixByKind = @{ Desktop = '-aha-desktop-jvm'; Cli = '-aha-cli-jvm' }`、
+#: `$LegacyTagSuffix = '-aha-jvm'`（0.1.5 之前的合并 tag，仅用于读历史 release）与 `Prefix = 'aha-desktop-'`。
+PS_JVM_TAG_MAP_RE = re.compile(
+    r"\$TagSuffixByKind\s*=\s*@\{\s*Desktop\s*=\s*'([^']+)';\s*Cli\s*=\s*'([^']+)'\s*\}")
+PS_JVM_LEGACY_TAG_RE = re.compile(r"\$LegacyTagSuffix\s*=\s*'([^']+)'")
 PS_JVM_PREFIX_RE = re.compile(r"Prefix\s*=\s*'([^']+)'")
 #: 快照自测留痕（issue #166）：工作流与规范里的清单必须一致。
 #: `context` / 命令前缀写错的表现是**静默**的（打了标对不上分支保护里的名字、命令没人认），所以钉成断言。
@@ -177,10 +180,23 @@ JAVA_UPDATE_LAUNCHER = JAVA_UPDATE_DIR / "UpdateLauncher.java"
 JAVA_UPDATE_PATHS = JAVA_UPDATE_DIR / "UpdatePaths.java"
 PS_APPLY_UPDATE = ROOT / "Dist" / "AhaApplyUpdate.ps1"
 #: 必须把换装 helper 打进**包根**的两条发行线（缺一个，那条线的自更新就是死的）
+#: 注：描述符本身是平台无关的，仍收 helper；POSIX 包里的 `.cmd` / `.ps1` 由出包腿
+#: 在生成清单前裁掉（issue #381，`PrunePlatformScripts.py`）。
 HELPER_PACKAGES = {
     "桌面端 JVM（jar 便携包）": ASSEMBLY_DESCRIPTORS["desktop"],
     "桌面端原生（单文件）": ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
 }
+
+#: 必须在生成包内清单前调用 POSIX 裁剪的四条出包线（issue #381）
+PLATFORM_PACKAGE_WORKFLOWS = {
+    ".github/workflows/CliReleasePackageLeg.yml": "CLI-JVM",
+    ".github/workflows/DesktopPackageLeg.yml": "桌面端 JVM",
+    ".github/workflows/NativeImageLeg.yml": "桌面端原生",
+    ".github/workflows/CliNativeImageLeg.yml": "CLI 原生",
+    ".github/workflows/BuildMvnArtifactLeg.yml": "Build 制品腿（dev 预发行）",
+}
+#: 按平台裁剪 Windows 专属脚本的脚本（唯一实现，工作流只负责调用）
+PRUNE_SCRIPT = ROOT / ".github" / "Python" / "PrunePlatformScripts.py"
 #: 「作业里调用仓库脚本 ⇒ 该作业必须先 checkout」要认的解释器/入口
 REPO_SCRIPT_CALL_RE = re.compile(
     r"\b(?:python3?|bash|sh|pwsh|powershell)\s+(?:-\S+\s+)*[\"']?(\.github/|bin/|Script/|Dist/)[\w./-]+"
@@ -206,14 +222,21 @@ SNAPSHOT_MANIFEST = ROOT / ".github" / "SnapshotPaths.yml"
 #: 仓库里**真实存在**的 7 个标签（`gh label list` 可查）。这是全仓唯一一处把标签名写死的地方——
 #: 名字必须与 GitHub 上的既有事实对齐，不能由清单自定义；清单与所有消费方都要与它逐字一致。
 SNAPSHOT_LABELS = (
-    "SNAPSHOT:Desktop",
-    "SNAPSHOT:Cli",
+    "SNAPSHOT:JVMDesktop",
+    "SNAPSHOT:JVMCli",
     "SNAPSHOT:NativeDesktop",
     "SNAPSHOT:NativeCli",
     "OS:Win",
     "OS:MacOS",
     "OS:Ubuntu",
 )
+
+#: 0.1.5 之前的旧标签名（2026-10-19 由 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` 改名）。
+#: **只允许出现在历史记录里**：历史档案（Troubleshooting / DevLog）与 CHANGELOG 的历史段落
+#: 记录的是当时的事实，不追改；活代码、清单、指南一律用新名——否则扫描会与清单判不一致。
+LEGACY_SNAPSHOT_LABELS = ("SNAPSHOT:Desktop", "SNAPSHOT:Cli")
+LEGACY_LABEL_DIRS = ("Docs/Troubleshooting/", "Docs/DevLog/")
+LEGACY_LABEL_FILES = ("CHANGELOG.md",)
 
 #: 标签字面量。**故意不区分大小写地粗扫**，再与清单逐字比对——这样才能抓出
 #: 「平台名写成小写」这类大小写漂移（GitHub 的标签匹配是区分大小写的）。
@@ -843,14 +866,35 @@ def check_release_channel_contract() -> list[str]:
                 f"通道契约：原生资产前缀在 Java（{java_name}）拼成 "
                 f"{'aha-'+product+'-'+form+'-'!r}，而 Python / PowerShell 写的是 {py_prefix!r}")
 
-    # ── ② JVM 线：资产前缀与旧 tag 别名 ─────────────────────────────────────
+    # ── ② JVM 线：两种 tag 后缀（issue #347）与旧合并后缀兼容，加资产前缀 ──────
     jvm_ps1_text = JVM_PS1.read_text(encoding="utf-8-sig")
-    jvm_tag = PS_JVM_TAG_RE.search(jvm_ps1_text)
-    if jvm_tag is None:
-        problems.append("通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffix`，无法与 Java 对齐")
-    elif jvm_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+    tag_map = PS_JVM_TAG_MAP_RE.search(jvm_ps1_text)
+    legacy_tag = PS_JVM_LEGACY_TAG_RE.search(jvm_ps1_text)
+    if tag_map is None:
         problems.append(
-            f"通道契约：dev 线 JVM tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {jvm_tag.group(1)!r}，"
+            "通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$TagSuffixByKind`（Desktop / Cli 两种 tag 后缀），"
+            "无法与 Java 对齐")
+    if legacy_tag is None:
+        problems.append(
+            "通道契约：`Dist/UpdateJvm.ps1` 里找不到 `$LegacyTagSuffix`（旧 `-aha-jvm` 兼容），"
+            "历史 release 会取不到")
+    if tag_map is not None:
+        ps_by_kind = {"DESKTOP_JVM": tag_map.group(1), "CLI_JVM": tag_map.group(2)}
+        for name in ("DESKTOP_JVM", "CLI_JVM"):
+            value = java_kinds.get(name)
+            if value is None:
+                problems.append(f"通道契约：Java 的 UpdateKind 里找不到 {name}")
+                continue
+            _target, product, form = value
+            expected = f"{native_infix}{product}-{form}"
+            if ps_by_kind[name] != expected:
+                problems.append(
+                    f"通道契约：JVM 的 {name} tag 后缀在 PowerShell 是 {ps_by_kind[name]!r}，"
+                    f"Java 拼成 {expected!r}（NATIVE_TAG_INFIX + product + '-' + form）；"
+                    "这会让该形态的取件永远找不到包")
+    if legacy_tag is not None and legacy_tag.group(1) != java_consts.get("JVM_TAG_SUFFIX"):
+        problems.append(
+            f"通道契约：旧合并 tag 后缀不一致——`Dist/UpdateJvm.ps1` 是 {legacy_tag.group(1)!r}，"
             f"Java 侧 JVM_TAG_SUFFIX 是 {java_consts.get('JVM_TAG_SUFFIX')!r}")
     ps_prefixes = set(PS_JVM_PREFIX_RE.findall(jvm_ps1_text))
     for name in ("DESKTOP_JVM", "CLI_JVM"):
@@ -1442,15 +1486,20 @@ def check_snapshot_manifest() -> list[str]:
     for path, text in maybe_scannable_files():
         if path.resolve() in authorities:
             continue
+        rel_path = path.relative_to(ROOT).as_posix()
+        legacy_ok = rel_path.startswith(LEGACY_LABEL_DIRS) or rel_path in LEGACY_LABEL_FILES
         for number, line in enumerate(text.splitlines(), 1):
             for match in SNAPSHOT_LABEL_RE.finditer(line):
                 literal = match.group(0)
-                if literal not in listed:
-                    problems.append(
-                        f"{path.relative_to(ROOT)}:{number} 出现清单之外的标签 {literal!r}——"
-                        f"标签名必须与 {rel} 逐字一致（含大小写）；"
-                        "写错的表现是「打了标签却毫无反应」，不报错、只是没反应"
-                    )
+                if literal in listed:
+                    continue
+                if legacy_ok and literal in LEGACY_SNAPSHOT_LABELS:
+                    continue  # 历史档案里的旧名：记录当时的事实，不判红
+                problems.append(
+                    f"{rel_path}:{number} 出现清单之外的标签 {literal!r}——"
+                    f"标签名必须与 {rel} 逐字一致（含大小写）；"
+                    "写错的表现是「打了标签却毫无反应」，不报错、只是没反应"
+                )
 
     # ④ 快照工作流：必须引用清单，且 `paths:` 字面量必须在清单里
     allowed = set(groups["a"]) | set(groups["b"]) | set(groups["c"])
@@ -1580,6 +1629,10 @@ def check_update_helper_packaging() -> list[str]:
     因此这里把三件事钉死：① 两条发行线的装配描述符都必须收 helper；
     ② helper 必须存在**且被 git 跟踪**；③ helper 写「已启动」标记的名字与 Java 侧逐字一致
     （App 拉起 helper 后要等这个标记才敢退出，名字漂移就会永远等不到）。
+
+    issue #381 起口径补充：描述符仍是平台无关的（Windows 包需要 helper），
+    POSIX 包里的 `.cmd` / `.ps1` 由出包腿裁剪 —— 那一条由
+    `check_platform_package_scripts()` 钉住，本函数仍要求描述符收齐 helper。
     """
     problems: list[str] = []
     if not JAVA_UPDATE_LAUNCHER.exists():
@@ -1649,6 +1702,46 @@ def check_update_helper_packaging() -> list[str]:
             problems.append(
                 f"换装「已启动」标记名不一致：Java 侧 {match.group(1)!r} 没有出现在 "
                 f"{PS_APPLY_UPDATE.relative_to(ROOT)}（App 会永远等不到标记而不敢退出）"
+            )
+    return problems
+
+
+def check_platform_package_scripts() -> list[str]:
+    """POSIX 发行包里不得出现 Windows 专属脚本（issue #381）。
+
+    四条出包线（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）在**生成包内清单之前**
+    必须调用 `.github/Python/PrunePlatformScripts.py`：
+
+      * 包内容由 assembly / 工作流清单决定，但它们都是**平台无关**的；
+      * 若只改描述符而不裁剪，Ubuntu / macOS 包里会继续带着 `.bat` / `.cmd` / `.ps1`；
+      * 裁剪必须在清单生成之前，否则 `AHA-PACKAGE.json` 会出现「清单里有、包里没有」。
+
+    同时守住 CLI-JVM 的入口断言：不能再无条件要求 `AhaCli.bat`（POSIX 包已不含它）。
+    """
+    problems: list[str] = []
+    if not PRUNE_SCRIPT.exists():
+        return [f"缺 {PRUNE_SCRIPT.relative_to(ROOT)}（POSIX 包裁剪 Windows 专属脚本，issue #381）"]
+    for rel, label in PLATFORM_PACKAGE_WORKFLOWS.items():
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"缺出包工作流 {rel}（{label}）")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "PrunePlatformScripts.py" not in text:
+            problems.append(
+                f"{rel}：{label} 打包后没有调用 PrunePlatformScripts.py"
+                "（POSIX 包会带上 .bat / .cmd / .ps1，issue #381）"
+            )
+        elif "--check-only" not in text:
+            problems.append(f"{rel}：{label} 没有用 --check-only 断言裁剪结果")
+
+    cli_leg = ROOT / ".github" / "workflows" / "CliReleasePackageLeg.yml"
+    if cli_leg.exists():
+        text = cli_leg.read_text(encoding="utf-8")
+        if re.search(r"for f in aha-cli\.jar AhaCli\.sh AhaCli\.bat", text):
+            problems.append(
+                f"{cli_leg.relative_to(ROOT)}：入口断言仍无条件要求 AhaCli.bat"
+                "（POSIX 包不再包含它，issue #381）"
             )
     return problems
 
@@ -1771,6 +1864,8 @@ def main() -> int:
     problems.extend(input_compare)
     helper_pkg = check_update_helper_packaging()
     problems.extend(helper_pkg)
+    platform_scripts = check_platform_package_scripts()
+    problems.extend(platform_scripts)
     checkout = check_repo_script_steps_have_checkout()
     problems.extend(checkout)
     auto_dispatch = check_release_auto_dispatch()
@@ -1790,7 +1885,8 @@ def main() -> int:
     print(f"检查发布物矩阵与工作流一致（ReleaseMatrix，issue #269）：{'❌' if release_matrix else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
-    print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查换装 helper 打包与跟踪（Windows 包必带 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查 POSIX 包不含 Windows 专属脚本（五条出包线裁剪，issue #381）：{'❌' if platform_scripts else '✅'}")
     print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
     print(f"检查发版自动派发链路（#238：tag → workflow_dispatch → Release.yml）：{'❌' if auto_dispatch else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")

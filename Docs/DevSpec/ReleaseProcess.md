@@ -1,9 +1,9 @@
 # 发布流程
 
-**文档版本**：v1.34.0
+**文档版本**：v1.35.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-17
+**最后更新**：2026-10-20
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -13,6 +13,7 @@
 
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
+| v1.35.0 | 2026-10-20 | §3.6 改为「按平台分发」：POSIX 包（ubuntu / macos）不出现 `.bat` / `.cmd` / `.ps1`，Windows 包保持现状；装配描述符仍平台无关地收 helper，由各出包线在**生成包内清单之前**调用 `.github/Python/PrunePlatformScripts.py` 裁剪；新增守卫 `check_platform_package_scripts()`（issue #381）| @cnxnc |
 | v1.31.2 | 2026-10-17 | 发布流水线三处加固（发版前审计）：① 打包作业在生成 `AHA-PACKAGE.json` 后**立即 `verify` 回读**（清单错了在发布前就红，而不是用户升级时才撞「校验和不符」）；② `checksums` 作业新增**资产齐全自证**——期望 CLI + 三平台桌面端共 4 份 zip，缺任何一份即失败并在 Job Summary 点名（原来「只出了部分平台」也会绿着把发布页生成出来）；③ `bin/CheckScripts.py` 新增守卫 `check_release_auto_dispatch()`，把 #238 的自动派发链路（`workflow_dispatch` + `tag` 入参 + 显式 `tag_name` + `contents/actions: write` + 幂等 + `--ref main`）钉死 | @cnxnc |
 | v1.31.1 | 2026-10-17 | §2 的「一致性校验」补一句口径：产物名版本段**只比对带版本段的产物**（`<artifactId>-<版本>…`）；包根扁平化后的 `Dist/aha-cli.jar` / `Dist/aha-desktop.jar` 不带版本号、不参与该比对（版本由包内 `AHA-PACKAGE.json` 承载），跳过项写进校验日志。修的是 `ProjectVersion.py` 被根聚合 artifactId 前缀碰撞后的**假红**（`dev` 上 Gate 自 2026-10-15 起一直红，issue #260） | @cnxnc |
 | v1.32.0 | 2026-10-17 | 按 issue [#287](https://github.com/ACANX/AHA/issues/287) 同步：平台标签 `macos-arm64` ⇒ `macos-aarch64`（读取兼容旧资产名）、commit status context `snapshot-assert` ⇒ `SnapshotAssert`、`predeploy-verify` ⇒ `PreDeployVerify` | @cnxnc |
@@ -121,7 +122,7 @@
 4. 合入 `main` —— **tag 由 CI 自动打**：`Build.yml` 的 `Tag` 作业在 `main` 上的构建成功后，
    按根 POM 的 `<revision>` 创建 `V<版本号>`（如 `V0.1.0`）并推送；同一版本已存在则跳过（幂等）。
    手工补打的方法见 4.1
-5. `Release.yml` **由 CI 自动开跑**（产出 CLI 包 + 各平台桌面端包并上传到 release 页面）：
+5. `Release.yml` **由 CI 自动开跑**（产出四组合 × 三平台共 12 份资产并上传到 release 页面）：
    `Build.yml` 的 `Tag` 作业在**新建**出 tag 之后，用 `GITHUB_TOKEN` 经 `workflow_dispatch`
    派发它（GitHub 防递归的**官方例外**，issue #238），派发 ref 固定为 `main` —— 见 4.2。
    手工补触发的方法（派发失败 / 资产重来）同样见 4.2
@@ -131,10 +132,20 @@
 
 1. **清单先写后验**：每个打好的 zip 生成 `AHA-PACKAGE.json` 之后立刻 `PackageManifest.py verify` 回读，
    清单与包内容不一致就在这里失败 —— 不会等到用户下载后、「应用内升级」时报「校验和不符」；
-2. **资产齐全**：`checksums` 作业在挂 `SHA256SUMS` 之前断言「CLI + 三平台桌面端共 4 份 zip」都在，
+2. **资产齐全**：`checksums` 作业在挂 `SHA256SUMS` 之前断言「**四组合 × 三平台 = 12 份 zip**」都在（清单只从矩阵读，issue #269 §3），
    缺任何一份即失败并在 Job Summary 点名。应用内升级是按平台取件的，缺哪个平台哪类用户就升不了。
    这条挡的是「**部分发布**」：`release` 与 `desktop` 是并列作业，任一成功本作业就跑起来，
    以前缺资产也会绿着把发布页生成出来。
+
+3. **发布前预演（2026-10-18 起，issue #303）**：正式 `V*` 之前，先在已有快照 tag 上跑一次
+
+   ```bash
+   python3 bin/CheckReleaseAssets.py --tag <快照 tag> --version <版本> --allow-partial
+   ```
+
+   它按矩阵把「形态 × 平台」摊成表，直接列出缺哪些；`--allow-partial` 只报告不判红
+   （快照 tag 本来就不含 Stable 的 12 份）。正式发布后**去掉** `--allow-partial` 再跑一次，
+   即为验收：12 份齐全才退出 0。报告包（`-report.zip`）不计入 12 份，属合法附加物。
 
 ### 2.1 快照包（pre-release）：与正式发布彻底隔离
 
@@ -446,7 +457,7 @@ Java 的 `ChannelContract.java` + `UpdateKind.java`）必须与之逐字一致�
 | 通道 | 版本形态 | tag | 资产名 | 产出线 |
 |---|---|---|---|---|
 | **Stable** | `x.y.z` | `V<版本>`（`prerelease=false`）| 四组合 × 三平台 = **12 份**，见下 | `Release.yml` |
-| **Beta** | `x.y.z.PPPPP` | `V<版本>-aha-<product>-<form>` | 同一文法（旧 `-aha-jvm` 兼做一个周期） | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
+| **Beta** | `x.y.z.PPPPP` | `V<版本>-aha-<product>-<form>`（JVM 与原生一样**每个形态一条**，issue #347） | 同一文法（旧合并 `-aha-jvm` 仅解析兼容） | `BuildJVMArtifacts.yml` / `DesktopNative.yml` / `CliNative.yml` |
 | **Alpha** | `x.y.z.PPPPP.MMddHHmm` | `V<快照版本>-AHA-<product>-<form>` | 同一文法 | 快照线（同上，7 天有效期） |
 
 **资产名文法（唯一一处定义，issue [#269](https://github.com/ACANX/AHA/issues/269)）**：
@@ -502,11 +513,16 @@ aha-cli-native-0.1.4-macos-aarch64-graalvm25.zip
    Stable release 同时装下 JVM / Native × Desktop / CLI 四组合；0.1.4 一个版本周期内保留旧名别名
    （`aha-desktop-…` / `AHA-Desktop-Native-…`），0.1.5 起旧名由 `check_release_matrix()` 的版本门槛判红。
 
-### 3.6 发行包必须带换装 helper（桌面端两条线）
+### 3.6 发行包必须带换装 helper（桌面端两条线，按平台分发）
 
 应用内升级要在用户机器上完成换装，靠的是随包分发的两个文件：`apply-update.cmd`（入口）
 与 `AhaApplyUpdate.ps1`（实现）。它们必须落在**包根**，否则 `UpdateLauncher.installHelpers`
 会在「复制 helper」这一步就失败（报「该包不完整」）——**用户装得再对也用不了应用内升级**。
+
+**按平台分发（issue #381）**：这两份 helper 与 `.bat` 只属于 Windows 包；
+POSIX 包（`ubuntu-*` / `macos-*`）里不得出现 `.bat` / `.cmd` / `.ps1`。
+装配描述符本身是平台无关的（仍收 helper），由各出包线在**生成包内清单之前**
+调用 `.github/Python/PrunePlatformScripts.py` 裁剪。
 
 | 要求 | 细节 |
 |---|---|
@@ -514,10 +530,12 @@ aha-cli-native-0.1.4-macos-aarch64-graalvm25.zip
 | 位置是包根 | 与 `aha-desktop.jar` / `aha-desktop-native[.exe]` 同级（`<outputDirectory>.</outputDirectory>`） |
 | 两个文件都不带版本号 | 计划文件才是唯一入参，换版本不用改脚本 |
 | **文件必须被 git 跟踪** | 只写进装配描述符不算：被 `.gitignore` 吃掉的文件在 CI 上不存在，`maven-assembly` 对匹配不到的 `<include>` **静默跳过** —— 表现是「本地全绿、包是残的」 |
+| **POSIX 包剔除 Windows 专属脚本** | `ubuntu-amd64` / `macos-aarch64` 包内不得有 `.bat` / `.cmd` / `.ps1`；Windows 包保持现状（继续带 `.bat` 与换装 helper，`.sh` 不剔除） |
 
 守卫：`bin/CheckScripts.py` 的 `check_update_helper_packaging()`（两处描述符 + `git ls-files` 跟踪性）
-与 `check_ignored_sources()` 的「被忽略却被引用」判定；helper 自身的行为由
-`Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑（`Build.yml` 的 `native-update-script` 作业）。
+与 `check_platform_package_scripts()`（各出包线必须调用裁剪脚本 + `--check-only` 断言）；
+helper 自身的行为由 `Script/PowerShell/HelperSelfTest.ps1` 在 CI 里真跑
+（`Build.yml` 的 `native-update-script` 作业）。
 
 ---
 

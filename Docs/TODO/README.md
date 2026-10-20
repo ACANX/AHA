@@ -78,10 +78,10 @@ TD-00014-ManualAndExternalActions.md
 
 ## 3. 当前编号
 
-- 已用：`TD-00001` ~ `TD-00022`
-- **下一个可用编号：`TD-00023`**
+- 已用：`TD-00001` ~ `TD-00060`
+- **下一个可用编号：`TD-00061`**
 
-> 订正（2026-10-13）：本行此前停在 `TD-00017`（已用区间与之矛盾）。
+> 订正（2026-10-19）：本行此前停在 `TD-00023`（实际早已用到 `TD-00058`，与之矛盾）。
 
 ## 4. 清单
 
@@ -93,6 +93,8 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00002](TD-00002-CliMarkdownRichRendering.md) | Markdown 富文本渲染与渲染缺口（表格分割线 / 图片 / 语法高亮 / OSC 8） | ☐ 未开始 | [#73](https://github.com/ACANX/AHA/issues/73) | |
 | [TD-00003](TD-00003-CliInputAndStatusBar.md) | 输入框样式与 loading 动效、底部状态栏、斜杠命令下拉补全 | ☐ 未开始 | [#74](https://github.com/ACANX/AHA/issues/74) | 状态栏用量部分依赖 0.6 用量落库 |
 | [TD-00004](TD-00004-CliWindowsMultilinePaste.md) | Windows 终端多行粘贴兼容性（conhost 限制） | ◐ 进行中 | [#75](https://github.com/ACANX/AHA/issues/75) | 已有两项加固，conhost 行为待定 |
+| [TD-00059](TD-00059-TableBlankLineBoundary.md) | 表格块边界：空行应终止表格，且表格与正文之间保留空行 | ☐ 未开始 | [#346](https://github.com/ACANX/AHA/issues/346) | 验收 #345 时由 93 行组合样例实测发现；伴生修复见 `Docs/DevLog/20261019-11.md` |
+| [TD-00060](TD-00060-Milestone8ExecutionOrder.md) | Milestone 8（V0.1.5）未完成 Issue 的优先级与依赖排序 | ◐ 进行中 | [Milestone 8](https://github.com/ACANX/AHA/milestone/8) | 21 个 open 的盘点 / 拓扑 / 5 批执行顺序；含 2 个待拍板项 |
 
 ### 4.2 桌面端
 

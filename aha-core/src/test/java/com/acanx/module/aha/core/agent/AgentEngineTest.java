@@ -11,6 +11,9 @@ import com.acanx.module.aha.core.llm.protocol.ChatResponse;
 import com.acanx.module.aha.core.llm.protocol.Choice;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.ToolCall;
+import com.acanx.module.aha.core.llm.protocol.StreamEvent;
+import com.acanx.module.aha.core.llm.protocol.StreamEventType;
+import com.acanx.module.aha.core.llm.protocol.ToolCallDelta;
 import com.acanx.module.aha.core.llm.protocol.Usage;
 import com.acanx.module.aha.core.service.AgentResponse;
 import org.junit.jupiter.api.Test;
@@ -50,6 +53,31 @@ class AgentEngineTest {
         @Override
         public void streamChat(ChatRequest request, StreamEventListener listener, CancellationToken token) {
             throw new UnsupportedOperationException();
+        }
+    }
+
+    /**
+     * 发一段正文 + 半截工具调用后自行取消的假流式客户端。
+     *
+     * <p>模拟「生成过程中按 ESC」：流被掐断时工具调用参数只累积了一半。</p>
+     */
+    private static final class InterruptingLlmClient implements LlmClient {
+        @Override
+        public CompletableFuture<ChatResponse> chat(ChatRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void streamChat(ChatRequest request, StreamEventListener listener,
+                               CancellationToken token) {
+            listener.onEvent(new StreamEvent(StreamEventType.CONTENT_DELTA, "部分正文", null,
+                    null, null, null, null, null));
+            listener.onEvent(new StreamEvent(StreamEventType.TOOL_CALL_DELTA, null, null,
+                    new ToolCallDelta(0, "call_1", "file-read", "{\"path\":\"/tmp"), null,
+                    null, null, null));
+            token.cancel();
+            listener.onEvent(new StreamEvent(StreamEventType.DONE, null, null, null, null,
+                    "tool_calls", null, null));
         }
     }
 
@@ -128,6 +156,55 @@ class AgentEngineTest {
         // user + assistant(tool_call) + tool + assistant(final)
         assertThat(memory.loadHistory("s1", 10)).hasSize(4);
         assertThat(llm.requests).hasSize(2);
+    }
+
+    @Test
+    void requestNeverContainsOrphanToolMessageOrUnansweredToolCalls() {
+        // issue #391：窗口截断 / 中断都会留下「孤立的 tool」或「未响应的 tool_calls」，
+        // 直接发给上游会 400。prepare() 必须在请求前把它们洗干净。
+        InMemoryMemoryStore memory = new InMemoryMemoryStore();
+        FakeLlmClient llm = new FakeLlmClient();
+        llm.enqueue(textResponse("ok"));
+        AgentEngine engine = new AgentEngine(llm, new ToolRegistry(), memory);
+
+        memory.appendMessage("s1", new ChatMessage(Role.TOOL, "孤立的工具结果", List.of(),
+                "call-orphan", null));
+        memory.appendMessage("s1", ChatMessage.text(Role.USER, "继续"));
+        memory.appendMessage("s1", new ChatMessage(Role.ASSISTANT, "", List.of(
+                new ToolCall("call-1", "file-read", Map.of()),
+                new ToolCall("call-2", "file-read", Map.of())), null, null));
+        memory.appendMessage("s1", new ChatMessage(Role.TOOL, "r1", List.of(), "call-1", null));
+
+        engine.run("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
+                new CancellationToken());
+
+        List<ChatMessage> sent = llm.requests.get(0).messages();
+        assertThat(sent).noneMatch(message -> message.role() == Role.TOOL
+                && "call-orphan".equals(message.toolCallId()));
+        ChatMessage assistant = sent.stream()
+                .filter(message -> message.role() == Role.ASSISTANT)
+                .findFirst().orElseThrow();
+        assertThat(assistant.toolCalls()).extracting(ToolCall::id).containsExactly("call-1");
+    }
+
+    @Test
+    void interruptedStreamKeepsContentButDropsPartialToolCalls() {
+        InMemoryMemoryStore memory = new InMemoryMemoryStore();
+        AgentEngine engine = new AgentEngine(new InterruptingLlmClient(), new ToolRegistry(),
+                memory);
+        CancellationToken token = new CancellationToken();
+
+        engine.stream("s1", new SessionConfig("m", null, Map.of()), "m", "hi", event -> { },
+                token);
+
+        assertThat(token.isCancelled()).isTrue();
+        // user + assistant：中断前已生成的正文保留，半截工具调用被丢弃
+        List<ChatMessage> history = memory.loadHistory("s1", 10);
+        assertThat(history).hasSize(2);
+        ChatMessage assistant = history.get(1);
+        assertThat(assistant.role()).isEqualTo(Role.ASSISTANT);
+        assertThat(assistant.content()).isEqualTo("部分正文");
+        assertThat(assistant.toolCalls()).isEmpty();
     }
 
     @Test

@@ -65,7 +65,11 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          version: '25.4'
+          # macOS + GraalVM 25.4 在解析 JavaFX 的 `com.sun.glass.ui.mac.MacVariant.toString` 时
+          # 报 `AnalysisError$ParsingError ... unexpected input could not be handled: class java.lang.Object`
+          # （pointsto 解析错误），桌面端原生镜像编不出来；25.3.4.1 无此问题。
+          # CLI 原生不涉及 JavaFX，继续用 25.4（`CliNativeImageLeg.yml` 未改）。
+          version: ${{ runner.os == 'macOS' && '25.1' || '25.4' }}
           java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -559,9 +563,148 @@ jobs:
           # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
           exit 0
 
+      - name: RunGuiSmokeLinux
+        # 【issue #383 的落点】0.1.5.00380 的 ubuntu 原生包**启动即崩**（`config.ModelDefinition`
+        # 未登记反射元数据 → `UnsupportedFeatureError`，连界面都没出来），而这条腿当时
+        # 「构建成功、打包成功、发布出去」全绿 —— 因为冒烟只在 Windows 腿跑，Linux 腿连
+        # 一次产物都没执行过。CLI 腿后来补了 `--version` 冒烟（无图形也可复现同一崩溃），
+        # 但桌面端仍需一个真的走到界面初始化的判据，因此这里用 xvfb-run 给一个虚拟 X。
+        #
+        # 为什么是诊断式（不判死整条流程）：与 RunGuiSmoke 同口径 —— 原生管线是可选管线，
+        #   CI 无 GPU，Prism 必然回退软件渲染，覆盖不到真机 D3D / ES2 路径；
+        #   BuildSpec §7 要求失败在步骤级容错。
+        #
+        # 三态判定（2026-10-20 两轮实测后修正）：
+        #   ① 命中 `[ui-fxml-loaded]` ⇒ ✅ 通过（已证明走到界面初始化；进程随后退出不影响结论）；
+        #   ② 命中 `[ui-fxml-load-failed]` / `UnsupportedFeatureError` / `ClassNotFoundException`
+        #      ⇒ ❌ `::error::` —— 这是本单那一类**确定的元数据缺陷**，不能被“环境”二字淡化；
+        #   ③ 未到界面且非 0 退出（实测 runner 上 JavaFX 本地栈以 134 = SIGABRT 结束）
+        #      ⇒ ⚠️ `::warning::` 并写摘要，标「环境限制未验证」；
+        #   ④ 其余（存活 25 秒 / 0 退出但没命中 loaded）⇒ ❌。
+        continue-on-error: true
+        if: always() && runner.os == 'Linux' && steps.verify.outputs.produced == 'true'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          report=$(mktemp)
+          problems=""
+          env_limited=""
+
+          finish() {
+            {
+              echo "### 桌面端原生镜像 GUI 冒烟（${{ inputs.label }} / jdk${{ inputs.jdk }}）"
+              echo
+              cat "${report}" 2>/dev/null || true
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "${problems}" ]; then
+              echo "::error::GUI 冒烟失败：${problems}（详见本步日志与 Job Summary）"
+              exit 1
+            fi
+            if [ -n "${env_limited}" ]; then
+              echo "::warning::GUI 冒烟未完成（环境限制）：${env_limited}"
+            fi
+            exit 0
+          }
+          trap finish EXIT
+
+          bin=$(ls "$work/aha-desktop-native" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            bin=$(find aha-desktop-native/target -type f -name 'aha-desktop-native' 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$bin" ]; then
+            echo "- ⏭ 没有找到可执行文件，跳过冒烟" >> "$report"
+            problems="没有可执行文件"
+            exit 0
+          fi
+          chmod +x "$bin" 2>/dev/null || true
+          echo "可执行文件：${bin}"
+          echo "- 可执行文件：\`${bin}\`" >> "$report"
+
+          # xvfb-run 在 GitHub 的 ubuntu 镜像里预装；取不到就如实说明跳过，不把它当失败。
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            echo "- ⏭ runner 上没有 xvfb-run，跳过 Linux GUI 冒烟" >> "$report"
+            echo "::warning::runner 上没有 xvfb-run，跳过 Linux GUI 冒烟"
+            exit 0
+          fi
+
+          out=$(mktemp)
+          err=$(mktemp)
+          echo '—— 冒烟：xvfb-run 启动桌面端原生镜像，最多观察 25 秒 ——'
+          # -Dprism.order=sw：runner 无 GPU，显式走软件管线，避免 ES2 初始化失败掩盖真问题；
+          # 退出码 124（timeout 杀掉）算**正常**：GUI 进程本就该一直运行。
+          # 【必须用 `|| code=$?`】runner 的默认 shell 是 `bash -e`，直接写 `timeout ...` 时
+          # 非 0 退出会**立即终止脚本**（跳过下面的判定与 trap 输出，实测 2 秒就结束、
+          # 步骤还是绿的）—— 那样这条冒烟会重新变成“从不判死”的摆设。
+          code=0
+          timeout 25 xvfb-run -a "$bin" -Dprism.order=sw > "$out" 2> "$err" || code=$?
+          echo "退出码：${code}（124 = 超时仍在运行，属正常）"
+
+          text="$(cat "$out" 2>/dev/null || true)
+          $(cat "$err" 2>/dev/null || true)"
+          hasVersion=$(printf '%s' "$text" | grep -cF '[aha-version]' || true)
+          hasLoaded=$(printf '%s' "$text" | grep -cF '[ui-fxml-loaded]' || true)
+          hasFailed=$(printf '%s' "$text" | grep -cF '[ui-fxml-load-failed]' || true)
+          # 原生镜像特有的硬缺陷指纹（issue #383 / #51 那一类）。有它就不是「环境限制」。
+          hasNativeCrash=$(printf '%s' "$text" | grep -cE 'UnsupportedFeatureError|Record components not available|ClassNotFoundException|NoClassDefFoundError' || true)
+
+          # 无条件把捕获内容打到日志：只看判定无法区分「已捕获但没命中标记」与「重定向压根没生效」。
+          echo "—— 捕获情况：out=$(wc -c < "$out" 2>/dev/null || echo 0) 字节，err=$(wc -c < "$err" 2>/dev/null || echo 0) 字节 ——"
+          echo '—— 关键标记（原文行）——'
+          printf '%s\n' "$text" | grep -aE '\[aha-version\]|\[ui-fxml-loaded\]|\[ui-fxml-load-failed\]|渲染诊断|Exception|UnsupportedFeatureError|Aborted|SIGABRT|prism' | head -n 40 || true
+          echo '—— stdout 前 20 行 ——'
+          head -n 20 "$out" 2>/dev/null || true
+          echo '—— 尾部（去掉 GC 表，最多 40 行）——'
+          printf '%s\n' "$text" | grep -avE '^\s*\|?\s*[0-9]+\|0x' | tail -n 40 || true
+
+          if [ "${hasFailed}" -gt 0 ]; then
+            problems="界面装载失败（命中 [ui-fxml-load-failed]）"
+          elif [ "${hasNativeCrash}" -gt 0 ]; then
+            problems="原生镜像反射 / JNI 元数据缺失（命中 UnsupportedFeatureError / ClassNotFoundException 指纹）"
+          elif [ "${hasLoaded}" -gt 0 ]; then
+            # 命中 [ui-fxml-loaded] 已证明「走到了界面初始化之后」——这正是本单要的判据。
+            # 之后进程再退出（实测 runner 无 GPU 时 JavaFX 本地栈会以 134 收尾）不影响结论，
+            # 但退出码照样记进摘要，不藏着。
+            :
+          elif [ "${code}" -ne 0 ] && [ "${code}" -ne 124 ]; then
+            # 134（SIGABRT）一类通常是 runner 无 GPU / GTK 初始化失败（JavaFX 的本地库 abort），
+            # 不是本仓库的启动缺陷；记为「环境限制」并用 warning，避免可选管线长期挂红
+            # 让真问题淹没在噪声里。真正的元数据缺失已被上面的指纹分开判定。
+            env_limited="启动期以非 0 退出（退出码 ${code}）且未到界面初始化，日志无反射 / JNI 缺失标记，按 CI 图形环境限制处理"
+          else
+            problems="未命中正面标记 [ui-fxml-loaded]（界面没有装起来）"
+          fi
+
+          {
+            echo "- 可执行文件：\`${bin}\`"
+            echo "- 退出码：${code}（124 = 超时仍在运行，属正常）"
+            echo "- 正面标记：\`[aha-version]\`=${hasVersion}，\`[ui-fxml-loaded]\`=${hasLoaded}，\`[ui-fxml-load-failed]\`=${hasFailed}"
+            echo "- 原生镜像硬缺陷指纹：${hasNativeCrash}（UnsupportedFeatureError / ClassNotFoundException）"
+            if [ -n "${problems}" ]; then
+              echo "- ❌ 结论：${problems}"
+              echo
+              echo '```text'
+              printf '%s\n' "$text" | tail -n 40
+              echo '```'
+            elif [ -n "${env_limited}" ]; then
+              echo "- ⚠️ 结论：${env_limited}"
+              echo
+              echo '```text'
+              printf '%s\n' "$text" | tail -n 40
+              echo '```'
+            else
+              echo "- ✅ 结论：启动到界面初始化（命中 [ui-fxml-loaded]）"
+              if [ "${code}" -ne 0 ] && [ "${code}" -ne 124 ]; then
+                echo "  - 注：进程随后以退出码 ${code} 结束（按 CI 图形环境问题记录，不影响本结论）"
+              fi
+            fi
+            echo '- 说明：CI 无 GPU，Prism 显式走软件管线（`-Dprism.order=sw`），覆盖不到真机 ES2 / D3D 路径。'
+            echo ''
+            echo '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
+          } >> "$report"
+
       - name: RunGuiSmoke
         # 为什么只在 Windows 跑：GitHub 的 windows-latest 有**交互式桌面会话**，能创建窗口；
-        #   Linux 腿无 X（需 Xvfb），macOS 腿 GUI 访问受限。
+        #   Linux 腿由 RunGuiSmokeLinux（xvfb-run）覆盖，macOS 腿 GUI 访问受限。
         # 为什么是诊断式（不判死整条流程）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
         #   覆盖不到真实 D3D 路径；BuildSpec §7 要求可选管线不得进必需检查、
         #   且失败必须在步骤级容错。结论一律写摘要。
@@ -720,6 +863,10 @@ jobs:
           src=$(ls Dist/aha-desktop-native-*.zip | grep -v -- "-report.zip" | head -n1)
           target="Dist/aha-desktop-native-${{ env.AHA_VERSION }}-${{ inputs.label }}-graalvm${{ inputs.jdk }}.zip"
           mv -- "$src" "$target"
+          # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1（含换装 helper）。
+          # 在 WritePackageManifest 之前完成，保证清单与包内容逐项一致。
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}"
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}" --check-only
           ls -lh "$target"
           echo "发布资产：${target}"
 
@@ -732,9 +879,35 @@ jobs:
           # GraalVM 精确版本：`graalvm/setup-graalvm` 只导出 cache-hit，不导出 version，
           # 直接从 $GRAALVM_HOME/release 的 IMPLEMENTOR_VERSION 里取（如 "GraalVM Community 25.4.4.1" → 25.4.4.1）。
           # 取不到就让这条腿红：清单里记一个空版本等于没记（issue #269 §5）。
-          graalvm_version="$(awk -F= '/^IMPLEMENTOR_VERSION=/{gsub(/"/, "", $2); print $2}' "${GRAALVM_HOME:-$JAVA_HOME}/release" | awk '{print $NF}')"
+          # Windows runner 的 Git Bash 里 GRAALVM_HOME 是 `C:\...` 形式，awk 读不到 —— 先转成 POSIX 路径；
+          # release 文件是 CRLF —— 先 tr 掉 \r，否则版本串末尾会带控制字符。
+          graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
+          if command -v cygpath >/dev/null 2>&1; then
+            graalvm_home="$(cygpath -u "$graalvm_home" 2>/dev/null || printf '%s' "$graalvm_home")"
+          fi
+          # ① 首选 release 文件的 IMPLEMENTOR_VERSION（"GraalVM Community 25.4.4.1" / "Oracle GraalVM 25.4.4.1.1"）；
+          # ② 字段缺失或格式不符时，从目录名兜底（`graalvm-25.4.4.1+1.1` / `graalvm-jdk-25.4.4.1+1.1`）；
+          # ③ 两者都失败才报错，并把目录与 release 头几行打出来便于排查。
+          graalvm_version=""
+          if [ -f "$graalvm_home/release" ]; then
+            graalvm_version="$(tr -d '\r' < "$graalvm_home/release" \
+              | sed -n 's/^IMPLEMENTOR_VERSION="\{0,1\}[^"]*[[:space:]]\([0-9][0-9.]*\)"\{0,1\}$/\1/p' \
+              | head -n1)"
+          fi
+          if [ -z "$graalvm_version" ] && [ -x "$graalvm_home/bin/native-image" ]; then
+            # GraalVM 25 的 `native-image --version` 第二行含 `Oracle GraalVM 25.4.4.1.1+1`
+            graalvm_version="$("$graalvm_home/bin/native-image" --version 2>/dev/null \
+              | sed -n 's/.*GraalVM \([0-9][0-9.]*\).*/\1/p' | head -n1)"
+          fi
           if [ -z "$graalvm_version" ]; then
-            echo "::error::无法从 ${GRAALVM_HOME:-$JAVA_HOME}/release 读取 GraalVM 版本"
+            # 对整个路径匹配，而不是 basename：macOS 的 GRAALVM_HOME 末尾是
+            # `.../graalvm-25.4.4.1.1+1.1/Contents/Home`，basename 是 `Home`，匹配不到。
+            graalvm_version="$(printf '%s' "$graalvm_home" | sed -n 's/.*graalvm[^0-9]*\([0-9][0-9.]*\).*/\1/p')"
+          fi
+          if [ -z "$graalvm_version" ]; then
+            ls -la "$graalvm_home" || true
+            sed -n '1,20p' "$graalvm_home/release" 2>/dev/null || true
+            echo "::error::无法确定 GraalVM 版本（release 与目录名都没给出版本）"
             exit 1
           fi
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \

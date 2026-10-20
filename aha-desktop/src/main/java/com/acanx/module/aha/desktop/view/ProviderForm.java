@@ -20,7 +20,7 @@ import java.util.Objects;
 public final class ProviderForm {
 
     /** 适配器可选值（与 core 的适配器实现对应）。 */
-    public static final String[] ADAPTERS = {"openai-compatible", "anthropic", "gemini"};
+    public static final String[] ADAPTERS = {"openai-compatible", "anthropic-messages", "gemini"};
 
     /**
      * 已知供应商的预设（ID → 适配器 / 基础地址 / Standard 档模型）。
@@ -40,10 +40,10 @@ public final class ProviderForm {
 
     static {
         PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-6-sol"});
-        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-5"});
+        PRESETS.put("Anthropic", new String[]{"anthropic-messages", "https://api.anthropic.com", "claude-sonnet-5-5"});
         PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"});
         PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-v4-flash"});
-        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3"});
+        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.4"});
         PRESETS.put("Qwen", new String[]{"openai-compatible", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-plus"});
         PRESETS.put("Moonshot", new String[]{"openai-compatible", "https://api.moonshot.cn/v1", "kimi-k2.7-code"});
         PRESETS.put("MiniMax", new String[]{"openai-compatible", "https://api.minimax.chat/v1", "MiniMax-M2.7"});
@@ -52,7 +52,7 @@ public final class ProviderForm {
         MODELS.put("Anthropic", new String[]{"claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"});
         MODELS.put("Gemini", new String[]{"gemini-3.1-pro-preview", "gemini-3.8-flash", "gemini-flash-lite-latest"});
         MODELS.put("DeepSeek", new String[]{"deepseek-v4-pro", "deepseek-v4-flash"});
-        MODELS.put("BigModelCN", new String[]{"glm-5.3", "glm-5.3-flashx", "glm-5.3-flash"});
+        MODELS.put("BigModelCN", new String[]{"glm-5.4", "glm-5.3", "glm-5.3-flashx", "glm-5.3-flash"});
         MODELS.put("Qwen", new String[]{"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash"});
         MODELS.put("Moonshot", new String[]{"kimi-k3", "kimi-k2.7-code-highspeed", "kimi-k2.7-code", "kimi-k2.6"});
         MODELS.put("MiniMax", new String[]{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"});
@@ -178,7 +178,7 @@ public final class ProviderForm {
                 source == null || source.baseUrl() == null ? "" : source.baseUrl(),
                 source == null || source.apiKey() == null ? "" : source.apiKey(),
                 source == null || source.model() == null ? "" : source.model(),
-                source == null ? Map.of() : new LinkedHashMap<>(source.modelsOrEmpty()),
+                source == null ? Map.of() : new LinkedHashMap<>(source.tierModelNames()),
                 source == null ? null : source.defaultTier(),
                 String.valueOf(source == null || source.timeoutSeconds() <= 0 ? 60 : source.timeoutSeconds()),
                 String.valueOf(source == null || source.maxRetries() < 0 ? 2 : source.maxRetries()));

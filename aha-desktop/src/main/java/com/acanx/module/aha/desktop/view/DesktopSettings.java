@@ -11,7 +11,9 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
@@ -54,6 +56,9 @@ public final class DesktopSettings {
 
     /** 上次检查时间（**仅展示用，不参与决策**）。 */
     public static final String KEY_UPDATE_LAST_CHECK_AT = "Update.LastCheckAt";
+
+    /** 用户手动添加的工作空间目录（换行分隔）。 */
+    public static final String KEY_WORKSPACES = "Ui.Workspaces";
 
     /** 默认升级通道：{@link ReleaseChannel#DEFAULT}（Stable；2026-10-16 由临时值 Beta 改回）。 */
     public static final ReleaseChannel DEFAULT_UPDATE_CHANNEL = ReleaseChannel.DEFAULT;
@@ -108,6 +113,8 @@ public final class DesktopSettings {
      * 上面那次切换正是靠这条机制才惠及老安装的。</p>
      */
     private final Set<String> explicitKeys = new LinkedHashSet<>();
+
+    private final List<String> workspaces = new ArrayList<>();
 
     private DesktopSettings(Path file) {
         this.file = file;
@@ -182,6 +189,15 @@ public final class DesktopSettings {
             settings.lastCheckAt = properties.getProperty(KEY_UPDATE_LAST_CHECK_AT);
             settings.explicitKeys.add(KEY_UPDATE_LAST_CHECK_AT);
         }
+        String rawWorkspaces = properties.getProperty(KEY_WORKSPACES);
+        if (rawWorkspaces != null && !rawWorkspaces.isBlank()) {
+            for (String part : rawWorkspaces.split("\n")) {
+                String path = part.strip();
+                if (!path.isEmpty() && !settings.workspaces.contains(path)) {
+                    settings.workspaces.add(path);
+                }
+            }
+        }
         return settings;
     }
 
@@ -211,6 +227,9 @@ public final class DesktopSettings {
         if (explicitKeys.contains(KEY_UPDATE_LAST_CHECK_AT) && lastCheckAt != null) {
             properties.setProperty(KEY_UPDATE_LAST_CHECK_AT, lastCheckAt);
         }
+        if (!workspaces.isEmpty()) {
+            properties.setProperty(KEY_WORKSPACES, String.join("\n", workspaces));
+        }
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
@@ -221,6 +240,29 @@ public final class DesktopSettings {
         } catch (IOException e) {
             LOG.warn("写入设置失败：{}（{}）", file, e.toString());
         }
+    }
+
+    /**
+     * 用户手动添加的工作空间目录。
+     *
+     * @return 不可变列表
+     */
+    public List<String> workspaces() {
+        return List.copyOf(workspaces);
+    }
+
+    /**
+     * 添加一个工作空间目录（已存在则移到末尾）。
+     *
+     * @param path 目录绝对路径
+     */
+    public void addWorkspace(String path) {
+        if (path == null || path.isBlank()) {
+            return;
+        }
+        String normalized = path.strip();
+        workspaces.remove(normalized);
+        workspaces.add(normalized);
     }
 
     /**

@@ -6,6 +6,7 @@ import com.acanx.module.aha.cli.render.Renderer;
 import com.acanx.module.aha.cli.render.StartupBanner;
 import com.acanx.module.aha.cli.render.StartupLogo;
 import com.acanx.module.aha.cli.render.StartupPixelLogo;
+import com.acanx.module.aha.cli.render.StatusBar;
 import com.acanx.module.aha.cli.render.Style;
 import com.acanx.module.aha.cli.render.Renderers;
 import com.acanx.module.aha.cli.render.TextWidth;
@@ -16,29 +17,38 @@ import com.acanx.module.aha.cli.session.SessionCommand;
 import com.acanx.module.aha.cli.session.SessionCommandCompleter;
 import com.acanx.module.aha.cli.session.SessionCommandHighlighter;
 import com.acanx.module.aha.cli.session.SessionCommandRegistry;
+import com.acanx.module.aha.cli.session.SlashMenuReader;
 import com.acanx.module.aha.cli.session.SessionContext;
 import com.acanx.module.aha.cli.tty.AboveStream;
 import com.acanx.module.aha.cli.tty.Clipboard;
 import com.acanx.module.aha.cli.tty.ClipboardPaste;
+import com.acanx.module.aha.cli.tty.GitBranch;
 import com.acanx.module.aha.cli.tty.InputTrace;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
 import com.acanx.module.aha.cli.tty.OutputEncoding;
 import com.acanx.module.aha.cli.tty.PastePlaceholder;
+import com.acanx.module.aha.cli.tty.SafeAbovePrinter;
 import com.acanx.module.aha.cli.tty.StatusSurface;
 import com.acanx.module.aha.cli.tty.TerminalCapabilities;
 import com.acanx.module.aha.cli.tty.TerminalHandover;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
 import com.acanx.module.aha.common.tool.CancellationToken;
+import com.acanx.module.aha.common.tool.ToolApprover;
+import com.acanx.module.aha.common.tool.ToolPermission;
+import com.acanx.module.aha.core.agent.PermissionPolicy;
+import com.acanx.module.aha.core.service.LocalAgentService;
 import com.acanx.module.aha.core.config.AhaConfig;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.service.AgentService;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.ParameterException;
+import picocli.CommandLine.Spec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
@@ -56,8 +66,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * 交互式对话命令（JLine）。
@@ -94,6 +106,15 @@ public final class ChatCommand implements Runnable {
             description = "自动授权 WRITE/EXECUTE/ADMIN 工具，不再逐次确认")
     boolean autoYes;
 
+    /** 严格模式：所有工具调用都需确认（含只读）。 */
+    @Option(names = "--strict",
+            description = "严格模式：所有工具调用都需确认（含只读）；与 --yes 互斥")
+    boolean strict;
+
+    /** picocli 命令模型（参数冲突时用它报错）。 */
+    @Spec
+    CommandSpec spec;
+
     /** 关闭 ANSI 颜色。 */
     @Option(names = "--no-color", description = "关闭 ANSI 颜色（也受 NO_COLOR 环境变量影响）")
     boolean noColor;
@@ -105,6 +126,9 @@ public final class ChatCommand implements Runnable {
 
     @Override
     public void run() {
+        if (autoYes && strict) {
+            throw new ParameterException(spec.commandLine(), "--yes 与 --strict 不能同时使用");
+        }
         AgentService service = CliContext.service();
         // 先确保全局记忆文件存在，再解析身份：否则本轮解析不到它，
         // 启动信息与 /memory view 会各说一套（一个只报项目级、一个列出两份）。
@@ -192,22 +216,11 @@ public final class ChatCommand implements Runnable {
                     .forEach(System.out::println);
             detailRows(sessionId, opened).forEach(System.out::println);
             System.out.println();
-            LineReader reader = LineReaderBuilder.builder()
-                    .terminal(terminal)
-                    // 会话内命令补全与实时着色：Tab 出候选菜单（带用法说明），
-                    // 输入过程中命令名直接染成绿（已支持）或红（未知）——
-                    // 此前只能盲敲，按下回车才知道命令对不对
-                    .completer(new SessionCommandCompleter(registry))
-                    .highlighter(new SessionCommandHighlighter(registry, capabilities.colored()))
-                    // 允许多行粘贴：终端支持 bracketed paste 时，粘贴内容作为整体插入缓冲区，
-                    // 换行不会立即提交（否则多行文本会被拆成多条消息发给模型）
-                    .option(LineReader.Option.BRACKETED_PASTE, true)
-                    // 菜单式补全：Tab 列出全部候选并允许循环选择
-                    .option(LineReader.Option.AUTO_MENU_LIST, true)
-                    .option(LineReader.Option.LIST_PACKED, true)
-                    // 容错匹配：/cmpct 也能匹配到 /compact
-                    .option(LineReader.Option.COMPLETE_MATCHER_TYPO, true)
-                    .build();
+            // 输入 / 时的候选面板由 SlashMenuReader 负责（画在输入行下方、一行一个、
+            // 支持 ↑/↓ 选择与 Enter 直接提交，见 issue #333）；这里不用 LineReaderBuilder，
+            // 因为它无法在输入行下方追加候选区。
+            // bracketed paste、Alt+V、0x0200 都在 reader 建好之后绑定（见下方）。
+            SlashMenuReader reader = new SlashMenuReader(terminal, registry, capabilities.colored());
             trace.note("terminal=" + terminal.getClass().getName()
                     + " type=" + terminal.getType()
                     + " capabilities=[" + capabilities.description() + "]"
@@ -228,23 +241,54 @@ public final class ChatCommand implements Runnable {
             Style frameStyle = Style.of(capabilities.colored()
                     ? capabilities.depth() : TerminalCapabilities.ColorDepth.NONE);
             String prompt = "\n" + rule(encoding.symbols(), capabilities.width(), frameStyle) + "\n";
-            PrintStream out = capabilities.tty()
-                    ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset()), false,
-                            encoding.charset())
-                    : System.out;
-            // 状态行：终端底部常驻一行，回合期间持续刷新（转圈 / 耗时 / 用量）。
-            // 它靠滚动区域实现，终端不支持时自动退化为不显示；
-            // 非 TTY（管道 / CI）没有可保留的区域，直接用空实现。
+            // 状态行先于输出流创建：printAbove 前后要暂停/恢复底部区域，
+            // 否则多次输出后 Status 的行缓冲会与正文错位
             StatusSurface statusSurface = capabilities.tty()
                     ? JLineStatusSurface.create(terminal, capabilities.colored())
                     : StatusSurface.NONE;
+            AtomicReference<Renderer> rendererRef = new AtomicReference<>();
+            Runnable suspendStatus = () -> {
+                Renderer current = rendererRef.get();
+                if (current != null) {
+                    current.suspendStatus();
+                }
+            };
+            Runnable resumeStatus = () -> {
+                Renderer current = rendererRef.get();
+                if (current != null) {
+                    current.resumeStatus();
+                }
+            };
+            // 【issue #384】JLine 的 printAbove 在含 CJK 的长行上会抛
+            // IllegalArgumentException（WCWidth 拿越界 offset 调 BreakIterator）。
+            // 不包一层的话，它经 AboveStream 冒到 runTurn，整轮回答被判「回合执行失败」，
+            // 用户已经看到的内容也丢了。这里降级为直写（暂停状态区 → 写终端 → 恢复）。
+            Consumer<String> above = new SafeAbovePrinter(reader::printAbove,
+                    line -> terminal.writer().println(line), suspendStatus, resumeStatus);
+            PrintStream out = capabilities.tty()
+                    ? new PrintStream(new AboveStream(above, encoding.charset(),
+                            suspendStatus, resumeStatus), false, encoding.charset())
+                    : System.out;
+            // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
+            // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
+            StatusBar.Mode mode = strict ? StatusBar.Mode.STRICT
+                    : (autoYes ? StatusBar.Mode.FULL : StatusBar.Mode.AUTO);
+            Path cwd = Path.of("").toAbsolutePath().normalize();
+            StatusBar statusBar = StatusBar.of(mode, statusProvider(service), statusTier(service),
+                    statusModel(service), statusEffort(service), cwd.toString(),
+                    GitBranch.detect(cwd));
+
+            // 状态行：终端底部常驻一行，回合期间持续刷新（转圈 / 耗时 / 用量）。
+            // 它靠滚动区域实现，终端不支持时自动退化为不显示；
+            // 非 TTY（管道 / CI）没有可保留的区域，直接用空实现。
             SessionContext sessionContext = new SessionContext(
                     sessionId, service, CliContext.config(), out,
                     describePromptSource(opened), opened.promptChars(),
                     handover(terminal, statusSurface));
             // 回合输出经 printAbove 上抛，状态行走底部常驻区，两者互不干扰
-            Renderer renderer = Renderers.of(capabilities, encoding, statusModel(service), out,
-                    statusSurface);
+            Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
+                    statusSurface, sessionId);
+            rendererRef.set(renderer);
 
             // Alt+V / Ctrl+V：自己读剪贴板并原子插入输入行 —— 不经过终端输入流，
             // 因此在「终端不支持括号粘贴」的控制台上也能把多行内容作为一条消息送出去。
@@ -256,15 +300,37 @@ public final class ChatCommand implements Runnable {
             // 因此授权问答走队列：主线程把接下来的输入递给它
             BlockingQueue<String> answers = new LinkedBlockingQueue<>();
             AtomicBoolean awaitingAnswer = new AtomicBoolean();
-            CliContext.service(autoYes
+            ToolApprover approver = autoYes
                     ? (toolName, permission, arguments) -> true
                     : new ConsoleToolApprover(question -> askForAnswer(out, answers, awaitingAnswer,
-                            question)));
+                            question), () -> statusBar.setMode(StatusBar.Mode.FULL),
+                            renderer::awaitingApproval, renderer::approvalResolved, renderer::cancelled);
+            AgentService configured = CliContext.service(approver);
+            if (strict && configured instanceof LocalAgentService local) {
+                // 严格模式：取消一切自动放行（连 READ 都走审批）
+                local.setPermissionPolicy(
+                        PermissionPolicy.autoApprove(EnumSet.noneOf(ToolPermission.class)));
+            }
 
             // 单线程执行器：回合串行执行，期间的输入排队
             ExecutorService turns = Executors.newSingleThreadExecutor(
                     Thread.ofVirtual().name("aha-turn-", 0).factory());
             AtomicReference<CancellationToken> currentTurn = new AtomicReference<>();
+            // ESC 中断：第一下由 reader 收起候选面板，第二下落到这里取消当前回合。
+            // 空闲时 currentTurn 为 null —— 返回 false，让 ESC 不产生任何副作用。
+            reader.setInterruptHandler(() -> {
+                CancellationToken token = currentTurn.get();
+                if (token == null) {
+                    return false;
+                }
+                token.cancel();
+                return true;
+            });
+            if (!capabilities.tty()) {
+                // 非交互终端收不到按键事件：ESC 中断必然不可用，提前说清楚，
+                // 免得用户以为按键失灵（issue #341 验收：不静默失灵）
+                say(out, "[warn] 当前不是交互式终端，ESC 中断不可用；请用 Ctrl+C 结束进程。");
+            }
             try {
                 while (true) {
                     String line;
@@ -381,15 +447,16 @@ public final class ChatCommand implements Runnable {
             if (token.isCancelled()) {
                 // 被打断的说明由回合线程输出：此刻主线程正回到 readLine，
                 // 只有这里调 printAbove 才落在正确的位置
+                renderer.cancelled();
                 out.println("[已中断]");
             }
             // 放在每轮回答之后：先让用户看到本轮结果，再来处理上下文
             AutoCompactor.runIfNeeded(sessionContext, registry);
         } catch (RuntimeException e) {
-            // 未预期的失败要连堆栈一起打出来：只给一句摘要，排查时等于没线索
+            // 堆栈只留一份（issue #384）：完整堆栈进日志（排查用），终端只给摘要。
+            // 之前 LOG.error 与 out.println(stackTrace) 各打一份，用户看到的是两张一样的堆栈。
             LOG.error("回合执行失败 session={}", sessionId, e);
-            out.println("[error] " + Exceptions.message(e));
-            out.println(stackTrace(e));
+            out.println("[error] " + Exceptions.message(e) + "（完整堆栈见日志）");
         } finally {
             // 收尾：流式正文最后一行往往没有换行符，不 flush 就一直压在缓冲里
             out.flush();
@@ -430,12 +497,6 @@ public final class ChatCommand implements Runnable {
      * @param error 异常
      * @return 堆栈文本
      */
-    private static String stackTrace(Throwable error) {
-        java.io.StringWriter writer = new java.io.StringWriter();
-        error.printStackTrace(new java.io.PrintWriter(writer));
-        return writer.toString();
-    }
-
     /**
      * 生成输入行的分隔线。
      *
@@ -520,6 +581,39 @@ public final class ChatCommand implements Runnable {
             return model;
         }
         return service.runtime().attributes().get("Model");
+    }
+
+    /**
+     * 状态栏展示的供应商（`Model.yml` 里的配置键）。
+     *
+     * @param service Agent 服务
+     * @return 供应商；未知时为空串（状态栏显示 {@code -}）
+     */
+    private String statusProvider(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Provider", "");
+    }
+
+    /**
+     * 状态栏展示的档位（Ultra / Pro / Standard / Flash / Fallback）。
+     *
+     * @param service Agent 服务
+     * @return 档位；未知时为空串（状态栏省略该段）
+     */
+    private String statusTier(AgentService service) {
+        return service.runtime().attributes().getOrDefault("Tier", "");
+    }
+
+    /**
+     * 状态栏展示的思考强度。
+     *
+     * <p><b>暂无数据源</b>（issue #353 待拍板：`ProviderConfig.Extra.reasoning_effort` 还是
+     * `Aha.yaml` 新增项），先显示占位 {@code -}，不编造「低 / 中 / 高」。</p>
+     *
+     * @param service Agent 服务
+     * @return 强度；当前恒为空串
+     */
+    private String statusEffort(AgentService service) {
+        return "";
     }
 
     /**

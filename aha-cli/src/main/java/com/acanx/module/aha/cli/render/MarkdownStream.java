@@ -37,6 +37,9 @@ final class MarkdownStream {
     private final boolean box;
     private final int width;
 
+    /** 围栏代码是否显示行号。 */
+    private final boolean lineNumbers;
+
     private final StringBuilder out = new StringBuilder();
     private final StringBuilder prefix = new StringBuilder();
     private final StringBuilder pending = new StringBuilder();
@@ -45,6 +48,11 @@ final class MarkdownStream {
     private int headingLevel;
     private boolean prefixDone;
     private boolean inFence;
+
+    /** 围栏内当前行号（从 1 开始）。 */
+    private int fenceLine = 1;
+    /** 当前围栏的语言标识（用于语法高亮）；非围栏时为 {@code null}。 */
+    private String fenceLanguage;
     private boolean pendingHasDelimiter;
 
     /** 表格缓冲。 */
@@ -63,10 +71,23 @@ final class MarkdownStream {
      * @param width   终端宽度；{@code <= 0} 表示未知
      */
     MarkdownStream(Style style, boolean unicode, int width) {
+        this(style, unicode, width, style != null && style.colored() && unicode);
+    }
+
+    /**
+     * 创建渲染器，并显式指定围栏代码是否显示行号。
+     *
+     * @param style       样式
+     * @param unicode     编码是否支持制表符与扩展符号
+     * @param width       终端宽度；{@code <= 0} 表示未知
+     * @param lineNumbers 围栏代码是否显示行号
+     */
+    MarkdownStream(Style style, boolean unicode, int width, boolean lineNumbers) {
         this.style = style;
         this.bullet = unicode ? "•" : "-";
         this.box = unicode;
         this.width = width;
+        this.lineNumbers = lineNumbers;
     }
 
     /** 行级样式。 */
@@ -117,7 +138,12 @@ final class MarkdownStream {
             prefix.setLength(0);
             prefixDone = true;
         }
-        if (!inFence) {
+        if (inFence) {
+            // 最后一行若已由 endLine 处理（pending 为空），不能再补一个空行号
+            if (pending.length() > 0) {
+                appendFenceLine();
+            }
+        } else {
             resolve(true);
         }
         flushPending();
@@ -181,6 +207,11 @@ final class MarkdownStream {
 
     /**
      * 结算表格并输出。
+     *
+     * <p><b>结束时必须复位行级状态</b>：表格内的换行由 {@link #stepTable(int)} 自己消费，
+     * 从不经过 {@link #endLine()}，而进入表格时 {@code prefixDone} 被置为 {@code true}。
+     * 若不复位，紧跟表格的第一行会带着「行首已判定」的旧状态进入行内流程——
+     * 标题 / 列表 / 引用 / 围栏的标记全被当成正文原样吐出（只坏这一行，下一行就恢复正常）。</p>
      */
     private void flushTable() {
         if (tableLine.length() > 0) {
@@ -188,15 +219,96 @@ final class MarkdownStream {
             tableLine.setLength(0);
         }
         inTable = false;
-        if (tableRows.isEmpty()) {
-            return;
+        if (!tableRows.isEmpty()) {
+            out.append(TableRenderer.render(tableRows, style, width, box));
+            tableRows.clear();
+            // 表格渲染结果以换行结尾：下一个字符属于新行，与 endLine() 的收尾保持一致
+            lastEmitted = '\n';
         }
-        out.append(TableRenderer.render(tableRows, style, width, box));
-        tableRows.clear();
+        resetLineState();
+    }
+
+    /** 复位行级状态：行结束或整块构造（表格）结算后调用。 */
+    private void resetLineState() {
+        kind = LineKind.PLAIN;
+        headingLevel = 0;
+        prefix.setLength(0);
+        prefixDone = false;
+        pendingHasDelimiter = false;
+    }
+
+    /**
+     * 输出一行围栏代码：可选行号 + 语法高亮。
+     */
+    private void appendFenceLine() {
+        String code = pending.toString();
+        String prefix = lineNumberPrefix();
+        int prefixWidth = TextWidth.width(prefix);
+        int limit = width > 0 ? Math.max(8, width - 1 - prefixWidth) : 0;
+        // 代码行折行：续行用行号前缀等宽的空格占位，保持代码列对齐
+        java.util.List<String> parts = limit > 0
+                ? TextWidth.wrap(code, limit)
+                : java.util.List.of(code);
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                out.append('\n');
+            }
+            out.append(i == 0 ? style.lineNumber(prefix) : " ".repeat(prefixWidth));
+            out.append(CodeHighlighter.highlight(parts.get(i), fenceLanguage, style));
+        }
+        pending.setLength(0);
+    }
+
+    /**
+     * 行号前缀：3 位右对齐 + 分隔符；未开启行号时返回空串。
+     *
+     * @return 行号前缀
+     */
+    private String lineNumberPrefix() {
+        if (!lineNumbers) {
+            return "";
+        }
+        String number = String.format("%3d", fenceLine++);
+        return number + (box ? " │ " : " | ");
+    }
+
+    /**
+     * 从围栏语言标识中取第一个 token（去掉 `title="…"` 等附加信息）。
+     *
+     * @param info 反引号之后的整段文本
+     * @return 语言标识；没有时返回 {@code null}
+     */
+    private static String normalizeLanguage(String info) {
+        if (info == null) {
+            return null;
+        }
+        String text = info.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        int end = 0;
+        while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
+            end++;
+        }
+        return end == 0 ? null : text.substring(0, end);
     }
 
     private void endLine() {
         if (!prefixDone) {
+            String p = prefix.toString();
+            int ticks = leadingCount(p, ch -> ch == '`');
+            if (!inFence && ticks >= 3) {
+                // 打开围栏：语言标识取反引号之后的部分（可能带 title 等附加信息）
+                fenceLanguage = normalizeLanguage(p.substring(ticks));
+                fenceLine = 1;
+                out.append(style.muted(p));
+                prefix.setLength(0);
+                resetLineState();
+                inFence = true;
+                out.append('\n');
+                lastEmitted = '\n';
+                return;
+            }
             // 未判定的行首按纯文本吐出（例如只有一个 "#"）
             out.append(prefix);
             prefix.setLength(0);
@@ -204,16 +316,15 @@ final class MarkdownStream {
         }
         // 行尾允许闭定界符落在缓冲区末尾（如 _italic_ 后紧跟换行）；
         // 围栏内部不做行内解析，否则代码里的 ** 会被当成强调
-        if (!inFence) {
+        if (inFence) {
+            appendFenceLine();
+        } else {
             resolve(true);
         }
         flushPending();
         out.append('\n');
         lastEmitted = '\n';
-        kind = LineKind.PLAIN;
-        headingLevel = 0;
-        prefixDone = false;
-        pendingHasDelimiter = false;
+        resetLineState();
     }
 
     /**
@@ -260,12 +371,38 @@ final class MarkdownStream {
 
     private void decidePrefix() {
         String p = prefix.toString();
-        if (p.length() > MAX_PREFIX) {
+        // 围栏内部：行首缓冲直接并入 pending，整行在 endLine 时统一加行号 / 高亮。
+        // 不能在这里按 MAX_PREFIX 提前 flush，否则行号会插到代码中间。
+        if (inFence) {
+            decideWhileInFence(p);
+            return;
+        }
+        int ticks = leadingCount(p, ch -> ch == '`');
+        // 围栏行需要完整缓冲到行尾才能拿到语言标识；普通行仍按 MAX_PREFIX 早判
+        if (p.length() > MAX_PREFIX && ticks < 3) {
+            flushPrefix();
+            return;
+        }
+        if (p.length() > 64) {
             flushPrefix();
             return;
         }
         if (inFence) {
             decideWhileInFence(p);
+            return;
+        }
+        // 嵌套列表：行首缩进表示层级。缩进原样保留（层级信号），符号统一成配置的 bullet，
+        // 否则顶层是 `• `、嵌套还是 `- `，看起来像两套记号。
+        int indent = 0;
+        while (indent < p.length() && p.charAt(indent) == ' ') {
+            indent++;
+        }
+        if (indent > 0) {
+            if (indent >= p.length()) {
+                // 目前全是空格：还不知道是「缩进列表」还是「缩进正文」，等下一个字符
+                return;
+            }
+            decideIndented(p, indent);
             return;
         }
         char first = p.charAt(0);
@@ -308,13 +445,18 @@ final class MarkdownStream {
      */
     private void decideWhileInFence(String p) {
         if (!allSame(p, '`')) {
-            emitPrefixLiteral();
+            // 内容行：把行首缓冲并入 pending，整行在 endLine 时统一加行号 / 高亮
+            pending.append(prefix);
+            prefix.setLength(0);
+            prefixDone = true;
             return;
         }
         if (p.length() >= 3) {
             kind = LineKind.QUOTE;
             flushPrefixMuted();
             inFence = false;
+            fenceLanguage = null;
+            fenceLine = 1;
         }
     }
 
@@ -375,16 +517,64 @@ final class MarkdownStream {
     }
 
     private void decideFence(String p) {
-        if (!allSame(p, '`')) {
+        int ticks = leadingCount(p, ch -> ch == '`');
+        if (ticks >= 3) {
+            // 继续缓冲整行：endLine 时解析语言标识并进入围栏
+            return;
+        }
+        // 还不足 3 个反引号：继续缓冲（可能还在围栏标记内），
+        // 长度达到 3 才说明这只是一段普通行内代码/文本
+        if (p.length() >= 3) {
+            flushPrefix();
+        }
+    }
+
+    /**
+     * 缩进（嵌套）列表行首判定。
+     *
+     * @param p      行首缓冲
+     * @param indent 前导空格数
+     */
+    private void decideIndented(String p, int indent) {
+        char mark = p.charAt(indent);
+        if (mark == '-' || mark == '*' || mark == '+') {
+            if (p.length() <= indent + 1) {
+                return;
+            }
+            if (p.length() == indent + 2 && p.charAt(indent + 1) == ' ') {
+                out.append(" ".repeat(indent)).append(style.marker(bullet)).append(' ');
+                lastEmitted = ' ';
+                prefix.setLength(0);
+                prefixDone = true;
+                return;
+            }
+            // 可能是缩进的分隔线（如 "***"），交给常规判定
             flushPrefix();
             return;
         }
-        if (p.length() >= 3) {
-            // 围栏行本身弱化；其内部内容原样输出
-            kind = LineKind.QUOTE;
-            flushPrefixMuted();
-            inFence = true;
+        if (Character.isDigit(mark)) {
+            int digits = indent + leadingCount(p.substring(indent), Character::isDigit);
+            if (p.length() <= digits || p.charAt(digits) != '.') {
+                if (p.length() > digits) {
+                    flushPrefix();
+                }
+                return;
+            }
+            if (p.length() == digits + 1) {
+                return;
+            }
+            if (p.charAt(digits + 1) != ' ') {
+                flushPrefix();
+                return;
+            }
+            out.append(" ".repeat(indent))
+                    .append(style.marker(p.substring(indent, digits + 1))).append(' ');
+            lastEmitted = ' ';
+            prefix.setLength(0);
+            prefixDone = true;
+            return;
         }
+        flushPrefix();
     }
 
     private void decideOrderedList(String p) {

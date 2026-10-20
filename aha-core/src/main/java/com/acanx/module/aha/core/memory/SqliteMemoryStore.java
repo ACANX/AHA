@@ -4,9 +4,11 @@ import com.acanx.module.aha.common.exception.AhaException;
 import com.acanx.module.aha.common.model.MemoryEntry;
 import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.llm.protocol.ChatMessage;
+import com.acanx.module.aha.core.llm.protocol.MessageSanitizer;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.ToolCall;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -19,6 +21,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -189,7 +192,10 @@ public final class SqliteMemoryStore implements MemoryStore {
         } catch (SQLException e) {
             throw new AhaException("DB_LOAD_FAILED", "读取消息失败: " + sessionId, e);
         }
-        return history;
+        // 窗口按 LIMIT 截断后可能只剩 tool 消息（它依附的 assistant 被截在窗口外），
+        // 直接发给上游会 400（issue #391）。统一在这里做配对校验，所有 loadHistory
+        // 调用方（AgentEngine / ContextCompactor / 快照回放）共享同一套约束。
+        return MessageSanitizer.sanitize(history);
     }
 
     @Override
@@ -277,6 +283,7 @@ public final class SqliteMemoryStore implements MemoryStore {
         // 标题：用户重命名过就用它；否则取该会话的首条用户消息（比显示 UUID 有用）。
         // 一次查询取全，避免 N+1——列表每次刷新都会跑它。
         String sql = "SELECT s.id AS id, s.gmt_create AS created, s.title AS title,"
+                + " s.config_json AS config,"
                 + " (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS cnt,"
                 + " (SELECT m2.content FROM message m2 WHERE m2.session_id = s.id"
                 + "   AND m2.role = 'USER' ORDER BY m2.id LIMIT 1) AS first_user"
@@ -290,12 +297,57 @@ public final class SqliteMemoryStore implements MemoryStore {
                         ? rs.getString("first_user")
                         : explicit;
                 summaries.add(new SessionSummary(
-                        rs.getString("id"), title, rs.getLong("created"), rs.getInt("cnt")));
+                        rs.getString("id"), title, rs.getLong("created"), rs.getInt("cnt"),
+                        workspaceOf(rs.getString("config"))));
             }
         } catch (SQLException e) {
             throw new AhaException("DB_LIST_FAILED", "列出会话失败", e);
         }
         return summaries;
+    }
+
+    /**
+     * 从会话配置 JSON 里取工作空间。
+     *
+     * <p>配置损坏不应影响会话列表：解析失败按「无工作空间」处理。</p>
+     *
+     * @param configJson 会话配置 JSON
+     * @return 工作空间路径；没有或解析失败返回 {@code null}
+     */
+    private static String workspaceOf(String configJson) {
+        if (configJson == null || configJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode extras = JSON.readTree(configJson).get("Extras");
+            JsonNode workspace = extras == null ? null : extras.get("workspace");
+            if (workspace != null && workspace.isString() && !workspace.asString().isBlank()) {
+                return workspace.asString().strip();
+            }
+        } catch (RuntimeException e) {
+            return null;
+        }
+        return null;
+    }
+
+    @Override
+    public int deleteEmptySessions(Collection<String> keep) {
+        StringBuilder sql = new StringBuilder("DELETE FROM session WHERE id NOT IN "
+                + "(SELECT DISTINCT session_id FROM message)");
+        List<String> kept = keep == null ? List.of() : List.copyOf(keep);
+        if (!kept.isEmpty()) {
+            sql.append(" AND id NOT IN (")
+                    .append(String.join(",", java.util.Collections.nCopies(kept.size(), "?")))
+                    .append(")");
+        }
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            for (int index = 0; index < kept.size(); index++) {
+                ps.setString(index + 1, kept.get(index));
+            }
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new AhaException("DB_CLEANUP_FAILED", "清理空会话失败", e);
+        }
     }
 
     @Override

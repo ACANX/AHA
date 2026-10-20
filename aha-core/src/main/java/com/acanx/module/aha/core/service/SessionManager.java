@@ -114,6 +114,16 @@ public final class SessionManager {
     }
 
     /**
+     * 清理没有任何消息的会话。
+     *
+     * @return 删除的会话数
+     */
+    public int cleanupEmptySessions() {
+        // 内存中的活跃会话必须保留：刚创建、尚未写入首条消息时它还没有 message
+        return memoryStore.deleteEmptySessions(sessions.keySet());
+    }
+
+    /**
      * 列出会话摘要（最近创建的在前），供会话列表展示。
      *
      * @return 会话摘要

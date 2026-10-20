@@ -49,7 +49,7 @@ public final class ChannelContract {
     /** 默认 JDK 段：JVM 线的默认变体。 */
     public static final int DEFAULT_JDK = 25;
 
-    /** 旧 JVM 线 dev 预发行的 tag 后缀（0.1.3 及更早，兼容用）。 */
+    /** 旧 JVM 线 dev 预发行的 tag 后缀（0.1.5 之前的**合并**形态，仅解析兼容）。 */
     public static final String JVM_TAG_SUFFIX = "-aha-jvm";
 
     /** 原生线 dev 预发行的 tag 中缀（其后是 {@code desktop-native} / {@code cli-native}）。 */
@@ -128,7 +128,8 @@ public final class ChannelContract {
             case STABLE -> "V" + version.value();
             case BETA -> "V" + version.value() + NATIVE_TAG_INFIX + kind.tagSuffix();
             // 2026-10-17 起快照 tag 不再带 `-SNAPSHOT`：5 段版本已能区分（issue #269）。
-            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.tagSuffix();
+            // 目标词用大写驼峰（`-AHA-Desktop-JVM`），与 SnapshotJVM 工作流实际产出的 tag 一致。
+            case ALPHA -> "V" + version.value() + SNAPSHOT_TARGET_INFIX + kind.targetWord();
         };
     }
 
@@ -304,6 +305,9 @@ public final class ChannelContract {
     private static String[] tagPatterns(ReleaseChannel channel, UpdateKind kind) {
         String current = "^V" + VERSION_GROUP + Pattern.quote(NATIVE_TAG_INFIX + kind.tagSuffix()) + "$";
         String currentSnapshot = "^V" + VERSION_GROUP
+                + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.targetWord()) + "$";
+        // 兼容曾生成过的小写目标词快照（`-AHA-desktop-jvm`）。
+        String currentSnapshotLower = "^V" + VERSION_GROUP
                 + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix()) + "$";
         // 兼容历史上带 `-SNAPSHOT` 的快照 tag（大写目标词与上一版的小写目标词两种写法）。
         String legacySnapshotUpper = "^V" + VERSION_GROUP
@@ -313,11 +317,14 @@ public final class ChannelContract {
                 + Pattern.quote(SNAPSHOT_TARGET_INFIX + kind.tagSuffix() + SNAPSHOT_TAG_SUFFIX) + "$";
         return switch (channel) {
             case STABLE -> new String[]{"^V" + VERSION_GROUP + "$"};
+            // JVM 形态自 issue #347 起与原生线一样：每个形态一条 release（`-aha-desktop-jvm` /
+            // `-aha-cli-jvm`）。旧合并 tag `-aha-jvm` 仍解析，否则 0.1.5 之前的 dev 包会查不到。
             case BETA -> kind.nativeImage()
                     ? new String[]{current}
                     : new String[]{current,
                             "^V" + VERSION_GROUP + Pattern.quote(JVM_TAG_SUFFIX) + "$"};
-            case ALPHA -> new String[]{currentSnapshot, legacySnapshotUpper, legacySnapshotLower};
+            case ALPHA -> new String[]{currentSnapshot, currentSnapshotLower,
+                    legacySnapshotUpper, legacySnapshotLower};
         };
     }
 

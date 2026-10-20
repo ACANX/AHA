@@ -46,6 +46,7 @@
 | v1.30.0 | 2026-10-08 | 版本号说明改为「已发行版本 / dev 上版本 / 改版本号不止根 POM」，并指向 ReleaseProcess.md 第 2 节 | @ACANX |
 | v1.31.0 | 2026-10-08 | 版本号说明补充资源所在模块（`aha-common`，CLI 与桌面端共用） | @ACANX |
 | v1.33.0 | 2026-10-16 | §3.2 补 **`Alt+V` / `Ctrl+V`**（自己读剪贴板、大块折叠成 `[paste #N +M lines]`）与 `Alt+V` 的提示示例；补「为什么主键位是 Alt+V」（conhost 截获 Ctrl+V） | @cnxnc |
+| v1.32.0 | 2026-10-19 | §2.5 Markdown 规则表补删除线（`~~`）与嵌套列表缩进（issue #335） | @ACANX |
 | v1.32.0 | 2026-10-16 | §3.2 新增 `/paste`（把剪贴板内容作为一条消息发送）与输出示例；说明 conhost 不支持括号粘贴、多行粘贴会被逐行提交（issue #75） | @cnxnc |
 
 ---
@@ -159,19 +160,21 @@ Windows Terminal / WSL / Linux 及第三方终端（Tabby、Xshell、MobaXterm �
 
 长时间的工具输出会被截断（参数 500 字符、结果 2000 字符），避免一次文件读取淹没对话。
 
-**Markdown 轻量渲染**：模型输出按 Markdown 渲染，只处理四项：
+**Markdown 轻量渲染**：模型输出按 Markdown 渲染，处理下列元素：
 
 | Markdown | 渲染 |
 |---|---|
 | `# 标题` 至 `###### 标题` | 丢弃 `#` 标记，整行**加粗** |
 | `- ` / `* ` / `+ ` | 换成醒目符号 `• `（编码不支持时保留原符号）；标记着色 |
 | `1. ` | 保留编号；标记着色 |
+| 缩进的 `- ` / `1. ` 等（嵌套列表） | **保留缩进**表示层级，符号与顶层一致（`• ` / 编号） |
 | `> ` 引用、`---` / `***` 分隔线 | 整行**弱化** |
 | ` ``` ` 围栏代码 | 围栏标记弱化，**内部原样输出**（不做任何解析） |
 | `` `code` `` | 去掉反引号，内容着色 |
 | `**粗体**` / `__粗体__` | **加粗** |
 | `*斜体*` / `_斜体_` | *斜体* |
 | `***粗斜***` | **加粗**且*斜体* |
+| `~~删除~~` | 删除线（SGR 9），去掉 `~~` |
 
 **为什么不会误判**（采用 CommonMark 侧翼规则的子集）：
 
@@ -182,12 +185,11 @@ Windows Terminal / WSL / Linux 及第三方终端（Tabby、Xshell、MobaXterm �
 
 因此 `2 * 3 * 4` 仍是乘法，`snake_case_name` 仍是标识符。连续 4 个及以上定界符按字面量输出。
 
-> 删除线（`~~`）**不处理**：它需要 SGR 9，支持面比加粗 / 斜体窄得多。
+> 删除线用 SGR 9：不支持该序列的终端会按普通文本显示，**忽略是无害的**。
+> 单个 `~`（如 `~/x`、`~3 个`）不是定界符，必须成对才算构造。
 >
 > 斜体用 SGR 3，部分老终端（如旧版 conhost）会忽略它而按普通文本显示——
 > 与光标控制序列不同，**忽略是无害的**，不会弄乱内容或对齐。
->
-> 粗体 / 斜体**不处理**：`*` 既可能是强调也可能是列表，歧义大、收益低。
 >
 > 围栏代码内部原样输出是刻意的——代码里的 `#`、反引号、`-` 若被当成 Markdown，
 > 读者会被错误高亮误导。
@@ -270,6 +272,11 @@ aha init --force
 **流式期间仍可输入**：模型还在输出时，你可以继续敲下一条消息（它会排队，本轮结束后执行），
 也可以按 `Ctrl+C` **只打断本轮**——已生成的部分仍会保留在会话历史里，且不会退出会话。
 `Ctrl+C` 在空闲时只清空当前输入行（与 shell 一致）。
+
+**`ESC` 中断**：生成或工具执行中按 `ESC` 同样只中断当前任务，不退出会话（issue #341）。
+中断时正在执行的工具子进程会被终止（含后代进程），消息历史保留已生成的正文、
+丢弃中断时尚未完整的工具调用，随后可直接输入下一条。斜杠候选面板展开时，第一下 `ESC`
+收起面板，第二下才中断任务。非交互式终端（管道 / CI）收不到按键事件，启动时会给出提示。
 
 **输入区**：输入行由上下两条分隔线框住，行首不加 `>` 之类的标记。
 分隔线为高亮紫色。
@@ -661,7 +668,7 @@ aha tool invoke shell-exec -p command="git status" --yes
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |---|---|---|---|---|
 | `<id>` | string（位置 0） | **是** | — | 供应商 ID（PascalCase，如 `DeepSeek`） |
-| `--adapter <id>` | enum | **是** | — | `openai-compatible` / `anthropic` / `gemini` |
+| `--api-type <id>` | enum | **是** | — | `openai-compatible` / `anthropic-messages` / `gemini`（`--adapter` 为兼容别名） |
 | `--base-url <url>` | string | **是** | — | **基础地址**（不含端点路径，见下方提示） |
 | `--model <name>` | string | **是** | — | 模型名 |
 | `--api-key <key>` | string | 否 | `${AHA_API_KEY_<ID>}` | API Key |
@@ -677,7 +684,7 @@ aha tool invoke shell-exec -p command="git status" --yes
 
 ```bash
 # 接入中转站
-aha provider add Relay --adapter openai-compatible \
+aha provider add Relay --api-type openai-compatible \
   --base-url https://relay.example.com/v1 \
   --model gpt-4o --api-key sk-xxx --default
 ```
@@ -687,7 +694,7 @@ aha provider add Relay --adapter openai-compatible \
 | 值 | 协议 | 端点拼接 |
 |---|---|---|
 | `openai-compatible` | OpenAI Chat Completions | `{BaseUrl}/chat/completions` |
-| `anthropic` | Anthropic Messages | `{BaseUrl}/v1/messages` |
+| `anthropic-messages` | Anthropic Messages | `{BaseUrl}/v1/messages` |
 | `gemini` | Google Gemini | `{BaseUrl}/v1beta/models/{model}:generateContent` |
 
 #### `aha provider remove <id>`

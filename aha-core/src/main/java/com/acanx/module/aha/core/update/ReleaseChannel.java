@@ -9,7 +9,9 @@ import java.util.Locale;
  *
  * <ul>
  *   <li>{@link #STABLE} —— 正式 release（{@code V0.1.3}），长期保留；</li>
- *   <li>{@link #BETA} —— dev 线预发行（{@code V0.1.3.00233-aha-jvm}），合并到 {@code dev} 后自动出包；</li>
+ *   <li>{@link #BETA} —— dev 线预发行（JVM 两条：{@code V0.1.5.00346-aha-desktop-jvm} /
+ *       {@code -aha-cli-jvm}；原生两条：{@code -aha-desktop-native} / {@code -aha-cli-native}），
+ *       合并到 {@code dev} 后自动出包；0.1.5 之前的合并 tag {@code -aha-jvm} 仍可读；</li>
  *   <li>{@link #ALPHA} —— PR 快照预发行（{@code V0.1.3.00233.10161125-AHA-Desktop-JVM-SNAPSHOT}），
  *       同 PR 同目标保留最近 3 条、有效期 7 天。</li>
  * </ul>

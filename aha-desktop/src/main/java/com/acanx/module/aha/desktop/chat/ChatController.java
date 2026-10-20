@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,6 +55,12 @@ public final class ChatController {
     private final AgentService service;
 
     private final SessionConfig sessionConfig;
+
+    /** 下一次新建会话时要绑定的工作目录（{@code null} 表示纯聊天）。 */
+    private String pendingWorkspace;
+
+    /** 会话真正落库后通知宿主刷新列表（懒创建：发送首条消息时才创建）。 */
+    private Runnable onSessionChanged = () -> { };
 
     private final Executor executor;
 
@@ -124,6 +131,13 @@ public final class ChatController {
                 LOG.warn("对话失败", e);
                 ui.accept(() -> view.setBusy(false));
                 ui.accept(() -> view.showError("SEND_FAILED", String.valueOf(e.getMessage())));
+            } finally {
+                // 消息落库后才刷新：此时标题 / 条数 / 工作空间分组才是最终值。
+                // 不能在 ensureSession() 里立刻刷新——那时会话还没有任何消息，
+                // listSessions() 的空会话清理会把它当垃圾删掉。
+                if (sessionId() != null) {
+                    onSessionChanged.run();
+                }
             }
         });
     }
@@ -138,14 +152,46 @@ public final class ChatController {
     /**
      * 开启新会话（换供应商 / 换模型后调用）。
      *
-     * @return 新会话 ID
+     * <p><b>懒创建</b>：这里只关闭旧会话并把当前会话置空，真正的记录在首次发送时
+     * 才由 {@link #ensureSession()} 落库——否则每开一次窗口、每点一次「新建会话」
+     * 都会留下一条没有标题、没有消息的空会话。</p>
+     *
+     * @return 始终为 {@code null}（尚未创建）；保留返回值以便调用方兼容
      */
     public synchronized String newSession() {
+        this.pendingWorkspace = null;
+        return closeAndReset();
+    }
+
+    /** 关闭当前会话并把当前会话置空（懒创建）。 */
+    private String closeAndReset() {
         if (sessionId != null) {
             service.closeSession(sessionId);
             sessionId = null;
         }
-        return ensureSession();
+        return null;
+    }
+
+    /**
+     * 在指定工作空间下新建会话。
+     *
+     * @param workspace 工作目录；{@code null} 表示纯聊天
+     * @return 新会话 ID
+     */
+    public synchronized String newSession(String workspace) {
+        // 保留 pendingWorkspace 到 ensureSession() 真正创建为止：
+        // 之前在这里 finally 清空，导致发送首条消息时工作空间已经丢了。
+        this.pendingWorkspace = workspace;
+        return closeAndReset();
+    }
+
+    /**
+     * 会话创建 / 切换后的回调（宿主用它刷新会话列表）。
+     *
+     * @param handler 回调；{@code null} 表示忽略
+     */
+    public void onSessionChanged(Runnable handler) {
+        this.onSessionChanged = handler == null ? () -> { } : handler;
     }
 
     /**
@@ -183,6 +229,7 @@ public final class ChatController {
             service.closeSession(this.sessionId);
         }
         this.sessionId = sessionId;
+        this.pendingWorkspace = null;
         List<ChatMessage> history = service.loadHistory(sessionId, HISTORY_LIMIT);
         ui.accept(view::clearConversation);
         int shown = 0;
@@ -288,10 +335,24 @@ public final class ChatController {
      */
     public synchronized String ensureSession() {
         if (sessionId == null) {
-            sessionId = service.createSession(sessionConfig);
+            sessionId = service.createSession(configWithWorkspace());
             LOG.info("已创建会话 {}", sessionId);
+            this.pendingWorkspace = null;
         }
         return sessionId;
+    }
+
+    /** 当前配置 + 待绑定工作目录。 */
+    private SessionConfig configWithWorkspace() {
+        if (pendingWorkspace == null || (sessionConfig.extras() != null
+                && sessionConfig.extras().containsKey("workspace"))) {
+            return sessionConfig;
+        }
+        Map<String, Object> extras = new LinkedHashMap<>(
+                sessionConfig.extras() == null ? Map.of() : sessionConfig.extras());
+        extras.put("workspace", pendingWorkspace);
+        return new SessionConfig(sessionConfig.model(), sessionConfig.tier(),
+                sessionConfig.systemPrompt(), extras);
     }
 
     /** 单行化：工具输出可能是几十行，回放时压成一行提示。 */

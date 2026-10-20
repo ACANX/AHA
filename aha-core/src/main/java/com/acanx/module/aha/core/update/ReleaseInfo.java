@@ -13,7 +13,7 @@ import java.util.List;
  * 瞬时值（如 {@code 2026-10-16T05:43:26Z}），而把它交给 Jackson 的日期模块会引入
  * 「模块是否注册」这类与业务无关的失败面。</p>
  *
- * @param tag          tag 名（如 {@code V0.1.3.00242-aha-jvm}）
+ * @param tag          tag 名（如 {@code V0.1.5.00346-aha-desktop-jvm}）
  * @param name         发行名（可能为 {@code null}）
  * @param prerelease   是否预发行
  * @param draft        是否草稿（草稿对用户不可见）

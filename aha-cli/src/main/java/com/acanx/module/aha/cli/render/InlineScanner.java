@@ -40,6 +40,9 @@ final class InlineScanner {
     /** 链接起始符。 */
     private static final char LBRACKET = '[';
 
+    /** 删除线定界符（GFM 扩展）。 */
+    private static final char TILDE = '~';
+
     /** 允许的最大定界符串长度；超过即按字面量处理。 */
     private static final int MAX_RUN = 3;
 
@@ -84,7 +87,8 @@ final class InlineScanner {
     static int nextDelimiter(CharSequence text, int from) {
         for (int i = from; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (c == CODE || c == ASTERISK || c == UNDERSCORE || c == LBRACKET) {
+            if (c == CODE || c == ASTERISK || c == UNDERSCORE || c == LBRACKET
+                    || c == TILDE) {
                 return i;
             }
         }
@@ -99,7 +103,7 @@ final class InlineScanner {
      */
     static boolean isDelimiter(int codePoint) {
         return codePoint == CODE || codePoint == ASTERISK || codePoint == UNDERSCORE
-                || codePoint == LBRACKET;
+                || codePoint == LBRACKET || codePoint == TILDE;
     }
 
     /**
@@ -117,6 +121,9 @@ final class InlineScanner {
         }
         if (text.charAt(pos) == LBRACKET) {
             return parseLink(text, pos, context);
+        }
+        if (text.charAt(pos) == TILDE) {
+            return parseStrike(text, pos, context);
         }
         return parseEmphasis(text, pos, previous, context);
     }
@@ -193,6 +200,38 @@ final class InlineScanner {
             styled = styled + " " + context.style().linkUrl("<" + url + ">");
         }
         return new Scan(styled, text.substring(pos, end + 1), end + 1);
+    }
+
+    /**
+     * 解析删除线 {@code ~~文本~~}（GFM 扩展）。
+     *
+     * <p>单个 {@code ~} 不是定界符：常见于路径（{@code ~/x}）与「约等于」写法，
+     * 因此必须成对出现才算构造；未闭合时按字面量处理，避免把后续内容扣住。</p>
+     */
+    private static Scan parseStrike(String text, int pos, Context context) {
+        if (pos + 1 >= text.length()) {
+            // 只收到一个 ~：可能是 `~~` 的前半，必须等下一个字符再判定。
+            // 提前按字面量吐出会让 `~~x~~` 永远配不上对（流式比完整解析更容易踩）。
+            return context.lineEnd() || text.length() - pos > context.limit()
+                    ? literal("~", pos)
+                    : null;
+        }
+        if (text.charAt(pos + 1) != TILDE) {
+            return literal("~", pos);
+        }
+        int close = text.indexOf("~~", pos + 2);
+        if (close >= 0) {
+            String inner = text.substring(pos + 2, close);
+            if (inner.isEmpty() || Character.isWhitespace(inner.charAt(0))
+                    || Character.isWhitespace(inner.charAt(inner.length() - 1))) {
+                return literal("~~", pos);
+            }
+            return new Scan(context.style().strike(renderInline(inner, context.deeper())),
+                    text.substring(pos, close + 2), close + 2);
+        }
+        return context.lineEnd() || text.length() - pos > context.limit()
+                ? literal("~~", pos)
+                : null;
     }
 
     private static Scan parseCode(String text, int pos, Context context) {

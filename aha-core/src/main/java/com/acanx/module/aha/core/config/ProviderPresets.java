@@ -65,7 +65,7 @@ public final class ProviderPresets {
             String yaml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             JsonNode root = YAML.readTree(yaml);
             JsonNode model = root.has("Model") ? root.get("Model") : root;
-            return YAML.treeToValue(model, ModelConfig.class);
+            return YAML.treeToValue(ConfigLoader.normalizeModelNode(model), ModelConfig.class);
         } catch (IOException e) {
             throw new ConfigException("MODEL_DEFAULT_LOAD_FAILED",
                     "无法加载内置模型配置 " + MODEL_DEFAULT_RESOURCE, e);

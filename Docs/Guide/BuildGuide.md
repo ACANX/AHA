@@ -225,7 +225,7 @@ CI 不做这个裁剪——CI 机器上三个检查加起来不到 2 秒，没�
 
 | 方式 | 用法 | 生效范围 |
 |---|---|---|
-| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:Desktop` / `SNAPSHOT:Cli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | 打上后每次 push 都重出；移除标签即停 |
+| 触发标签（**粘性**） | 给 PR 打 `SNAPSHOT:JVMDesktop` / `SNAPSHOT:JVMCli` / `SNAPSHOT:NativeDesktop` / `SNAPSHOT:NativeCli` | 打上后每次 push 都重出；移除标签即停 |
 | 平台限定标签 | 同时打 `OS:Win` / `OS:MacOS` / `OS:Ubuntu` | 收窄到单平台；**不能单独使用** |
 | PR 评论命令（一次性） | `/snapshot <target> [os ...]` | 大小写不敏感；仅对仓库有写权限的账号生效 |
 

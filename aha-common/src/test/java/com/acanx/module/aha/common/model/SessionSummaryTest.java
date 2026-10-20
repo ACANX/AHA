@@ -37,4 +37,13 @@ class SessionSummaryTest {
         assertThat(new SessionSummary("id", "t", 0, 0).hasMessages()).isFalse();
         assertThat(new SessionSummary("id", "t", 0, 3).hasMessages()).isTrue();
     }
+
+    @Test
+    void workspaceIsTrimmedAndBlankBecomesNull() {
+        assertThat(new SessionSummary("id", "t", 0, 0, "  E:/proj  ").workspace())
+                .isEqualTo("E:/proj");
+        assertThat(new SessionSummary("id", "t", 0, 0, "   ").workspace()).isNull();
+        assertThat(new SessionSummary("id", "t", 0, 0).hasWorkspace()).isFalse();
+        assertThat(new SessionSummary("id", "t", 0, 0, "E:/proj").hasWorkspace()).isTrue();
+    }
 }

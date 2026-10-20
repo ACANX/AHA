@@ -3,6 +3,7 @@ package com.acanx.module.aha.desktop.view;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * {@link FoldState} 测试：**折叠之后必须还能展开**。
@@ -56,6 +57,25 @@ class FoldStateTest {
         // 折叠后，按钮必须明确告诉用户「可以展开」，而不只是一个含义不明的箭头
         assertThat(fold.glyph()).isEqualTo("›");
         assertThat(fold.tooltip()).isEqualTo("展开左栏");
+    }
+
+    @Test
+    void expandedWidthCanBeAdjusted() {
+        FoldState fold = new FoldState("左栏", 220, true);
+        fold.setExpandedWidth(300);
+        assertThat(fold.expandedWidth()).isEqualTo(300);
+        assertThat(fold.contentWidth()).isEqualTo(300);
+        fold.toggle();
+        assertThat(fold.contentWidth()).isEqualTo(0);
+        fold.toggle();
+        assertThat(fold.contentWidth()).isEqualTo(300);
+    }
+
+    @Test
+    void expandedWidthRejectsNonPositive() {
+        FoldState fold = new FoldState("左栏", 220, true);
+        assertThatThrownBy(() -> fold.setExpandedWidth(0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

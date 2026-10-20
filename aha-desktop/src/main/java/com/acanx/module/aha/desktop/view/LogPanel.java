@@ -235,7 +235,7 @@ public final class LogPanel {
         // 底色 / 文字 / 轮廓线都显式给并登记重刷（issue #229）：日志区也是输入类控件，
         // 原生镜像下 modena 的那些 CSS 函数会整条被丢弃，只留 CSS 就会「轮廓线不见了」。
         // 值取自补丁样式表（CONTROL_INNER / FOREGROUND / BORDER），JVM 下外观不变。
-        ThemePaint.themedForever(area, () -> "-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
+        ThemePaint.themedForever(area, () -> "-fx-font-family: " + FontFallback.MONOSPACE_CSS + ";"
                 + "-fx-font-size: 12px;"
                 + "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
                 + "-fx-background-color: " + Palette.CONTROL_INNER + ";"

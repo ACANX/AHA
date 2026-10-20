@@ -18,6 +18,7 @@ import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.llm.protocol.ChatRequest;
 import com.acanx.module.aha.core.llm.protocol.ChatResponse;
 import com.acanx.module.aha.core.llm.protocol.Choice;
+import com.acanx.module.aha.core.llm.protocol.MessageSanitizer;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.StreamEvent;
 import com.acanx.module.aha.core.llm.protocol.StreamEventType;
@@ -202,18 +203,26 @@ public final class AgentEngine {
 
             finishReason = roundFinishReason[0];
 
+            // 被中断时**不能**把工具调用写进历史：流在参数累积到一半时被掐断，
+            // 落库后下一轮请求会带着不合法的 tool_calls（参数残缺），上游直接判 400。
+            // 已生成的正文照常保留，用户能看到中断前的内容，上下文也连续（issue #341）。
+            boolean interrupted = token.isCancelled();
+            List<ToolCall> calls = interrupted ? List.of() : toToolCalls(toolCalls);
             ChatMessage assistant = new ChatMessage(Role.ASSISTANT, content.toString(),
-                    toToolCalls(toolCalls), null, null);
+                    calls, null, null);
             // 必须并入本轮上下文：否则下一轮看不到模型自己发起的工具调用，
             // tool 消息也会失去所依附的 assistant 消息（违反 OpenAI 协议）
             messages.add(assistant);
             memoryStore.appendMessage(sessionId, assistant);
 
-            if (assistant.toolCalls().isEmpty()) {
+            if (interrupted || assistant.toolCalls().isEmpty()) {
                 break;
             }
 
             for (ToolCall call : assistant.toolCalls()) {
+                if (token.isCancelled()) {
+                    break;
+                }
                 listener.onEvent(new ToolCallEvent(sessionId, call.name(), call.arguments()));
                 ToolOutcome outcome = executeTool(sessionId, call, token);
                 messages.add(outcome.message());
@@ -269,7 +278,9 @@ public final class AgentEngine {
         ChatMessage userMessage = ChatMessage.text(Role.USER, input);
         messages.add(userMessage);
         memoryStore.appendMessage(sessionId, userMessage);
-        return messages;
+        // 最终防线（issue #391）：历史截断、工具中断等都可能留下「孤立的 tool 消息」
+        // 或「未响应的 tool_calls」。流式 / 非流式都从 prepare 出发，统一在此清洗一次。
+        return MessageSanitizer.sanitize(messages);
     }
 
     /**

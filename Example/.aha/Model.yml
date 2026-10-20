@@ -1,0 +1,74 @@
+# AHA 模型配置参考示例（Model.yml）
+#
+# 用法：把本文件复制到 ${AHA_HOME:-~/.aha}/Model.yml，
+# 或由 Aha.yaml 的 Llm.ModelFile 指向它。
+#
+# 结构：
+#   Model.Default    当前默认（选中）的供应商
+#   Model.DefaultTier 可选，全局默认档；缺省 Standard
+#   Providers.<Id>   供应商配置：
+#     ApiType        openai-compatible | anthropic-messages | gemini
+#     BaseUrl        基础地址（适配器负责拼接端点路径）
+#     ApiKey         支持 ${ENV} / ${ENV:-default} 占位
+#     Models         模型 ID → 模型定义（模型 ID 供 Tier 引用，不受 PascalCase 限制）
+#     Tier           档位 → 模型 ID；默认档固定 Standard
+#
+# 模型定义字段：
+#   Name             实际请求的模型名（必填）
+#   Reasoning        是否支持推理 / 思考（默认 false）
+#   Input            输入模态：text / image / audio（默认 text）
+#   ContextWindow    上下文窗口（token），未知可省略
+#   MaxTokens        最大输出 token，未知可省略
+#   ThinkingLevelMap 思考强度 → 供应商参数值（Max / High / Medium / Low / Minimal）
+#
+# 说明：
+#   - 新格式不再写供应商级 DefaultTier / Model；默认档固定 Standard；
+#   - Standard 未配置时，按全局 DefaultTier → 档位强弱顺序兜底；
+#   - 旧格式（Models 的值为字符串、Adapter 键、anthropic 枚举值）仍可读取，
+#     首次写盘会自动迁移为新格式。
+
+Model:
+  Default: "DeepSeek"
+
+  Providers:
+    DeepSeek:
+      ApiType: "openai-compatible"
+      BaseUrl: "https://api.deepseek.com/v1"
+      ApiKey: "${AHA_API_KEY_DEEPSEEK}"
+
+      # 模型 ID → 模型定义
+      Models:
+        deepseek-flash:
+          Name: "deepseek-v4.1-flash"
+          Reasoning: true
+          Input:
+            - "text"
+            - "image"
+          ContextWindow: 1004000
+          MaxTokens: 300000
+          ThinkingLevelMap:
+            Max: "max"
+        deepseek-pro:
+          Name: "deepseek-v4.1-pro"
+          Reasoning: true
+          Input:
+            - "text"
+            - "image"
+          ContextWindow: 1004000
+          MaxTokens: 300000
+          ThinkingLevelMap:
+            Max: "max"
+
+      # 档位 → 模型 ID（默认档 Standard）
+      Tier:
+        Ultra: "deepseek-pro"
+        Pro: "deepseek-flash"
+        Standard: "deepseek-flash"
+        Flash: "deepseek-flash"
+        Fallback: "deepseek-flash"
+
+      TimeoutSeconds: 120
+      MaxRetries: 3
+      RateLimit:
+        Rpm: 60
+        Tpm: 100000

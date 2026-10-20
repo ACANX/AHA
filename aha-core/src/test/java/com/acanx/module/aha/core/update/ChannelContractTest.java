@@ -86,9 +86,9 @@ class ChannelContractTest {
         assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_NATIVE, BUILD))
                 .isEqualTo("V0.1.3.00242-aha-cli-native");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-desktop-jvm");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-Desktop-JVM");
         assertThat(ChannelContract.tag(ReleaseChannel.ALPHA, UpdateKind.CLI_NATIVE, SNAPSHOT))
-                .isEqualTo("V0.1.3.00242.10161125-AHA-cli-native");
+                .isEqualTo("V0.1.3.00242.10161125-AHA-Cli-Native");
     }
 
     @Test
@@ -106,6 +106,20 @@ class ChannelContractTest {
     }
 
     @Test
+    void betaJvmTagsAreSplitPerForm() {
+        // issue #347：dev 线 JVM 与原生线一样，每个形态一条 release
+        assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM, BUILD))
+                .isEqualTo("V0.1.3.00242-aha-desktop-jvm");
+        assertThat(ChannelContract.tag(ReleaseChannel.BETA, UpdateKind.CLI_JVM, BUILD))
+                .isEqualTo("V0.1.3.00242-aha-cli-jvm");
+        // 两种新 tag 互不串味：形态混升是硬约束禁止的
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
+                "V0.1.3.00242-aha-cli-jvm")).isEmpty();
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.CLI_JVM,
+                "V0.1.3.00242-aha-desktop-jvm")).isEmpty();
+    }
+
+    @Test
     void acceptsLegacyTagsFromBeforeTheRename() {
         // 0.1.3 的 dev JVM tag 是 -aha-jvm（两个 JVM 形态共用）。
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.BETA, UpdateKind.DESKTOP_JVM,
@@ -117,6 +131,14 @@ class ChannelContractTest {
                 "V0.1.3.00242.10161125-AHA-Desktop-Native-SNAPSHOT")).contains(SNAPSHOT);
         assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
                 "V0.1.3.00242.10161125-AHA-Desktop-JVM-SNAPSHOT")).contains(SNAPSHOT);
+        // 2026-10-17 起快照 tag 无 -SNAPSHOT 后缀，目标词为大写驼峰（实际出包格式）
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
+                "V0.1.5.00380.10200208-AHA-Desktop-JVM"))
+                .contains(AhaVersion.parse("0.1.5.00380.10200208"));
+        // 兼容曾生成过的小写目标词
+        assertThat(ChannelContract.versionOfTag(ReleaseChannel.ALPHA, UpdateKind.DESKTOP_JVM,
+                "V0.1.5.00380.10200208-AHA-desktop-jvm"))
+                .contains(AhaVersion.parse("0.1.5.00380.10200208"));
     }
 
     @Test

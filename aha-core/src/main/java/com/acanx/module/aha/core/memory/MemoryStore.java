@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.model.MemoryEntry;
 import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -25,6 +26,31 @@ public interface MemoryStore {
      * @param configJson 会话配置 JSON
      */
     void createSession(String sessionId, String configJson);
+
+    /**
+     * 删除没有任何消息的会话（空会话）。
+     *
+     * <p>桌面端历史上每次启动/新建都会落一条空会话记录，列表里全是无标题条目。
+     * 默认实现不做事，SQLite 实现会真正清理。</p>
+     *
+     * @return 删除的会话数
+     */
+    default int deleteEmptySessions() {
+        return deleteEmptySessions(List.of());
+    }
+
+    /**
+     * 删除没有任何消息的会话，但保留 {@code keep} 中的会话。
+     *
+     * <p>{@code keep} 是内存中活跃的会话：刚创建、还没写入首条消息的会话不能被当成
+     * 历史垃圾清掉（否则首条消息会写进一个已删除的会话）。</p>
+     *
+     * @param keep 需要保留的会话 ID
+     * @return 删除的会话数
+     */
+    default int deleteEmptySessions(Collection<String> keep) {
+        return 0;
+    }
 
     /**
      * 读取会话配置 JSON。

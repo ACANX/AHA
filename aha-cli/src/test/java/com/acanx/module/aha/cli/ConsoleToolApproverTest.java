@@ -108,6 +108,16 @@ class ConsoleToolApproverTest {
     }
 
     @Test
+    void reportsCancellationWhenInputUnavailable() {
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        ConsoleToolApprover approver = new ConsoleToolApprover(question -> null,
+                null, null, null, () -> cancelled.set(true));
+
+        assertThat(approver.approve("w", ToolPermission.WRITE, Map.of())).isFalse();
+        assertThat(cancelled).isTrue();
+    }
+
+    @Test
     void rejectsWhenInputUnavailable() {
         // Ctrl+C / Ctrl+D / 无输入
         assertThat(new ConsoleToolApprover(readerReturning())

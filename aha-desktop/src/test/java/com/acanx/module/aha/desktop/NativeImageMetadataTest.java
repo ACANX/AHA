@@ -180,17 +180,39 @@ class NativeImageMetadataTest {
      * 字面量的静态扫描（含 font / fontpath_linux 的动态名）。每个类的成员访问
      * 都在它自己身上声明，故统一用 {@code allDeclared*} 全量，避免签名跨版本漂移。</p>
      */
-    /** CLI 原生包的可达性元数据（与桌面端共用 aha-core，所以同样要登记更新模块的 DTO）。 */
+    /** CLI 原生包的可达性元数据（与桌面端共用 aha-core，所以同样要登记配置 / 更新模块的 DTO）。 */
     private static final Path CLI_METADATA = Path.of(
             System.getProperty("basedir", System.getProperty("user.dir")),
             "..", "aha-cli", "src", "main", "resources", "META-INF", "native-image",
             "com.acanx.module.aha", "aha-cli", "reachability-metadata.json");
 
-    /** aha-core 更新模块的源码目录（仓库布局固定；basedir 是 aha-desktop 模块）。 */
-    private static final Path UPDATE_SOURCE_ROOT = Path.of(
-            System.getProperty("basedir", System.getProperty("user.dir")),
-            "..", "aha-core", "src", "main", "java",
-            "com", "acanx", "module", "aha", "core", "update");
+    /**
+     * 会被 Jackson 反序列化的类型族所在包（aha-core 源码包名）。
+     *
+     * <p><b>判定口径：按包全量，不按「这个类看着像不像 DTO」人工挑。</b>一个包被列进来，
+     * 是因为它里面的类型会作为 {@code readValue} / {@code treeToValue} 的目标抵达；
+     * 一旦抵达，同包里任何 record 都可能成为下一个崩溃点，逐个判断必然漏。当前两个包：</p>
+     *
+     * <ul>
+     *   <li>{@code core.update}：GitHub 发布信息 / 包清单 / 更新计划，直接 {@code readValue} 落 record
+     *       （issue #51，2026-10-16 真机崩溃）；</li>
+     *   <li>{@code core.config}：{@code AhaDefault.yaml} / {@code Aha.yaml} / {@code Model.yml}
+     *       经 {@code ConfigLoader#treeToValue} 落 record（issue #383，2026-10-20 真机崩溃点
+     *       是 {@code ModelDefinition}）。</li>
+     * </ul>
+     *
+     * <p>为什么不直接扩到整个 {@code aha-core}：其余 record / enum（{@code llm.protocol.*} 的响应 DTO、
+     * {@code *.event.*} 的扩展事件、{@code ExtensionLayer} 之类内部结果类型）目前不经过
+     * Jackson 的反序列化入口 —— 协议解析用 {@code readTree} 逐字段取值，事件与内部结果只在本进程内构造。
+     * 全量登记它们只是噪音。**新增一个 Jackson 反序列化入口时，把它的包加进这个列表**：
+     * 本单的教训就是守卫只盯一个包，下一个包又崩。</p>
+     *
+     * <p>已列入的包按整包全量登记，包内的「顺带」类型（如 {@code SystemPromptLoader$ResolvedPrompt}）
+     * 也一并登记：多几十字节换来「不必逐个判断它走不走 Jackson」，比漏登记后用户踩到便宜。</p>
+     */
+    private static final List<String> JACKSON_PACKAGES = List.of(
+            "com.acanx.module.aha.core.update",
+            "com.acanx.module.aha.core.config");
 
     /** 顶层 record / enum（record 可能不写 public）。 */
     private static final Pattern TOP_LEVEL_RECORD_OR_ENUM = Pattern.compile(
@@ -201,7 +223,7 @@ class NativeImageMetadataTest {
             "^ {4}(?:public )?(?:static )?(?:final )?record\\s+(\\w+)|^ {4}(?:public )?(?:static )?enum\\s+(\\w+)");
 
     /**
-     * 更新模块里的每个 record / enum 都必须登记进原生镜像元数据。
+     * {@link #JACKSON_PACKAGES} 里每个 record / enum 都必须登记进原生镜像元数据。
      *
      * <p>【为什么要单列一条守卫（2026-10-16 真机崩溃）】Jackson 反序列化 record 时要读
      * <b>record components</b>（{@code Class.getRecordComponents()}），而原生镜像里这要求
@@ -210,9 +232,12 @@ class NativeImageMetadataTest {
      * com.acanx.module.aha.core.update.ReleaseInfo}。真机就是点「检查更新」时炸在这一条上：
      * 构建、单测、GUI 冒烟**全跑在 JVM 上**（反射可用），三方全绿，只有原生包会在用户面前抛异常。</p>
      *
-     * <p>规则刻意从严：**update 包里所有** record / enum 都要登记，而不是只登记「看着像 DTO」的那几个 ——
-     * 多登记几个只是多几十字节元数据（登记了没用到的类型不会让构建失败），漏登记却是一次用户可感知的崩溃；
-     * 而「哪些会被 Jackson 碰」随代码改动而变，人工挑一定会漏。</p>
+     * <p>【2026-10-20 同类复发（issue #383）】{@code 0.1.5} 新增的
+     * {@code core.config.ModelDefinition} 没有登记，原生包**启动即崩**，连
+     * {@code aha-cli-native --version} 都跑不了 —— 而这条守卫当时只扫 {@code core.update}，
+     * 新包在视野之外。现在按 {@link #JACKSON_PACKAGES} 逐包扫描，判据同上：**整包全量**，
+     * 不按「看着像不像 DTO」人工挑。多登记几个只是多几十字节元数据（登记了没用到的类型不会让构建失败），
+     * 漏登记却是一次用户可感知的崩溃。</p>
      *
      * <p>新增 record 后忘记登记，这条守卫在 Build/Gate 阶段就红（原生镜像管线本身是可选、不上门禁的）。
      * 两个原生包（桌面 / CLI）**都要**登记：它们共用 aha-core。</p>
@@ -220,35 +245,38 @@ class NativeImageMetadataTest {
      * @throws IOException 读不到源码目录
      */
     @Test
-    void everyUpdateRecordAndEnumIsRegisteredForReflection() throws IOException {
-        assertThat(UPDATE_SOURCE_ROOT).as("aha-core 更新模块源码目录").isDirectory();
+    void everyJacksonRecordAndEnumIsRegisteredForReflection() throws IOException {
         List<String> expected = new ArrayList<>();
-        try (Stream<Path> files = Files.list(UPDATE_SOURCE_ROOT)) {
-            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
-                    .sorted().toList()) {
-                String owner = file.getFileName().toString().replace(".java", "");
-                String source = Files.readString(file, StandardCharsets.UTF_8);
-                // 嵌套类型的登记名按「文件名 + $ + 简单名」拼，前提是文件里有同名的顶层类型；
-                // 哪天有人加了内层类，这条断言会先红，提醒守卫该升级了
-                assertThat(Pattern.compile("^(?:public )?(?:final )?(?:abstract )?(?:sealed )?"
-                                + "(?:non-sealed )?(?:class|interface|enum|record)\\s+" + owner + "\\b",
-                                Pattern.MULTILINE).matcher(source).find())
-                        .as("%s 里应有与文件名同名的顶层类型", file.getFileName())
-                        .isTrue();
-                for (String line : source.split("\\R")) {
-                    Matcher nested = NESTED_RECORD_OR_ENUM.matcher(line);
-                    if (nested.find()) {
-                        expected.add("com.acanx.module.aha.core.update." + owner + "$" + matched(nested));
-                        continue;
-                    }
-                    Matcher top = TOP_LEVEL_RECORD_OR_ENUM.matcher(line);
-                    if (top.find()) {
-                        expected.add("com.acanx.module.aha.core.update." + matched(top));
+        for (String pkg : JACKSON_PACKAGES) {
+            Path root = jacksonSourceRoot(pkg);
+            assertThat(root).as("aha-core 里会被 Jackson 反序列化的源码包 %s", pkg).isDirectory();
+            try (Stream<Path> files = Files.list(root)) {
+                for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .sorted().toList()) {
+                    String owner = file.getFileName().toString().replace(".java", "");
+                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    // 嵌套类型的登记名按「文件名 + $ + 简单名」拼，前提是文件里有同名的顶层类型；
+                    // 哪天有人加了内层类，这条断言会先红，提醒守卫该升级了
+                    assertThat(Pattern.compile("^(?:public )?(?:final )?(?:abstract )?(?:sealed )?"
+                                    + "(?:non-sealed )?(?:class|interface|enum|record)\\s+" + owner + "\\b",
+                                    Pattern.MULTILINE).matcher(source).find())
+                            .as("%s 里应有与文件名同名的顶层类型", file.getFileName())
+                            .isTrue();
+                    for (String line : source.split("\\R")) {
+                        Matcher nested = NESTED_RECORD_OR_ENUM.matcher(line);
+                        if (nested.find()) {
+                            expected.add(pkg + "." + owner + "$" + matched(nested));
+                            continue;
+                        }
+                        Matcher top = TOP_LEVEL_RECORD_OR_ENUM.matcher(line);
+                        if (top.find()) {
+                            expected.add(pkg + "." + matched(top));
+                        }
                     }
                 }
             }
         }
-        assertThat(expected).as("update 包里应当扫到 record / enum（扫不到说明规则过期了）").isNotEmpty();
+        assertThat(expected).as("%s 里应当扫到 record / enum（扫不到说明规则过期了）", JACKSON_PACKAGES).isNotEmpty();
 
         for (Path metadata : List.of(METADATA, CLI_METADATA)) {
             assertThat(metadata).as("原生镜像可达性元数据").exists();
@@ -259,6 +287,16 @@ class NativeImageMetadataTest {
             assertThat(missing).as("%s 漏登记这些类型（Jackson 读 record components 时会抛 "
                     + "UnsupportedFeatureError）", metadata.getFileName()).isEmpty();
         }
+    }
+
+    /** 把 aha-core 的源码包名还原成目录（basedir 是 aha-desktop 模块）。 */
+    private static Path jacksonSourceRoot(String pkg) {
+        Path root = Path.of(System.getProperty("basedir", System.getProperty("user.dir")),
+                "..", "aha-core", "src", "main", "java");
+        for (String segment : pkg.split("\\.")) {
+            root = root.resolve(segment);
+        }
+        return root;
     }
 
     private static String matched(Matcher matcher) {
@@ -546,6 +584,41 @@ class NativeImageMetadataTest {
                             + " NoClassDefFoundError 并随后 segfault（issue #37）", type)
                     .contains("\"" + type + "\"");
         }
+    }
+
+    /**
+     * SW pipeline（Pisces）的 JNI 类（issue #393）。
+     *
+     * <p>真机现象：WSL（无 GPU，Prism 回退到 SW）启动到 {@code [ui-fxml-loaded]} 后，
+     * {@code UploadingPainter} → {@code SWRTTexture} → {@code JavaSurface.<init>} 调 native 时
+     * 直接 {@code Fatal error reported via JNI: Failed to throw an exception!} 并退出。
+     * 在 {@code libprism_sw.so} 里找到证据：native 用静态 JNI 命名绑定
+     * （{@code Java_com_sun_pisces_JavaSurface_initialize} …），并用 {@code GetFieldID} 查
+     * {@code nativePtr}（J）/ {@code dataInt}（[I）/ {@code surface}（Lcom/sun/pisces/AbstractSurface;）。
+     * 这些类未登记时，native 拿不到字段/方法 ID，随后 {@code JNI_ThrowNew} 也失败，
+     * 整个进程 abort —— 与 JVM 模式（JNI 天然可用）表现完全不同。</p>
+     */
+    private static final List<String> PISCES_JNI_CLASSES = List.of(
+            "com.sun.pisces.AbstractSurface",
+            "com.sun.pisces.JavaSurface",
+            "com.sun.pisces.PiscesRenderer",
+            "com.sun.pisces.Transform6");
+
+    @Test
+    void jniConfigRegistersPiscesSoftwareRendererClasses() throws IOException {
+        String json = Files.readString(JNI_CONFIG, StandardCharsets.UTF_8);
+        for (String type : PISCES_JNI_CLASSES) {
+            assertThat(json)
+                    .as("%s 的 native 用 GetFieldID 查 nativePtr / dataInt / surface，"
+                            + "未登记时 SW 渲染一启动就 JNI FatalError（issue #393）", type)
+                    .contains("\"" + type + "\"");
+            assertThat(entryFor(json, type))
+                    .as("%s 必须用 allDeclared* 全量登记（字段/方法名跨版本会漂移）", type)
+                    .contains("allDeclaredMethods")
+                    .contains("allDeclaredFields");
+        }
+        // JNIUtil.JNI_ThrowNew 会 FindClass 这个异常类；未登记时连“报错”都报不出来
+        assertThat(json).contains("\"java.lang.OutOfMemoryError\"");
     }
 
     @Test
