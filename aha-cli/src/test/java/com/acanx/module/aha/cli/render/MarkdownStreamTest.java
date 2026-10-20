@@ -341,8 +341,11 @@ class MarkdownStreamTest {
 
     @Test
     void twoTablesSeparatedByBlankLineAreNotMerged() {
-        // 空行之后出现 `|` 行应开启新表格，而不是并进上一张表
-        String out = plain().feed("| a | b |\n|---|---|\n| 1 | 2 |\n\n| c |\n|---|\n| 3 |\n");
+        // 空行之后出现 `|` 行应开启新表格，而不是并进上一张表。
+        // 第二张表在结尾，必须 flush 才会结算（表格要收齐才能算列宽）
+        MarkdownStream stream = plain();
+        String out = stream.feed("| a | b |\n|---|---|\n| 1 | 2 |\n\n| c |\n|---|\n| 3 |\n")
+                + stream.flush();
 
         assertThat(countOf(out, "┌")).isEqualTo(2);
         assertThat(countOf(out, "┘")).isEqualTo(2);
