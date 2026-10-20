@@ -187,6 +187,41 @@ class MarkdownRenderSmokeTest {
     }
 
     @Test
+    void imageStaysAPlaceholderUntilClicked() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("![图](https://x/y.png)\n"));
+
+        TextFlow flow = (TextFlow) ((VBox) root).getChildren().get(0);
+        assertThat(flow.getChildren()).hasSize(1);
+        Hyperlink placeholder = (Hyperlink) flow.getChildren().get(0);
+        // 未点击 → 没有 ImageView，也没有发起加载
+        assertThat(placeholder.getGraphic()).isNull();
+        assertThat(placeholder.getText()).contains("点击加载");
+    }
+
+    @Test
+    void longFenceIsCollapsedWithFoldButton() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        String code = String.join("\n", java.util.Collections.nCopies(31, "int a = 1;"));
+        Node root = uiGet(() -> renderer.render("```java\n" + code + "\n```\n"));
+
+        VBox fenceBox = (VBox) ((VBox) root).getChildren().get(0);
+        HBox head = (HBox) fenceBox.getChildren().get(0);
+        Hyperlink toggle = (Hyperlink) head.getChildren().stream()
+                .filter(node -> node instanceof Hyperlink)
+                .skip(1)
+                .findFirst()
+                .orElseThrow();
+        assertThat(toggle.getText()).contains("已折叠 1 行");
+    }
+
+    @Test
     void labelRemainsTheFallbackForPlainText() throws Exception {
         startToolkit();
 

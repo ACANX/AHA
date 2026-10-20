@@ -63,4 +63,16 @@ public sealed interface MarkdownInline {
      */
     record Link(String text, String url) implements MarkdownInline {
     }
+
+    /**
+     * 图片（issue #423 / S2.5）。
+     *
+     * <p>解析阶段只记录 alt 与地址，**不加载**：加载与否由渲染器按白名单与用户点击决定，
+     * 这样「远程图片不点不请求」在 AST 层就是成立的，不依赖渲染器自觉。</p>
+     *
+     * @param alt 替代文本
+     * @param url 图片地址
+     */
+    record Image(String alt, String url) implements MarkdownInline {
+    }
 }

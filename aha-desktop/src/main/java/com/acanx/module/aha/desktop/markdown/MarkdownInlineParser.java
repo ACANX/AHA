@@ -84,6 +84,17 @@ public final class MarkdownInlineParser {
                 }
             }
 
+            if (current == '!' && index + 1 < to && text.charAt(index + 1) == '[') {
+                int[] end = {-1};
+                MarkdownInline.Image image = readImage(text, index, to, end);
+                if (image != null) {
+                    flush(result, literal);
+                    result.add(image);
+                    index = end[0];
+                    continue;
+                }
+            }
+
             if (current == '[') {
                 int[] end = {-1};
                 MarkdownInline.Link link = readLink(text, index, to, end);
@@ -175,6 +186,33 @@ public final class MarkdownInlineParser {
      *
      * @return 链接；不是完整链接返回 {@code null}
      */
+    /**
+     * 读取 {@code ![alt](url)}。
+     *
+     * @param text   全文
+     * @param start  {@code !} 的位置
+     * @param to     上界
+     * @param endOut 输出：右括号之后的位置
+     * @return 图片节点；格式不完整时返回 {@code null}
+     */
+    private static MarkdownInline.Image readImage(String text, int start, int to, int[] endOut) {
+        int closeBracket = text.indexOf(']', start + 2);
+        if (closeBracket < 0 || closeBracket + 1 >= to || text.charAt(closeBracket + 1) != '(') {
+            return null;
+        }
+        int closeParen = text.indexOf(')', closeBracket + 2);
+        if (closeParen < 0 || closeParen >= to) {
+            return null;
+        }
+        String alt = text.substring(start + 2, closeBracket);
+        String url = text.substring(closeBracket + 2, closeParen).strip();
+        if (url.isEmpty()) {
+            return null;
+        }
+        endOut[0] = closeParen + 1;
+        return new MarkdownInline.Image(alt, url);
+    }
+
     private static MarkdownInline.Link readLink(String text, int start, int to, int[] endOut) {
         int closeBracket = text.indexOf(']', start + 1);
         if (closeBracket < 0 || closeBracket + 1 >= to || text.charAt(closeBracket + 1) != '(') {

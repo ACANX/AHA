@@ -9,6 +9,8 @@ import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -39,6 +41,9 @@ public final class MarkdownRenderer {
 
     /** 每层列表缩进。 */
     private static final double LIST_INDENT = 14;
+
+    /** 图片最大显示宽度（px）：超过后按比例缩小，避免一张图撑破气泡。 */
+    private static final double MAX_IMAGE_WIDTH = 480;
 
     /**
      * 样式登记器：与 {@code DesktopShell#themed} 同签名，主题切换时重新求值。
@@ -151,29 +156,69 @@ public final class MarkdownRenderer {
         code.setPadding(new Insets(6));
         styler.apply(code, () -> "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";");
         String[] lines = fence.content().split("\n", -1);
-        for (int i = 0; i < lines.length; i++) {
-            if (i > 0) {
+
+        // 长代码折叠（S2.4）：状态放在闭包里，主题切换只重刷样式、不重建节点，
+        // 因此展开/收起状态天然保留。
+        FenceFold fold = new FenceFold(lines.length);
+        fillCode(code, lines, 0, fold.visibleLines(), fence.language());
+
+        ScrollPane scroll = new ScrollPane(code);
+        scroll.setFitToHeight(false);
+        scroll.setFitToWidth(false);
+        styler.apply(scroll, () -> "-fx-background: transparent; -fx-background-color: transparent;");
+
+        Hyperlink toggle = new Hyperlink();
+        toggle.setId("aha.markdown.fold");
+        styler.apply(toggle, () -> "-fx-text-fill: " + Palette.READ + "; -fx-font-size: 11px;");
+        toggle.setOnAction(event -> {
+            fold.toggle();
+            fillCode(code, lines, 0, fold.visibleLines(), fence.language());
+            updateFold(toggle, scroll, fold);
+        });
+        updateFold(toggle, scroll, fold);
+        if (fold.collapsible()) {
+            head.getChildren().add(toggle);
+        }
+
+        box.getChildren().addAll(head, scroll);
+        return box;
+    }
+
+    /** 按可见行区间重建代码正文（折叠 / 展开共用）。 */
+    private void fillCode(TextFlow code, String[] lines, int from, int to, String language) {
+        code.getChildren().clear();
+        for (int i = from; i < to; i++) {
+            if (i > from) {
                 Text newline = new Text("\n");
                 styler.apply(newline, () -> "-fx-font-family: monospace; -fx-fill: "
                         + Palette.FOREGROUND + ";");
                 code.getChildren().add(newline);
             }
-            for (CodeToken token : CodeLexer.tokenize(lines[i], fence.language())) {
+            for (CodeToken token : CodeLexer.tokenize(lines[i], language)) {
                 Text text = new Text(token.text());
                 styler.apply(text, () -> "-fx-font-family: monospace; -fx-fill: "
                         + colorOf(token.kind()) + ";");
                 code.getChildren().add(text);
             }
         }
+    }
 
-        ScrollPane scroll = new ScrollPane(code);
-        scroll.setFitToHeight(false);
-        scroll.setFitToWidth(false);
-        scroll.setPrefHeight(Math.min(MAX_BLOCK_HEIGHT, 24 + fence.content().lines().count() * 18));
-        styler.apply(scroll, () -> "-fx-background: transparent; -fx-background-color: transparent;");
-
-        box.getChildren().addAll(head, scroll);
-        return box;
+    /** 刷新折叠按钮文案与代码区高度。 */
+    private static void updateFold(Hyperlink toggle, ScrollPane scroll, FenceFold fold) {
+        if (!fold.collapsible()) {
+            toggle.setText("");
+            toggle.setVisible(false);
+            toggle.setManaged(false);
+        } else if (fold.isExpanded()) {
+            toggle.setText("收起");
+            toggle.setVisible(true);
+            toggle.setManaged(true);
+        } else {
+            toggle.setText("已折叠 " + fold.hiddenLines() + " 行");
+            toggle.setVisible(true);
+            toggle.setManaged(true);
+        }
+        scroll.setPrefHeight(Math.min(MAX_BLOCK_HEIGHT, 24 + fold.visibleLines() * 18));
     }
 
     private Node list(MarkdownBlock.ListBlock list) {
@@ -315,6 +360,7 @@ public final class MarkdownRenderer {
             case MarkdownInline.Strike strike -> styledText(plain(strike.children()),
                     extra, "-fx-strikethrough: true;");
             case MarkdownInline.Link link -> link(link, extra);
+            case MarkdownInline.Image image -> inlineImage(image, extra);
         };
     }
 
@@ -332,6 +378,44 @@ public final class MarkdownRenderer {
         return hyperlink;
     }
 
+    /**
+     * 图片占位（S2.5）：默认不加载，点击才按白名单加载。
+     *
+     * <p>用 {@code Hyperlink} 的 graphic 承载加载后的 {@code ImageView}，而不是把节点从
+     * {@code TextFlow} 里换掉——后者需要拿到父节点与下标，跨嵌套（表格单元格 / 列表项）时很容易错位。</p>
+     */
+    private Node inlineImage(MarkdownInline.Image image, String extra) {
+        String label = image.alt().isEmpty() ? image.url() : image.alt();
+        Hyperlink placeholder = new Hyperlink("\uD83D\uDDBC " + label + "（点击加载）");
+        placeholder.setPadding(Insets.EMPTY);
+        styler.apply(placeholder, () -> "-fx-text-fill: " + Palette.READ + "; " + extra);
+        placeholder.setOnAction(event -> {
+            if (!ImagePolicy.allowed(image.url())) {
+                placeholder.setText("图片已拦截：" + ImagePolicy.rejectReason(image.url()));
+                placeholder.setDisable(true);
+                return;
+            }
+            Image loaded = new Image(image.url(), true);
+            loaded.errorProperty().addListener((observable, wasError, isError) -> {
+                if (isError) {
+                    placeholder.setText("图片加载失败：" + image.url());
+                    placeholder.setDisable(true);
+                }
+            });
+            loaded.progressProperty().addListener((observable, oldValue, progress) -> {
+                if (progress.doubleValue() >= 1.0 && !loaded.isError()) {
+                    ImageView view = new ImageView(loaded);
+                    view.setPreserveRatio(true);
+                    view.setFitWidth(Math.min(MAX_IMAGE_WIDTH, loaded.getWidth()));
+                    placeholder.setText("");
+                    placeholder.setGraphic(view);
+                    placeholder.setDisable(true);
+                }
+            });
+        });
+        return placeholder;
+    }
+
     /** 嵌套行内元素拍平成文本（S1.2 的渲染只保留最外层样式）。 */
     private static String plain(List<MarkdownInline> inlines) {
         StringBuilder text = new StringBuilder();
@@ -343,6 +427,7 @@ public final class MarkdownRenderer {
                 case MarkdownInline.Em value -> text.append(plain(value.children()));
                 case MarkdownInline.Strike value -> text.append(plain(value.children()));
                 case MarkdownInline.Link value -> text.append(value.text());
+                case MarkdownInline.Image value -> text.append(value.alt());
             }
         }
         return text.toString();

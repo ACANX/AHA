@@ -94,6 +94,15 @@ class MarkdownInlineParserTest {
     }
 
     @Test
+    void imageIsParsedWithoutLoading() {
+        assertThat(parser.parse("![图](https://x/y.png)"))
+                .containsExactly(new MarkdownInline.Image("图", "https://x/y.png"));
+        // 不是图片语法时按字面量，不做猜测
+        assertThat(parser.parse("!不是图片")).containsExactly(new Text("!不是图片"));
+        assertThat(parser.parse("![a]()")).containsExactly(new Text("![a]()"));
+    }
+
+    @Test
     void textAroundInlineElementsIsMerged() {
         assertThat(parser.parse("前 **粗** 后"))
                 .containsExactly(new Text("前 "), new Strong(List.of(new Text("粗"))), new Text(" 后"));
