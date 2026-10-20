@@ -361,6 +361,8 @@ public final class MarkdownRenderer {
                     extra, "-fx-strikethrough: true;");
             case MarkdownInline.Link link -> link(link, extra);
             case MarkdownInline.Image image -> inlineImage(image, extra);
+            case MarkdownInline.Break ignored -> styledText("\n", extra, "");
+            case MarkdownInline.Html html -> htmlNode(html, extra);
         };
     }
 
@@ -376,6 +378,23 @@ public final class MarkdownRenderer {
         hyperlink.setOnAction(event -> onCopy.accept(link.url()));
         styler.apply(hyperlink, () -> "-fx-text-fill: " + Palette.READ + "; " + extra);
         return hyperlink;
+    }
+
+    /**
+     * 白名单 HTML（S3.1）：{@code sub} / {@code sup} 渲染为缩小字号 + 基线偏移。
+     *
+     * <p>内容拍平成文本再着色：{@code <sub>} 里再套粗体属于极少数场景，
+     * 为它引入嵌套 {@code TextFlow} 会让行高与基线都难对齐，不值得。</p>
+     */
+    private Node htmlNode(MarkdownInline.Html html, String extra) {
+        Text text = new Text(plain(html.children()));
+        boolean sub = "sub".equals(html.tag());
+        styler.apply(text, () -> "-fx-fill: " + Palette.FOREGROUND
+                + "; -fx-font-size: 11px; " + extra);
+        // 用 translateY 而不是 baselineOffset：后者是较新的 Text API，
+        // 而 Node#setTranslateY 一定存在，跨 JavaFX 小版本更稳。
+        text.setTranslateY(sub ? 3 : -3);
+        return text;
     }
 
     /**
@@ -428,6 +447,8 @@ public final class MarkdownRenderer {
                 case MarkdownInline.Strike value -> text.append(plain(value.children()));
                 case MarkdownInline.Link value -> text.append(value.text());
                 case MarkdownInline.Image value -> text.append(value.alt());
+                case MarkdownInline.Break ignored -> text.append('\n');
+                case MarkdownInline.Html value -> text.append(plain(value.children()));
             }
         }
         return text.toString();

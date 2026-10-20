@@ -75,6 +75,14 @@
     `http:` / `data:` / 无协议一律拦截，加载失败降级为文案；
   - 新增 `MarkdownInline.Image` 与解析；`FenceFoldTest` 4 条（29/30/31 边界）、`ImagePolicyTest` 3 条；
   - 冒烟：未点击不创建 `ImageView`；31 行代码块出现折叠按钮。
+- **桌面端 Markdown 阶段 3（#408 S3.1–S3.3，#424 #425 #426，2026-10-20）**：
+  - 白名单 HTML：`<br>` 换行、`<sub>` / `<sup>` 上下标；其余标签（含 `<script>`）按字面量保留，不吞内容；
+  - 裸 URL 自动链接：`http://` / `https://` 识别为链接，遇空白、引号、中文标点终止，尾部英文标点回退，
+    代码段与围栏内不识别；
+  - 新增 `Docs/Guide/MarkdownRenderingGuide.md`：桌面端支持矩阵、明确不支持项、与 CLI 的差异；
+  - 测试：行内解析追加 6 条（HTML 白名单 / 裸 URL / 代码内 URL），
+    `MarkdownUnsupportedTest` 4 条兜底（脚注 / 定义列表 / 数学 / mermaid），
+    冒烟追加表格单元格 `<br>` 换行断言。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；

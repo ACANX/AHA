@@ -222,6 +222,26 @@ class MarkdownRenderSmokeTest {
     }
 
     @Test
+    void tableCellWithBreakRendersMultipleLines() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("""
+                | 表头 |
+                |---|
+                | 第一行<br>第二行 |
+                """));
+
+        ScrollPane scroll = (ScrollPane) ((VBox) root).getChildren().get(0);
+        GridPane grid = (GridPane) scroll.getContent();
+        TextFlow cell = (TextFlow) grid.getChildren().get(1);
+        assertThat(cell.getChildren())
+                .extracting(node -> ((Text) node).getText())
+                .containsExactly("第一行", "\n", "第二行");
+    }
+
+    @Test
     void labelRemainsTheFallbackForPlainText() throws Exception {
         startToolkit();
 

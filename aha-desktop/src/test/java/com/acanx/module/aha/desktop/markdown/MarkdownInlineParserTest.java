@@ -103,6 +103,55 @@ class MarkdownInlineParserTest {
     }
 
     @Test
+    void whitelistedHtmlIsParsed() {
+        assertThat(parser.parse("上<br>下"))
+                .containsExactly(new Text("上"), new MarkdownInline.Break(), new Text("下"));
+        assertThat(parser.parse("<br/>")).containsExactly(new MarkdownInline.Break());
+        assertThat(parser.parse("x<sub>2</sub>"))
+                .containsExactly(new Text("x"), new MarkdownInline.Html("sub", List.of(new Text("2"))));
+        assertThat(parser.parse("x<sup>2</sup>"))
+                .containsExactly(new Text("x"), new MarkdownInline.Html("sup", List.of(new Text("2"))));
+        assertThat(parser.parse("x<SUB>2</SUB>"))
+                .containsExactly(new Text("x"), new MarkdownInline.Html("sub", List.of(new Text("2"))));
+    }
+
+    @Test
+    void htmlOutsideWhitelistStaysLiteral() {
+        // 不吞内容：script 标签与内部代码都留在文本里
+        assertThat(parser.parse("<script>alert(1)</script>"))
+                .containsExactly(new Text("<script>alert(1)</script>"));
+        assertThat(parser.parse("<span style=\"color:red\">红</span>"))
+                .containsExactly(new Text("<span style=\"color:red\">红</span>"));
+        // 只有开标签没有闭合标签：同样是字面量
+        assertThat(parser.parse("<sub>半截")).containsExactly(new Text("<sub>半截"));
+    }
+
+    @Test
+    void bareUrlBecomesALink() {
+        assertThat(parser.parse("见 https://example.com/a 结束"))
+                .containsExactly(new Text("见 "),
+                        new Link("https://example.com/a", "https://example.com/a"),
+                        new Text(" 结束"));
+        assertThat(parser.parse("http://x")).containsExactly(new Link("http://x", "http://x"));
+    }
+
+    @Test
+    void bareUrlStopsAtChinesePunctuationAndTrailingPunctuation() {
+        assertThat(parser.parse("访问 https://example.com。"))
+                .containsExactly(new Text("访问 "), new Link("https://example.com", "https://example.com"),
+                        new Text("。"));
+        assertThat(parser.parse("见 https://example.com/a."))
+                .containsExactly(new Text("见 "), new Link("https://example.com/a", "https://example.com/a"),
+                        new Text("."));
+    }
+
+    @Test
+    void urlInsideCodeSpanIsNotALink() {
+        assertThat(parser.parse("`https://example.com`"))
+                .containsExactly(new Code("https://example.com"));
+    }
+
+    @Test
     void textAroundInlineElementsIsMerged() {
         assertThat(parser.parse("前 **粗** 后"))
                 .containsExactly(new Text("前 "), new Strong(List.of(new Text("粗"))), new Text(" 后"));

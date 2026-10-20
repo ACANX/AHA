@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.markdown;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 行内 Markdown 解析器（issue #414 / tracking #408 S1.2）。
@@ -19,6 +20,12 @@ public final class MarkdownInlineParser {
 
     /** 递归深度上限。 */
     private static final int MAX_DEPTH = 4;
+
+    /** 裸 URL 允许的尾部标点：回退掉，避免「句号/逗号被吞进链接」。 */
+    private static final String TRAILING_PUNCTUATION = ".,;:!?)]'\"";
+
+    /** 中文标点：裸 URL 遇到即终止（这些字符不可能出现在 URL 里）。 */
+    private static final String CJK_PUNCTUATION = "，。；：！？、（）【】「」『』…·—～";
 
     /**
      * 解析一段文本。
@@ -106,6 +113,28 @@ public final class MarkdownInlineParser {
                 }
             }
 
+            if (current == '<') {
+                int[] end = {-1};
+                MarkdownInline html = readHtml(text, index, to, depth, end);
+                if (html != null) {
+                    flush(result, literal);
+                    result.add(html);
+                    index = end[0];
+                    continue;
+                }
+            }
+
+            if ((current == 'h' || current == 'H') && startsWithUrl(text, index, to)) {
+                int[] end = {-1};
+                MarkdownInline.Link url = readBareUrl(text, index, to, end);
+                if (url != null) {
+                    flush(result, literal);
+                    result.add(url);
+                    index = end[0];
+                    continue;
+                }
+            }
+
             literal.append(current);
             index++;
         }
@@ -186,6 +215,86 @@ public final class MarkdownInlineParser {
      *
      * @return 链接；不是完整链接返回 {@code null}
      */
+    /**
+     * 读取白名单 HTML（S3.1）：{@code <br>} → {@link MarkdownInline.Break()}，
+     * {@code <sub>}/{@code <sup>} → {@link MarkdownInline.Html}。
+     *
+     * <p>白名单外返回 {@code null}，调用方把 {@code <} 当普通字符继续扫，
+     * 于是 {@code <script>} 之类的标签连同内容原样留在文本里——不静默丢弃。</p>
+     */
+    private MarkdownInline readHtml(String text, int start, int to, int depth, int[] endOut) {
+        int closeAngle = text.indexOf('>', start + 1);
+        if (closeAngle < 0 || closeAngle >= to) {
+            return null;
+        }
+        String raw = text.substring(start + 1, closeAngle).strip().toLowerCase(Locale.ROOT);
+        if (raw.endsWith("/")) {
+            raw = raw.substring(0, raw.length() - 1).strip();
+        }
+        if ("br".equals(raw)) {
+            endOut[0] = closeAngle + 1;
+            return new MarkdownInline.Break();
+        }
+        if (!"sub".equals(raw) && !"sup".equals(raw)) {
+            return null;
+        }
+        String closing = "</" + raw + ">";
+        int close = indexOfIgnoreCase(text, closing, closeAngle + 1, to);
+        if (close < 0) {
+            return null;
+        }
+        List<MarkdownInline> children = depth < MAX_DEPTH
+                ? parseRange(text, closeAngle + 1, close, depth + 1)
+                : List.of(new MarkdownInline.Text(text.substring(closeAngle + 1, close)));
+        endOut[0] = close + closing.length();
+        return new MarkdownInline.Html(raw, children);
+    }
+
+    private static int indexOfIgnoreCase(String text, String target, int from, int to) {
+        for (int index = from; index + target.length() <= to; index++) {
+            if (text.regionMatches(true, index, target, 0, target.length())) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean startsWithUrl(String text, int start, int to) {
+        return (start + 7 <= to && text.regionMatches(true, start, "http://", 0, 7))
+                || (start + 8 <= to && text.regionMatches(true, start, "https://", 0, 8));
+    }
+
+    /**
+     * 读取裸 URL（S3.2）：{@code http://} / {@code https://} 开头，到空白或中文标点为止。
+     *
+     * @param text   全文
+     * @param start  起始位置
+     * @param to     上界
+     * @param endOut 输出：URL 之后的位置
+     * @return 链接节点；太短（没有主机部分）时返回 {@code null}
+     */
+    private static MarkdownInline.Link readBareUrl(String text, int start, int to, int[] endOut) {
+        int index = start;
+        while (index < to) {
+            char current = text.charAt(index);
+            if (Character.isWhitespace(current) || current == '<' || current == '>' || current == '"'
+                    || current == '\'' || CJK_PUNCTUATION.indexOf(current) >= 0) {
+                break;
+            }
+            index++;
+        }
+        while (index > start && TRAILING_PUNCTUATION.indexOf(text.charAt(index - 1)) >= 0) {
+            index--;
+        }
+        // 至少 "http://" + 一个主机字符；只有协议头不算 URL
+        if (index - start < 8) {
+            return null;
+        }
+        String url = text.substring(start, index);
+        endOut[0] = index;
+        return new MarkdownInline.Link(url, url);
+    }
+
     /**
      * 读取 {@code ![alt](url)}。
      *

@@ -41,9 +41,21 @@ S1.2 实现转义后，把样本的 `pending` 置为 `false` 即可启用。
 2. 同一语义在 CLI 与桌面端的断言都要有——只在一边加，另一端就失去了约束；
 3. 规则类不足 3 条时 `MarkdownSemanticsTest` 会失败（防止样本被删到名存实亡）。
 
+## 阶段 3 之后的实现状态（2026-10-20）
+
+| 项 | 状态 |
+|---|---|
+| 白名单 HTML（`br` / `sub` / `sup`） | 已实现；白名单外标签按字面量保留 |
+| 裸 URL 自动链接 | 已实现；代码段与围栏内不识别 |
+| 不支持项（脚注 / 定义列表 / 数学 / mermaid） | 按字面量展示，各有兜底测试（`MarkdownUnsupportedTest`） |
+| 反斜杠转义 | **仍未实现**，3 条 `escape-literal` 样本保持 `pending` |
+
+桌面端支持矩阵见 [MarkdownRenderingGuide.md](../Guide/MarkdownRenderingGuide.md)（实现与文档不一致时以该文为准）。
+
 ## 关联
 
 - 阶段 0 子任务：#409（语义基线）、#412（性能基线与 xvfb 冒烟）
 - 跟踪母 issue：#408
 - CLI 实现：`aha-cli/.../render/MarkdownStream.java`、`InlineScanner.java`
-- 桌面实现（待建）：`aha-desktop/.../markdown/MarkdownParser.java`（S1.1）
+- 桌面实现：`aha-desktop/.../markdown/MarkdownParser.java`、`MarkdownInlineParser.java`
+- 桌面支持矩阵（阶段 3 起）：[MarkdownRenderingGuide.md](../Guide/MarkdownRenderingGuide.md)

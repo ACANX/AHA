@@ -75,4 +75,26 @@ public sealed interface MarkdownInline {
      */
     record Image(String alt, String url) implements MarkdownInline {
     }
+
+    /**
+     * 换行（issue #424 / S3.1）：来自白名单 HTML 的 {@code <br>}。
+     *
+     * <p>表格单元格在 GFM 里写不进真实换行，{@code <br>} 是唯一可用的换行写法；
+     * 白名单外的一切标签都不产生节点，按字面量留在 {@link Text} 里。</p>
+     */
+    record Break() implements MarkdownInline {
+    }
+
+    /**
+     * 白名单 HTML（issue #424 / S3.1）。
+     *
+     * <p>只支持 {@code sub} 与 {@code sup}，渲染为缩小字号 + 基线偏移。
+     * 其余标签（{@code <script>}、{@code <span>}…）**不进 AST**，解析器把它们退化成
+     * 普通文本，因此内容不会被吞掉，也不会被执行或套样式。</p>
+     *
+     * @param tag      标签名（小写，仅 {@code sub} / {@code sup}）
+     * @param children 内部行内元素
+     */
+    record Html(String tag, List<MarkdownInline> children) implements MarkdownInline {
+    }
 }
