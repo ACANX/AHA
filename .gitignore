@@ -13,6 +13,12 @@ dist/*
 # 自更新换装入口（issue #51）：被 dist-desktop.xml / dist-native.xml 打进包，必须跟踪
 !Dist/apply-update.cmd
 !Dist/*.ps1
+# POSIX 一键取件入口与共享引擎（Linux / macOS）：与 .cmd 一样是**手写源文件**。
+# 8 个 Update*.sh 只固定「通道 + 形态」，逻辑全部在 AhaUpdate.sh 一份，避免八处漂移。
+# 刻意不用 `!Dist/*.sh`：出包时 bin/AhaCli.sh、bin/AhaDesktop.sh 会被平铺进 Dist/，
+# 那是构建产物，不能因为这条规则被 un-ignore 成源文件。
+!Dist/Update*.sh
+!Dist/AhaUpdate.sh
 
 aha-desktop-*.zip
 pom.xml.tag
