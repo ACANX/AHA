@@ -197,6 +197,7 @@ Model:
             - image
           ContextWindow: 1004000
           MaxTokens: 300000
+          ThinkingLevel: Max   # 当前强度；省略时取 ThinkingLevelMap 的第一个键
           ThinkingLevelMap:
             Max: max
         deepseek-flash:
@@ -376,7 +377,7 @@ Model.yml
 | `Model.Providers.<Id>.ApiType` | string | — | `openai-compatible` / `anthropic-messages` / `gemini`（旧键 `Adapter` 与旧值 `anthropic` 兼容读取） |
 | `Model.Providers.<Id>.BaseUrl` | string | — | 基础地址（如 `https://api.openai.com/v1`），适配器拼接 `/chat/completions` |
 | `Model.Providers.<Id>.ApiKey` | string | — | 支持 `${ENV}` 占位 |
-| `Model.Providers.<Id>.Models` | map | — | 模型 ID → 模型定义（`Name` / `Reasoning` / `Input` / `ContextWindow` / `MaxTokens` / `ThinkingLevelMap`） |
+| `Model.Providers.<Id>.Models` | map | — | 模型 ID → 模型定义（`Name` / `Reasoning` / `Input` / `ContextWindow` / `MaxTokens` / `ThinkingLevel` / `ThinkingLevelMap`） |
 | `Model.Providers.<Id>.Tier` | map | — | 五档 → 模型 ID；默认档固定 `Standard` |
 | `Model.Providers.<Id>.TimeoutSeconds` | int | 120 | 单次请求超时 |
 | `Model.Providers.<Id>.MaxRetries` | int | 3 | 5xx 重试次数（指数退避） |

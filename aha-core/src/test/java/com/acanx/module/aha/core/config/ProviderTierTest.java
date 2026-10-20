@@ -126,7 +126,7 @@ class ProviderTierTest {
     @Test
     void newFormatReadsDefinitionsAndCapabilities() {
         ModelDefinition definition = new ModelDefinition("real-model", true,
-                List.of("text", "image"), 100000, 8000, Map.of("Max", "max"));
+                List.of("text", "image"), 100000, 8000, "High", Map.of("Max", "max"));
         ProviderConfig provider = new ProviderConfig("openai-compatible", "https://example.com/v1",
                 "k", Map.of("fast", definition), Map.of("Standard", "fast"),
                 60, 2, null, Map.of());
@@ -136,6 +136,8 @@ class ProviderTierTest {
         assertThat(provider.reasoning("Standard")).isTrue();
         assertThat(provider.contextWindow("Standard")).isEqualTo(100000);
         assertThat(provider.maxTokens("Standard")).isEqualTo(8000);
+        // issue #355：显式 ThinkingLevel 优先于映射表
+        assertThat(provider.thinkingLevel("Standard")).isEqualTo("High");
         assertThat(provider.definition("fast").orElseThrow().thinkingValue("Max")).contains("max");
         assertThat(provider.definition("fast").orElseThrow().supportsImage()).isTrue();
     }

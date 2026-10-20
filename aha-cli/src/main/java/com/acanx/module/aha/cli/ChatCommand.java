@@ -618,14 +618,15 @@ public final class ChatCommand implements Runnable {
     /**
      * 状态栏展示的思考强度。
      *
-     * <p><b>暂无数据源</b>（issue #353 待拍板：`ProviderConfig.Extra.reasoning_effort` 还是
-     * `Aha.yaml` 新增项），先显示占位 {@code -}，不编造「低 / 中 / 高」。</p>
+     * <p>数据源（issue #355）：生效模型的 {@code ThinkingLevel}；未配置时取
+     * {@code ThinkingLevelMap} 的第一个键（YAML 保序）。模型不支持思考强度时为空串，
+     * 状态栏展示 {@code -}，不编造「低 / 中 / 高」。</p>
      *
      * @param service Agent 服务
-     * @return 强度；当前恒为空串
+     * @return 强度；无可用强度时为空串
      */
     private String statusEffort(AgentService service) {
-        return "";
+        return service.runtime().attributes().getOrDefault("ThinkingLevel", "");
     }
 
     /**

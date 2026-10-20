@@ -250,6 +250,9 @@ public final class LocalAgentService implements AgentService {
             attributes.put("Tier", tier.configName());
             attributes.put("Model", effective == null ? "" : effective);
             attributes.put("Adapter", provider.apiType() == null ? "" : provider.apiType());
+            // 思考强度（issue #355）：取生效模型的 ThinkingLevel，未配置时取 ThinkingLevelMap 第一个键
+            String thinkingLevel = provider.thinkingLevel(llmConfig.defaultTier());
+            attributes.put("ThinkingLevel", thinkingLevel == null ? "" : thinkingLevel);
             String endpoint = resolveEndpoint(provider);
             if (endpoint != null) {
                 attributes.put("Endpoint", endpoint);

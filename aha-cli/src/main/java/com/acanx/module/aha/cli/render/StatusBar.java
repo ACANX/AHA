@@ -57,7 +57,7 @@ public final class StatusBar {
      * @param provider 供应商（配置键）
      * @param tier     档位（Ultra / Pro / Standard / Flash / Fallback）
      * @param model    模型名
-     * @param effort   思考强度；暂无数据源时为空，展示为 {@code -}
+     * @param effort   思考强度（来自 {@code attributes.ThinkingLevel}）；空时展示为 {@code -}
      * @param cwd      工作目录；空表示不展示目录段
      * @param branch   Git 分支；空表示不是仓库或读取失败
      */

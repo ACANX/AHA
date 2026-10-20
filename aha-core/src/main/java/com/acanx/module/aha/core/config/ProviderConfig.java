@@ -415,6 +415,21 @@ public record ProviderConfig(
     }
 
     /**
+     * 当前生效的思考强度（取生效档，issue #355）。
+     *
+     * <p>未配置 {@code ThinkingLevel} 时取 {@code ThinkingLevelMap} 的第一个键；
+     * 两者都没有（模型不支持思考强度）时返回 {@code null}。</p>
+     *
+     * @param globalDefaultTier 全局默认档
+     * @return 强度名；无法确定时为 {@code null}
+     */
+    public String thinkingLevel(String globalDefaultTier) {
+        return effectiveDefinition(globalDefaultTier)
+                .map(ModelDefinition::effectiveThinkingLevel)
+                .orElse(null);
+    }
+
+    /**
      * 上下文窗口（取生效档）。
      *
      * @param globalDefaultTier 全局默认档
