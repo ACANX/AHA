@@ -103,6 +103,38 @@ class SqliteMemoryStoreTest {
     }
 
     @Test
+    void windowBoundaryNeverStartsWithOrphanToolMessage() {
+        // issue #391：LIMIT 窗口恰好落在 tool 消息上时，assistant(tool_calls) 被截在窗外。
+        // 修复前 loadHistory 会原样返回 [tool, tool]，下一轮请求直接被上游 400 拒绝。
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "读两个文件"));
+        store.appendMessage("s1", new ChatMessage(Role.ASSISTANT, "", List.of(
+                new ToolCall("call-1", "file-read", java.util.Map.of()),
+                new ToolCall("call-2", "file-read", java.util.Map.of())), null, null));
+        store.appendMessage("s1", new ChatMessage(Role.TOOL, "r1", List.of(), "call-1", null));
+        store.appendMessage("s1", new ChatMessage(Role.TOOL, "r2", List.of(), "call-2", null));
+
+        List<ChatMessage> history = store.loadHistory("s1", 2);
+
+        // 窗口里没有任何可配对的 assistant ⇒ 孤立的 tool 全部丢弃（宁缺毋滥）
+        assertThat(history).noneMatch(message -> message.role() == Role.TOOL);
+        assertThat(history).isEmpty();
+    }
+
+    @Test
+    void dropsToolMessageWhenItsAssistantLostToolCalls() {
+        // tool_calls 列损坏 / 丢失时 assistant 退化为纯文本，其后的 tool 也随之丢弃，
+        // 否则又是一条孤立 tool（issue #391 第 2 条）。
+        store.appendMessage("s1", ChatMessage.text(Role.USER, "hi"));
+        store.appendMessage("s1", ChatMessage.text(Role.ASSISTANT, "我看看"));
+        store.appendMessage("s1", new ChatMessage(Role.TOOL, "孤立结果", List.of(), "call-1", null));
+
+        List<ChatMessage> history = store.loadHistory("s1", 10);
+
+        assertThat(history).extracting(ChatMessage::role)
+                .containsExactly(Role.USER, Role.ASSISTANT);
+    }
+
+    @Test
     void dropsToolMessageWithoutToolCallId() {
         // 修复前写入的数据缺 tool_call_id；直接发送会被服务端 422。
         // 恢复时应丢弃，而非构造非法请求体。
