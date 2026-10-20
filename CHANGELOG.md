@@ -76,6 +76,15 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
+  - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
+    JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
+    并 abort，窗口刚出来就消失；
+  - 根因：`libprism_sw.so` 的 Pisces native 用静态 JNI 命名绑定，并用 `GetFieldID` 查
+    `nativePtr` / `dataInt` / `surface`，但这些类**从未登记进 `jni-config.json`**；
+  - 补登记 `com.sun.pisces.AbstractSurface` / `JavaSurface` / `PiscesRenderer` / `Transform6`
+    与 `java.lang.OutOfMemoryError`（`JNI_ThrowNew` 会 `FindClass` 它）；
+  - `NativeImageMetadataTest` 新增 `jniConfigRegistersPiscesSoftwareRendererClasses()` 守住这 5 项。
 - **流式对话 HTTP 400：历史窗口截断后 tool 消息丢失前置 tool_calls（issue #391，2026-10-20 真机）**：
   - `SqliteMemoryStore.loadHistory` 按 `LIMIT` 取最近 N 条时，边界可能落在 tool 消息上，
     `assistant(tool_calls)` 被截在窗外 → 下一轮请求以 `role=tool` 开头，上游 400：
