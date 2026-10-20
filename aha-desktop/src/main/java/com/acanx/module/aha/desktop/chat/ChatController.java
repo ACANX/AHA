@@ -35,8 +35,12 @@ import java.util.function.LongSupplier;
  * 因此可以在**没有图形环境**的机器上完整测试（见 {@code ChatControllerTest}）。</p>
  *
  * <p>线程契约（{@code DesktopDesign.md} 第 6 节）：除了 {@link ChatView#appendAssistant}
- * ——它由视图内部用 {@code FxBridge} 合流，可从任意线程调用——其余界面动作一律经
- * {@code ui} 投递到 UI 线程。</p>
+ * 与 {@link ChatView#endAssistant}——它们由视图内部合流（分段累积器带锁、渲染桥可从任意
+ * 线程提交），可在推理线程直接调用——其余界面动作一律经 {@code ui} 投递到 UI 线程。</p>
+ *
+ * <p>这两者必须走同一条通道：正文增量直达视图、段收尾却绕 {@code ui} 队列时，两条通道
+ * 各自有序、合起来无序，下一段的增量会赶在 {@code endAssistant} 之前落进上一段
+ * （PR #404 审查 P1-1）。</p>
  *
  * @since 0.2.0
  */
@@ -130,6 +134,10 @@ public final class ChatController {
                 service.streamChat(ensureSession(), input, this::onEvent, current);
             } catch (RuntimeException e) {
                 LOG.warn("对话失败", e);
+                // 兜底收尾（issue #403 / PR #404 审查 P1-2）：引擎在异常路径已补发段边界，
+                // 但 AgentService 是可替换实现，不保证每位都补——残段留在缓冲里的话，
+                // 用户下一次提问会续写到失败前那条气泡上。endAssistant 幂等，重复调用无副作用。
+                view.endAssistant();
                 ui.accept(() -> view.setBusy(false));
                 ui.accept(() -> view.showError("SEND_FAILED", String.valueOf(e.getMessage())));
             } finally {
@@ -367,9 +375,15 @@ public final class ChatController {
             case ContentEvent content -> view.appendAssistant(content.delta());
             case ContentSegmentEndEvent ignored -> {
                 // 一段正文到此为止（issue #403）：立刻结束当前气泡，后续正文另起一条。
-                // 严格来说不必投递（它在推理线程发出），但 view 的其余动作都经 ui 投递，
-                // 走同一条队列才能保证「结束旧气泡」排在「下一段的增量」之前。
-                ui.accept(view::endAssistant);
+                //
+                // 【为什么直接调用、不经 ui 投递】正文增量走 view.appendAssistant（视图内部用
+                // FxBridge 合流），本事件若改走 ui 队列，两条通道各自有序、合起来无序：
+                // 推理线程投递完段边界会立刻处理下一条增量，而队列里的 endAssistant 可能还没跑，
+                // 于是下一段的增量落进上一段、段号不推进，界面回到 #403 修复前的样子。
+                // endAssistant 与 appendAssistant 同属「视图内部自行合流」（分段累积器带锁、
+                // FxBridge 可从任意线程提交），直接调用才能保证「结束旧段」排在「下一段增量」之前。
+                // PR #404 审查 P1-1。
+                view.endAssistant();
             }
             case ToolCallEvent call -> onToolCall(call);
             case ToolResultEvent result -> onToolResult(result);
@@ -381,7 +395,8 @@ public final class ChatController {
             case DoneEvent ignored -> {
                 // 段边界已由 ContentSegmentEndEvent 收尾；这里再收一次是幂等的空操作，
                 // 保留它是为了「没有段边界的旧实现 / 第三方监听器」也能正确结束气泡。
-                ui.accept(view::endAssistant);
+                // 同样直接调用：与正文同源，才不会在新一轮的增量之后才迟到收尾。
+                view.endAssistant();
                 ui.accept(() -> view.setBusy(false));
             }
             default -> LOG.debug("忽略事件 {}", event.getClass().getSimpleName());

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * {@link AgentEngine#stream} 测试。
@@ -187,6 +188,36 @@ class AgentEngineStreamTest {
 
         assertThat(events.stream().filter(ContentSegmentEndEvent.class::isInstance)).hasSize(1);
         assertThat(events.getLast()).isInstanceOf(DoneEvent.class);
+    }
+
+    /**
+     * 传输异常中断也要发段边界（PR #404 审查 P1-2）。
+     *
+     * <p>断线 / HTTP 非 2xx / 超时与「用户中断」是两条不同的退出路径：前者抛异常，
+     * 若段边界只写在正常返回之后，桌面端就留下一条永远收不了尾的气泡——
+     * 段号不推进、半段正文留在缓冲里，用户下一条提问会续写到失败前那条气泡上。</p>
+     */
+    @Test
+    void streamEmitsSegmentBoundaryEvenWhenTheTransportFails() {
+        ScriptedLlmClient llm = new ScriptedLlmClient();
+        llm.scriptStream((listener, token) -> {
+            listener.onEvent(content("说到一半"));
+            // 连接在这里被掐断：不再有 DONE 事件，直接抛
+            throw new IllegalStateException("connection reset");
+        });
+
+        AgentEngine engine = new AgentEngine(llm, new ToolRegistry(), new InMemoryMemoryStore());
+
+        List<AgentEvent> events = new ArrayList<>();
+        assertThatThrownBy(() -> engine.stream("s1", new SessionConfig("m", null, Map.of()),
+                "m", "hi", events::add, new CancellationToken()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("connection reset");
+
+        // 异常照常上抛，但退出前必须交出段边界
+        assertThat(events.stream().filter(ContentSegmentEndEvent.class::isInstance)).hasSize(1);
+        assertThat(events.stream().map(AgentEngineStreamTest::kindOf).toList())
+                .containsExactly("content", "segment-end");
     }
 
     /**

@@ -11,6 +11,8 @@ import com.acanx.module.aha.common.model.SessionConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -106,6 +108,57 @@ class ChatControllerTest {
         assertThat(view.deltas).containsExactly("第一段", "第二段");
         // 段边界两次 + Done 一次
         assertThat(view.ends).isEqualTo(3);
+    }
+
+    /**
+     * 正文增量与段收尾必须走**同一条通道**（PR #404 审查 P1-1）。
+     *
+     * <p>旧实现里正文直达视图、段收尾绕 {@code ui} 队列。两条通道各自有序、合起来无序：
+     * 推理线程投递完段边界会立刻处理下一条增量，而队列里的 endAssistant 还没跑，
+     * 于是下一段的增量落进上一段、段号不推进——界面退回 #403 修复前的样子。</p>
+     *
+     * <p>这里用一个「只排队、不立即执行」的投递器模拟真实的 UI 线程：若段收尾还在队列里，
+     * {@code view.endAssistant} 的调用次数就不会在增量到达之前增加。</p>
+     */
+    @Test
+    void segmentBoundaryReachesTheViewBeforeTheNextSegmentDelta() {
+        Deque<Runnable> uiQueue = new ArrayDeque<>();
+        ChatController queued = new ChatController(view, service,
+                new SessionConfig("gpt-4o", null, null), Runnable::run, uiQueue::add, nanos::get);
+        service.script.add(new ContentEvent("s1", "第一段"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ContentEvent("s1", "第二段"));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        queued.send("说两句");
+
+        // 段收尾不排队：它必须已经生效，否则第二段的增量会落进第一段
+        assertThat(view.ends).isGreaterThanOrEqualTo(2);
+        assertThat(view.deltas).containsExactly("第一段", "第二段");
+        // 排队的是其余界面动作（用户消息、忙碌状态、错误提示等），不是段收尾
+        assertThat(uiQueue).isNotEmpty();
+    }
+
+    /**
+     * 发送失败也要收尾当前段（PR #404 审查 P1-2）。
+     *
+     * <p>残段留在缓冲里的话，用户修好网络再发一条，新正文会续写到失败前那条气泡上。</p>
+     */
+    @Test
+    void sendFailureStillClosesThePendingSegment() {
+        // 传到一半断线：正文已经进了气泡，但段边界可能来不及发（真正的引擎把它放进了
+        // finally，AgentService 的可替换实现则不保证）——控制器必须自己兜底收尾
+        service.script.add(new ContentEvent("s1", "说到一半就断了"));
+        service.failMidStream = true;
+
+        controller.send("hi");
+
+        assertThat(view.deltas).containsExactly("说到一半就断了");
+        assertThat(view.errors).hasSize(1);
+        assertThat(view.errors.get(0)).startsWith("SEND_FAILED");
+        // 兜底收尾一次：残段不会留着，下一条提问不会续写到失败前的气泡上
+        assertThat(view.ends).isEqualTo(1);
+        assertThat(view.busy).containsExactly(true, false);
     }
 
     @Test

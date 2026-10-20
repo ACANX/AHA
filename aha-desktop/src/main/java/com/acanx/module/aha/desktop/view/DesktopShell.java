@@ -5,6 +5,7 @@ import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
+import com.acanx.module.aha.desktop.chat.AssistantFrameBuffer;
 import com.acanx.module.aha.desktop.chat.AssistantSegments;
 import com.acanx.module.aha.desktop.chat.ChatView;
 import com.acanx.module.aha.desktop.chat.FileMentions;
@@ -266,8 +267,13 @@ public final class DesktopShell implements ChatView {
     @FXML
     private VBox rightContent;
 
-    /** 助手流式文本的合流器：每个 token 一次界面更新会拖慢界面，这里合并成每帧一次。 */
-    private FxBridge<AssistantSegments.Segment> assistantBridge;
+    /**
+     * 助手流式文本的合流器：每个 token 一次界面更新会拖慢界面，这里合并成每帧一次。
+     *
+     * <p>投递的是**段快照批次**而不是单个快照：分段之后每段是独立全文，
+     * 单个值被覆盖时前一段就整段不渲染（PR #404 审查 P2-1）。</p>
+     */
+    private FxBridge<List<AssistantSegments.Segment>> assistantBridge;
 
     /**
      * 正文分段累积器（issue #403）。
@@ -276,6 +282,9 @@ public final class DesktopShell implements ChatView {
      * 跨线程只传不可变的 {@link AssistantSegments.Segment}。</p>
      */
     private final AssistantSegments assistantSegments = new AssistantSegments();
+
+    /** 待渲染的段快照批次（同段号合并、渲染后摘除）。 */
+    private final AssistantFrameBuffer assistantFrames = new AssistantFrameBuffer();
 
     /** UI 线程已渲染到哪一段（只在 UI 线程读写）。 */
     private int renderedSeq = -1;
@@ -593,7 +602,7 @@ public final class DesktopShell implements ChatView {
         this.configSummary = configSummary;
         // 界面骨架从 FXML 装载（详见 desktop-shell.fxml 顶部的说明）
         loadView();
-        this.assistantBridge = new FxBridge<>(dispatcher, this::renderSegment);
+        this.assistantBridge = new FxBridge<>(dispatcher, this::renderSegments);
         applyPaneState();
     }
 
@@ -979,6 +988,10 @@ public final class DesktopShell implements ChatView {
         // 分段状态必须跟着清：否则切换会话后，残留的段号会让新会话的第一段
         // 被判成「续写旧气泡」，而那个气泡早已不在场景图里（#403）
         assistantSegments.reset();
+        // 在途快照也要丢掉：reset() 只让段号归零，已排队的旧段快照照样会回来渲染；
+        // 代际号一变，它们就被判为「上一会话的残留」而整条丢弃（PR #404 审查 P2-2）
+        assistantFrames.clear();
+        assistantBridge.clear();
         renderedSeq = -1;
         currentAssistant = null;
     }
@@ -1223,8 +1236,10 @@ public final class DesktopShell implements ChatView {
 
     @Override
     public void appendAssistant(String delta) {
-        // 快照自带段号：排队的渲染任务因此**不会**在段切换后写进下一段的气泡（#403）
-        assistantBridge.submit(assistantSegments.append(delta));
+        // 快照自带段号与代际：排队的渲染任务因此**不会**在段切换后写进下一段的气泡（#403）。
+        // 投递的是「批次」而不是单个快照——同帧内有两段时，单个值会被后一段覆盖，
+        // 前一段就整段不渲染（PR #404 审查 P2-1）。
+        assistantBridge.submit(assistantFrames.merge(assistantSegments.append(delta)));
     }
 
     @Override
@@ -1234,19 +1249,42 @@ public final class DesktopShell implements ChatView {
         // 【为什么要显式落一次，而不是「清空字段等下一段自己重建」】
         // 旧实现只把字段置空、丢下在途的合并值不管：排队的渲染任务取不到值，
         // 收尾正文的末尾就会整段落空（表现为回答结尾被截断）。
-        // 这里把最终全文投进同一条有序通道，再由 FxBridge 保证「最后一个值一定被渲染」。
+        // 这里把最终全文并进待渲染批次，再由 FxBridge 保证「最后一个值一定被渲染」。
         AssistantSegments.Segment last = assistantSegments.end();
         if (last != null) {
-            assistantBridge.submit(last);
+            assistantBridge.submit(assistantFrames.merge(last));
         }
     }
 
     /**
-     * 渲染一段正文的最新全文（UI 线程；由 {@link FxBridge} 与 {@link #endAssistant} 调用）。
+     * 渲染一批段快照（UI 线程；由 {@link FxBridge} 调用）。
      *
      * <p>段号变了就另起一条气泡——这正是「开场白在工具卡片之前、总结在之后」的实现点：
      * 气泡的位置由**该段第一次真正渲染**的时刻决定，而工具卡片走的是同一条 FIFO 投递队列，
      * 于是顺序天然等于时间顺序。</p>
+     *
+     * @param batch 段快照批次（按段号不降序）
+     */
+    private void renderSegments(List<AssistantSegments.Segment> batch) {
+        // 代际在渲染时刻现取：reset() 之后回来的旧批次一律丢弃（PR #404 审查 P2-2）。
+        // 不在字段里缓存，是因为缓存值本身也得同步复位，多一处状态就多一处漏复位的机会。
+        int generation = assistantSegments.generation();
+        // 已处理到哪一段：空段不建气泡，但仍然算「处理过」——否则它会在批次里挂着不走
+        int consumed = renderedSeq;
+        for (AssistantSegments.Segment segment : batch) {
+            if (segment.generation() != generation || segment.seq() < renderedSeq) {
+                // 上一会话的残留 / 迟到的旧段：气泡已下线，照常渲染就会把旧正文画进新会话
+                continue;
+            }
+            renderSegment(segment);
+            consumed = Math.max(consumed, segment.seq());
+        }
+        // 已渲染的摘掉，批次因此不会随对话变长；旧代际的残留项一并清掉
+        assistantFrames.drop(generation, consumed);
+    }
+
+    /**
+     * 渲染一段正文的最新全文（UI 线程）。
      *
      * @param segment 段号 + 该段全文快照
      */

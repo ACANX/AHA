@@ -23,6 +23,8 @@ public interface ChatView {
     /**
      * 追加助手回复的增量（流式）。
      *
+     * <p><b>线程契约</b>：可从推理线程直接调用，实现方负责内部合流（见 {@code FxBridge}）。</p>
+     *
      * @param delta 增量文本
      */
     void appendAssistant(String delta);
@@ -32,6 +34,10 @@ public interface ChatView {
      *
      * <p>一轮对话里会出现多次：工具调用之前、工具结果回灌之后、收尾总结结束时。
      * 视图应据此**另起一条气泡**，而不是把后续正文继续追加到上一条里（issue #403）。</p>
+     *
+     * <p><b>线程契约</b>：与 {@link #appendAssistant} 相同，可从推理线程直接调用——
+     * 两者必须同属一条通道，否则「结束旧段」可能排在「下一段的增量」之后，
+     * 两段会被并成一段（PR #404 审查 P1-1）。幂等：同一段重复收尾是空操作。</p>
      */
     void endAssistant();
 

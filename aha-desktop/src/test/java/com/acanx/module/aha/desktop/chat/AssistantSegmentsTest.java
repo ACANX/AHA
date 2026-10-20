@@ -34,7 +34,7 @@ class AssistantSegmentsTest {
         segments.append("开场白");
 
         AssistantSegments.Segment last = segments.end();
-        assertThat(last).isEqualTo(new AssistantSegments.Segment(0, "开场白"));
+        assertThat(last).isEqualTo(new AssistantSegments.Segment(0, 0, "开场白"));
 
         // 收尾之后的第一条增量必须属于新段，且**不含**上一段的文本（跨段串字的反例）
         AssistantSegments.Segment next = segments.append("总结");
@@ -51,15 +51,18 @@ class AssistantSegmentsTest {
 
         assertThat(segments.end()).isNotNull();
         assertThat(segments.end()).isNull();
-        assertThat(segments.seq()).isEqualTo(2);
+        // 幂等之外还有一层：空段不占段号（PR #404 审查 P3），
+        // 所以 seq 等于「有正文的段数」，而不是「end() 被调用了几次」
+        assertThat(segments.seq()).isEqualTo(1);
     }
 
     @Test
     void emptySegmentReturnsNullInsteadOfBuildingAnEmptyBubble() {
         AssistantSegments segments = new AssistantSegments();
-        // 模型直接调工具、没有任何开场白：不该冒出空气泡
+        // 模型直接调工具、没有任何开场白：不该冒出空气泡，也不该凭空占掉一个段号
         assertThat(segments.end()).isNull();
-        assertThat(segments.append("工具之后的正文").seq()).isEqualTo(1);
+        assertThat(segments.seq()).isZero();
+        assertThat(segments.append("工具之后的正文").seq()).isZero();
     }
 
     @Test
@@ -69,7 +72,7 @@ class AssistantSegmentsTest {
         segments.append("A");
         segments.append("");
         segments.end();
-        assertThat(segments.append("B")).isEqualTo(new AssistantSegments.Segment(1, "B"));
+        assertThat(segments.append("B")).isEqualTo(new AssistantSegments.Segment(0, 1, "B"));
     }
 
     @Test
@@ -81,7 +84,8 @@ class AssistantSegmentsTest {
         segments.reset();
 
         assertThat(segments.seq()).isZero();
-        assertThat(segments.append("新会话")).isEqualTo(new AssistantSegments.Segment(0, "新会话"));
+        // 段号归零，但代际号前进：复位前的在途快照因此能与新会话的第一段区分开
+        assertThat(segments.append("新会话")).isEqualTo(new AssistantSegments.Segment(1, 0, "新会话"));
     }
 
     @Test
@@ -95,6 +99,36 @@ class AssistantSegmentsTest {
 
         assertThat(snapshots.getLast().text()).isEqualTo("一二三");
         assertThat(snapshots).allSatisfy(snapshot -> assertThat(snapshot.seq()).isZero());
+    }
+
+    @Test
+    void resetAdvancesGenerationSoInFlightSnapshotsAreDistinguishable() {
+        // 切换会话时 reset() 把段号归零，而上一轮推理可能还在后台产出：
+        // 它手里的快照与新会话的第一段段号相同。代际号是唯一能区分两者的信息
+        // （PR #404 审查 P2-2）。
+        AssistantSegments segments = new AssistantSegments();
+        segments.append("旧会话第一段");
+        segments.end();
+        AssistantSegments.Segment inFlight = segments.append("旧会话第二段");
+
+        segments.reset();
+
+        assertThat(inFlight.generation()).isZero();
+        assertThat(segments.generation()).isEqualTo(1);
+        assertThat(segments.append("新会话"))
+                .isEqualTo(new AssistantSegments.Segment(1, 0, "新会话"));
+    }
+
+    @Test
+    void segmentSnapshotsCarryTheGenerationTheyWereTakenIn() {
+        AssistantSegments segments = new AssistantSegments();
+        assertThat(segments.append("a").generation()).isZero();
+        assertThat(segments.end().generation()).isZero();
+
+        segments.reset();
+
+        assertThat(segments.append("b").generation()).isEqualTo(1);
+        assertThat(segments.end().generation()).isEqualTo(1);
     }
 
     @Test

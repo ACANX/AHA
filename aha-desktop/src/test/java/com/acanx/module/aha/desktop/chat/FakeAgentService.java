@@ -42,6 +42,9 @@ final class FakeAgentService implements AgentService {
     /** 置为 true 时 {@code streamChat} 抛异常。 */
     boolean failOnSend;
 
+    /** 置为 true 时先发完脚本再抛异常（模拟传到一半连接被掐断）。 */
+    boolean failMidStream;
+
     @Override
     public String createSession(SessionConfig config) {
         created.add(config);
@@ -73,6 +76,9 @@ final class FakeAgentService implements AgentService {
             throw new IllegalStateException("模拟发送失败");
         }
         script.forEach(listener::onEvent);
+        if (failMidStream) {
+            throw new IllegalStateException("模拟流式传输中断");
+        }
     }
 
     @Override
