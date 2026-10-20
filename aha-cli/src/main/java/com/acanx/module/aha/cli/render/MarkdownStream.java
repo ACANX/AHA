@@ -189,6 +189,15 @@ final class MarkdownStream {
      */
     private void stepTable(int codePoint) {
         if (codePoint == '\n') {
+            if (tableLine.length() == 0) {
+                // 空行是 GFM 的表格终止符（issue #346）：结算当前表格，再把这一空行按普通行
+                // 输出出去，让表格块与后文之间保留一个空行（与表格前的空行对称）。
+                // 若不在这里终止，空行会被收进 tableRows（渲染时又被跳过），
+                // 于是「表格后没有空行」，且两张表被并成一张。
+                flushTable();
+                endLine();
+                return;
+            }
             tableRows.add(tableLine.toString());
             tableLine.setLength(0);
             return;

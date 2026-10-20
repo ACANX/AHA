@@ -45,6 +45,7 @@
 | v1.29.0 | 2026-10-07 | `aha chat` 新增 `--logo` 选项（auto / pixel / ascii / off） | @ACANX |
 | v1.30.0 | 2026-10-08 | 版本号说明改为「已发行版本 / dev 上版本 / 改版本号不止根 POM」，并指向 ReleaseProcess.md 第 2 节 | @ACANX |
 | v1.31.0 | 2026-10-08 | 版本号说明补充资源所在模块（`aha-common`，CLI 与桌面端共用） | @ACANX |
+| v1.35.0 | 2026-10-20 | §2.5 Markdown 规则表补表格边界：空行终止表格、表格与后文之间保留一个空行（issue #346） | @cnxnc |
 | v1.34.0 | 2026-10-20 | §5.1 补 `AHA_PASTE_VT`（Windows VT 输入模式开关，默认开）与 `AHA_INPUT_TRACE`（输入留痕）；§3.2 说明 0x0200 生效后直接粘贴多行应整体进入（issue #75） | @cnxnc |
 | v1.33.0 | 2026-10-16 | §3.2 补 **`Alt+V` / `Ctrl+V`**（自己读剪贴板、大块折叠成 `[paste #N +M lines]`）与 `Alt+V` 的提示示例；补「为什么主键位是 Alt+V」（conhost 截获 Ctrl+V） | @cnxnc |
 | v1.32.0 | 2026-10-19 | §2.5 Markdown 规则表补删除线（`~~`）与嵌套列表缩进（issue #335） | @ACANX |
@@ -176,6 +177,7 @@ Windows Terminal / WSL / Linux 及第三方终端（Tabby、Xshell、MobaXterm �
 | `*斜体*` / `_斜体_` | *斜体* |
 | `***粗斜***` | **加粗**且*斜体* |
 | `~~删除~~` | 删除线（SGR 9），去掉 `~~` |
+| 表格（管道符分隔） | 缓冲整块后渲染为对齐的框线表；**空行终止表格**，表格与后文之间保留一个空行（issue #346） |
 
 **为什么不会误判**（采用 CommonMark 侧翼规则的子集）：
 
