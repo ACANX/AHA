@@ -586,6 +586,41 @@ class NativeImageMetadataTest {
         }
     }
 
+    /**
+     * SW pipeline（Pisces）的 JNI 类（issue #393）。
+     *
+     * <p>真机现象：WSL（无 GPU，Prism 回退到 SW）启动到 {@code [ui-fxml-loaded]} 后，
+     * {@code UploadingPainter} → {@code SWRTTexture} → {@code JavaSurface.<init>} 调 native 时
+     * 直接 {@code Fatal error reported via JNI: Failed to throw an exception!} 并退出。
+     * 在 {@code libprism_sw.so} 里找到证据：native 用静态 JNI 命名绑定
+     * （{@code Java_com_sun_pisces_JavaSurface_initialize} …），并用 {@code GetFieldID} 查
+     * {@code nativePtr}（J）/ {@code dataInt}（[I）/ {@code surface}（Lcom/sun/pisces/AbstractSurface;）。
+     * 这些类未登记时，native 拿不到字段/方法 ID，随后 {@code JNI_ThrowNew} 也失败，
+     * 整个进程 abort —— 与 JVM 模式（JNI 天然可用）表现完全不同。</p>
+     */
+    private static final List<String> PISCES_JNI_CLASSES = List.of(
+            "com.sun.pisces.AbstractSurface",
+            "com.sun.pisces.JavaSurface",
+            "com.sun.pisces.PiscesRenderer",
+            "com.sun.pisces.Transform6");
+
+    @Test
+    void jniConfigRegistersPiscesSoftwareRendererClasses() throws IOException {
+        String json = Files.readString(JNI_CONFIG, StandardCharsets.UTF_8);
+        for (String type : PISCES_JNI_CLASSES) {
+            assertThat(json)
+                    .as("%s 的 native 用 GetFieldID 查 nativePtr / dataInt / surface，"
+                            + "未登记时 SW 渲染一启动就 JNI FatalError（issue #393）", type)
+                    .contains("\"" + type + "\"");
+            assertThat(entryFor(json, type))
+                    .as("%s 必须用 allDeclared* 全量登记（字段/方法名跨版本会漂移）", type)
+                    .contains("allDeclaredMethods")
+                    .contains("allDeclaredFields");
+        }
+        // JNIUtil.JNI_ThrowNew 会 FindClass 这个异常类；未登记时连“报错”都报不出来
+        assertThat(json).contains("\"java.lang.OutOfMemoryError\"");
+    }
+
     @Test
     void jniConfigRegistersPlatformInitClasses() throws IOException {
         String json = Files.readString(JNI_CONFIG);

@@ -64,6 +64,15 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
+  - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
+    JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
+    并 abort，窗口刚出来就消失；
+  - 根因：`libprism_sw.so` 的 Pisces native 用静态 JNI 命名绑定，并用 `GetFieldID` 查
+    `nativePtr` / `dataInt` / `surface`，但这些类**从未登记进 `jni-config.json`**；
+  - 补登记 `com.sun.pisces.AbstractSurface` / `JavaSurface` / `PiscesRenderer` / `Transform6`
+    与 `java.lang.OutOfMemoryError`（`JNI_ThrowNew` 会 `FindClass` 它）；
+  - `NativeImageMetadataTest` 新增 `jniConfigRegistersPiscesSoftwareRendererClasses()` 守住这 5 项。
 - **POSIX 发行包不再带 Windows 专属脚本（issue #381，2026-10-20）**：
   - `ubuntu-amd64` / `macos-aarch64` 的四种包（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）
     不再包含 `AhaCli.bat` / `AhaDesktop.bat` / `apply-update.cmd` / `AhaApplyUpdate.ps1`；
