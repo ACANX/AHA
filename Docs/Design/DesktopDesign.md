@@ -278,7 +278,7 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
 ### 6.3.1 回合级取消与轮次号（2026-10-21，PR #404 审查 P2-2 补全）
 
-会话复位（新建 / 切换 / 删除当前 / 关窗）时，**必须同时做两件事**，缺一不可：
+会话复位（新建 / 切换 / 删除当前 / 关窗 / **清空对话**）时，**必须同时做两件事**，缺一不可：
 
 1. **取消在途令牌**（`CancellationToken.cancel()`）——让引擎在下一个检查点收手，少跑工具、少花钱。
 2. **推进轮次号**（`ChatController.roundSeq`）——令牌是**协作式**的：已经进入 HTTP 流的事件
@@ -308,6 +308,12 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 若跳过 `null` 分支，旧回合就会把内容写进刚打开的那个会话。这条竞态由
 `openingTheFirstSessionBeforeTheRoundStartsKeepsItOut` 用队列式执行器固定住
 （`List::add` 当执行器，手动 `run` 才推进，从而把「已领号、未开跑」的窗口暴露出来）。
+
+「清空对话」（`/clear` 与菜单）不换会话，因此不经过 `newSession()` / `openSession()`：
+`DesktopShell` 把它统一成 `onClearRequest` 回调，宿主接成
+`controller.abortCurrentTurn() → shell.clearConversation()`。漏掉前者的话，`reset()` 会让
+代际号前进，旧回合的新增量反而带着**当前**代际通过校验（代际号只管「已排队的快照」，
+管不了「生产端仍在产出的正文」），旧正文就成了清空后的第一段（PR #404 审查 P1-①）。
 
 卡片句柄（`openCards` / `cardStartedAt`）在复位时一并清空：否则上一轮的工具结果会把
 新会话里同名工具的卡片关掉。
