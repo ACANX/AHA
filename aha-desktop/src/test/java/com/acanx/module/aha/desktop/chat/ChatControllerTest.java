@@ -373,4 +373,209 @@ class ChatControllerTest {
 
         assertThat(view.cardResults).isEmpty();
     }
+
+    // ------------------------------------------------ 回合作废（PR #404 审查 P2-2 补全）
+
+    @Test
+    void newSessionMidStreamDropsTheRemainingContentOfTheAbandonedTurn() {
+        // 一轮里两段正文；「第一段结束」那一刻用户点了「＋ 新建会话」
+        service.script.add(new ContentEvent("s1", "上一会话的开场白"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ContentEvent("s1", "上一会话的总结"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new DoneEvent("s1", "stop"));
+        service.afterEach = sent -> {
+            if (sent == 2) {
+                controller.newSession();
+                view.clearConversation();
+            }
+        };
+
+        controller.send("看看代码");
+
+        // clearConversation() 本身会清掉记录：所以「清空之后再没有增量进来」等于 deltas 为空
+        assertThat(view.clears).isEqualTo(1);
+        assertThat(view.deltas)
+                .as("复位之后的增量不得再进视图，否则旧正文成了新会话的第一段")
+                .isEmpty();
+        assertThat(view.ends)
+                .as("旧回合的段收尾不得再打到新会话上：只剩清空前那一次")
+                .isEqualTo(1);
+        assertThat(service.lastToken.isCancelled())
+                .as("复位要顺手取消在途令牌，让引擎尽早收手")
+                .isTrue();
+    }
+
+    @Test
+    void staleTurnDoesNotClearTheBusyStateOfTheNewSession() {
+        // 旧回合的 DoneEvent 若照常投递，会把新会话的「生成中」清掉
+        service.script.add(new ContentEvent("s1", "开场白"));
+        service.script.add(new DoneEvent("s1", "stop"));
+        service.afterEach = sent -> {
+            if (sent == 1) {
+                controller.newSession();
+            }
+        };
+
+        controller.send("看看代码");
+
+        // busy 的两次 true/false 都来自同一轮：复位后旧回合的 false 必须被丢弃，
+        // 于是最后一条 busy 记录仍是「本轮开始」的 true（新回合还没开始）
+        assertThat(view.busy)
+                .as("作废回合不得改动新会话的忙碌态")
+                .containsExactly(true);
+    }
+
+    @Test
+    void switchingToAnotherSessionMidStreamKeepsTheReplayClean() {
+        service.histories.put("S2", java.util.List.of(
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.ASSISTANT, "旧会话的第一答")));
+        service.script.add(new ContentEvent("s1", "在途正文"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ContentEvent("s1", "在途正文续"));
+        service.afterEach = sent -> {
+            if (sent == 1) {
+                controller.openSession("S2");
+            }
+        };
+
+        controller.send("看看代码");
+
+        assertThat(view.deltas)
+                .as("切会话后只应有回放内容，在途旧回合的后续正文要丢掉")
+                .containsExactly("旧会话的第一答");
+    }
+
+    @Test
+    void deletingTheCurrentSessionMidStreamStopsFurtherRendering() {
+        service.script.add(new ContentEvent("s1", "在途正文"));
+        service.script.add(new ContentEvent("s1", "在途正文续"));
+        service.afterEach = sent -> {
+            if (sent == 1) {
+                // FakeAgentService 的首个会话固定叫 session-1
+                controller.deleteSession("session-1");
+            }
+        };
+
+        controller.send("看看代码");
+
+        assertThat(service.deleted).containsExactly("session-1");
+        assertThat(view.deltas)
+                .as("已删除会话的回合不得继续渲染")
+                .containsExactly("在途正文");
+    }
+
+    @Test
+    void toolCardsOfAnAbandonedTurnDoNotLeakIntoTheNewSession() {
+        // 旧回合开了一张卡片但没等到结果；复位后这张卡片不许去关新会话的卡片
+        service.script.add(new ToolCallEvent("s1", "file-read", java.util.Map.of("path", "A.java")));
+        service.script.add(new ContentEvent("s1", "在途正文"));
+        service.afterEach = sent -> {
+            if (sent == 2) {
+                controller.newSession();
+            }
+        };
+
+        controller.send("看看代码");
+
+        assertThat(view.cardResults)
+                .as("作废回合在途的卡片句柄要一并清掉，避免旧结果关掉新卡片")
+                .isEmpty();
+    }
+
+    @Test
+    void queuedUiActionsOfAStaleTurnAreDroppedAtExecutionTime() {
+        // 真实生产里 ui 是 Platform.runLater（异步）：动作已入队、复位随后才发生。
+        // 正文增量按 P1-1 直投视图（不入队），所以这里盯的是**入队**的那几类：
+        // 忙碌态、用量、错误、工具卡片——它们执行时必须再查一次轮次号。
+        java.util.List<Runnable> queue = new java.util.ArrayList<>();
+        RecordingChatView asyncView = new RecordingChatView();
+        ChatController async = new ChatController(asyncView, service,
+                new SessionConfig("gpt-4o", null, null), Runnable::run, queue::add, nanos::get);
+
+        service.script.add(new ContentEvent("s1", "在途正文"));
+        service.script.add(new UsageEvent("s1", 10, 20));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        async.send("看看代码");
+        async.newSession();          // 复位发生在 UI 队列还堵着的时候
+        queue.forEach(Runnable::run);
+
+        assertThat(asyncView.busy)
+                .as("已入队的旧回合动作，执行时要再查一次轮次号")
+                .isEmpty();
+        assertThat(asyncView.usage)
+                .as("用量属于作废回合，不该刷到新会话")
+                .isNull();
+    }
+
+    @Test
+    void openingTheFirstSessionBeforeTheRoundStartsKeepsItOut() {
+        // 真实竞态：send() 把 runRound 丢进执行器就返回，此时 sessionId 还是 null；
+        // 用户在这一瞬间点开一个历史会话（回放），runRound 才轮到自己执行。
+        // 旧判据「有会话且不同」在 sessionId == null 时整个跳过，于是这一轮接着往
+        // 刚回放完的会话里写——必须改成「目标会话与当前不同就作废」。
+        java.util.Deque<Runnable> tasks = new java.util.ArrayDeque<>();
+        RecordingChatView asyncView = new RecordingChatView();
+        ChatController async = new ChatController(asyncView, service,
+                new SessionConfig("gpt-4o", null, null), tasks::add, Runnable::run, nanos::get);
+        service.histories.put("S1", java.util.List.of(
+                com.acanx.module.aha.core.llm.protocol.ChatMessage.text(
+                        com.acanx.module.aha.core.llm.protocol.Role.ASSISTANT, "历史回答")));
+        service.script.add(new ContentEvent("s1", "在途正文"));
+
+        async.send("看看代码");          // 回合已领号，但还没开始跑
+        assertThat(async.sessionId()).isNull();
+        async.openSession("S1");          // 抢在 ensureSession() 之前打开历史会话
+        tasks.forEach(Runnable::run);     // 回合现在才执行
+
+        assertThat(asyncView.deltas)
+                .as("被抢先打开的会话不该再收到上一轮的内容")
+                .containsExactly("历史回答");
+        assertThat(service.created)
+                .as("作废的回合不该再落库出一个空会话")
+                .isEmpty();
+    }
+
+    @Test
+    void openingTheSameSessionAgainKeepsTheTurnAlive() {
+        // 防误伤：重复打开同一个会话不是复位，不能把在途回合打断
+        service.histories.put("S1", java.util.List.of());
+        controller.openSession("S1");
+        service.script.add(new ContentEvent("s1", "开场白"));
+        service.script.add(new ContentEvent("s1", "总结"));
+        service.afterEach = sent -> {
+            if (sent == 1) {
+                controller.openSession("S1");
+            }
+        };
+
+        controller.send("看看代码");
+
+        // openSession 会 clearConversation（回放前清屏），所以「开场白」被清掉了；
+        // 关键在复位**之后**那条增量还在：回合没被打断。
+        assertThat(view.deltas)
+                .as("重新打开同一会话不该取消正在进行的回合")
+                .containsExactly("总结");
+        assertThat(service.lastToken.isCancelled())
+                .as("同一会话不是复位，令牌不该被取消")
+                .isFalse();
+    }
+
+    @Test
+    void aNormalTurnStillRendersEverything() {
+        // 防回归：不作废任何回合时，行为与本 PR 现状一致
+        service.script.add(new ContentEvent("s1", "开场白"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ContentEvent("s1", "总结"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        controller.send("看看代码");
+
+        assertThat(view.deltas).containsExactly("开场白", "总结");
+        assertThat(view.ends).isEqualTo(3);
+        assertThat(view.busy).containsExactly(true, false);
+    }
 }

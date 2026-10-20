@@ -45,6 +45,14 @@ final class FakeAgentService implements AgentService {
     /** 置为 true 时先发完脚本再抛异常（模拟传到一半连接被掐断）。 */
     boolean failMidStream;
 
+    /**
+     * 每发完一条脚本事件后回调（参数是已发条数，从 1 起）。
+     *
+     * <p>用来模拟「生成中途用户点了按钮」：回调在 {@code streamChat} 内部、同一条线程上执行，
+     * 于是复位动作真的发生在**事件流还没结束时**——这正是 PR #404 审查 P2-2 的场景。</p>
+     */
+    java.util.function.IntConsumer afterEach = n -> { };
+
     @Override
     public String createSession(SessionConfig config) {
         created.add(config);
@@ -75,7 +83,11 @@ final class FakeAgentService implements AgentService {
         if (failOnSend) {
             throw new IllegalStateException("模拟发送失败");
         }
-        script.forEach(listener::onEvent);
+        int sent = 0;
+        for (AgentEvent event : script) {
+            listener.onEvent(event);
+            afterEach.accept(++sent);
+        }
         if (failMidStream) {
             throw new IllegalStateException("模拟流式传输中断");
         }
