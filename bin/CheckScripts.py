@@ -180,10 +180,23 @@ JAVA_UPDATE_LAUNCHER = JAVA_UPDATE_DIR / "UpdateLauncher.java"
 JAVA_UPDATE_PATHS = JAVA_UPDATE_DIR / "UpdatePaths.java"
 PS_APPLY_UPDATE = ROOT / "Dist" / "AhaApplyUpdate.ps1"
 #: 必须把换装 helper 打进**包根**的两条发行线（缺一个，那条线的自更新就是死的）
+#: 注：描述符本身是平台无关的，仍收 helper；POSIX 包里的 `.cmd` / `.ps1` 由出包腿
+#: 在生成清单前裁掉（issue #381，`PrunePlatformScripts.py`）。
 HELPER_PACKAGES = {
     "桌面端 JVM（jar 便携包）": ASSEMBLY_DESCRIPTORS["desktop"],
     "桌面端原生（单文件）": ROOT / "aha-desktop-native" / "src" / "assembly" / "dist-native.xml",
 }
+
+#: 必须在生成包内清单前调用 POSIX 裁剪的四条出包线（issue #381）
+PLATFORM_PACKAGE_WORKFLOWS = {
+    ".github/workflows/CliReleasePackageLeg.yml": "CLI-JVM",
+    ".github/workflows/DesktopPackageLeg.yml": "桌面端 JVM",
+    ".github/workflows/NativeImageLeg.yml": "桌面端原生",
+    ".github/workflows/CliNativeImageLeg.yml": "CLI 原生",
+    ".github/workflows/BuildMvnArtifactLeg.yml": "Build 制品腿（dev 预发行）",
+}
+#: 按平台裁剪 Windows 专属脚本的脚本（唯一实现，工作流只负责调用）
+PRUNE_SCRIPT = ROOT / ".github" / "Python" / "PrunePlatformScripts.py"
 #: 「作业里调用仓库脚本 ⇒ 该作业必须先 checkout」要认的解释器/入口
 REPO_SCRIPT_CALL_RE = re.compile(
     r"\b(?:python3?|bash|sh|pwsh|powershell)\s+(?:-\S+\s+)*[\"']?(\.github/|bin/|Script/|Dist/)[\w./-]+"
@@ -1616,6 +1629,10 @@ def check_update_helper_packaging() -> list[str]:
     因此这里把三件事钉死：① 两条发行线的装配描述符都必须收 helper；
     ② helper 必须存在**且被 git 跟踪**；③ helper 写「已启动」标记的名字与 Java 侧逐字一致
     （App 拉起 helper 后要等这个标记才敢退出，名字漂移就会永远等不到）。
+
+    issue #381 起口径补充：描述符仍是平台无关的（Windows 包需要 helper），
+    POSIX 包里的 `.cmd` / `.ps1` 由出包腿裁剪 —— 那一条由
+    `check_platform_package_scripts()` 钉住，本函数仍要求描述符收齐 helper。
     """
     problems: list[str] = []
     if not JAVA_UPDATE_LAUNCHER.exists():
@@ -1685,6 +1702,46 @@ def check_update_helper_packaging() -> list[str]:
             problems.append(
                 f"换装「已启动」标记名不一致：Java 侧 {match.group(1)!r} 没有出现在 "
                 f"{PS_APPLY_UPDATE.relative_to(ROOT)}（App 会永远等不到标记而不敢退出）"
+            )
+    return problems
+
+
+def check_platform_package_scripts() -> list[str]:
+    """POSIX 发行包里不得出现 Windows 专属脚本（issue #381）。
+
+    四条出包线（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）在**生成包内清单之前**
+    必须调用 `.github/Python/PrunePlatformScripts.py`：
+
+      * 包内容由 assembly / 工作流清单决定，但它们都是**平台无关**的；
+      * 若只改描述符而不裁剪，Ubuntu / macOS 包里会继续带着 `.bat` / `.cmd` / `.ps1`；
+      * 裁剪必须在清单生成之前，否则 `AHA-PACKAGE.json` 会出现「清单里有、包里没有」。
+
+    同时守住 CLI-JVM 的入口断言：不能再无条件要求 `AhaCli.bat`（POSIX 包已不含它）。
+    """
+    problems: list[str] = []
+    if not PRUNE_SCRIPT.exists():
+        return [f"缺 {PRUNE_SCRIPT.relative_to(ROOT)}（POSIX 包裁剪 Windows 专属脚本，issue #381）"]
+    for rel, label in PLATFORM_PACKAGE_WORKFLOWS.items():
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"缺出包工作流 {rel}（{label}）")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "PrunePlatformScripts.py" not in text:
+            problems.append(
+                f"{rel}：{label} 打包后没有调用 PrunePlatformScripts.py"
+                "（POSIX 包会带上 .bat / .cmd / .ps1，issue #381）"
+            )
+        elif "--check-only" not in text:
+            problems.append(f"{rel}：{label} 没有用 --check-only 断言裁剪结果")
+
+    cli_leg = ROOT / ".github" / "workflows" / "CliReleasePackageLeg.yml"
+    if cli_leg.exists():
+        text = cli_leg.read_text(encoding="utf-8")
+        if re.search(r"for f in aha-cli\.jar AhaCli\.sh AhaCli\.bat", text):
+            problems.append(
+                f"{cli_leg.relative_to(ROOT)}：入口断言仍无条件要求 AhaCli.bat"
+                "（POSIX 包不再包含它，issue #381）"
             )
     return problems
 
@@ -1807,6 +1864,8 @@ def main() -> int:
     problems.extend(input_compare)
     helper_pkg = check_update_helper_packaging()
     problems.extend(helper_pkg)
+    platform_scripts = check_platform_package_scripts()
+    problems.extend(platform_scripts)
     checkout = check_repo_script_steps_have_checkout()
     problems.extend(checkout)
     auto_dispatch = check_release_auto_dispatch()
@@ -1826,7 +1885,8 @@ def main() -> int:
     print(f"检查发布物矩阵与工作流一致（ReleaseMatrix，issue #269）：{'❌' if release_matrix else '✅'}")
     print(f"检查快照取件与判定的命名契约：{'❌' if snap_parity else '✅'}")
     print(f"检查快照清单与消费方一致性：{'❌' if snapshot else '✅'}")
-    print(f"检查换装 helper 打包与跟踪（两条发行线 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查换装 helper 打包与跟踪（Windows 包必带 / git 跟踪 / 启动标记）：{'❌' if helper_pkg else '✅'}")
+    print(f"检查 POSIX 包不含 Windows 专属脚本（五条出包线裁剪，issue #381）：{'❌' if platform_scripts else '✅'}")
     print(f"检查「调用仓库脚本的作业必须先 checkout」：{'❌' if checkout else '✅'}")
     print(f"检查发版自动派发链路（#238：tag → workflow_dispatch → Release.yml）：{'❌' if auto_dispatch else '✅'}")
     print(f"检查工作流的 inputs 宽松布尔比较：{'❌' if input_compare else '✅'}")
