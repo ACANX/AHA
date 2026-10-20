@@ -1202,10 +1202,12 @@ public class ExtensionException extends AhaException { ... }
 package com.acanx.module.aha.common.event;
 
 public sealed interface AgentEvent
-    permits ContentEvent, ToolCallEvent, ToolResultEvent,
+    permits ContentEvent, ContentSegmentEndEvent, ToolCallEvent, ToolResultEvent,
             UsageEvent, ErrorEvent, DoneEvent {}
 
 public record ContentEvent(String sessionId, String delta) implements AgentEvent {}
+// 一段正文结束（每轮多次）；DoneEvent 才是整轮结束（每轮一次）。见 issue #403
+public record ContentSegmentEndEvent(String sessionId) implements AgentEvent {}
 public record ToolCallEvent(String sessionId, String toolName, Map<String, Object> args) implements AgentEvent {}
 public record ToolResultEvent(String sessionId, String toolName, Object result) implements AgentEvent {}
 public record UsageEvent(String sessionId, int promptTokens, int completionTokens) implements AgentEvent {}

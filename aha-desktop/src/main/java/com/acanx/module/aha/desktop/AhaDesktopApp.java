@@ -392,6 +392,12 @@ public final class AhaDesktopApp extends Application {
             shell.appendNotice("已新建会话（供应商 / 模型改变后需要新建会话才生效）。");
             refreshSessions(shell, controller);
         });
+        // 「清空对话」（/clear 与菜单）不换会话，但同样是一次复位：先作废在途回合再清界面，
+        // 否则旧回合的后续正文会以新代际写进清空后的界面（PR #404 审查 P1-①）
+        shell.onClearRequest(() -> {
+            controller.abortCurrentTurn();
+            shell.clearConversation();
+        });
 
         controller.onSessionChanged(() ->
                 dispatcher.dispatch(() -> refreshSessions(shell, controller)));

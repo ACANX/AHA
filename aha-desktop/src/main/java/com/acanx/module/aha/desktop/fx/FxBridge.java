@@ -28,6 +28,9 @@ import java.util.function.Consumer;
  * <p>关窗后（{@link #close()}）所有 {@code submit} 静默丢弃，<strong>已排程但尚未渲染的
  * 值也一并丢弃</strong>：正在关窗，渲染已无意义；而 JavaFX 工具箱停止后再投递任务会抛异常。</p>
  *
+ * <p>内容换了「世代」（例如切换会话、清空对话流）时用 {@link #clear()}：桥仍然可用，
+ * 只是把在途值丢掉——排队的旧值若照常渲染，会写进刚被清空的新界面（PR #404 审查 P2-2）。</p>
+ *
  * @param <T> 待渲染的值类型
  * @since 0.2.0
  */
@@ -63,6 +66,16 @@ public final class FxBridge<T> {
         if (scheduled.compareAndSet(false, true)) {
             dispatcher.dispatch(this::flush);
         }
+    }
+
+    /**
+     * 丢弃在途值（桥保持可用）。
+     *
+     * <p>用于「内容换了世代」的场合：已排程的那次渲染随后取不到值，于是安静退出。
+     * 已投递但尚未执行的 UI 任务不必撤回——它取到 {@code null} 就什么都不做。</p>
+     */
+    public void clear() {
+        pending.set(null);
     }
 
     /** 关闭桥接：后续 {@link #submit} 一律丢弃（供关窗联动）。 */

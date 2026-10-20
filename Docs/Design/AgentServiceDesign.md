@@ -84,6 +84,7 @@ void stream(String sessionId, SessionConfig config, String model,
 | `CONTENT_DELTA` | `ContentEvent` |
 | `TOOL_CALL_DELTA` | （累积）→ `ToolCallEvent` |
 | `USAGE` | `UsageEvent` |
+| （每轮正文结束） | `ContentSegmentEndEvent`：非 LLM 事件，由引擎在工具执行前/整轮收尾前补发 |
 | `DONE` | `DoneEvent` |
 | `REASONING_DELTA` | 不对外透出（仅 debug 日志） |
 | `ERROR` | 日志记录，不中断流程 |

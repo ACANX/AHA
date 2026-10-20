@@ -2,6 +2,7 @@ package com.acanx.module.aha.cli.render;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
@@ -197,6 +198,11 @@ public final class StreamRenderer implements Renderer {
                 }
             }
             case UsageEvent usage -> usage(usage);
+            case ContentSegmentEndEvent ignored -> {
+                // 段边界（issue #403）：终端是顺序写的，工具块天然插在正文后面，
+                // 不需要分段动作。这里**显式**列出而不是靠 default 兜底——
+                // 让「CLI 侧确认过这条新事件」在代码里看得见。
+            }
             case DoneEvent ignored -> {
                 // 结束原因不单列一行：正常完成时输出噪音，异常时已由 ErrorEvent 呈现
             }
