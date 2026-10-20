@@ -381,7 +381,11 @@ jobs:
               cat "${report}" 2>/dev/null || true
             } >> "$GITHUB_STEP_SUMMARY"
             if [ -n "${problems}" ]; then
-              echo "::warning::冒烟发现问题：${problems}（详见本步日志与 Job Summary）"
+              # 用 ::error:: 而不是 ::warning::：本单（issue #383）的教训就是
+              # 「构建 / 打包成功」被当成了「能跑」，最终把启动即崩的包发到了发布页。
+              # 仍保留 continue-on-error（可选管线不挡合并），但结论必须看着像失败。
+              echo "::error::冒烟发现问题：${problems}（详见本步日志与 Job Summary）"
+              exit 1
             fi
             exit 0
           }
@@ -402,8 +406,11 @@ jobs:
           echo "- 可执行文件：\`${bin}\`" >> "$report"
 
           echo "—— 冒烟①：--version ——"
-          out=$("$bin" --version 2>&1)
-          code=$?
+          # 必须用 `|| code=$?` 接住非 0：runner 的默认 shell 带 `-e`，
+          # `out=$(...)` 一旦非 0 就直接终止脚本，下面的 problems 判定和 trap 里的
+          # `::error::` 全部被跳过 —— 正是 issue #383 里“崩溃了却只看到 warning”的真因。
+          code=0
+          out=$("$bin" --version 2>&1) || code=$?
           echo "$out"
           echo "退出码：${code}"
           base="${EXPECTED_VERSION%.*}"
@@ -425,8 +432,8 @@ jobs:
           fi
 
           echo "—— 冒烟②：--help ——"
-          hout=$("$bin" --help 2>&1)
-          hcode=$?
+          hcode=0
+          hout=$("$bin" --help 2>&1) || hcode=$?
           echo "$hout"
           echo "退出码：${hcode}"
           if [ "$hcode" -eq 0 ]; then
