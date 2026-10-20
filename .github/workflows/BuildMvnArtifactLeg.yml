@@ -112,8 +112,8 @@ jobs:
           target="Dist/aha-desktop-jvm-${VERSION}-${LABEL}-jdk${JDK}.zip"
           mv -- "${files[0]}" "$target"
           # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
           # 判据全部落在「解包后的实际内容」上，不看构建日志：包体形态已经回归过一次
@@ -204,8 +204,8 @@ jobs:
           python3 -c "import sys,zipfile; t=sys.argv[1]; z=zipfile.ZipFile(t,'w',zipfile.ZIP_DEFLATED); [z.write('Dist/'+n, n) for n in sys.argv[2:]]; z.close()" \
             "$target" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md
           # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
           # 与桌面端同一套口径：判据落在「打出来的 zip 里实际有什么」，不看构建日志。

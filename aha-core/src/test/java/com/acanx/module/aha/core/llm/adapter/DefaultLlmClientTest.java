@@ -80,7 +80,7 @@ class DefaultLlmClientTest {
         chatUrl = "http://127.0.0.1:" + server.port() + "/v1/chat/completions";
         LlmAdapterRegistry registry = new LlmAdapterRegistry();
         registry.register(new OpenAiAdapter());
-        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID, chatUrl, "test-key",
+        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.API_TYPE, chatUrl, "test-key",
                 "gpt-4o", 10, 1, new RateLimitConfig(0, 0), Map.of());
         client = new DefaultLlmClient(registry,
                 new LlmConfig("OpenAI", Map.of("OpenAI", provider), null, null));
@@ -170,7 +170,7 @@ class DefaultLlmClientTest {
 
     @Test
     void reportsMissingProvider() {
-        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID,
+        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.API_TYPE,
                 "http://127.0.0.1:1/v1", "k", "m", 1, 0, new RateLimitConfig(0, 0), Map.of());
         DefaultLlmClient other = new DefaultLlmClient(new LlmAdapterRegistry(),
                 new LlmConfig("Unknown", Map.of("Other", provider), null, null));
@@ -253,7 +253,7 @@ class DefaultLlmClientTest {
     private DefaultLlmClient tieredClient(Map<String, String> models, String defaultTier) {
         LlmAdapterRegistry registry = new LlmAdapterRegistry();
         registry.register(new OpenAiAdapter());
-        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.PROVIDER_ID, chatUrl, "test-key",
+        ProviderConfig provider = new ProviderConfig(OpenAiAdapter.API_TYPE, chatUrl, "test-key",
                 models, defaultTier, models.get("Standard"), 10, 0, new RateLimitConfig(0, 0), Map.of());
         return new DefaultLlmClient(registry,
                 new LlmConfig("OpenAI", Map.of("OpenAI", provider), null, null));

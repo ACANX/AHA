@@ -486,7 +486,7 @@ public final class ProviderDialog {
         ProviderConfig provider = config.providersOrEmpty().get(id);
         ProviderForm.Draft draft = ProviderForm.of(id, provider);
         editIdLabel.setText(draft.id());
-        editAdapter.setValue(draft.adapter());
+        editAdapter.setValue(draft.apiType());
         editBaseUrl.setText(draft.baseUrl());
         editModel.setText(draft.model());
         editTiers.forEach((tier, field) -> field.setText(
@@ -600,7 +600,7 @@ public final class ProviderDialog {
 
     private void fillCreate(ProviderForm.Draft draft) {
         newId.setText(draft.id());
-        newAdapter.setValue(draft.adapter());
+        newAdapter.setValue(draft.apiType());
         newBaseUrl.setText(draft.baseUrl());
         newModel.setText(draft.model());
         newTiers.forEach((tier, field) -> field.setText(

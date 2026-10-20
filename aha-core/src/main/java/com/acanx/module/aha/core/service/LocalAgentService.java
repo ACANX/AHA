@@ -249,7 +249,7 @@ public final class LocalAgentService implements AgentService {
             attributes.put("Provider", providerId);
             attributes.put("Tier", tier.configName());
             attributes.put("Model", effective == null ? "" : effective);
-            attributes.put("Adapter", provider.adapter() == null ? "" : provider.adapter());
+            attributes.put("Adapter", provider.apiType() == null ? "" : provider.apiType());
             String endpoint = resolveEndpoint(provider);
             if (endpoint != null) {
                 attributes.put("Endpoint", endpoint);
@@ -267,7 +267,7 @@ public final class LocalAgentService implements AgentService {
      */
     private String resolveEndpoint(ProviderConfig provider) {
         try {
-            return adapterRegistry.find(provider.adapter())
+            return adapterRegistry.find(provider.apiType())
                     .map(adapter -> adapter.buildUrl(provider))
                     .orElse(null);
         } catch (RuntimeException e) {

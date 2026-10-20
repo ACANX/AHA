@@ -231,7 +231,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             try {
                 limiter(provider).acquire();
                 HttpRequest httpRequest = newRequest(url, adapter.buildHeaders(provider), body, provider);
-                LOG.debug("LLM chat -> {} ({}) model={} attempt={}", url, adapter.providerId(),
+                LOG.debug("LLM chat -> {} ({}) model={} attempt={}", url, adapter.apiType(),
                         model, attempt);
                 HttpResponse<String> response =
                         httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -288,7 +288,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
             listener.onEvent(event);
         };
         try {
-            LOG.debug("LLM stream -> {} ({}) model={}", url, adapter.providerId(), attempt.model());
+            LOG.debug("LLM stream -> {} ({}) model={}", url, adapter.apiType(), attempt.model());
             HttpResponse<java.util.stream.Stream<String>> response =
                     httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
             if (response.statusCode() >= 400) {
@@ -335,7 +335,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
         Attempt fallback = globalFallbackAttempt();
         if (fallback != null) {
             try {
-                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.providerId());
+                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.label());
                 ChatResponse response = chatAttempt(request, fallback.provider(), fallback.model());
                 notifyDegraded(null, null, fallback, null);
                 return response;
@@ -365,7 +365,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
         if (fallback != null) {
             boolean[] emitted = {false};
             try {
-                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.providerId());
+                LOG.warn("供应商 {} 不可用，降级回退到兜底供应商 {}", providerKey, fallback.label());
                 streamAttempt(request, fallback.provider(), fallback, listener, token, emitted);
                 return;
             } catch (LlmException e) {
@@ -404,19 +404,19 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
      */
     private static List<Attempt> candidates(ProviderConfig provider, ModelTier tier, String model) {
         List<Attempt> list = new ArrayList<>();
-        list.add(new Attempt(provider.adapter(), tier, provider, model));
+        list.add(new Attempt(provider.apiType(), tier, provider, model));
         // 当前不是 Standard 且不是 Fallback：先降 Standard
         if (tier != ModelTier.STANDARD && tier != ModelTier.FALLBACK) {
             String standard = provider.modelFor(ModelTier.STANDARD);
             if (standard != null && !standard.equals(model)) {
-                list.add(new Attempt(provider.adapter(), ModelTier.STANDARD, provider, standard));
+                list.add(new Attempt(provider.apiType(), ModelTier.STANDARD, provider, standard));
             }
         }
         // 再降供应商 Fallback 档
         if (tier != ModelTier.FALLBACK) {
             String fallbackModel = provider.configuredModel(ModelTier.FALLBACK);
             if (fallbackModel != null && !containsModel(list, fallbackModel)) {
-                list.add(new Attempt(provider.adapter(), ModelTier.FALLBACK, provider, fallbackModel));
+                list.add(new Attempt(provider.apiType(), ModelTier.FALLBACK, provider, fallbackModel));
             }
         }
         return list;
@@ -610,7 +610,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
     }
 
     private LlmProviderAdapter resolveAdapter(ProviderConfig provider) {
-        String adapterId = provider.adapter();
+        String adapterId = provider.apiType();
         return registry.find(adapterId)
                 .orElseThrow(() -> new LlmException("ADAPTER_NOT_FOUND",
                         "未找到适配器: " + adapterId));
@@ -619,7 +619,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
     private String streamUrl(LlmProviderAdapter adapter, ProviderConfig provider) {
         String url = adapter.buildUrl(provider);
         // Gemini 流式端点与生成端点不同
-        if ("gemini".equals(adapter.providerId())) {
+        if ("gemini".equals(adapter.apiType())) {
             return url.replace(":generateContent", ":streamGenerateContent?alt=sse");
         }
         return url;
@@ -650,7 +650,7 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
 
     private RateLimiter limiter(ProviderConfig provider) {
         int rpm = provider.rateLimit() == null ? 0 : provider.rateLimit().rpm();
-        return limiters.computeIfAbsent(provider.adapter() + "@" + rpm, k -> new RateLimiter(rpm));
+        return limiters.computeIfAbsent(provider.apiType() + "@" + rpm, k -> new RateLimiter(rpm));
     }
 
     private static void backoff(int attempt) {
@@ -666,13 +666,13 @@ public final class DefaultLlmClient implements LlmClient, AutoCloseable {
     /**
      * 一次尝试的档位 / 供应商 / 模型。
      *
-     * @param providerId 供应商标识
-     * @param tier       档位
-     * @param provider   供应商配置
-     * @param model      模型
+     * @param label    诊断标签（供应商标识或 ApiType，只用于日志）
+     * @param tier     档位
+     * @param provider 供应商配置
+     * @param model    模型
      * @since 0.1.0
      */
-    private record Attempt(String providerId, ModelTier tier, ProviderConfig provider, String model) {
+    private record Attempt(String label, ModelTier tier, ProviderConfig provider, String model) {
     }
 
     /**

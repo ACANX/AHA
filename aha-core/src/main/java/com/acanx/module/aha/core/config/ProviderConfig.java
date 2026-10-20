@@ -369,7 +369,9 @@ public record ProviderConfig(
      * 旧字段兼容：适配器类型。
      *
      * @return {@code ApiType}
+     * @deprecated 名字与配置不一致：直接用 {@link #apiType()}（issue #361）
      */
+    @Deprecated
     public String adapter() {
         return apiType;
     }
