@@ -14,6 +14,14 @@ name: NativeEaProbe
 # - 只构建桌面端原生镜像，不打包、不出快照、不发版；
 # - 构建失败即结论（红），不做重试（`attempts: 1`）——重试只会把同一个确定性崩溃跑三遍。
 #
+# 配置依据（graalvm/setup-graalvm 官方文档）：
+# - Marketplace：https://github.com/marketplace/actions/github-action-for-graalvm
+# - README「Template for Oracle GraalVM Early Access (EA) builds」：
+#     java-version: '25i5-ea'   # or 'latest-ea' for the latest release
+#     distribution: 'graalvm'
+# - README「Options」表：EA 写法 `'25i5-ea'` / `'latest-ea'` 要求 `distribution: 'graalvm'`；
+#   而 `version` 是给 release 用的（`25.4`、`25i-latest`），**设了会绕过 EA**。
+#
 # 结论看 `ReportOutcome` 写的 job summary。
 
 on:
