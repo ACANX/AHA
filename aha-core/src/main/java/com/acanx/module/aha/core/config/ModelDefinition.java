@@ -21,6 +21,7 @@ import java.util.Map;
  * @param input           输入模态（{@code text} / {@code image} / {@code audio}），为空时按 {@code text}
  * @param contextWindow   上下文窗口（token），未知时为 {@code null}
  * @param maxTokens       最大输出 token，未知时为 {@code null}
+ * @param thinkingLevel   当前思考强度（如 {@code Max}）；为空时取映射表第一个键（issue #355）
  * @param thinkingLevelMap 思考强度 → 供应商参数值（如 {@code Max: "max"}）
  * @since 0.1.5
  */
@@ -32,6 +33,7 @@ public record ModelDefinition(
         @JsonProperty("Input") List<String> input,
         @JsonProperty("ContextWindow") Integer contextWindow,
         @JsonProperty("MaxTokens") Integer maxTokens,
+        @JsonProperty("ThinkingLevel") String thinkingLevel,
         @JsonProperty("ThinkingLevelMap") Map<String, String> thinkingLevelMap
 ) {
 
@@ -47,7 +49,7 @@ public record ModelDefinition(
      * @return 模型定义
      */
     public static ModelDefinition ofName(String name) {
-        return new ModelDefinition(name, false, null, null, null, null);
+        return new ModelDefinition(name, false, null, null, null, null, null);
     }
 
     /**
@@ -112,5 +114,24 @@ public record ModelDefinition(
      */
     public boolean hasThinkingLevels() {
         return !thinkingLevelMapOrEmpty().isEmpty();
+    }
+
+    /**
+     * 当前生效的思考强度（issue #355）。
+     *
+     * <p>优先级：显式 {@code ThinkingLevel} → {@code ThinkingLevelMap} 的第一个键（YAML 保序，
+     * 即配置里最先写的那一档）→ {@code null}（模型不支持 / 未配置）。</p>
+     *
+     * @return 强度名；无法确定时为 {@code null}
+     */
+    public String effectiveThinkingLevel() {
+        if (thinkingLevel != null && !thinkingLevel.isBlank()) {
+            return thinkingLevel;
+        }
+        Map<String, String> levels = thinkingLevelMapOrEmpty();
+        if (levels.isEmpty()) {
+            return null;
+        }
+        return levels.keySet().iterator().next();
     }
 }

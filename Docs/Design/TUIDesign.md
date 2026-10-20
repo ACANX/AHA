@@ -1,6 +1,6 @@
 # AHA TUI 设计（当前实现）
 
-**文档版本**：v1.15.0
+**文档版本**：v1.16.0
 **状态**：已实现（0.1.x）
 **生效日期**：2026-10-07
 **最后更新**：2026-10-20
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-07 | 初始版本：整理当前 TUI 的支持范围、支持程度、版面样式示例与实现细节 | @ACANX |
+| v1.16.0 | 2026-10-20 | §3.4 状态栏「思考强度」补数据源与三项拍板结论（`ThinkingLevel` 优先、`ThinkingLevelMap` 首键回退、`-` 缺省；工作目录保持现状；供应商显示配置键）；运行时切换拆到 #399（issue #355） | @cnxnc |
 | v1.15.0 | 2026-10-20 | §5.4 补 **Windows VT 输入模式（0x0200）**：`tty/VtInputMode` 每轮 `readLine` 把 0x0200 补回输入模式，让 `ESC[200~` 标记透传给 JLine；§5.4.2 更正「conhost 改不了」的前提（JLine 从未开 0x0200），补实测对照表与 `AHA_PASTE_VT` 开关；§7.2 补 `VtInputMode.java` | @cnxnc |
 | v1.13.0 | 2026-10-16 | §5.4 扩写并**更正上一轮的说法**：conhost 上直接粘贴多行**改不了**（JLine 的 Windows 终端里，粘贴的换行与敲的回车在字节层面完全相同），改为「降级 + 侧门」——新增 `Alt+V`/`Ctrl+V` 自读剪贴板（`tty/ClipboardPaste`）、大块内容折叠为 `[paste #N +M lines]`（`tty/PastePlaceholder`，与 pi / Claude Code 同门槛同形状）、默认关闭的输入留痕 `AHA_INPUT_TRACE`（`tty/InputTrace`）；补 §5.4.1 同类工具做法对照表 | @ACANX / CNXNC |
 | v1.12.0 | 2026-10-16 | §5.4 新增「粘贴能力（括号粘贴）」：把 conhost 逐行提交明确写进降级矩阵，并给出替代入口 `/paste`（读剪贴板，不经过终端）与启动提示；§7.2 补 `Clipboard.java`、`TerminalCapabilities` 职责更新（issue #75） | @cnxnc |
@@ -339,9 +340,19 @@ CLI 的输入行**没有 `> ` 提示符**（prompt 只带上下边线），所�
 | 供应商 | `RuntimeDescriptor.attributes.Provider`（`Model.yml` 的配置键） | `-`（不省略，供应商是排查「连的是哪个后端」的第一信息） |
 | 档位 | `attributes.Tier`（Ultra / Pro / Standard / Flash / Fallback） | 省略该段 |
 | 模型名 | `--model`，否则 `attributes.Model` | `-` |
-| 思考强度 | **数据源待定**（issue #353） | `-`（不编造「低 / 中 / 高」） |
+| 思考强度 | `attributes.ThinkingLevel`：生效模型的 `ThinkingLevel`；未配置时取 `ThinkingLevelMap` 的第一个键（YAML 保序，issue #355） | `-`（不编造「低 / 中 / 高」） |
 | 目录 | 工作目录；**完整路径优先** | 省略目录段 |
 | Git 分支 | 目录向上找 `.git` 读 `HEAD`；detached 显示 7 位短 sha | 不展示 |
+
+**思考强度的数据源（issue #355 拍板）**：
+
+| 项 | 结论 |
+|---|---|
+| 数据源 | **供应商模型配置优先**：`Model.Providers.<Id>.Models.<模型ID>.ThinkingLevel`；未配置时取 `ThinkingLevelMap` 的第一个键 |
+| 缺省 | 模型不支持思考强度（无 `ThinkingLevel` 且无 `ThinkingLevelMap`）→ 显示 `-`，不编造 |
+| 工作目录 | 启动时以**执行命令所在目录**为工作目录，不提供 `--workspace` / `-C` |
+| 供应商显示 | 显示 `Model.Providers.<Id>` 的**配置键**（如 `DeepSeek`），不引入 `DisplayName` |
+| 运行时切换 | 不在本期，拆到 #399（`/thinking`，V0.3.0） |
 
 目录展示规则（`StatusBar.shorten`）：
 

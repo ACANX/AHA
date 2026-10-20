@@ -10,6 +10,16 @@
 
 ## [Unreleased]
 
+### 新增
+- **状态栏显示思考强度（issue #355，2026-10-20）**：
+  - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
+    的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；
+  - `ProviderConfig#thinkingLevel(...)`、`LocalAgentService.runtime()` 新增 `ThinkingLevel` 属性，
+    `ChatCommand#statusEffort` 读它，状态栏由「恒 `-`」变为显示当前强度；
+  - 旧配置（无新字段）不报错，回退到 `-`；
+  - 工作目录与供应商显示维持现状（#355 拍板：不新增 `--workspace`，仍显示配置键）；
+  - 运行时切换（`/thinking`）拆到 #399（V0.3.0）。
+
 ### 变更
 - **SPI 命名统一为 ApiType（issue #361）**：
   - `LlmProviderAdapter` 新增 `default apiType()`（与配置 `Model.Providers.<Id>.ApiType` 同名），
