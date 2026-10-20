@@ -162,10 +162,17 @@ public final class MarkdownRenderer {
         VBox box = new VBox(2);
         int number = list.start();
         for (MarkdownBlock.ListItem item : list.items()) {
-            String marker = list.ordered() ? (number++) + "." : "•";
+            // 任务项：只读复选框字形，不挂点击事件——勾选状态属于文案，改它等于篡改回答
+            MarkdownTask.Task task = MarkdownTask.of(item.text());
+            String marker;
+            if (task != null) {
+                marker = task.checked() ? "\u2611" : "\u2610";
+            } else {
+                marker = list.ordered() ? (number++) + "." : "\u2022";
+            }
             Label bullet = new Label(marker);
             styler.apply(bullet, () -> "-fx-text-fill: " + Palette.MUTED + ";");
-            Node text = inlineFlow(item.text());
+            Node text = inlineFlow(task != null ? task.text() : item.text());
             HBox row = new HBox(6, bullet, text);
             row.setPadding(new Insets(0, 0, 0, item.indent() * LIST_INDENT));
             box.getChildren().add(row);
@@ -201,16 +208,14 @@ public final class MarkdownRenderer {
         grid.setPadding(new Insets(2));
 
         for (int column = 0; column < table.header().size(); column++) {
-            Label cell = new Label(table.header().get(column));
-            styler.apply(cell, () -> "-fx-text-fill: " + Palette.FOREGROUND + "; -fx-font-weight: bold;");
+            Node cell = tableCell(table.header().get(column), true);
             GridPane.setHalignment(cell, alignment(table.aligns(), column));
             grid.add(cell, column, 0);
         }
         for (int row = 0; row < table.rows().size(); row++) {
             List<String> cells = table.rows().get(row);
             for (int column = 0; column < cells.size(); column++) {
-                Label cell = new Label(cells.get(column));
-                styler.apply(cell, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
+                Node cell = tableCell(cells.get(column), false);
                 GridPane.setHalignment(cell, alignment(table.aligns(), column));
                 grid.add(cell, column, row + 1);
             }
@@ -219,10 +224,30 @@ public final class MarkdownRenderer {
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToHeight(false);
         scroll.setFitToWidth(false);
+        scroll.setPannable(true);
         scroll.setPrefHeight(Math.min(MAX_BLOCK_HEIGHT,
                 24 + table.rows().size() * 22));
         styler.apply(scroll, () -> "-fx-background: transparent; -fx-background-color: transparent;");
         return scroll;
+    }
+
+    /**
+     * 表格单元格：走行内解析，因此粗体 / 代码 / 链接在表里同样生效（S2.1）。
+     *
+     * <p>用 {@code TextFlow} 而不是 {@code Label}：{@code Label} 只吃纯文本，
+     * 行内样式会被整段丢掉。列宽由 {@code GridPane} 按单元格 pref 宽度算，
+     * 超宽时外层 {@code ScrollPane} 横向滚动，不压缩列宽。</p>
+     *
+     * @param text   单元格文本
+     * @param header 是否表头（整格加粗）
+     * @return 单元格节点
+     */
+    private TextFlow tableCell(String text, boolean header) {
+        TextFlow flow = new TextFlow();
+        for (MarkdownInline inline : inlineParser.parse(text)) {
+            flow.getChildren().add(inlineNode(inline, header ? "-fx-font-weight: bold;" : ""));
+        }
+        return flow;
     }
 
     private static javafx.geometry.HPos alignment(List<MarkdownBlock.Align> aligns, int column) {

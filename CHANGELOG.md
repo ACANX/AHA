@@ -56,6 +56,12 @@
   - `DesktopShell`：段收尾后把纯文本气泡替换为富文本（进行中的段仍是纯文本），
     原始 Markdown 存为气泡属性——右键提供「查看原文 / 复制 Markdown / 导出为 .md / 切换原文渲染」；
   - 测试：`MarkdownInlineParserTest` 12 条；渲染器冒烟 2 条（`-Daha.ui.tests=true`）。
+- **桌面端 Markdown 表格与任务列表（#408 S2.1/S2.3，#419 #421，2026-10-20）**：
+  - 表格单元格改用 `TextFlow`：粗体 / 行内代码 / 链接在表内同样生效，表头整格加粗；
+    `GridPane` 按单元格 pref 宽度算列宽，超宽走外层 `ScrollPane` 横向滚动（`setPannable`），不压缩列宽；
+  - 任务列表识别 `[ ]` / `[x]` / `[X]`，渲染为只读复选框字形（`☐` / `☑`），不挂点击事件；
+  - 新增 `MarkdownTask`（纯逻辑，可无头单测）与 `MarkdownTaskTest` 4 条；
+  - 渲染器冒烟追加表格逐格（行列 / 对齐 / 行内样式）与任务列表字形断言。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；

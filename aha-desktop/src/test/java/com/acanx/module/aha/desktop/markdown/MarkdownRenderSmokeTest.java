@@ -1,10 +1,13 @@
 package com.acanx.module.aha.desktop.markdown;
 
 import javafx.application.Platform;
+import javafx.geometry.HPos;
 import javafx.scene.Node;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
@@ -116,6 +119,48 @@ class MarkdownRenderSmokeTest {
 
         TextFlow flow = (TextFlow) ((VBox) root).getChildren().get(0);
         assertThat(flow.getChildren()).anyMatch(node -> node instanceof Hyperlink);
+    }
+
+    @Test
+    void tableCellsKeepInlineStylesAndAlignment() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("""
+                | 左 | 中 |
+                |:--|:-:|
+                | **粗** | `c` |
+                """));
+
+        ScrollPane scroll = (ScrollPane) ((VBox) root).getChildren().get(0);
+        GridPane grid = (GridPane) scroll.getContent();
+        assertThat(grid.getChildren()).hasSize(4);
+        // 第 3 个子节点是数据行第一格，说明表头之外的行确实进了 GridPane
+        assertThat(GridPane.getRowIndex(grid.getChildren().get(2))).isEqualTo(1);
+        assertThat(((TextFlow) grid.getChildren().get(2)).getChildren())
+                .anyMatch(node -> node instanceof Text);
+        assertThat(GridPane.getHalignment(grid.getChildren().get(3))).isEqualTo(HPos.CENTER);
+        assertThat(GridPane.getHalignment(grid.getChildren().get(2))).isEqualTo(HPos.LEFT);
+    }
+
+    @Test
+    void taskListRendersReadOnlyCheckboxGlyphs() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("- [ ] 未做\n- [x] 已做\n- [X] 也算\n"));
+
+        VBox list = (VBox) ((VBox) root).getChildren().get(0);
+        assertThat(list.getChildren()).hasSize(3);
+        assertThat(list.getChildren())
+                .extracting(row -> ((Label) ((HBox) row).getChildren().get(0)).getText())
+                .containsExactly("\u2610", "\u2611", "\u2611");
+        // 只读：符号是 Label，没有 setOnMouseClicked 之类的交互
+        assertThat(list.getChildren())
+                .allSatisfy(row -> assertThat(((HBox) row).getChildren().get(0))
+                        .isInstanceOf(Label.class));
     }
 
     @Test
