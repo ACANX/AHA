@@ -93,6 +93,17 @@
     `UnicodeEncodeError: 'charmap' codec can't encode character '\uff1a'`；
   - 5 条出包线统一补 UTF-8 环境变量；脚本入口 `sys.stdout.reconfigure(...)` 兜底；
     `bin/CheckScripts.py` 增加守卫，调用行缺 UTF-8 环境即报红。
+- **Windows：把控制台输入切到 VT 模式，直接粘贴多行可整体进入（issue #75，2026-10-20）**：
+  - 根因：JLine 只打开输出侧的 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`（0x0004），从未打开输入侧的
+    `ENABLE_VIRTUAL_TERMINAL_INPUT`（0x0200）；此时终端发出的 `ESC[200~ … ESC[201~` 会被
+    conhost / ConPTY 的输入引擎消费掉，应用只拿到裸内容 + `\r`，JLine 的 `beginPaste()` 永远等不到标记；
+  - 新增 `tty/VtInputMode`：Windows 上 `SetConsoleMode(STD_INPUT, mode | 0x0200)`，绑定到
+    `LineReader.CALLBACK_INIT`（JLine 每轮 raw mode 会重建输入模式，必须每轮补）；
+  - 实测对照（`ReadConsoleW`，Windows Terminal）：不开 0x0200 读到 `line1<CR>line2<CR>line3`，
+    开 0x0200 读到 `<ESC>[200~line1<CR>line2<CR>line3<ESC>[201~`；
+  - `AHA_PASTE_VT=0` 关闭；非 Windows / 句柄不可用 / FFM 失败时静默回退，行为与改动前一致；
+  - 仍未真机验证：conhost 自身是否发标记（POC 在 Windows Terminal 里跑）；
+    `Alt+V` / `/paste` / 启动提示全部保留。
 - **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
   - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
     JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
@@ -327,6 +338,17 @@
 ## [0.1.3] - 2026-10-17
 
 ### 新增
+- **CLI：多行粘贴 —— `Alt+V` 插入 / `/paste` 发送（issue #75，2026-10-16）**：终端不支持「括号粘贴」时（典型是传统 Windows 控制台 conhost），直接粘贴多行会被**逐行提交**；从此有两个**不经过终端输入流**的入口：
+  - **`Alt+V`**（`Ctrl+V` 在 conhost / Windows Terminal 里被宿主截获，所以主键位是 `Alt+V`）：AHA 自己读剪贴板，整块**插入输入行**，可以继续编辑；超过 10 行或 1000 字符时折叠成 `[paste #1 +42 lines]`，回车提交时自动展开（与 pi / Claude Code 同一门槛、同一形状）；
+  - **`/paste [附加说明]`**：读剪贴板后**直接作为一条消息发送**；
+  - 两者读不到剪贴板时都给「尝试过哪些方式 + 需要装什么」的可行动提示。
+  - **说明（更正上一轮的说法）**：同目录下先前的 `/paste` 单独一轮并不足以解决该问题 —— conhost 上「直接粘贴」改不了：JLine 的 Windows 终端把粘贴里的每个换行都变成与「用户敲回车」**完全相同**的输入，进程侧拿不到「这是粘贴」的信号；因此本轮把「替代入口」做成了**按键**（不必敲命令）。
+  - **真机排查**：`AHA_INPUT_TRACE=<文件>`（或 `-Daha.input.trace`，值为 `1` 时写 `AHA_HOME/input-trace.log`）会记录每次输入的**时间间隔与转义内容**：一次输入里带字面 `\n` ⇒ 终端发了括号粘贴标记；毫秒级连续多行 ⇒ 被拆成了多次回车。只记输入，默认关闭。
+  - 设计与对照表：[Docs/Design/TUIDesign.md](Docs/Design/TUIDesign.md) §5.4；用法：[Docs/Guide/ReferenceGuide.md](Docs/Guide/ReferenceGuide.md) §3.2。
+  - **为什么需要它**：传统 Windows 控制台（conhost）不支持「括号粘贴」，粘贴多行文本会被终端**逐行提交**（每行一条消息）—— 这是终端能力，Harness 侧改不了；而剪贴板这条路径**不经过终端**，因此不受该限制。Linux / macOS 的常见终端与 Windows Terminal / mintty 本就支持括号粘贴，不受影响。
+  - **启动时会说明**：探测到终端不支持时打印一次提示（含替代入口）；探测结果也进启动日志摘要（`bracketedPaste=…`），真机对不上账时可直接看日志。
+  - **读取方式按平台**：Windows `PowerShell Get-Clipboard -Raw`（显式 UTF-8，避免中文按控制台代码页编码后读成乱码）、macOS `pbpaste`、Linux `wl-paste` / `xclip` / `xsel`；都不行时给出「尝试过哪些方式 + 需要装什么」的可行动提示，而不是异常堆栈。
+  - 设计与降级矩阵：[Docs/Design/TUIDesign.md](Docs/Design/TUIDesign.md) §5.4；用法：[Docs/Guide/ReferenceGuide.md](Docs/Guide/ReferenceGuide.md) §3.2。
 - **桌面端应用内升级（issue #51，2026-10-16）**：设置面板里多一个「升级」tab，可选通道、检查更新、看版本列表、升级 / 降级；下载 → 校验 → 由外部 helper 换装 → 自动重启。
   - **三通道**：`Stable`（正式发版，当前还没有带资产的正式发版）/ `Beta`（dev 最新合并，**默认**）/ `Alpha`（PR 试包，7 天有效期，首次切换需确认）；
   - **契约只有一处**：通道 ↔ tag ↔ 资产名定义在 `ReleaseProcess.md` §3.5，PowerShell / Python / Java 三处实现逐字一致由守卫钉住；

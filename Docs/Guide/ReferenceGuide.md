@@ -1,9 +1,9 @@
 # 命令与配置参考
 
-**文档版本**：v1.31.0
+**文档版本**：v1.33.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-16
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -45,7 +45,10 @@
 | v1.29.0 | 2026-10-07 | `aha chat` 新增 `--logo` 选项（auto / pixel / ascii / off） | @ACANX |
 | v1.30.0 | 2026-10-08 | 版本号说明改为「已发行版本 / dev 上版本 / 改版本号不止根 POM」，并指向 ReleaseProcess.md 第 2 节 | @ACANX |
 | v1.31.0 | 2026-10-08 | 版本号说明补充资源所在模块（`aha-common`，CLI 与桌面端共用） | @ACANX |
+| v1.34.0 | 2026-10-20 | §5.1 补 `AHA_PASTE_VT`（Windows VT 输入模式开关，默认开）与 `AHA_INPUT_TRACE`（输入留痕）；§3.2 说明 0x0200 生效后直接粘贴多行应整体进入（issue #75） | @cnxnc |
+| v1.33.0 | 2026-10-16 | §3.2 补 **`Alt+V` / `Ctrl+V`**（自己读剪贴板、大块折叠成 `[paste #N +M lines]`）与 `Alt+V` 的提示示例；补「为什么主键位是 Alt+V」（conhost 截获 Ctrl+V） | @cnxnc |
 | v1.32.0 | 2026-10-19 | §2.5 Markdown 规则表补删除线（`~~`）与嵌套列表缩进（issue #335） | @ACANX |
+| v1.32.0 | 2026-10-16 | §3.2 新增 `/paste`（把剪贴板内容作为一条消息发送）与输出示例；说明 conhost 不支持括号粘贴、多行粘贴会被逐行提交（issue #75） | @cnxnc |
 
 ---
 
@@ -344,7 +347,46 @@ AHA 交互式对话（/help 查看命令，exit / quit 退出）
 | `/compact [保留条数]` | 压缩上下文（模型摘要 + 消息替换） |
 | `/autocompact [阈值\|off]` | 设置自动压缩阈值，如 `/autocompact 285k` |
 | `/memory [view\|files\|edit\|append\|reload]` | 查看或编辑 Agent 身份文件（`AGENTS.md` / `AHA.md`） |
+| `/paste [附加说明]` | 把剪贴板内容作为**一条**消息发送（终端不支持多行粘贴时的替代入口） |
+
+> 输入行上还有两个**不开命令**的粘贴入口（键位，不必敲命令）：
+> **`Alt+V`** 与 **`Ctrl+V`** —— AHA 自己读剪贴板，整块内容直接插入输入行（可继续编辑后再回车）；
+> 超过 10 行或 1000 字符时**折叠成 `[paste #1 +42 lines]`**，回车提交时自动展开。
+> 传统 Windows 控制台（conhost）会截获 `Ctrl+V`，因此**主键位是 `Alt+V`**（Windows Terminal 里 `Ctrl+V`
+> 是终端自己处理，走括号粘贴，本来就正常）。
 | `/exit` | 结束会话 |
+
+`Alt+V` / `/paste` 的用途：终端**没有把粘贴的内容用 `ESC[200~ … ESC[201~` 包起来**时，直接粘贴的
+多行文本会被逐行提交（每行一条消息）。Windows 上 AHA 默认已把控制台输入切到 VT 模式（0x0200，
+`AHA_PASTE_VT=0` 可关）：Windows Terminal 实测下标记会透传，直接粘贴多行应整体进入；
+conhost 是否发标记尚未真机验证。这两个入口都**不经过终端输入流**（AHA 自己去读剪贴板），
+因此不受该限制。
+
+- `Alt+V`（或 `Ctrl+V`，若你的终端不截获它）：**插入输入行**，可继续编辑，回车才发送；
+- `/paste`：读出来后**直接发送**，适合「粘贴完就想发」。
+
+`Alt+V` 插入大块内容时只提示一行（内容已在输入行里，回车才提交）：
+
+```
+> [paste #1 +42 lines]这段日志为什么一直重连？
+  ...
+[paste] [paste #1 +42 lines] 已插入（来源：powershell -NoProfile … Get-Clipboard -Raw；整块内容仍在，回车时自动展开）
+```
+
+`/paste` 读出来后直接发送（要附加说明就接在后面，例如 `/paste 这段报错怎么修`）：
+
+```
+> /paste
+已读取剪贴板：3 行 / 17 字符（来源：powershell -NoProfile … Get-Clipboard -Raw）
+  预览（前 3 行）：
+  | line1
+  | line2
+  | line3
+已作为本条消息提交（要附加说明：/paste <说明>）
+```
+
+读不到剪贴板时会如实说明尝试过哪些方式、缺什么（Windows 需要 PowerShell，macOS 用系统自带
+`pbpaste`，Linux 需要 `wl-clipboard` 或 `xclip` / `xsel`）。
 
 `/clear` 输出示例（只删历史消息，会话与身份保留）：
 
@@ -922,6 +964,8 @@ Model:
 | `AHA_LOG_FILE` | 日志 | 日志文件路径（优先级低于 `Aha.Logging.File`，见 §4.2） |
 | `AHA_LOG_LEVEL` | 日志 | 日志级别（优先级低于 `Aha.Logging.Level`） |
 | `JAVA_HOME` | 启动脚本 | 指定 JDK；未设置则用 `PATH` 中的 `java` |
+| `AHA_INPUT_TRACE` | 输入诊断 | `1` 或文件路径：记录每次输入的间隔 / 字符数 / 转义内容（默认关） |
+| `AHA_PASTE_VT` | Windows 粘贴 | 设为 `0` / `false` / `off` / `no` 关闭「输入切 VT 模式（0x0200）」；默认开启，非 Windows 无效 |
 | `JAVA_TOOL_OPTIONS` | JVM | JVM 自动读取的额外参数（非 AHA 专有） |
 
 `AHA_HOME` 的影响范围（默认值均以其为根）：
