@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.exception.AhaException;
 import com.acanx.module.aha.common.model.MemoryEntry;
 import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.llm.protocol.ChatMessage;
+import com.acanx.module.aha.core.llm.protocol.MessageSanitizer;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.ToolCall;
 import tools.jackson.core.type.TypeReference;
@@ -191,7 +192,10 @@ public final class SqliteMemoryStore implements MemoryStore {
         } catch (SQLException e) {
             throw new AhaException("DB_LOAD_FAILED", "读取消息失败: " + sessionId, e);
         }
-        return history;
+        // 窗口按 LIMIT 截断后可能只剩 tool 消息（它依附的 assistant 被截在窗口外），
+        // 直接发给上游会 400（issue #391）。统一在这里做配对校验，所有 loadHistory
+        // 调用方（AgentEngine / ContextCompactor / 快照回放）共享同一套约束。
+        return MessageSanitizer.sanitize(history);
     }
 
     @Override
