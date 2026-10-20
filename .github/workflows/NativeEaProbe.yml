@@ -14,7 +14,11 @@ name: NativeEaProbe
 # - 只构建桌面端原生镜像，不打包、不出快照、不发版；
 # - 构建失败即结论（红），不做重试（`attempts: 1`）——重试只会把同一个确定性崩溃跑三遍。
 #
-# 结论看 job summary（`ReportOutcome`），那里写明「成功 = 未复现 / 失败 = 仍存在」。
+# 结论看各 job 的 summary（`ReportOutcome`），那里写明「成功 = 未复现 / 失败 = 仍存在」。
+#
+# 【为什么用两个独立 job 而不是 matrix】显示名规范要求静态英文大驼峰、零表达式
+# （`Docs/DevSpec/WorkflowDisplayNameSpec.md`），matrix 会让 `name:` 带 `${{ }}`。
+# 步骤用 YAML 锚点复用，两个 job 只差 `env.JAVA_VERSION`。
 
 on:
   workflow_dispatch:
@@ -26,32 +30,22 @@ permissions:
   contents: read
 
 jobs:
-  ProbeMacOSAarch64:
-    name: ProbeMacOSAarch64 (${{ matrix.label }})
+  ProbeLatestEa:
+    name: ProbeLatestEa
     runs-on: macos-latest
-    strategy:
-      # 两个点互不影响：一个红了另一个的结论仍然有效
-      fail-fast: false
-      matrix:
-        include:
-          # 最新 EA：oracle-graalvm-ea-builds 的最新 tag（截至 2026-10-20 是 25i5 / 25.0.4.1.1-ea.05）
-          - label: latest-ea
-            java_version: latest-ea
-          # 固定系列：验证 `25i5-ea` 这个写法实际解析到哪个 build
-          - label: 25i5-ea
-            java_version: 25i5-ea
     env:
       AHA_VERSION: 0.0.0-ea-probe
-    steps:
+      JAVA_VERSION: latest-ea
+    steps: &probeSteps
       - uses: actions/checkout@v7
 
       - name: InstallGraalVmEa
         id: graal
-        # EA 构建：`java-version` 取 matrix 里的 `latest-ea` / `25i5-ea` + `distribution: graalvm`；
+        # EA 构建：`java-version` 取 job 环境里的 `latest-ea` / `25i5-ea` + `distribution: graalvm`；
         # 刻意**不传** `version`——传了会去下载 release 而不是 EA。
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: ${{ matrix.java_version }}
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven
@@ -59,11 +53,10 @@ jobs:
       - name: ShowToolchain
         run: |
           set -uo pipefail
-          echo "—— 工具链（${{ matrix.label }}）——"
+          echo "—— 工具链（${{ env.JAVA_VERSION }}）——"
           java -version || true
           native-image --version || true
           # 关键证据：实际装的是哪个 EA build（避免「以为装了最新，其实装成旧版」）
-          echo "matrix 名义版本：${{ matrix.java_version }}"
           graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
           echo "GRAALVM_HOME=${graalvm_home}"
           if [ -f "$graalvm_home/release" ]; then
@@ -106,7 +99,7 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo "## GraalVM EA 探针（macos-aarch64 / ${{ matrix.label }}）"
+            echo "## GraalVM EA 探针（macos-aarch64 / ${{ env.JAVA_VERSION }}）"
             echo ""
             echo "| 项 | 结果 |"
             echo "|---|---|"
@@ -117,9 +110,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.native.outcome }}" = "success" ]; then
             echo "✅ **结论：pointsto 崩溃未复现。** 该 EA 构建可以编出 macOS 桌面端原生镜像，" >> "$GITHUB_STEP_SUMMARY"
-            echo "可据此评估 #321 的恢复条件（换成含修复的正式版后再升级 `NativeImageLeg.yml`）。" >> "$GITHUB_STEP_SUMMARY"
+            echo "可据此评估 #321 的恢复条件（换成含修复的正式版后再升级版本并验证）。" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "❌ **结论：pointsto 崩溃仍存在（或构建因其它原因失败）。**" >> "$GITHUB_STEP_SUMMARY"
-            echo "证据看 `BuildDesktopNative` 日志里是否仍有" >> "$GITHUB_STEP_SUMMARY"
+            echo "证据看 `BuildDesktopNative` 日志里是否仍有 " >> "$GITHUB_STEP_SUMMARY"
             echo "`MacVariant.toString` / `unexpected input could not be handled: class java.lang.Object`。" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  Probe25i5Ea:
+    name: Probe25i5Ea
+    runs-on: macos-latest
+    env:
+      AHA_VERSION: 0.0.0-ea-probe
+      JAVA_VERSION: 25i5-ea
+    steps: *probeSteps
