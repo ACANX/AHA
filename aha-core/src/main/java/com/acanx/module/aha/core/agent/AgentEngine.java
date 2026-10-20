@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.common.exception.ToolExecutionException;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
@@ -202,6 +203,11 @@ public final class AgentEngine {
             }, token);
 
             finishReason = roundFinishReason[0];
+
+            // 段边界（issue #403）：本轮正文到此结束——接下来要么执行工具、要么整轮收尾。
+            // 位置必须在工具执行**之前**且**无条件**发出：中断路径同样要发，
+            // 否则界面会悬挂在一段永远收不了尾的气泡上。
+            listener.onEvent(new ContentSegmentEndEvent(sessionId));
 
             // 被中断时**不能**把工具调用写进历史：流在参数累积到一半时被掐断，
             // 落库后下一轮请求会带着不合法的 tool_calls（参数残缺），上游直接判 400。

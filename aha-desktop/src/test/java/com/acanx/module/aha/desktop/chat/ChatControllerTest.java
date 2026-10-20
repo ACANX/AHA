@@ -1,6 +1,7 @@
 package com.acanx.module.aha.desktop.chat;
 
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
@@ -56,6 +57,55 @@ class ChatControllerTest {
         assertThat(view.busy).containsExactly(true, false);
         assertThat(service.inputs).containsExactly("帮我看看代码");
         assertThat(service.created).hasSize(1);
+    }
+
+    /**
+     * 段边界把一轮正文切开（issue #403）。
+     *
+     * <p>回归的是「总结被追加到开场白之后、工具卡片之上」：旧实现只在 DoneEvent 才
+     * {@code endAssistant()}，于是 A 与 C 落进同一段，C 的位置被 A 的气泡钉死在卡片之前。
+     * 现在段边界一到就结束当前段，视图据此另起气泡，顺序等于时间顺序。</p>
+     */
+    @Test
+    void segmentBoundarySplitsPreambleFromConclusionAroundTheToolCard() {
+        service.script.add(new ContentEvent("s1", "先看看代码"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ToolCallEvent("s1", "file-read", Map.of("path", "AgentEngine.java")));
+        service.script.add(new ToolResultEvent("s1", "file-read", "第一行", true));
+        service.script.add(new ContentEvent("s1", "看完了，结论是……"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        controller.send("读一下文件");
+
+        // 开场白与总结分属两段：正文增量不混段。
+        // 段结束共 3 次 = 两条段边界 + Done 的幂等收尾（见 AssistantSegmentsTest#endIsIdempotent）
+        assertThat(view.deltas).containsExactly("先看看代码", "看完了，结论是……");
+        assertThat(view.ends).isEqualTo(3);
+        // 顺序：开场白段结束 → 卡片 → 总结段结束（Done 再收一次尾，是幂等的）
+        assertThat(view.timeline)
+                .containsExactly("end-assistant", "tool-card", "end-assistant", "end-assistant");
+    }
+
+    /**
+     * 连续两段纯正文（中间没有工具调用）也必须分段。
+     *
+     * <p>这正是「方案 2（用工具事件推断边界）」会失效的场景：模型有时先说一句、
+     * 再说一段，中间并不调工具。</p>
+     */
+    @Test
+    void consecutiveTextSegmentsWithoutToolsAreStillSplit() {
+        service.script.add(new ContentEvent("s1", "第一段"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new ContentEvent("s1", "第二段"));
+        service.script.add(new ContentSegmentEndEvent("s1"));
+        service.script.add(new DoneEvent("s1", "stop"));
+
+        controller.send("说两句");
+
+        assertThat(view.deltas).containsExactly("第一段", "第二段");
+        // 段边界两次 + Done 一次
+        assertThat(view.ends).isEqualTo(3);
     }
 
     @Test

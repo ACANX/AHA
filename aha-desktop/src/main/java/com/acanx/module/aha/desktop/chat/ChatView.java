@@ -28,7 +28,10 @@ public interface ChatView {
     void appendAssistant(String delta);
 
     /**
-     * 本轮助手回复结束。
+     * 结束当前正文段。
+     *
+     * <p>一轮对话里会出现多次：工具调用之前、工具结果回灌之后、收尾总结结束时。
+     * 视图应据此**另起一条气泡**，而不是把后续正文继续追加到上一条里（issue #403）。</p>
      */
     void endAssistant();
 

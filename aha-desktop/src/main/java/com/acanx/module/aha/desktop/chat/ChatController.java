@@ -2,6 +2,7 @@ package com.acanx.module.aha.desktop.chat;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
@@ -364,6 +365,12 @@ public final class ChatController {
     private void onEvent(AgentEvent event) {
         switch (event) {
             case ContentEvent content -> view.appendAssistant(content.delta());
+            case ContentSegmentEndEvent ignored -> {
+                // 一段正文到此为止（issue #403）：立刻结束当前气泡，后续正文另起一条。
+                // 严格来说不必投递（它在推理线程发出），但 view 的其余动作都经 ui 投递，
+                // 走同一条队列才能保证「结束旧气泡」排在「下一段的增量」之前。
+                ui.accept(view::endAssistant);
+            }
             case ToolCallEvent call -> onToolCall(call);
             case ToolResultEvent result -> onToolResult(result);
             case UsageEvent usage -> ui.accept(() -> view.setUsage(usage.promptTokens(), usage.completionTokens()));
@@ -372,6 +379,8 @@ public final class ChatController {
                 ui.accept(() -> view.setBusy(false));
             }
             case DoneEvent ignored -> {
+                // 段边界已由 ContentSegmentEndEvent 收尾；这里再收一次是幂等的空操作，
+                // 保留它是为了「没有段边界的旧实现 / 第三方监听器」也能正确结束气泡。
                 ui.accept(view::endAssistant);
                 ui.accept(() -> view.setBusy(false));
             }

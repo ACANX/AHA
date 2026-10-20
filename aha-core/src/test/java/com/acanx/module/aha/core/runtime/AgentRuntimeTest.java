@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.runtime;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
@@ -54,9 +55,12 @@ class AgentRuntimeTest {
 
         runtime.submitStreaming(TaskRequest.of("hi"), events::add, new CancellationToken());
 
-        assertThat(events).hasSize(2);
-        assertThat(events.get(0)).isEqualTo(new ContentEvent("t1", "output"));
-        assertThat(events.get(1)).isEqualTo(new DoneEvent("t1", "stop"));
+        // 正文 → 段边界 → 整轮结束：非流式实现只有一段，但仍照事件契约补段边界（issue #403），
+        // 免得消费方要为「有没有段边界」单独兼容两条路径
+        assertThat(events).containsExactly(
+                new ContentEvent("t1", "output"),
+                new ContentSegmentEndEvent("t1"),
+                new DoneEvent("t1", "stop"));
     }
 
     @Test

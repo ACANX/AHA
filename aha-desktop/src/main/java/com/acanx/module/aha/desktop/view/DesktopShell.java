@@ -5,6 +5,7 @@ import com.acanx.module.aha.common.model.SessionSummary;
 import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.common.model.ToolDescriptor;
 import com.acanx.module.aha.common.tool.ToolKind;
+import com.acanx.module.aha.desktop.chat.AssistantSegments;
 import com.acanx.module.aha.desktop.chat.ChatView;
 import com.acanx.module.aha.desktop.chat.FileMentions;
 import com.acanx.module.aha.desktop.chat.InputHistory;
@@ -266,13 +267,21 @@ public final class DesktopShell implements ChatView {
     private VBox rightContent;
 
     /** 助手流式文本的合流器：每个 token 一次界面更新会拖慢界面，这里合并成每帧一次。 */
-    private FxBridge<String> assistantBridge;
+    private FxBridge<AssistantSegments.Segment> assistantBridge;
 
-    /** 正在流式写入的助手消息（本轮）。 */
+    /**
+     * 正文分段累积器（issue #403）。
+     *
+     * <p>推理线程往里追加增量、UI 线程推进段号，互斥与快照都在它内部完成；
+     * 跨线程只传不可变的 {@link AssistantSegments.Segment}。</p>
+     */
+    private final AssistantSegments assistantSegments = new AssistantSegments();
+
+    /** UI 线程已渲染到哪一段（只在 UI 线程读写）。 */
+    private int renderedSeq = -1;
+
+    /** UI 线程上正在写入的助手气泡（只在 UI 线程读写）。 */
     private Label currentAssistant;
-
-    /** 本轮助手文本缓冲。 */
-    private final StringBuilder assistantBuffer = new StringBuilder();
 
     /** 工具卡片（句柄 = 下标 + 1）。 */
     private final List<ToolCardNode> toolCards = new ArrayList<>();
@@ -584,11 +593,7 @@ public final class DesktopShell implements ChatView {
         this.configSummary = configSummary;
         // 界面骨架从 FXML 装载（详见 desktop-shell.fxml 顶部的说明）
         loadView();
-        this.assistantBridge = new FxBridge<>(dispatcher, text -> {
-            if (currentAssistant != null) {
-                currentAssistant.setText(text);
-            }
-        });
+        this.assistantBridge = new FxBridge<>(dispatcher, this::renderSegment);
         applyPaneState();
     }
 
@@ -971,6 +976,11 @@ public final class DesktopShell implements ChatView {
     public void clearConversation() {
         messages.getChildren().clear();
         messages.getChildren().add(createEmptyState());
+        // 分段状态必须跟着清：否则切换会话后，残留的段号会让新会话的第一段
+        // 被判成「续写旧气泡」，而那个气泡早已不在场景图里（#403）
+        assistantSegments.reset();
+        renderedSeq = -1;
+        currentAssistant = null;
     }
 
     /**
@@ -1213,25 +1223,48 @@ public final class DesktopShell implements ChatView {
 
     @Override
     public void appendAssistant(String delta) {
-        if (currentAssistant == null) {
-            streamBufferReset();
-            // 先建标签再提交文本：两者进的是同一个 UI 队列，顺序有保证
-            dispatcher.dispatch(() -> {
-                currentAssistant = new Label();
-                currentAssistant.setWrapText(true);
-                themed(currentAssistant, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
-                addRow("助手", currentAssistant, Palette.SUCCESS);
-            });
-        }
-        assistantBuffer.append(delta);
-        // 每个 token 一次界面更新会拖慢界面；FxBridge 合并成每帧至多一次
-        assistantBridge.submit(assistantBuffer.toString());
+        // 快照自带段号：排队的渲染任务因此**不会**在段切换后写进下一段的气泡（#403）
+        assistantBridge.submit(assistantSegments.append(delta));
     }
 
     @Override
     public void endAssistant() {
-        currentAssistant = null;
-        assistantBuffer.setLength(0);
+        // 段收尾 = 把这一段的最后状态坐实，然后切段号。
+        //
+        // 【为什么要显式落一次，而不是「清空字段等下一段自己重建」】
+        // 旧实现只把字段置空、丢下在途的合并值不管：排队的渲染任务取不到值，
+        // 收尾正文的末尾就会整段落空（表现为回答结尾被截断）。
+        // 这里把最终全文投进同一条有序通道，再由 FxBridge 保证「最后一个值一定被渲染」。
+        AssistantSegments.Segment last = assistantSegments.end();
+        if (last != null) {
+            assistantBridge.submit(last);
+        }
+    }
+
+    /**
+     * 渲染一段正文的最新全文（UI 线程；由 {@link FxBridge} 与 {@link #endAssistant} 调用）。
+     *
+     * <p>段号变了就另起一条气泡——这正是「开场白在工具卡片之前、总结在之后」的实现点：
+     * 气泡的位置由**该段第一次真正渲染**的时刻决定，而工具卡片走的是同一条 FIFO 投递队列，
+     * 于是顺序天然等于时间顺序。</p>
+     *
+     * @param segment 段号 + 该段全文快照
+     */
+    private void renderSegment(AssistantSegments.Segment segment) {
+        if (segment.text().isEmpty()) {
+            // 空段不建气泡（工具调用前的模型输出常常为空）
+            return;
+        }
+        if (segment.seq() != renderedSeq) {
+            renderedSeq = segment.seq();
+            currentAssistant = new Label();
+            currentAssistant.setWrapText(true);
+            themed(currentAssistant, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
+            addRow("助手", currentAssistant, Palette.SUCCESS);
+        }
+        if (currentAssistant != null) {
+            currentAssistant.setText(segment.text());
+        }
     }
 
     @Override
@@ -1308,10 +1341,6 @@ public final class DesktopShell implements ChatView {
             sendButton.setDisable(busy);
         }
         status.setText(busy ? "生成中…（Esc 中断）" : "就绪");
-    }
-
-    private void streamBufferReset() {
-        assistantBuffer.setLength(0);
     }
 
     private void openProviderDialog() {

@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.agent;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
@@ -124,6 +125,102 @@ class AgentEngineStreamTest {
 
         // user + assistant(带工具调用) + tool + assistant(最终回答)
         assertThat(memory.loadHistory("s1", 10)).hasSize(4);
+    }
+
+    /**
+     * 段边界：每轮正文结束都要发一次，位置在工具执行**之前**（issue #403）。
+     *
+     * <p>这是「开场白 → 工具卡片 → 总结」能按时间序排列的前提：桌面端靠它另起气泡，
+     * 否则一轮的全部正文会挤进同一个气泡，总结出现在工具卡片之上。</p>
+     */
+    @Test
+    void streamEmitsSegmentBoundaryBeforeEachToolCall() {
+        ScriptedLlmClient llm = new ScriptedLlmClient();
+        llm.enqueueStream((listener, token) -> {
+            listener.onEvent(content("先看看文件"));
+            listener.onEvent(toolDelta(0, "call_1", "echo", "{\"text\":\"hi\"}"));
+            listener.onEvent(done("tool_calls"));
+        });
+        llm.enqueueStream((listener, token) -> {
+            listener.onEvent(content("看完了，结论是这样"));
+            listener.onEvent(done("stop"));
+        });
+
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new EchoTool());
+        AgentEngine engine = new AgentEngine(llm, tools, new InMemoryMemoryStore());
+
+        List<AgentEvent> events = new ArrayList<>();
+        engine.stream("s1", new SessionConfig("m", "sys", Map.of()), "m", "hi",
+                events::add, new CancellationToken());
+
+        // 两轮各一次段边界
+        assertThat(events.stream().filter(ContentSegmentEndEvent.class::isInstance)).hasSize(2);
+
+        // 顺序：开场白 → 段边界 → 工具调用 → 工具结果 → 总结 → 段边界
+        List<String> kinds = events.stream().map(AgentEngineStreamTest::kindOf).toList();
+        assertThat(kinds).containsSubsequence(
+                "content", "segment-end", "tool-call", "tool-result", "content", "segment-end");
+        // 段边界必须排在该轮的工具调用之前
+        assertThat(kinds.indexOf("segment-end")).isLessThan(kinds.indexOf("tool-call"));
+    }
+
+    /**
+     * 中断路径也要发段边界：否则界面悬挂在一段永远收不了尾的气泡上。
+     */
+    @Test
+    void streamEmitsSegmentBoundaryEvenWhenCancelled() {
+        ScriptedLlmClient llm = new ScriptedLlmClient();
+        CancellationToken token = new CancellationToken();
+        llm.scriptStream((listener, cancelToken) -> {
+            listener.onEvent(content("说到一半"));
+            // 模型还在写，用户已经中断
+            token.cancel();
+            listener.onEvent(done("stop"));
+        });
+
+        AgentEngine engine = new AgentEngine(llm, new ToolRegistry(), new InMemoryMemoryStore());
+
+        List<AgentEvent> events = new ArrayList<>();
+        engine.stream("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
+                events::add, token);
+
+        assertThat(events.stream().filter(ContentSegmentEndEvent.class::isInstance)).hasSize(1);
+        assertThat(events.getLast()).isInstanceOf(DoneEvent.class);
+    }
+
+    /**
+     * 纯正文（无工具）也恰发一次段边界，且不干扰 Done。
+     */
+    @Test
+    void streamEmitsSingleSegmentBoundaryWithoutTools() {
+        ScriptedLlmClient llm = new ScriptedLlmClient();
+        llm.scriptStream((listener, token) -> {
+            listener.onEvent(content("plain"));
+            listener.onEvent(done("stop"));
+        });
+
+        AgentEngine engine = new AgentEngine(llm, new ToolRegistry(), new InMemoryMemoryStore());
+
+        List<AgentEvent> events = new ArrayList<>();
+        engine.stream("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
+                events::add, new CancellationToken());
+
+        assertThat(events.stream().map(AgentEngineStreamTest::kindOf).toList())
+                .containsExactly("content", "segment-end", "done");
+    }
+
+    /** 事件 → 便于断言的短名。 */
+    private static String kindOf(AgentEvent event) {
+        return switch (event) {
+            case ContentEvent e -> "content";
+            case ContentSegmentEndEvent e -> "segment-end";
+            case ToolCallEvent e -> "tool-call";
+            case ToolResultEvent e -> "tool-result";
+            case UsageEvent e -> "usage";
+            case com.acanx.module.aha.common.event.ErrorEvent e -> "error";
+            case DoneEvent e -> "done";
+        };
     }
 
     @Test
@@ -308,8 +405,10 @@ class AgentEngineStreamTest {
         engine.stream("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
                 events::add, new CancellationToken());
 
-        // 仅 DoneEvent（reasoning 与 error 不透出为 Agent 事件）
-        assertThat(events).hasSize(1);
-        assertThat(events.getFirst()).isInstanceOf(DoneEvent.class);
+        // 仅段边界 + DoneEvent（reasoning 与 error 不透出为 Agent 事件）。
+        // 段边界**无条件**发出（哪怕本轮没有正文）：消费方不必自己判断「这轮到底有没有正文」，
+        // 状态机少一个分支；桌面端则对空段直接跳过，不会冒出空气泡。
+        assertThat(events.stream().map(AgentEngineStreamTest::kindOf).toList())
+                .containsExactly("segment-end", "done");
     }
 }
