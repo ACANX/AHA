@@ -43,6 +43,11 @@
     三种承载节点的可用性骨架，作为 S1.5 / S2.1 的落点；
   - 桌面端解析器与解析性能用例以 `@Disabled` 占位，S1.1 实现后解除；
   - 文档：`Docs/Design/MarkdownSemantics.md`。
+- **桌面端 Markdown 块级解析（#408 S1.1，#413，2026-10-20）**：
+  - `MarkdownBlock`：sealed AST（标题 / 段落 / 分隔线 / 围栏 / 列表 / 引用 / 表格），不含任何 JavaFX 类型；
+  - `MarkdownParser`：全文一次性解析，空行终止表格（与 #346 一致）、围栏内不解析、七级 `#` 按段落；
+  - `MarkdownParserTest` 14 条；`MarkdownParserSemanticsTest` 与 `MarkdownParsePerformanceTest`
+    解除 `@Disabled`（解析 500 行阈值 200 ms，目标 50 ms，真实耗时打到日志）。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；
