@@ -21,6 +21,10 @@
 
 ```java
 public interface LlmProviderAdapter {
+    /** 新名（issue #361）：与配置 `Model.Providers.<Id>.ApiType` 的取值一致 */
+    default String apiType() { return providerId(); }
+    /** 旧名，deprecated 但至少保留一个 minor 版本 */
+    @Deprecated
     String providerId();
     String supportedIrVersion();
     String convertRequest(ChatRequest irRequest, ProviderConfig config);
@@ -33,11 +37,15 @@ public interface LlmProviderAdapter {
 
 ## 2. 内置适配器
 
-| 适配器 | providerId | 协议 |
+| 适配器 | ApiType（`API_TYPE`） | 协议 |
 |---|---|---|
 | `OpenAiAdapter` | `openai-compatible` | OpenAI Chat Completions |
-| `AnthropicAdapter` | `anthropic` | Anthropic Messages |
+| `AnthropicAdapter` | `anthropic-messages` | Anthropic Messages |
 | `GeminiAdapter` | `gemini` | Gemini generateContent |
+
+> issue #361 起，SPI 的「适配器类型」统一叫 **ApiType**（`apiType()` / `API_TYPE`），
+> 与配置字段 `ApiType` 同名；`providerId()` / `PROVIDER_ID` 是 deprecated 别名。
+> 真正的「供应商」是 `Model.Providers.<Id>` 的键（如 `DeepSeek`），两者不是一回事。
 
 ## 3. 国产模型与中转站
 

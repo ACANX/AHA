@@ -36,17 +36,32 @@ import java.util.Map;
  */
 public final class OpenAiAdapter implements LlmProviderAdapter {
 
-    /** 供应商 ID。 */
-    public static final String PROVIDER_ID = "openai-compatible";
+    /** 适配器 / API 类型 ID（与配置 {@code ApiType} 取值一致）。 */
+    public static final String API_TYPE = "openai-compatible";
+
+    /**
+     * 旧名兼容。
+     *
+     * @deprecated 改用 {@link #API_TYPE}（issue #361）
+     */
+    @Deprecated
+    public static final String PROVIDER_ID = API_TYPE;
 
     /** OpenAI 兼容的对话补全路径。 */
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
 
     private static final ObjectMapper JSON = JsonMapper.builder().build();
 
+    /**
+     * 适配器 / API 类型 ID。
+     *
+     * @return API 类型 ID
+     * @deprecated 改用 {@link #apiType()}（issue #361）
+     */
     @Override
+    @Deprecated
     public String providerId() {
-        return PROVIDER_ID;
+        return API_TYPE;
     }
 
     @Override

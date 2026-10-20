@@ -2,6 +2,8 @@ package com.acanx.module.aha.desktop.view;
 
 import javafx.scene.text.Font;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -34,6 +36,17 @@ public final class FontFallback {
      * <p>{@code fonts-noto-cjk} 是 Debian / Ubuntu 的独立包，最小化安装与 WSL 镜像默认都不带。</p>
      */
     public static final String LINUX_INSTALL_COMMAND = "sudo apt install fonts-noto-cjk";
+
+    /**
+     * 内置兜底字体（Apache-2.0，见同目录 LICENSE 文件）。
+     *
+     * <p>【为什么打包】WSL2 Ubuntu 26.04 最小镜像默认没有中文字体（{@code fc-list :lang=zh} 为 0），
+     * 而 #382 只做「探测 + 提示」并不能让汉字显示出来。把一份体积可控的 CJK 字体打进桌面包，
+     * 系统缺字体时由 {@link Font#loadFont} 从 classpath 注册，界面汉字才有字形可用。</p>
+     *
+     * <p>只在 Linux 上兜底：Windows / macOS 系统自带中文字体，用内置字体会改变既有西文观感。</p>
+     */
+    public static final String BUNDLED_RESOURCE = "/fonts/DroidSansFallbackFull.ttf";
 
     /** 界面中文字体候选（顺序即优先级；先无衬线、再文泉驿 / Droid，最后才考虑 Windows / macOS 族）。 */
     public static final List<String> CJK_CANDIDATES = List.of(
@@ -68,7 +81,44 @@ public final class FontFallback {
 
     private static Resolution current;
 
+    /** 内置字体的族名；{@code null} 表示资源缺失或加载失败。 */
+    private static volatile String bundledFamily;
+
+    /** 内置字体是否已尝试加载（失败也置位，不重复读资源）。 */
+    private static volatile boolean bundledLoaded;
+
     private FontFallback() {
+    }
+
+    /**
+     * 内置兜底字体的族名（首次调用时从 classpath 加载）。
+     *
+     * <p>必须在 JavaFX 工具包初始化之后调用（{@code Font.loadFont} 需要 Toolkit）。</p>
+     *
+     * @return 族名；资源缺失或加载失败时为 {@code null}
+     */
+    public static String bundledFamily() {
+        if (!bundledLoaded) {
+            synchronized (FontFallback.class) {
+                if (!bundledLoaded) {
+                    bundledFamily = loadBundled();
+                    bundledLoaded = true;
+                }
+            }
+        }
+        return bundledFamily;
+    }
+
+    private static String loadBundled() {
+        try (InputStream in = FontFallback.class.getResourceAsStream(BUNDLED_RESOURCE)) {
+            if (in == null) {
+                return null;
+            }
+            Font font = Font.loadFont(in, 12);
+            return font == null || font.getFamily().isBlank() ? null : font.getFamily();
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -100,7 +150,9 @@ public final class FontFallback {
          */
         public String describe() {
             if (family != null) {
+                boolean system = matches.contains(family);
                 return "平台=" + osName + "，界面字体=" + family
+                        + (system ? "（系统）" : "（内置兜底）")
                         + "，本机命中 CJK 候选 " + matches.size() + " 个 " + matches;
             }
             String reason = linux
@@ -122,6 +174,20 @@ public final class FontFallback {
      * @return 探测结果
      */
     public static Resolution resolve(String osName, Collection<String> installedFamilies) {
+        return resolve(osName, installedFamilies, bundledFamily());
+    }
+
+    /**
+     * 纯函数：带内置兜底字体的版本。
+     *
+     * <p>优先级：系统 CJK 族 {@code >} 内置字体；非 Linux 一律不替换（外观无回归）。</p>
+     *
+     * @param osName            操作系统名（如 {@code Linux} / {@code Windows 11}）
+     * @param installedFamilies 已安装字体族（{@link Font#getFamilies()}）
+     * @param bundled           内置兜底字体的族名，可为 {@code null}
+     * @return 探测结果
+     */
+    public static Resolution resolve(String osName, Collection<String> installedFamilies, String bundled) {
         String os = osName == null ? "" : osName;
         boolean linux = os.toLowerCase(Locale.ROOT).contains("linux");
         List<String> installed = installedFamilies == null
@@ -143,7 +209,11 @@ public final class FontFallback {
                 }
             }
         }
-        String selected = linux && !matches.isEmpty() ? matches.get(0) : null;
+        String selected = null;
+        if (linux) {
+            // 系统装了 CJK 字体就优先用它（尊重用户环境与字体质量）；没有才用内置兜底
+            selected = !matches.isEmpty() ? matches.get(0) : bundled;
+        }
         return new Resolution(os, linux, selected, List.copyOf(matches));
     }
 
@@ -156,7 +226,7 @@ public final class FontFallback {
      */
     public static synchronized Resolution current() {
         if (current == null) {
-            current = resolve(System.getProperty("os.name", ""), Font.getFamilies());
+            current = resolve(System.getProperty("os.name", ""), Font.getFamilies(), bundledFamily());
         }
         return current;
     }
@@ -169,6 +239,33 @@ public final class FontFallback {
      *
      * @return CSS 片段
      */
+    /**
+     * 代码区（日志 / 工具输出 / 参数）的字体族。
+     *
+     * <p>JavaFX 的 {@code -fx-font-family} 只接受<strong>单个</strong>族名，逗号列表会被当成
+     * 一个不存在的族名（于是回退默认字体）。所以选中了 CJK 族时这里返回它本身：
+     * 西文不再严格等宽，但汉字可读；没有 CJK 族时才退回原来的 {@link #MONOSPACE_CSS}
+     * （保持改动前的行为）。</p>
+     *
+     * @return {@code -fx-font-family} 的值
+     */
+    public static String monospaceCss() {
+        return monospaceCss(current().family());
+    }
+
+    /**
+     * 纯函数版本（便于单测，不需要 JavaFX 工具包）。
+     *
+     * @param family 选中的 CJK 族；{@code null} / 空白时退回 {@link #MONOSPACE_CSS}
+     * @return {@code -fx-font-family} 的值
+     */
+    static String monospaceCss(String family) {
+        if (family == null || family.isBlank()) {
+            return MONOSPACE_CSS;
+        }
+        return "'" + family.replace("'", "") + "'";
+    }
+
     public static String globalFamilyCss() {
         String family = current().family();
         if (family == null || family.isBlank()) {

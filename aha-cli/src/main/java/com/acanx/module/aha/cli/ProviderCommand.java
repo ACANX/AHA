@@ -69,7 +69,7 @@ public final class ProviderCommand implements Runnable {
             System.out.printf("%-16s %-20s %-12s %-24s %s%n", "NAME", "ADAPTER", "TIER", "MODEL", "REMARK");
             model.providersOrEmpty().forEach((name, provider) -> System.out.printf(
                     "%-16s %-20s %-12s %-24s %s%n",
-                    name, provider.adapter(),
+                    name, provider.apiType(),
                     provider.effectiveTier(model.defaultTier()).configName(),
                     provider.effectiveModel(model.defaultTier()),
                     name.equals(current) ? "<== 当前默认" : ""));
@@ -106,7 +106,7 @@ public final class ProviderCommand implements Runnable {
                     && !com.acanx.module.aha.core.config.ConfigLoader
                             .isUnresolvedPlaceholder(provider.apiKey());
             System.out.printf("供应商: %s%n适配器: %s%nBaseUrl: %s%n模型: %s%nAPI Key: %s%n",
-                    id, provider.adapter(), provider.baseUrl(), provider.effectiveModel(null),
+                    id, provider.apiType(), provider.baseUrl(), provider.effectiveModel(null),
                     apiKeyConfigured ? "已配置" : "未配置（请设置对应环境变量）");
             if (provider.apiKey() != null && provider.apiKey().startsWith("${")) {
                 System.out.printf("所需环境变量: %s%n",
@@ -142,7 +142,7 @@ public final class ProviderCommand implements Runnable {
                     && !com.acanx.module.aha.core.config.ConfigLoader
                             .isUnresolvedPlaceholder(provider.apiKey());
             System.out.printf("供应商: %s%nApiType: %s%nBaseUrl: %s%nAPI Key: %s%n",
-                    id, provider.adapter(), provider.baseUrl(),
+                    id, provider.apiType(), provider.baseUrl(),
                     apiKeyConfigured ? "已配置" : "未配置（请设置对应环境变量）");
             System.out.printf("默认档位: %s%n", provider.effectiveTier(model.defaultTier()).configName());
             System.out.printf("默认模型: %s%n", provider.effectiveModel(model.defaultTier()));

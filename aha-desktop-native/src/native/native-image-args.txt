@@ -118,7 +118,7 @@
 #      那会把 `com/sun/javafx/reflect/Trampoline.class` 一并当资源编进镜像，
 #      JavaFX 的私有加载器读到字节后会去**运行期 defineClass**，而 native-image 默认禁止，
 #      于是启动即崩（姊妹项目 LegionFanControl 的 TS-2610-003 就是这一条）。
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|fxml|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|fxml|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl|ttf|otf)$
 -H:IncludeResources=META-INF/services/.*
 # tracing agent 采集发现的资源盲区（2026-10-08）：
 #   * JDK 的文本断行 / 双向文本数据：无扩展名（LineBreakIteratorData）或 .icu（ubidi.icu），

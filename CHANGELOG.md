@@ -10,6 +10,18 @@
 
 ## [Unreleased]
 
+### 变更
+- **SPI 命名统一为 ApiType（issue #361）**：
+  - `LlmProviderAdapter` 新增 `default apiType()`（与配置 `Model.Providers.<Id>.ApiType` 同名），
+    `providerId()` 标记 `@Deprecated`（至少保留一个 minor 版本）；
+  - 三个内置适配器的 `PROVIDER_ID` 改为 `API_TYPE`（旧常量保留为 deprecated 别名）；
+  - `LlmAdapterRegistry` 新增 `apiTypes()`，`find(String apiType)` 参数名对齐；
+    `providerIds()` deprecated 委托；
+  - `ProviderConfig.adapter()` 标记 `@Deprecated`，活代码统一走 `apiType()`；
+  - 日志诊断标签区分「适配器 / ApiType」与「供应商（`Providers.<Id>`）」；
+  - **迁移**：自定义适配器只实现 `providerId()` 仍可直接工作（`apiType()` 默认委托它）；
+    新代码请实现/调用 `apiType()`。旧名在阶段 3（下个大版本）移除，届时属破坏性变更。
+
 ### 新增
 - **中栏显示当前会话工作目录与 git 分支（2026-10-19）**：
   - 输入框下方显示当前会话 `workspace` 的完整路径；
@@ -64,6 +76,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **Linux 桌面端：内置中文字体兜底，WSL / 最小镜像不再显示方块（issue #382，2026-10-20 真机）**：
+  - 根因：WSL2 Ubuntu 最小镜像的 `fc-list :lang=zh` 为 0，`FontFallback` 只能「探测 + 提示安装」，
+    界面上仍然没有含汉字字形的字体，所以 #382 之后中文依旧方块；
+  - 内置 `Droid Sans Fallback`（Apache-2.0，3.9 MB，随包分发，见
+    `aha-desktop/src/main/resources/fonts/`）；系统没有 CJK 字体时用 `Font.loadFont`
+    从 classpath 注册并设为界面字体；
+  - 优先级：**系统 CJK 族 > 内置兜底**；非 Linux 一律不替换（Windows / macOS 外观无回归）；
+  - `MONOSPACE_CSS` 的逗号列表在 JavaFX 里会被当成一个不存在的族名（`-fx-font-family`
+    只接受单个族名），改为 `monospaceCss()`：选中 CJK 族时返回单一族名，代码区汉字可读；
+  - native-image 参数补 `ttf|otf` 的 `-H:IncludeResources`，原生包同样能加载内置字体；
+  - README 更新：安装系统字体从「必须」改为「可选（更好字形）」。
 - **构建：Windows runner 上 `PrunePlatformScripts` 打印中文崩溃（2026-10-20）**：
   - #389 引入的出包裁剪脚本只有 `PackageManifest.py` 的调用带 `PYTHONUTF8`/`PYTHONIOENCODING`，
     12 处 `PrunePlatformScripts.py` 调用在 Windows runner（Python stdout 为 cp1252）上抛
