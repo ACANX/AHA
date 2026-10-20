@@ -75,6 +75,28 @@
     `--check-only` 断言），并把 `check_update_helper_packaging()` 的口径改为「Windows 包必带 helper」；
   - `ReleaseProcess.md` §3.6 与两份装配描述符的注释同步为「按平台分发」，不再留
     「非 Windows 包里带 .cmd/.ps1 属于暂时用不上」的相反说法。
+- **CLI：超长 CJK 行触发 JLine WCWidth 越界，渲染崩溃被误判为回合失败（issue #384，2026-10-20 真机）**：
+  - JLine 4.4.6 的 `WCWidth.charCountForGraphemeClusterBreakIterator` 会用越界 offset 调 JDK 的
+    grapheme `BreakIterator`（`IllegalArgumentException: offset is out of bounds: 76`），
+    经 `Display.update → Status.redraw → printAbove` 冒到 `ChatCommand#runTurn`，
+    整个回合被判「执行失败」且已输出内容丢失；
+  - 新增 `SafeAbovePrinter`：首次渲染异常记一条 WARN 并**永久降级为直写**
+    （暂停状态区 → 写终端 → 恢复），后续行不再重试 `printAbove`，回合不再中断；
+  - `runTurn` 的失败输出收敛：完整堆栈进日志，终端只给摘要 + 「完整堆栈见日志」，
+    不再同屏打两份堆栈；
+  - 新增 `SafeAbovePrinterTest`：正常路径、降级后不重试、suspend/resume 顺序、
+    连降级都失败时不抛出、含 CJK 的长行经 `AboveStream` 不中断。
+- **Linux 缺中文字体时界面汉显方块（issue #382，2026-10-20 真机）**：
+  - 最小化 Ubuntu / WSL 常不预装中文字体（`fc-list :lang=zh` 为 0），JavaFX 默认族
+    `System` → DejaVu Sans 不含汉字字形，合成回退也借不到字体，界面汉字全是方块；
+  - 新增 `FontFallback`：Linux 上按 `Noto Sans CJK SC` → `Source Han Sans SC` →
+    `WenQuanYi Micro Hei` → `Droid Sans Fallback` → 微软雅黑 / 苹方的顺序选第一个已安装族，
+    写进根节点 `-fx-font-family` 作为全局界面字体；精确候选全不命中时用族名特征兜底
+    （`Noto Serif CJK` 等）；Windows / macOS 不替换字体（系统自带中文，避免外观回归）；
+  - 日志面板 / 工具输出 / 参数区的等宽字体链在 `monospace` 之前补上 CJK 候选；
+  - 启动日志新增 `渲染诊断：中文字体 …`（选中族名 / 命中数量 / 缺失）；
+    Linux 上一个 CJK 族都没有时，消息区给出含 `sudo apt install fonts-noto-cjk` 的提示；
+  - 新增 `FontFallbackTest` 覆盖候选顺序、大小写不敏感、缺失降级、非 Linux 分支与等宽链位置。
 - **原生包启动即崩：`config.ModelDefinition` 未登记反射元数据（issue #383，2026-10-20 真机）**：
   - `0.1.5.00380` 的 ubuntu 原生包（桌面 / CLI）启动即抛
     `UnsupportedFeatureError: Record components not available for record class

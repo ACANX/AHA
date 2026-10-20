@@ -655,9 +655,11 @@ public final class DesktopShell implements ChatView {
         return rootNode;
     }
 
-    /** 根节点样式：主题 + 字号（字号属于设置，见 SettingsDialog）。 */
+    /** 根节点样式：主题 + 字体（issue #382 的 CJK 回退）+ 字号（字号属于设置，见 SettingsDialog）。 */
     private String rootStyle() {
-        return Palette.theme() + "-fx-font-size: " + fontSize + "px;";
+        // FontFallback.globalFamilyCss() 只在 Linux 且命中 CJK 候选时返回非空串，
+        // 因此 Windows / macOS 的根样式与改动前逐字节一致（外观无回归）。
+        return Palette.theme() + FontFallback.globalFamilyCss() + "-fx-font-size: " + fontSize + "px;";
     }
 
     /**
@@ -2437,7 +2439,7 @@ public final class DesktopShell implements ChatView {
 
     /** 等宽代码样式（工具输出与参数区）。 */
     private static final String CODE_STYLE =
-            "-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace; -fx-font-size: 12px;";
+            "-fx-font-family: " + FontFallback.MONOSPACE_CSS + "; -fx-font-size: 12px;";
 
     private static String mutedStyle(int size) {
         return "-fx-text-fill: " + Palette.MUTED + "; -fx-font-size: " + size + "px;";

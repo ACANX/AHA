@@ -127,7 +127,7 @@ public final class OutputDialog {
         area.setText(text);
         area.setEditable(false);
         area.setWrapText(false);
-        area.setStyle("-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
+        area.setStyle("-fx-font-family: " + FontFallback.MONOSPACE_CSS + ";"
                 + "-fx-font-size: 12px;");
         VBox.setVgrow(area, Priority.ALWAYS);
 

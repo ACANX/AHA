@@ -574,13 +574,13 @@ jobs:
         #   CI 无 GPU，Prism 必然回退软件渲染，覆盖不到真机 D3D / ES2 路径；
         #   BuildSpec §7 要求失败在步骤级容错。
         #
-        # 三态判定（2026-10-20 第一轮实测后修正）：
-        #   ① 命中 `[ui-fxml-loaded]` ⇒ ✅ 通过；
+        # 三态判定（2026-10-20 两轮实测后修正）：
+        #   ① 命中 `[ui-fxml-loaded]` ⇒ ✅ 通过（已证明走到界面初始化；进程随后退出不影响结论）；
         #   ② 命中 `[ui-fxml-load-failed]` / `UnsupportedFeatureError` / `ClassNotFoundException`
         #      ⇒ ❌ `::error::` —— 这是本单那一类**确定的元数据缺陷**，不能被“环境”二字淡化；
-        #   ③ 其余非 0 退出（实测 runner 上 JavaFX 本地库以 134 = SIGABRT 结束）
-        #      ⇒ ⚠️ `::warning::` 并写摘要，标「环境限制未验证」—— 避免可选管线长期挂红，
-        #      把真正的元数据缺陷淹没在噪声里。
+        #   ③ 未到界面且非 0 退出（实测 runner 上 JavaFX 本地栈以 134 = SIGABRT 结束）
+        #      ⇒ ⚠️ `::warning::` 并写摘要，标「环境限制未验证」；
+        #   ④ 其余（存活 25 秒 / 0 退出但没命中 loaded）⇒ ❌。
         continue-on-error: true
         if: always() && runner.os == 'Linux' && steps.verify.outputs.produced == 'true'
         run: |
@@ -649,18 +649,28 @@ jobs:
 
           # 无条件把捕获内容打到日志：只看判定无法区分「已捕获但没命中标记」与「重定向压根没生效」。
           echo "—— 捕获情况：out=$(wc -c < "$out" 2>/dev/null || echo 0) 字节，err=$(wc -c < "$err" 2>/dev/null || echo 0) 字节 ——"
-          printf '%s\n' "$text" | tail -n 60
+          echo '—— 关键标记（原文行）——'
+          printf '%s\n' "$text" | grep -aE '\[aha-version\]|\[ui-fxml-loaded\]|\[ui-fxml-load-failed\]|渲染诊断|Exception|UnsupportedFeatureError|Aborted|SIGABRT|prism' | head -n 40 || true
+          echo '—— stdout 前 20 行 ——'
+          head -n 20 "$out" 2>/dev/null || true
+          echo '—— 尾部（去掉 GC 表，最多 40 行）——'
+          printf '%s\n' "$text" | grep -avE '^\s*\|?\s*[0-9]+\|0x' | tail -n 40 || true
 
           if [ "${hasFailed}" -gt 0 ]; then
             problems="界面装载失败（命中 [ui-fxml-load-failed]）"
           elif [ "${hasNativeCrash}" -gt 0 ]; then
             problems="原生镜像反射 / JNI 元数据缺失（命中 UnsupportedFeatureError / ClassNotFoundException 指纹）"
+          elif [ "${hasLoaded}" -gt 0 ]; then
+            # 命中 [ui-fxml-loaded] 已证明「走到了界面初始化之后」——这正是本单要的判据。
+            # 之后进程再退出（实测 runner 无 GPU 时 JavaFX 本地栈会以 134 收尾）不影响结论，
+            # 但退出码照样记进摘要，不藏着。
+            :
           elif [ "${code}" -ne 0 ] && [ "${code}" -ne 124 ]; then
             # 134（SIGABRT）一类通常是 runner 无 GPU / GTK 初始化失败（JavaFX 的本地库 abort），
             # 不是本仓库的启动缺陷；记为「环境限制」并用 warning，避免可选管线长期挂红
             # 让真问题淹没在噪声里。真正的元数据缺失已被上面的指纹分开判定。
-            env_limited="启动期以非 0 退出（退出码 ${code}），日志无反射 / JNI 缺失标记，按 CI 图形环境限制处理"
-          elif [ "${hasLoaded}" -eq 0 ]; then
+            env_limited="启动期以非 0 退出（退出码 ${code}）且未到界面初始化，日志无反射 / JNI 缺失标记，按 CI 图形环境限制处理"
+          else
             problems="未命中正面标记 [ui-fxml-loaded]（界面没有装起来）"
           fi
 
@@ -682,7 +692,10 @@ jobs:
               printf '%s\n' "$text" | tail -n 40
               echo '```'
             else
-              echo "- ✅ 结论：启动到界面初始化（命中 [ui-fxml-loaded]），且启动期未崩"
+              echo "- ✅ 结论：启动到界面初始化（命中 [ui-fxml-loaded]）"
+              if [ "${code}" -ne 0 ] && [ "${code}" -ne 124 ]; then
+                echo "  - 注：进程随后以退出码 ${code} 结束（按 CI 图形环境问题记录，不影响本结论）"
+              fi
             fi
             echo '- 说明：CI 无 GPU，Prism 显式走软件管线（`-Dprism.order=sw`），覆盖不到真机 ES2 / D3D 路径。'
             echo ''
