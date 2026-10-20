@@ -97,6 +97,10 @@ jobs:
 
           target="Dist/aha-desktop-jvm-${version}-${LABEL}-jdk25.zip"
           mv -- "${files[0]}" "$target"
+          # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
+          # 必须在 VerifyPackageIntegrity 与清单生成之前完成。
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
           # **根级**的原生库（libglass.so / glass.dll / libglass.dylib…），故按根级计数。
@@ -135,12 +139,23 @@ jobs:
             grep -E '^(lib|bin)/' "$entries" | head -5
             exit 1
           fi
-          # ② 三个入口都平铺在包根
-          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
+          # ② 入口平铺在包根：POSIX 包只要 .sh，Windows 包要 .sh + .bat（issue #381）
+          case "$EXPECTED" in
+            win) required=(aha-desktop.jar AhaDesktop.sh AhaDesktop.bat) ;;
+            *)   required=(aha-desktop.jar AhaDesktop.sh) ;;
+          esac
+          for f in "${required[@]}"; do
             if ! grep -qx "$f" "$entries"; then
               echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
             fi
           done
+          if [ "$EXPECTED" != "win" ]; then
+            if grep -Eiq '\.(bat|cmd|ps1)$' "$entries"; then
+              echo "::error::POSIX 包内不应有 Windows 专属脚本（issue #381）："
+              grep -Ei '\.(bat|cmd|ps1)$' "$entries" | head -5
+              exit 1
+            fi
+          fi
 
           # ③ 单体 jar 自证：Main-Class = 转发类、无 module-info、含 JavaFX 类
           ( cd "$work" && "$JAVA_HOME/bin/jar" xf pkg.zip aha-desktop.jar )

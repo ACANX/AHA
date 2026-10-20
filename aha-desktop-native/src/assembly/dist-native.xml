@@ -90,9 +90,10 @@
             而设计 §8.2 第 9 项正是要给真实机验证这条路径 —— 验证前就注定是红的。
 
             两个文件都不带版本号：计划文件才是唯一入参，换版本不用改脚本。
-            这条腿在 Windows / Linux / macOS 上都会跑；非 Windows 的包里带这两个 .cmd/.ps1
-            属于「暂时用不上」（POSIX helper 未实现，界面上会提前拦住），但比某个平台
-            缺文件、到用户机器上才炸要好。
+
+            issue #381：这里以前写着「非 Windows 包里带这两个 .cmd/.ps1 属于暂时用不上」，
+            现在改为**按平台分发**：描述符仍收（Windows 包需要），POSIX 包由出包腿
+            （`PrunePlatformScripts.py`）在生成包内清单之前裁掉，用户不再看到用不上的脚本。
         -->
         <fileSet>
             <directory>${project.parent.basedir}/Dist</directory>

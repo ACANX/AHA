@@ -14,7 +14,9 @@
     <includeBaseDirectory>false</includeBaseDirectory>
 
     <fileSets>
-        <!-- 启动脚本平铺到包根：解压后直接双击/执行，不需要进子目录 -->
+        <!-- 启动脚本平铺到包根：解压后直接双击/执行，不需要进子目录。
+             issue #381：描述符平台无关，`.bat` 只应出现在 Windows 包；
+             POSIX 包（ubuntu / macos）在出包腿上由 `PrunePlatformScripts.py` 裁掉。 -->
         <fileSet>
             <directory>${project.parent.basedir}/bin</directory>
             <outputDirectory>.</outputDirectory>
@@ -37,6 +39,10 @@
             自更新换装 helper（issue #51 §4.5）：必须随包分发 —— App 在换装前把它复制到
             `<AHA_HOME>/update/`（放安装根之外：它会自删，也不该出现在被替换的目录里）。
             两个文件都不带版本号：计划文件才是唯一入参，换版本不用改脚本。
+
+            issue #381：这两份 helper 只属于 Windows 包（POSIX 换装脚本仍由 #250 跟踪）。
+            描述符保持平台无关（Windows 包需要它们），POSIX 包在出包腿上被裁剪；
+            裁剪发生在生成 `AHA-PACKAGE.json` 之前，因此清单与包内容保持一致。
         -->
         <fileSet>
             <directory>${project.parent.basedir}/Dist</directory>
