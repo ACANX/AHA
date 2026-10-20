@@ -159,6 +159,35 @@ class AgentEngineTest {
     }
 
     @Test
+    void requestNeverContainsOrphanToolMessageOrUnansweredToolCalls() {
+        // issue #391：窗口截断 / 中断都会留下「孤立的 tool」或「未响应的 tool_calls」，
+        // 直接发给上游会 400。prepare() 必须在请求前把它们洗干净。
+        InMemoryMemoryStore memory = new InMemoryMemoryStore();
+        FakeLlmClient llm = new FakeLlmClient();
+        llm.enqueue(textResponse("ok"));
+        AgentEngine engine = new AgentEngine(llm, new ToolRegistry(), memory);
+
+        memory.appendMessage("s1", new ChatMessage(Role.TOOL, "孤立的工具结果", List.of(),
+                "call-orphan", null));
+        memory.appendMessage("s1", ChatMessage.text(Role.USER, "继续"));
+        memory.appendMessage("s1", new ChatMessage(Role.ASSISTANT, "", List.of(
+                new ToolCall("call-1", "file-read", Map.of()),
+                new ToolCall("call-2", "file-read", Map.of())), null, null));
+        memory.appendMessage("s1", new ChatMessage(Role.TOOL, "r1", List.of(), "call-1", null));
+
+        engine.run("s1", new SessionConfig("m", null, Map.of()), "m", "hi",
+                new CancellationToken());
+
+        List<ChatMessage> sent = llm.requests.get(0).messages();
+        assertThat(sent).noneMatch(message -> message.role() == Role.TOOL
+                && "call-orphan".equals(message.toolCallId()));
+        ChatMessage assistant = sent.stream()
+                .filter(message -> message.role() == Role.ASSISTANT)
+                .findFirst().orElseThrow();
+        assertThat(assistant.toolCalls()).extracting(ToolCall::id).containsExactly("call-1");
+    }
+
+    @Test
     void interruptedStreamKeepsContentButDropsPartialToolCalls() {
         InMemoryMemoryStore memory = new InMemoryMemoryStore();
         AgentEngine engine = new AgentEngine(new InterruptingLlmClient(), new ToolRegistry(),

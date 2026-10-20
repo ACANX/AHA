@@ -18,6 +18,7 @@ import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.llm.protocol.ChatRequest;
 import com.acanx.module.aha.core.llm.protocol.ChatResponse;
 import com.acanx.module.aha.core.llm.protocol.Choice;
+import com.acanx.module.aha.core.llm.protocol.MessageSanitizer;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.StreamEvent;
 import com.acanx.module.aha.core.llm.protocol.StreamEventType;
@@ -277,7 +278,9 @@ public final class AgentEngine {
         ChatMessage userMessage = ChatMessage.text(Role.USER, input);
         messages.add(userMessage);
         memoryStore.appendMessage(sessionId, userMessage);
-        return messages;
+        // 最终防线（issue #391）：历史截断、工具中断等都可能留下「孤立的 tool 消息」
+        // 或「未响应的 tool_calls」。流式 / 非流式都从 prepare 出发，统一在此清洗一次。
+        return MessageSanitizer.sanitize(messages);
     }
 
     /**
