@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **Linux 桌面端：内置中文字体兜底，WSL / 最小镜像不再显示方块（issue #382，2026-10-20 真机）**：
+  - 根因：WSL2 Ubuntu 最小镜像的 `fc-list :lang=zh` 为 0，`FontFallback` 只能「探测 + 提示安装」，
+    界面上仍然没有含汉字字形的字体，所以 #382 之后中文依旧方块；
+  - 内置 `Droid Sans Fallback`（Apache-2.0，3.9 MB，随包分发，见
+    `aha-desktop/src/main/resources/fonts/`）；系统没有 CJK 字体时用 `Font.loadFont`
+    从 classpath 注册并设为界面字体；
+  - 优先级：**系统 CJK 族 > 内置兜底**；非 Linux 一律不替换（Windows / macOS 外观无回归）；
+  - `MONOSPACE_CSS` 的逗号列表在 JavaFX 里会被当成一个不存在的族名（`-fx-font-family`
+    只接受单个族名），改为 `monospaceCss()`：选中 CJK 族时返回单一族名，代码区汉字可读；
+  - native-image 参数补 `ttf|otf` 的 `-H:IncludeResources`，原生包同样能加载内置字体；
+  - README 更新：安装系统字体从「必须」改为「可选（更好字形）」。
 - **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
   - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
     JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`

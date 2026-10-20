@@ -37,7 +37,7 @@
 --gc=G1
 --future-defaults=all
 -R:MaxHeapSize=1g
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl|ttf|otf)$
 -H:IncludeResources=META-INF/services/.*
 -H:IncludeResources=sun/text/resources/LineBreakIteratorData
 -H:IncludeResources=.*\.icu$
