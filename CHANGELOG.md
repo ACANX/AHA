@@ -48,6 +48,14 @@
   - `MarkdownParser`：全文一次性解析，空行终止表格（与 #346 一致）、围栏内不解析、七级 `#` 按段落；
   - `MarkdownParserTest` 14 条；`MarkdownParserSemanticsTest` 与 `MarkdownParsePerformanceTest`
     解除 `@Disabled`（解析 500 行阈值 200 ms，目标 50 ms，真实耗时打到日志）。
+- **桌面端 Markdown 行内解析与富文本渲染（#408 S1.2–S1.6，#414–#418，2026-10-20）**：
+  - `MarkdownInline` / `MarkdownInlineParser`：行内 AST（文本 / 代码 / 粗体 / 斜体 / 删除线 / 链接），
+    与 CLI 同一套侧翼规则，4 个及以上定界符按字面量；
+  - `MarkdownRenderer`：块级映射到 `TextFlow` / `Separator` / `VBox` / `GridPane` / `ScrollPane`，
+    行内映射到 `Text` 样式与 `Hyperlink`；配色经 `themed` 注入，主题切换自动重刷；
+  - `DesktopShell`：段收尾后把纯文本气泡替换为富文本（进行中的段仍是纯文本），
+    原始 Markdown 存为气泡属性——右键提供「查看原文 / 复制 Markdown / 导出为 .md / 切换原文渲染」；
+  - 测试：`MarkdownInlineParserTest` 12 条；渲染器冒烟 2 条（`-Daha.ui.tests=true`）。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；

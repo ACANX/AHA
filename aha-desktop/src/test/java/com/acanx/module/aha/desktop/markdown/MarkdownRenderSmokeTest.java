@@ -2,8 +2,10 @@ package com.acanx.module.aha.desktop.markdown;
 
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import org.junit.jupiter.api.Test;
@@ -11,7 +13,9 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,6 +74,51 @@ class MarkdownRenderSmokeTest {
     }
 
     @Test
+    void rendererMapsBlocksToExpectedNodeTypes() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("""
+                # 标题
+
+                段落 **粗** 与 `code`
+
+                - 列表项
+
+                > 引用
+
+                ```java
+                int a = 1;
+                ```
+
+                | a | b |
+                |---|---|
+                | 1 | 2 |
+                """));
+
+        assertThat(root).isInstanceOf(VBox.class);
+        VBox box = (VBox) root;
+        assertThat(box.getChildren()).extracting(child -> child.getClass().getSimpleName())
+                .containsExactly("TextFlow", "TextFlow", "VBox", "HBox", "VBox", "ScrollPane");
+        // 行内：粗体仍是 TextFlow 里的 Text，链接渲染为 Hyperlink
+        assertThat(((TextFlow) box.getChildren().get(1)).getChildren())
+                .anyMatch(node -> node instanceof Text);
+    }
+
+    @Test
+    void rendererRendersLinkAsHyperlink() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("见 [文档](https://x/y)。\n"));
+
+        TextFlow flow = (TextFlow) ((VBox) root).getChildren().get(0);
+        assertThat(flow.getChildren()).anyMatch(node -> node instanceof Hyperlink);
+    }
+
+    @Test
     void labelRemainsTheFallbackForPlainText() throws Exception {
         startToolkit();
 
@@ -90,6 +139,22 @@ class MarkdownRenderSmokeTest {
             ready.countDown();
         }
         assertThat(ready.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private static <T> T uiGet(Callable<T> supplier) throws Exception {
+        AtomicReference<T> reference = new AtomicReference<>();
+        AtomicReference<Exception> failure = new AtomicReference<>();
+        onUi(() -> {
+            try {
+                reference.set(supplier.call());
+            } catch (Exception e) {
+                failure.set(e);
+            }
+        });
+        if (failure.get() != null) {
+            throw failure.get();
+        }
+        return reference.get();
     }
 
     private static void onUi(Runnable task) throws InterruptedException {

@@ -15,6 +15,7 @@ import com.acanx.module.aha.desktop.chat.SlashCommands;
 import com.acanx.module.aha.desktop.chat.ToolCard;
 import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
+import com.acanx.module.aha.desktop.markdown.MarkdownRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.beans.binding.Bindings;
@@ -57,6 +58,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
 import java.io.IOException;
@@ -66,7 +68,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.concurrent.ConcurrentHashMap;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -285,6 +290,24 @@ public final class DesktopShell implements ChatView {
 
     /** 待渲染的段快照批次（同段号合并、渲染后摘除）。 */
     private final AssistantFrameBuffer assistantFrames = new AssistantFrameBuffer();
+
+    /** Markdown 渲染器（S1.5）：段结束后把纯文本气泡换成富文本。 */
+    private MarkdownRenderer markdownRenderer;
+
+    /** 已收尾的段号（并发安全）：只有收尾的段才做富文本渲染，进行中的段保持纯文本。 */
+    private final Set<Integer> finishedSeqs = ConcurrentHashMap.newKeySet();
+
+    /** 当前段的气泡容器（只在 UI 线程读写），用于把 Label 换成富文本。 */
+    private VBox currentBubble;
+
+    /** 气泡属性：原始 Markdown（S1.6 的查看 / 复制 / 导出都以它为准）。 */
+    private static final String MARKDOWN_RAW = "aha.markdown.raw";
+
+    /** 气泡属性：渲染后的富文本节点。 */
+    private static final String MARKDOWN_RICH = "aha.markdown.rich";
+
+    /** 气泡属性：纯文本节点（富文本化之后仍保留，供「切换原文」使用）。 */
+    private static final String MARKDOWN_PLAIN = "aha.markdown.plain";
 
     /** UI 线程已渲染到哪一段（只在 UI 线程读写）。 */
     private int renderedSeq = -1;
@@ -612,6 +635,7 @@ public final class DesktopShell implements ChatView {
         // 界面骨架从 FXML 装载（详见 desktop-shell.fxml 顶部的说明）
         loadView();
         this.assistantBridge = new FxBridge<>(dispatcher, this::renderSegments);
+        this.markdownRenderer = new MarkdownRenderer(this::themed, Clipboards::copy);
         applyPaneState();
     }
 
@@ -1002,8 +1026,10 @@ public final class DesktopShell implements ChatView {
         // 代际号一变，它们就被判为「上一会话的残留」而整条丢弃（PR #404 审查 P2-2）
         assistantFrames.clear();
         assistantBridge.clear();
+        finishedSeqs.clear();
         renderedSeq = -1;
         currentAssistant = null;
+        currentBubble = null;
     }
 
     /**
@@ -1273,6 +1299,8 @@ public final class DesktopShell implements ChatView {
         // 这里把最终全文并进待渲染批次，再由 FxBridge 保证「最后一个值一定被渲染」。
         AssistantSegments.Segment last = assistantSegments.end();
         if (last != null) {
+            // 标记收尾：渲染时只有收尾的段才做富文本，进行中的段保持纯文本（S1.5）
+            finishedSeqs.add(last.seq());
             assistantBridge.submit(assistantFrames.merge(last));
         }
     }
@@ -1319,11 +1347,23 @@ public final class DesktopShell implements ChatView {
             currentAssistant = new Label();
             currentAssistant.setWrapText(true);
             themed(currentAssistant, () -> "-fx-text-fill: " + Palette.FOREGROUND + ";");
-            addRow("助手", currentAssistant, Palette.SUCCESS);
+            currentBubble = addRow("助手", currentAssistant, Palette.SUCCESS);
         }
-        if (currentAssistant != null) {
-            currentAssistant.setText(segment.text());
+        if (currentAssistant == null) {
+            return;
         }
+        // 段收尾后换成富文本（S1.5）：只解析一次，且不重建整个节点树以外的状态。
+        // 同一段多次回来（收尾快照）时保持已渲染的富文本，不重复建节点。
+        if (finishedSeqs.contains(segment.seq()) && currentBubble != null
+                && currentBubble.getProperties().get(MARKDOWN_RICH) == null) {
+            Node rich = markdownRenderer.render(segment.text());
+            currentBubble.getProperties().put(MARKDOWN_RAW, segment.text());
+            currentBubble.getProperties().put(MARKDOWN_RICH, rich);
+            currentBubble.getProperties().put(MARKDOWN_PLAIN, currentAssistant);
+            currentBubble.getChildren().set(1, rich);
+            return;
+        }
+        currentAssistant.setText(segment.text());
     }
 
     @Override
@@ -2604,7 +2644,7 @@ public final class DesktopShell implements ChatView {
      * @param body   内容控件
      * @param accent 强调色
      */
-    private void addRow(String who, javafx.scene.Node body, String accent) {
+    private VBox addRow(String who, javafx.scene.Node body, String accent) {
         removeEmptyState();
         boolean self = "你".equals(who);
         if (self) {
@@ -2625,6 +2665,10 @@ public final class DesktopShell implements ChatView {
         themed(bubble, () -> "-fx-background-color: "
                 + (self ? Palette.FOCUS_BORDER : Palette.BLOCK_BACKGROUND) + ";"
                 + "-fx-background-radius: 8;");
+        if ("助手".equals(who)) {
+            // 助手气泡才有「原文」通路（S1.6）：用户/系统消息没有可导出的 Markdown
+            installMarkdownActions(bubble);
+        }
 
         Region bar = new Region();
         bar.setMinWidth(2);
@@ -2643,6 +2687,84 @@ public final class DesktopShell implements ChatView {
             row = new HBox(ShellLayout.GAP, bar, bubble);
         }
         messages.getChildren().add(row);
+        return bubble;
+    }
+
+    /**
+     * 给助手气泡挂上「原文」菜单（S1.6）：查看 / 复制 / 导出 / 渲染↔原文切换。
+     *
+     * <p>动作都从气泡的 {@code properties} 取数据，而不是从闭包变量——同一气泡会被
+     * 反复覆写文本（流式 → 收尾），闭包捕获的快照很容易过期。</p>
+     *
+     * @param bubble 气泡容器
+     */
+    private void installMarkdownActions(VBox bubble) {
+        ContextMenu menu = new ContextMenu();
+        MenuItem view = new MenuItem("查看原文");
+        view.setOnAction(event -> {
+            String raw = rawMarkdown(bubble);
+            if (raw == null) {
+                appendNotice("这段还没有收尾，暂无原文可看。");
+                return;
+            }
+            new OutputDialog("助手原文", raw).show(ownerWindow());
+        });
+        MenuItem copy = new MenuItem("复制 Markdown");
+        copy.setOnAction(event -> {
+            String raw = rawMarkdown(bubble);
+            if (raw != null) {
+                Clipboards.copy(raw);
+            }
+        });
+        MenuItem export = new MenuItem("导出为 .md");
+        export.setOnAction(event -> exportMarkdown(bubble));
+        MenuItem toggle = new MenuItem("切换原文 / 渲染");
+        toggle.setOnAction(event -> toggleMarkdown(bubble));
+        menu.getItems().addAll(view, copy, export, toggle);
+        bubble.setOnContextMenuRequested(event ->
+                menu.show(bubble, event.getScreenX(), event.getScreenY()));
+    }
+
+    private static String rawMarkdown(VBox bubble) {
+        Object raw = bubble.getProperties().get(MARKDOWN_RAW);
+        return raw instanceof String text ? text : null;
+    }
+
+    private Window ownerWindow() {
+        return messages.getScene() == null ? null : messages.getScene().getWindow();
+    }
+
+    private void exportMarkdown(VBox bubble) {
+        String raw = rawMarkdown(bubble);
+        if (raw == null) {
+            appendNotice("这段还没有收尾，暂无原文可导出。");
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导出 Markdown");
+        chooser.setInitialFileName("assistant.md");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Markdown", "*.md"));
+        File file = chooser.showSaveDialog(ownerWindow());
+        if (file == null) {
+            return;
+        }
+        try {
+            Files.writeString(file.toPath(), raw, StandardCharsets.UTF_8);
+            appendNotice("已导出：" + file);
+        } catch (IOException e) {
+            appendNotice("导出失败：" + e.getMessage());
+        }
+    }
+
+    private void toggleMarkdown(VBox bubble) {
+        Object rich = bubble.getProperties().get(MARKDOWN_RICH);
+        Object plain = bubble.getProperties().get(MARKDOWN_PLAIN);
+        if (!(rich instanceof Node richNode) || !(plain instanceof Node plainNode)) {
+            appendNotice("这段还没有收尾，暂不支持切换。");
+            return;
+        }
+        Node current = bubble.getChildren().size() > 1 ? bubble.getChildren().get(1) : null;
+        bubble.getChildren().set(1, current == richNode ? plainNode : richNode);
     }
 
     private void removeEmptyState() {
