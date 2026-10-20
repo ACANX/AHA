@@ -41,6 +41,7 @@ class AgentEventTest {
         AgentEvent event = new DoneEvent("s1", "stop");
         String kind = switch (event) {
             case ContentEvent e -> "content";
+            case ContentSegmentEndEvent e -> "content-segment-end";
             case ToolCallEvent e -> "tool-call";
             case ToolResultEvent e -> "tool-result";
             case UsageEvent e -> "usage";
@@ -48,6 +49,21 @@ class AgentEventTest {
             case DoneEvent e -> "done";
         };
         assertThat(kind).isEqualTo("done");
+    }
+
+    /**
+     * 段边界事件（issue #403）：一轮可多次出现，且是值对象。
+     */
+    @Test
+    void contentSegmentEndIsAPerRoundBoundaryMarker() {
+        AgentEvent event = new ContentSegmentEndEvent("s1");
+        assertThat(event).isInstanceOf(ContentSegmentEndEvent.class);
+        assertThat(((ContentSegmentEndEvent) event).sessionId()).isEqualTo("s1");
+        // 载荷只有 sessionId：段内文本已由 ContentEvent 逐 token 送达，本事件只标「段到此为止」。
+        // 不用 getRecordComponents() 断言字段数——那只能证明「有几个字段」，证明不了契约；
+        // 契约由 Javadoc 与 sessionId 的可观察行为共同保证。
+        assertThat(new ContentSegmentEndEvent("s1")).isEqualTo(new ContentSegmentEndEvent("s1"));
+        assertThat(new ContentSegmentEndEvent("s1")).isNotEqualTo(new DoneEvent("s1", "stop"));
     }
 
     @Test

@@ -61,5 +61,5 @@ public interface EventBus {
 | `WATERFALL`（可变换、短路）语义 | ⛔ 0.4，目前仅为接口约定 |
 
 **0.1 现状**：`AgentEngine` 直接调用 `AgentEventListener` 分发 Agent 级事件
-（`ContentEvent` / `ToolCallEvent` / `ToolResultEvent` / `UsageEvent` / `DoneEvent`），
+（`ContentEvent` / `ContentSegmentEndEvent` / `ToolCallEvent` / `ToolResultEvent` / `UsageEvent` / `DoneEvent`），
 尚未接入扩展事件总线。接入后需保证两类事件语义一致。

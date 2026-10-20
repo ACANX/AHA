@@ -2,6 +2,7 @@ package com.acanx.module.aha.core.runtime;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
@@ -58,6 +59,9 @@ public interface AgentRuntime extends AutoCloseable {
         TaskResult result = submit(request, token);
         if (result.success()) {
             sink.accept(new ContentEvent(result.taskId(), result.output()));
+            // 非流式实现只有一段正文：照事件契约补一条段边界再收尾（issue #403），
+            // 免得消费方「段边界 + 整轮结束」两条路径都要单独兼容
+            sink.accept(new ContentSegmentEndEvent(result.taskId()));
             sink.accept(new DoneEvent(result.taskId(), "stop"));
         } else {
             sink.accept(new ErrorEvent(result.taskId(), result.errorCode(), result.errorMessage()));
