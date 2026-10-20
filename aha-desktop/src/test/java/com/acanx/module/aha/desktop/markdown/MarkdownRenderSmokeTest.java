@@ -164,6 +164,29 @@ class MarkdownRenderSmokeTest {
     }
 
     @Test
+    void fenceRendersHighlightedTokens() throws Exception {
+        startToolkit();
+
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> node.setStyle(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("""
+                ```java
+                public class A {
+                }
+                ```
+                """));
+
+        VBox fenceBox = (VBox) ((VBox) root).getChildren().get(0);
+        ScrollPane scroll = (ScrollPane) fenceBox.getChildren().get(1);
+        TextFlow code = (TextFlow) scroll.getContent();
+        // "public" / "class" / 换行 / 其余符号 → 至少 4 个 Text，说明确实按 token 切开了
+        assertThat(code.getChildren().size()).isGreaterThan(3);
+        assertThat(code.getChildren())
+                .extracting(node -> ((Text) node).getText())
+                .contains("public", "class");
+    }
+
+    @Test
     void labelRemainsTheFallbackForPlainText() throws Exception {
         startToolkit();
 

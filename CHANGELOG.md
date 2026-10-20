@@ -62,6 +62,13 @@
   - 任务列表识别 `[ ]` / `[x]` / `[X]`，渲染为只读复选框字形（`☐` / `☑`），不挂点击事件；
   - 新增 `MarkdownTask`（纯逻辑，可无头单测）与 `MarkdownTaskTest` 4 条；
   - 渲染器冒烟追加表格逐格（行列 / 对齐 / 行内样式）与任务列表字形断言。
+- **代码高亮词法提炼与桌面端着色（#408 S2.2，#420，2026-10-20）**：
+  - `CodeLexer` / `CodeToken` 下沉到 `aha-core`：只产出「类型 + 文本」，CLI 与桌面端共用一份词法，
+    避免高亮口径分叉；
+  - CLI `CodeHighlighter` 精简为 `Kind → ANSI` 映射，输出与 #336 完全一致（`CodeHighlighterTest` 未改）；
+  - 桌面围栏代码改用 `TextFlow` 逐 token 着色（关键字 / 字符串 / 数字 / 注释），
+    未知语言退回单色，主题切换经 `styler` 重新求值；
+  - 新增 `CodeLexerTest` 6 条（分类、原文逐字节一致、未知语言、别名与围栏附加信息）。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；

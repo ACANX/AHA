@@ -1,5 +1,7 @@
 package com.acanx.module.aha.desktop.markdown;
 
+import com.acanx.module.aha.core.markdown.CodeLexer;
+import com.acanx.module.aha.core.markdown.CodeToken;
 import com.acanx.module.aha.desktop.view.Palette;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -143,10 +145,26 @@ public final class MarkdownRenderer {
         styler.apply(copy, () -> "-fx-text-fill: " + Palette.READ + "; -fx-font-size: 11px;");
         head.getChildren().addAll(language, copy);
 
-        Label code = new Label(fence.content());
-        code.setWrapText(false);
-        styler.apply(code, () -> "-fx-font-family: monospace; -fx-text-fill: " + Palette.FOREGROUND
-                + "; -fx-background-color: " + Palette.BLOCK_BACKGROUND + "; -fx-padding: 6;");
+        // 代码正文用 TextFlow + 逐 token 着色（S2.2）：Label 只能整段一个颜色。
+        // TextFlow 不设宽度约束，超长行由外层 ScrollPane 横向滚动，不折行。
+        TextFlow code = new TextFlow();
+        code.setPadding(new Insets(6));
+        styler.apply(code, () -> "-fx-background-color: " + Palette.BLOCK_BACKGROUND + ";");
+        String[] lines = fence.content().split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                Text newline = new Text("\n");
+                styler.apply(newline, () -> "-fx-font-family: monospace; -fx-fill: "
+                        + Palette.FOREGROUND + ";");
+                code.getChildren().add(newline);
+            }
+            for (CodeToken token : CodeLexer.tokenize(lines[i], fence.language())) {
+                Text text = new Text(token.text());
+                styler.apply(text, () -> "-fx-font-family: monospace; -fx-fill: "
+                        + colorOf(token.kind()) + ";");
+                code.getChildren().add(text);
+            }
+        }
 
         ScrollPane scroll = new ScrollPane(code);
         scroll.setFitToHeight(false);
@@ -248,6 +266,17 @@ public final class MarkdownRenderer {
             flow.getChildren().add(inlineNode(inline, header ? "-fx-font-weight: bold;" : ""));
         }
         return flow;
+    }
+
+    /** 记号类型 → 前景色；主题切换时经 {@code styler} 重新求值。 */
+    private static String colorOf(CodeToken.Kind kind) {
+        return switch (kind) {
+            case KEYWORD -> Palette.WRITE;
+            case STRING -> Palette.SUCCESS;
+            case NUMBER -> Palette.EXEC;
+            case COMMENT -> Palette.MUTED;
+            case PLAIN -> Palette.FOREGROUND;
+        };
     }
 
     private static javafx.geometry.HPos alignment(List<MarkdownBlock.Align> aligns, int column) {
