@@ -111,6 +111,9 @@ jobs:
           # runtime 段一律显式（jdk25 / jdk27），不再靠「默认变体不带后缀」区分。
           target="Dist/aha-desktop-jvm-${VERSION}-${LABEL}-jdk${JDK}.zip"
           mv -- "${files[0]}" "$target"
+          # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
           # 判据全部落在「解包后的实际内容」上，不看构建日志：包体形态已经回归过一次
@@ -125,8 +128,12 @@ jobs:
             grep -E '^(lib|bin)/' "$entries" | head -5
             exit 1
           fi
-          # ② 三个入口都平铺在包根
-          for f in aha-desktop.jar AhaDesktop.sh AhaDesktop.bat; do
+          # ② 入口平铺在包根：POSIX 包只要 .sh，Windows 包要 .sh + .bat（issue #381）
+          case "${LABEL}" in
+            windows-*) required=(aha-desktop.jar AhaDesktop.sh AhaDesktop.bat) ;;
+            *)         required=(aha-desktop.jar AhaDesktop.sh) ;;
+          esac
+          for f in "${required[@]}"; do
             if ! grep -qx "$f" "$entries"; then
               echo "::error::桌面端包内缺少 ${f}（应平铺在包根）"; exit 1
             fi
@@ -196,6 +203,9 @@ jobs:
           # 缺文件时 `zipfile.write` 会直接报错，因此这里本身就是「六个入口都在」的断言。
           python3 -c "import sys,zipfile; t=sys.argv[1]; z=zipfile.ZipFile(t,'w',zipfile.ZIP_DEFLATED); [z.write('Dist/'+n, n) for n in sys.argv[2:]]; z.close()" \
             "$target" aha-cli.jar AhaCli.sh AhaCli.bat README.md LICENSE CHANGELOG.md
+          # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # ── 包内自证（issue #218 起：包根**平铺**）────────────────────────────
           # 与桌面端同一套口径：判据落在「打出来的 zip 里实际有什么」，不看构建日志。
@@ -209,8 +219,12 @@ jobs:
             grep -E '^(lib|bin)/' "$entries" | head -5
             exit 1
           fi
-          # ② 三个入口都平铺在包根
-          for f in aha-cli.jar AhaCli.sh AhaCli.bat; do
+          # ② 入口平铺在包根：POSIX 包只要 .sh，Windows 包额外带 .bat（issue #381）
+          case "${LABEL}" in
+            windows-*) required=(aha-cli.jar AhaCli.sh AhaCli.bat) ;;
+            *)         required=(aha-cli.jar AhaCli.sh) ;;
+          esac
+          for f in "${required[@]}"; do
             if ! grep -qx "$f" "$entries"; then
               echo "::error::CLI 包内缺少 ${f}（应平铺在包根）"; exit 1
             fi

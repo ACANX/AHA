@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **POSIX 发行包不再带 Windows 专属脚本（issue #381，2026-10-20）**：
+  - `ubuntu-amd64` / `macos-aarch64` 的四种包（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）
+    不再包含 `AhaCli.bat` / `AhaDesktop.bat` / `apply-update.cmd` / `AhaApplyUpdate.ps1`；
+  - 新增 `.github/Python/PrunePlatformScripts.py`：按平台裁剪（POSIX 删 `.bat` / `.cmd` / `.ps1`，
+    Windows 原样保留），各出包线在**生成 `AHA-PACKAGE.json` 之前**调用，清单与包内容一致；
+  - `CliReleasePackageLeg` / `DesktopPackageLeg` / `BuildMvnArtifactLeg` 的入口断言改为按平台
+    （POSIX 不再要求 `.bat`，Windows 仍要求）；
+  - `bin/CheckScripts.py` 新增 `check_platform_package_scripts()`（各出包线必须调用裁剪脚本 +
+    `--check-only` 断言），并把 `check_update_helper_packaging()` 的口径改为「Windows 包必带 helper」；
+  - `ReleaseProcess.md` §3.6 与两份装配描述符的注释同步为「按平台分发」，不再留
+    「非 Windows 包里带 .cmd/.ps1 属于暂时用不上」的相反说法。
 - **原生包启动即崩：`config.ModelDefinition` 未登记反射元数据（issue #383，2026-10-20 真机）**：
   - `0.1.5.00380` 的 ubuntu 原生包（桌面 / CLI）启动即抛
     `UnsupportedFeatureError: Record components not available for record class
