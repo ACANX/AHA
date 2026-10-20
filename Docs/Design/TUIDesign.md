@@ -1,6 +1,6 @@
 # AHA TUI 设计（当前实现）
 
-**文档版本**：v1.14.0
+**文档版本**：v1.15.0
 **状态**：已实现（0.1.x）
 **生效日期**：2026-10-07
 **最后更新**：2026-10-20
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更内容 | 变更人 |
 |---|---|---|---|
 | v1.0.0 | 2026-10-07 | 初始版本：整理当前 TUI 的支持范围、支持程度、版面样式示例与实现细节 | @ACANX |
+| v1.15.0 | 2026-10-20 | §5.4 补 **Windows VT 输入模式（0x0200）**：`tty/VtInputMode` 每轮 `readLine` 把 0x0200 补回输入模式，让 `ESC[200~` 标记透传给 JLine；§5.4.2 更正「conhost 改不了」的前提（JLine 从未开 0x0200），补实测对照表与 `AHA_PASTE_VT` 开关；§7.2 补 `VtInputMode.java` | @cnxnc |
 | v1.13.0 | 2026-10-16 | §5.4 扩写并**更正上一轮的说法**：conhost 上直接粘贴多行**改不了**（JLine 的 Windows 终端里，粘贴的换行与敲的回车在字节层面完全相同），改为「降级 + 侧门」——新增 `Alt+V`/`Ctrl+V` 自读剪贴板（`tty/ClipboardPaste`）、大块内容折叠为 `[paste #N +M lines]`（`tty/PastePlaceholder`，与 pi / Claude Code 同门槛同形状）、默认关闭的输入留痕 `AHA_INPUT_TRACE`（`tty/InputTrace`）；补 §5.4.1 同类工具做法对照表 | @ACANX / CNXNC |
 | v1.12.0 | 2026-10-16 | §5.4 新增「粘贴能力（括号粘贴）」：把 conhost 逐行提交明确写进降级矩阵，并给出替代入口 `/paste`（读剪贴板，不经过终端）与启动提示；§7.2 补 `Clipboard.java`、`TerminalCapabilities` 职责更新（issue #75） | @cnxnc |
 | v1.1.0 | 2026-10-07 | 失败时展示完整错误（40 行上限、不弱化）；`shell-exec` 失败附命令原文 | @ACANX |
@@ -878,6 +879,7 @@ CJK_SAMPLE = "中文字符";   // → cjk：决定是否提示切换 UTF-8
 | Windows Terminal（`WT_SESSION` 有值） | ✅ | 整体插入缓冲区，一次提交 | 无（JLine 已处理标记） |
 | mintty / Git Bash 等（`TERM` 有值） | ✅ | 同上 | 无 |
 | **传统控制台 conhost**（`TERM` 与 `WT_SESSION` 都为空） | ❌ | **逐行提交**（每行一条消息） | 启动时提示 + **Alt+V** / `/paste`（见下） |
+| **Windows（AHA 开 0x0200 后）** | 取决于终端 | Windows Terminal 实测整体插入（`<ESC>[200~…<ESC>[201~`）；conhost 待真机验证 | 默认开启，`AHA_PASTE_VT=0` 可关；仍保留 Alt+V / `/paste` |
 | Linux / macOS 的常见终端（xterm 家族） | ✅ | 同上 | 无 |
 | `TERM=dumb` | ❌ | 不做行编辑 | 同上 |
 
@@ -896,12 +898,26 @@ Windows 上要求有明确的支持标记（`WT_SESSION` 或非空 `TERM`）才�
 | **② 大块内容折叠成占位符**（输入行只留标记，提交时展开） | pi：`[paste #1 +42 lines]` / `[paste #1 1234 chars]`，超过 10 行或 1000 字符才折叠 | `tty/PastePlaceholder`：同样的门槛与形状；单遍展开、用户改过计数仍认、**自己敲的同形文本绝不被吞掉** |
 | **③ 不经终端的剪贴板通路**（终端截获粘贴键时的兜底） | pi：Windows 下把粘贴类键位改到 **`Alt+V`**（避开终端保留的 `Ctrl+V`），并自带原生剪贴板读取 | `Alt+V`（主）与 `Ctrl+V`：`tty/ClipboardPaste` 读剪贴板 → **直接写进输入缓冲区**；另有 `/paste` 直接发送 |
 
-#### 5.4.2 conhost 的处置：**降级 + 侧门**，不做猜测
+#### 5.4.2 conhost 的处置：**先开 0x0200，再谈降级**
 
-conhost 上**直接粘贴改不了**：JLine 的 Windows 终端走 `ReadConsoleInput`，**每条按键（含粘贴里的
-换行）都是一个独立事件**，而粘贴产生的 `VK_RETURN` 与用户敲的回车在字节层面**完全一样**
-（`AbstractWindowsTerminal.processKeyEvent` → 同一个 `\r`/`\n`），进程侧拿不到任何「这是粘贴」的信号。
-注意这与我上一轮的说法有别：那时我以为「换个探测方式就能修」，实测证明**这条路本来就不通**。
+**更正（2026-10-20 实测）**：上一轮说「conhost 上直接粘贴改不了」，前提是 **JLine 从未打开输入侧的
+`ENABLE_VIRTUAL_TERMINAL_INPUT`（0x0200）**。只打开输出侧的
+`ENABLE_VIRTUAL_TERMINAL_PROCESSING`（0x0004）时，终端发出的 `ESC[200~ … ESC[201~` 会被
+conhost / ConPTY 的输入引擎消费掉，应用只拿到裸内容 + `\r`。POC（`ReadConsoleW`，Windows Terminal）：
+
+| 输入模式 | 读到 |
+|---|---|
+| 不开 0x0200（≈ JLine 现状） | `line1<CR>line2<CR>line3`（**标记被宿主吃掉**） |
+| 开 0x0200 | `<ESC>[200~line1<CR>line2<CR>line3<ESC>[201~`（**标记透传**） |
+
+所以 AHA 现在每轮 `readLine` 都把 0x0200 补回去（§5.4.4）。**仍未真机验证的**是
+「conhost 自己在粘贴时发不发标记」——POC 跑在 Windows Terminal 里；无论结果如何，0x0200 对 conhost
+无害（不发标记时行为与今天一致），因此默认开启、可用 `AHA_PASTE_VT=0` 关闭。
+
+JLine 的 Windows 终端走 `ReadConsoleInput`，**每条按键（含粘贴里的换行）都是一个独立事件**，
+粘贴产生的 `VK_RETURN` 与用户敲的回车在字节层面**完全一样**（`AbstractWindowsTerminal.processKeyEvent`
+→ 同一个 `\r`/`\n`）。因此在**拿不到括号粘贴标记**时，进程侧仍然没有「这是粘贴」的信号，
+不做「把连续几行猜着合并」这种隐式行为。
 
 因此处置分两半：
 
@@ -936,7 +952,24 @@ AHA_INPUT_TRACE=/tmp/aha-input.log      # 指定文件
 另记一行终端实现与能力探测结果（`terminal=… capabilities=[…]`）—— 排查时要先知道走的是哪条 JLine 终端路径。
 留痕只记输入，不记模型请求；写盘失败只提示一句，绝不影响交互。
 
-## 6. 未实现与受限期
+#### 5.4.4 Windows：把输入切到 VT 模式（0x0200）
+
+`tty/VtInputMode` 在 Windows 上调用 `SetConsoleMode(STD_INPUT, mode | 0x0200)`，
+并绑定到 `LineReader.CALLBACK_INIT`——JLine 每轮 `readLine` 进入 raw mode 时会用固定组合重建输入模式
+（`AbstractWindowsTerminal.updateConsoleMode()` 不含 0x0200），所以必须**每轮补一次**，
+只在启动时设一次会被下一次 `readLine` 清掉。
+
+| 项 | 说明 |
+|---|---|
+| 开关 | `AHA_PASTE_VT=0`（或 `false` / `off` / `no`）关闭；默认开启 |
+| 生效范围 | 仅 Windows；非 Windows、拿不到控制台句柄、FFM 链接失败时静默返回，行为与改动前一致 |
+| 失败回退 | 抛错只记一次（`unavailable`），不刷屏；链接失败后不再重试 |
+| 观测 | 启动日志 `capabilities=[…]` 与 `AHA_INPUT_TRACE` 的 `terminal=…` 行；粘贴后看留痕是「一次带字面 `\n`」还是「毫秒级多行」 |
+| 待验证 | conhost（经典控制台）在粘贴时是否也发 `ESC[200~`；JLine 的 `ReadConsoleInputW` 路径在 0x0200 下是否同样透传（WT 已用 `ReadConsoleW` 验证） |
+
+实现上不子类化 JLine：`NativeWinSysTerminal` 的构造器是包私有，无法从 `com.acanx.*` 继承；
+`LineReader.CALLBACK_INIT` 是公开的每轮钩子，改动面最小。
+
 ## 6. 未实现与受限期
 
 完整清单见 [PLAN.md](../TODO/TD-00002-CliMarkdownRichRendering.md)，这里只列与本文件直接相关的：
@@ -994,6 +1027,7 @@ AHA_INPUT_TRACE=/tmp/aha-input.log      # 指定文件
 | `TerminalHandover.java` | 让位/取回终端（`/memory edit` 交给外部编辑器时用） |
 | `ExternalEditor.java` | 外部编辑器选择（阻塞式） |
 | `Clipboard.java` | 剪贴板读取（按平台调系统命令；供 `/paste` 使用，不依赖终端能力） |
+| `VtInputMode.java` | Windows 输入切 VT 模式（0x0200），让括号粘贴标记透传（issue #75） |
 
 ### 7.3 `aha-cli/.../cli/`（编排）
 

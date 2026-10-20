@@ -31,6 +31,7 @@ import com.acanx.module.aha.cli.tty.SafeAbovePrinter;
 import com.acanx.module.aha.cli.tty.StatusSurface;
 import com.acanx.module.aha.cli.tty.TerminalCapabilities;
 import com.acanx.module.aha.cli.tty.TerminalHandover;
+import com.acanx.module.aha.cli.tty.VtInputMode;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.common.runtime.RuntimeDescriptor;
 import com.acanx.module.aha.common.tool.CancellationToken;
@@ -183,26 +184,6 @@ public final class ChatCommand implements Runnable {
                 System.out.println("         CMD:        chcp 65001");
                 System.out.println("         PowerShell: [Console]::OutputEncoding = [Text.Encoding]::UTF8");
             }
-            if (capabilities.tty() && !capabilities.bracketedPaste()) {
-                // 终端不支持「括号粘贴」⇒ 直接粘贴的多行内容会被**逐行提交**（每行成为一条消息）。
-                // 逐行提交发生在**终端内部**（粘贴的换行被宿主转成了回车），进程侧收不到任何
-                // 「这是粘贴」的信号，因此只能绕开终端输入流：自己去读剪贴板（Alt+V）。
-                // 中文提示在编码表示不了中文时要换成 ASCII，否则提示本身也读不了
-                System.out.println();
-                if (encoding.cjk()) {
-                    System.out.println("[warn] 本终端不支持「括号粘贴」：直接粘贴多行内容会被逐行提交"
-                            + "（每行成为一条消息）。");
-                    System.out.println("       改用 Alt+V：AHA 自己读剪贴板，整块内容作为一条消息"
-                            + "（大块会先折叠成 [paste #1 +N lines]，回车时展开）。");
-                    System.out.println("       也可以输入 /paste 直接发送剪贴板内容。");
-                } else {
-                    System.out.println("[warn] This console does not support bracketed paste:"
-                            + " pasting multi-line text submits it line by line.");
-                    System.out.println("       Use Alt+V instead: AHA reads the clipboard itself and"
-                            + " sends the whole block as one message.");
-                    System.out.println("       /paste sends the clipboard content directly.");
-                }
-            }
             // 启动横幅：分两块输出。
             //  · 顶栏（标题 + 供应商/模型/端点/工作目录）与右侧 ASCII 标志并排——
             //    这几行是「一眼要看清」的，且都不长；
@@ -289,6 +270,37 @@ public final class ChatCommand implements Runnable {
             Renderer renderer = Renderers.of(capabilities, encoding, statusBar, out,
                     statusSurface, sessionId);
             rendererRef.set(renderer);
+
+            // Windows：把控制台输入切到 VT 模式，让括号粘贴标记透传（issue #75）。
+            // 必须在 reader 建好之后绑定：JLine 每轮 readLine 进入 raw mode 时会重建输入模式
+            // （不带 0x0200），所以挂到 CALLBACK_INIT 上每轮补一次。
+            boolean vtInput = VtInputMode.ensure();
+            VtInputMode.bind(reader);
+            if (capabilities.tty() && !capabilities.bracketedPaste()) {
+                // 终端自身没声明「括号粘贴」时给出处置：
+                //  · VT 模式生效：直接粘贴大概率可用（Windows Terminal 已实测），仍留 Alt+V 兜底；
+                //  · 未生效：粘贴的多行会被**逐行提交**（换行被宿主转成回车），只能绕开终端输入流。
+                // 中文提示在编码表示不了中文时要换成 ASCII，否则提示本身也读不了。
+                System.out.println();
+                if (vtInput) {
+                    System.out.println("[info] 已尝试开启 Windows VT 输入模式（AHA_PASTE_VT=0 可关）："
+                            + "直接粘贴多行应能整体进入。");
+                    System.out.println("       若仍被逐行提交（终端自身不发括号粘贴标记），"
+                            + "请用 Alt+V（读剪贴板）或 /paste。");
+                } else if (encoding.cjk()) {
+                    System.out.println("[warn] 本终端不支持「括号粘贴」：直接粘贴多行内容会被逐行提交"
+                            + "（每行成为一条消息）。");
+                    System.out.println("       改用 Alt+V：AHA 自己读剪贴板，整块内容作为一条消息"
+                            + "（大块会先折叠成 [paste #1 +N lines]，回车时展开）。");
+                    System.out.println("       也可以输入 /paste 直接发送剪贴板内容。");
+                } else {
+                    System.out.println("[warn] This console does not support bracketed paste:"
+                            + " pasting multi-line text submits it line by line.");
+                    System.out.println("       Use Alt+V instead: AHA reads the clipboard itself and"
+                            + " sends the whole block as one message.");
+                    System.out.println("       /paste sends the clipboard content directly.");
+                }
+            }
 
             // Alt+V / Ctrl+V：自己读剪贴板并原子插入输入行 —— 不经过终端输入流，
             // 因此在「终端不支持括号粘贴」的控制台上也能把多行内容作为一条消息送出去。

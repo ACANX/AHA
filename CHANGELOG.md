@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **Windows：把控制台输入切到 VT 模式，直接粘贴多行可整体进入（issue #75，2026-10-20）**：
+  - 根因：JLine 只打开输出侧的 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`（0x0004），从未打开输入侧的
+    `ENABLE_VIRTUAL_TERMINAL_INPUT`（0x0200）；此时终端发出的 `ESC[200~ … ESC[201~` 会被
+    conhost / ConPTY 的输入引擎消费掉，应用只拿到裸内容 + `\r`，JLine 的 `beginPaste()` 永远等不到标记；
+  - 新增 `tty/VtInputMode`：Windows 上 `SetConsoleMode(STD_INPUT, mode | 0x0200)`，绑定到
+    `LineReader.CALLBACK_INIT`（JLine 每轮 raw mode 会重建输入模式，必须每轮补）；
+  - 实测对照（`ReadConsoleW`，Windows Terminal）：不开 0x0200 读到 `line1<CR>line2<CR>line3`，
+    开 0x0200 读到 `<ESC>[200~line1<CR>line2<CR>line3<ESC>[201~`；
+  - `AHA_PASTE_VT=0` 关闭；非 Windows / 句柄不可用 / FFM 失败时静默回退，行为与改动前一致；
+  - 仍未真机验证：conhost 自身是否发标记（POC 在 Windows Terminal 里跑）；
+    `Alt+V` / `/paste` / 启动提示全部保留。
 - **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
   - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
     JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
