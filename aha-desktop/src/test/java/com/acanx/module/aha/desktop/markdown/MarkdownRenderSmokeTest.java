@@ -242,6 +242,28 @@ class MarkdownRenderSmokeTest {
     }
 
     @Test
+    void tableCellsHaveBordersWithoutDoubleLines() throws Exception {
+        startToolkit();
+
+        List<String> styles = new ArrayList<>();
+        MarkdownRenderer renderer = new MarkdownRenderer(
+                (node, style) -> styles.add(style.get()), text -> { });
+        Node root = uiGet(() -> renderer.render("""
+                | 左 | 右 |
+                |---|---|
+                | a | b |
+                """));
+
+        ScrollPane scroll = (ScrollPane) ((VBox) root).getChildren().get(0);
+        GridPane grid = (GridPane) scroll.getContent();
+        assertThat(grid.getChildren()).hasSize(4);
+        // 首格（非末行、非末列）只画上/左；末格四边齐全 —— 内线因此不会叠成 2px
+        assertThat(styles).anyMatch(style -> style.contains("-fx-border-width: 1 0 0 1"));
+        assertThat(styles).anyMatch(style -> style.contains("-fx-border-width: 1 1 1 1"));
+        assertThat(styles).allMatch(style -> style.contains("-fx-border-color"));
+    }
+
+    @Test
     void labelRemainsTheFallbackForPlainText() throws Exception {
         startToolkit();
 

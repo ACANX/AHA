@@ -265,20 +265,24 @@ public final class MarkdownRenderer {
     }
 
     private Node table(MarkdownBlock.TableBlock table) {
+        // 边框由单元格自己画（#431）：gap 归零，否则相邻格之间会露出缝隙，边框看起来是断的。
+        // 单元格的内边距改由 -fx-padding 提供。
         GridPane grid = new GridPane();
-        grid.setHgap(12);
-        grid.setVgap(2);
-        grid.setPadding(new Insets(2));
+        grid.setHgap(0);
+        grid.setVgap(0);
+        grid.setPadding(new Insets(0));
 
+        int lastRow = table.rows().size();
+        int lastColumn = table.header().size() - 1;
         for (int column = 0; column < table.header().size(); column++) {
-            Node cell = tableCell(table.header().get(column), true);
+            Node cell = tableCell(table.header().get(column), true, 0, column, lastRow, lastColumn);
             GridPane.setHalignment(cell, alignment(table.aligns(), column));
             grid.add(cell, column, 0);
         }
         for (int row = 0; row < table.rows().size(); row++) {
             List<String> cells = table.rows().get(row);
             for (int column = 0; column < cells.size(); column++) {
-                Node cell = tableCell(cells.get(column), false);
+                Node cell = tableCell(cells.get(column), false, row + 1, column, lastRow, lastColumn);
                 GridPane.setHalignment(cell, alignment(table.aligns(), column));
                 grid.add(cell, column, row + 1);
             }
@@ -301,15 +305,29 @@ public final class MarkdownRenderer {
      * 行内样式会被整段丢掉。列宽由 {@code GridPane} 按单元格 pref 宽度算，
      * 超宽时外层 {@code ScrollPane} 横向滚动，不压缩列宽。</p>
      *
-     * @param text   单元格文本
-     * @param header 是否表头（整格加粗）
+     * <p><b>四边框（#431）</b>：每格只画「上 + 左」，末行补「下」、末列补「右」。
+     * 这样每条线都只有 1px——若每格四边都画，相邻两格的内线会叠成 2px，与外框粗细不一致。
+     * 颜色取自 {@code Palette.BORDER}，经 {@code styler} 延迟求值，因此主题切换会自动换色。</p>
+     *
+     * @param text       单元格文本
+     * @param header     是否表头（整格加粗）
+     * @param row        行号（表头为 0）
+     * @param column     列号
+     * @param lastRow    最后一行行号
+     * @param lastColumn 最后一列列号
      * @return 单元格节点
      */
-    private TextFlow tableCell(String text, boolean header) {
+    private TextFlow tableCell(String text, boolean header, int row, int column,
+                               int lastRow, int lastColumn) {
         TextFlow flow = new TextFlow();
         for (MarkdownInline inline : inlineParser.parse(text)) {
             flow.getChildren().add(inlineNode(inline, header ? "-fx-font-weight: bold;" : ""));
         }
+        int bottom = row == lastRow ? 1 : 0;
+        int right = column == lastColumn ? 1 : 0;
+        styler.apply(flow, () -> "-fx-border-color: " + Palette.BORDER + ";"
+                + "-fx-border-width: 1 " + right + " " + bottom + " 1;"
+                + "-fx-padding: 3 8 3 8;");
         return flow;
     }
 
