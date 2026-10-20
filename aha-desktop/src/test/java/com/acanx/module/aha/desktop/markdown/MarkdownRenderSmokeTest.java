@@ -129,7 +129,7 @@ class MarkdownRenderSmokeTest {
                 (node, style) -> node.setStyle(style.get()), text -> { });
         Node root = uiGet(() -> renderer.render("""
                 | 左 | 中 |
-                |:--|:-:|
+                |:---|---:|
                 | **粗** | `c` |
                 """));
 
@@ -140,7 +140,7 @@ class MarkdownRenderSmokeTest {
         assertThat(GridPane.getRowIndex(grid.getChildren().get(2))).isEqualTo(1);
         assertThat(((TextFlow) grid.getChildren().get(2)).getChildren())
                 .anyMatch(node -> node instanceof Text);
-        assertThat(GridPane.getHalignment(grid.getChildren().get(3))).isEqualTo(HPos.CENTER);
+        assertThat(GridPane.getHalignment(grid.getChildren().get(3))).isEqualTo(HPos.RIGHT);
         assertThat(GridPane.getHalignment(grid.getChildren().get(2))).isEqualTo(HPos.LEFT);
     }
 

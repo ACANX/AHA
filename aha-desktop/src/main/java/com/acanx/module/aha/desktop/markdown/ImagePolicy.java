@@ -40,6 +40,9 @@ public final class ImagePolicy {
         if (url == null || url.isBlank()) {
             return "地址为空";
         }
+        if (allowed(url)) {
+            return "";
+        }
         String scheme = scheme(url);
         if (scheme.isEmpty()) {
             return "缺少协议，只允许 file: 与 https:";
