@@ -621,8 +621,11 @@ jobs:
           echo '—— 冒烟：xvfb-run 启动桌面端原生镜像，最多观察 25 秒 ——'
           # -Dprism.order=sw：runner 无 GPU，显式走软件管线，避免 ES2 初始化失败掩盖真问题；
           # 退出码 124（timeout 杀掉）算**正常**：GUI 进程本就该一直运行。
-          timeout 25 xvfb-run -a "$bin" -Dprism.order=sw > "$out" 2> "$err"
-          code=$?
+          # 【必须用 `|| code=$?`】runner 的默认 shell 是 `bash -e`，直接写 `timeout ...` 时
+          # 非 0 退出会**立即终止脚本**（跳过下面的判定与 trap 输出，实测 2 秒就结束、
+          # 步骤还是绿的）—— 那样这条冒烟会重新变成“从不判死”的摆设。
+          code=0
+          timeout 25 xvfb-run -a "$bin" -Dprism.order=sw > "$out" 2> "$err" || code=$?
           echo "退出码：${code}（124 = 超时仍在运行，属正常）"
 
           text="$(cat "$out" 2>/dev/null || true)
