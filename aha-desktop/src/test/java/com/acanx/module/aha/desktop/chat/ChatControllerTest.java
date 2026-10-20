@@ -117,8 +117,8 @@ class ChatControllerTest {
      * 推理线程投递完段边界会立刻处理下一条增量，而队列里的 endAssistant 还没跑，
      * 于是下一段的增量落进上一段、段号不推进——界面退回 #403 修复前的样子。</p>
      *
-     * <p>这里用一个「只排队、不立即执行」的投递器模拟真实的 UI 线程：若段收尾还在队列里，
-     * {@code view.endAssistant} 的调用次数就不会在增量到达之前增加。</p>
+     * <p>这里用一个「只排队、不立即执行」的投递器模拟真实的 UI 线程，并把增量与段收尾
+     * 记进同一条时间线：若段收尾还在队列里，它就会排到下一段增量之后，序列对不上。</p>
      */
     @Test
     void segmentBoundaryReachesTheViewBeforeTheNextSegmentDelta() {
@@ -132,9 +132,11 @@ class ChatControllerTest {
 
         queued.send("说两句");
 
-        // 段收尾不排队：它必须已经生效，否则第二段的增量会落进第一段
-        assertThat(view.ends).isGreaterThanOrEqualTo(2);
-        assertThat(view.deltas).containsExactly("第一段", "第二段");
+        // 段收尾不排队：它必须**排在下一段增量之前**生效，否则第二段会落进第一段。
+        // 断言的是跨类型顺序（增量 / 收尾写进同一条时间线），只数次数是抓不到这个缺陷的：
+        // 段收尾哪怕迟到到第二段之后，ends 的计数照样是 2。
+        assertThat(view.assistantTimeline).containsExactly(
+                "delta:第一段", "end", "delta:第二段", "end");
         // 排队的是其余界面动作（用户消息、忙碌状态、错误提示等），不是段收尾
         assertThat(uiQueue).isNotEmpty();
     }

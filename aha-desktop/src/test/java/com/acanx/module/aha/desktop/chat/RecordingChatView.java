@@ -25,6 +25,14 @@ final class RecordingChatView implements ChatView {
      */
     final List<String> timeline = new ArrayList<>();
 
+    /**
+     * 正文通道的时间线：增量与段收尾**按调用顺序**记在同一条列表里（PR #404 审查 P1-1）。
+     *
+     * <p>{@link #deltas} 与 {@link #ends} 各自只记「有哪些」，跨列表的先后关系无从断言；
+     * 而分段渲染的缺陷恰恰是**跨类型的顺序**：段收尾排到下一段增量之后，两段就被并成一段。</p>
+     */
+    final List<String> assistantTimeline = new ArrayList<>();
+
     /** 通知。 */
     final List<String> notices = new ArrayList<>();
 
@@ -54,12 +62,14 @@ final class RecordingChatView implements ChatView {
     @Override
     public void appendAssistant(String delta) {
         deltas.add(delta);
+        assistantTimeline.add("delta:" + delta);
     }
 
     @Override
     public void endAssistant() {
         ends++;
         timeline.add("end-assistant");
+        assistantTimeline.add("end");
     }
 
     @Override
