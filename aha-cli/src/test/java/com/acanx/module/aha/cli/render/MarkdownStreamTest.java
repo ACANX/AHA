@@ -331,6 +331,43 @@ class MarkdownStreamTest {
     }
 
     @Test
+    void blankLineTerminatesTableAndIsPreserved() {
+        // issue #346：空行既是表格终止符，也要原样输出（此前被 tableRows 吞掉）
+        String out = plain().feed("| a | b |\n|---|---|\n| 1 | 2 |\n\n### 4.2 标题\n");
+
+        assertThat(out).contains("└");
+        assertThat(out).containsPattern("└[^\\n]*\\n\\n### 4\\.2 标题");
+    }
+
+    @Test
+    void twoTablesSeparatedByBlankLineAreNotMerged() {
+        // 空行之后出现 `|` 行应开启新表格，而不是并进上一张表。
+        // 第二张表在结尾，必须 flush 才会结算（表格要收齐才能算列宽）
+        MarkdownStream stream = plain();
+        String out = stream.feed("| a | b |\n|---|---|\n| 1 | 2 |\n\n| c |\n|---|\n| 3 |\n")
+                + stream.flush();
+
+        assertThat(countOf(out, "┌")).isEqualTo(2);
+        assertThat(countOf(out, "┘")).isEqualTo(2);
+    }
+
+    @Test
+    void blankLineBeforeAndAfterTableAreSymmetric() {
+        // 表格前的空行本来就保留；表格后的空行也必须保留，否则观感不对称
+        String out = plain().feed("段落\n\n| a |\n|---|\n| 1 |\n\n段落二\n");
+
+        assertThat(out).contains("段落\n\n");
+        assertThat(out).containsPattern("└[^\\n]*\\n\\n段落二");
+    }
+
+    @Test
+    void consecutiveBlankLinesAfterTableAreAllPreserved() {
+        String out = plain().feed("| a |\n|---|\n| 1 |\n\n\n段落\n");
+
+        assertThat(out).containsPattern("└[^\\n]*\\n\\n\\n段落");
+    }
+
+    @Test
     void headingAfterTableIsStillAHeading() {
         // 回归：表格内的换行不经过 endLine()，曾把 prefixDone 留在 true，
         // 导致表格后的第一行丢掉行首判定，`### ` 被当正文原样输出
@@ -371,6 +408,16 @@ class MarkdownStreamTest {
         MarkdownStream stream = plain();
 
         assertThat(stream.feed("```\n| a | b |\n```\n")).isEqualTo("```\n| a | b |\n```\n");
+    }
+
+    private static int countOf(String text, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 
     @Test
