@@ -93,6 +93,25 @@ Dist/
 └── AhaCli.bat / .sh    启动脚本（平铺在包根）
 ```
 
+### Linux 桌面端：需要中文字体（issue #382）
+
+桌面端（`AhaDesktop.sh` / `aha-desktop.jar`）用系统字体渲染中文。最小化的 Ubuntu / WSL
+镜像通常**不预装中文字体**，此时界面上的汉字会显示为方块。先确认：
+
+```bash
+fc-list :lang=zh | wc -l     # 输出 0 表示本机没有中文字体
+```
+
+安装任一种即可（装完重启桌面端）：
+
+```bash
+sudo apt install fonts-noto-cjk        # 推荐：Noto Sans CJK SC
+sudo apt install fonts-wqy-microhei    # 备选：文泉驿微米黑
+```
+
+AHA 启动时会探测中文字体：命中候选族则用它作为界面字体（日志行 `渲染诊断：中文字体 …`
+写明选中的族名）；一个都没有时会在消息区给出上面的安装命令。
+
 ## 技术栈
 
 | 类别 | 版本 |

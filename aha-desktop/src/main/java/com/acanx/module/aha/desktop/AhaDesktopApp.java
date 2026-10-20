@@ -25,6 +25,7 @@ import com.acanx.module.aha.desktop.fx.FxBridge;
 import com.acanx.module.aha.desktop.fx.FxDispatcher;
 import com.acanx.module.aha.desktop.fx.PlatformFxDispatcher;
 import com.acanx.module.aha.desktop.view.DesktopShell;
+import com.acanx.module.aha.desktop.view.FontFallback;
 import com.acanx.module.aha.desktop.view.Palette;
 import com.acanx.module.aha.desktop.view.SettingsDialog;
 import com.acanx.module.aha.desktop.view.UpgradePane;
@@ -201,6 +202,9 @@ public final class AhaDesktopApp extends Application {
         LOG.info("渲染诊断：默认字体 族={} 名称={} 字号={} 可用字体族数={}",
                 defaultFont.getFamily(), defaultFont.getName(), defaultFont.getSize(),
                 Font.getFamilies().size());
+        // issue #382：中文字体是否存在，直接决定界面上的汉字是「字形」还是「方块」。
+        // 这一行把结论写进日志（选中族名 / 命中数量 / 缺失），下次不必再靠用户报「满屏乱码」。
+        LOG.info("渲染诊断：中文字体 {}", FontFallback.current().describe());
         LOG.info("渲染诊断：字体实现工厂={}（Windows 上 JVM 模式应为 WinFontFactory 一类）",
                 fontFactoryName());
 
@@ -329,6 +333,16 @@ public final class AhaDesktopApp extends Application {
 
         // 记得改的文件：上面已经按设置定好色表，这里只把字号落到根节点上
         shell.fontSize(settings.fontSize());
+
+        // 中文字体（issue #382）：命中 CJK 族就记一行「用的是哪个」；一个都没有就明确告知怎么装 ——
+        // 不能让用户对着一屏方块猜「是缺字体还是程序坏了」。提示落在消息区（可选中复制命令）。
+        FontFallback.Resolution cjkFont = FontFallback.current();
+        if (cjkFont.family() != null) {
+            LOG.info("中文字体：界面字体使用 {}（{}）", cjkFont.family(), cjkFont.describe());
+        } else if (cjkFont.needsHint()) {
+            LOG.warn("中文字体缺失：{}", cjkFont.describe());
+            shell.appendNotice(FontFallback.missingFontHint());
+        }
 
         // 主题切换：/theme、视图菜单、设置面板三条路径都走这里
         shell.onThemeCycle(() -> {
