@@ -1,0 +1,154 @@
+name: NativeEaProbe
+
+# 用途：验证 issue #321 的 macOS 桌面端原生镜像 pointsto 崩溃是否已被上游修复。
+#
+# 背景：GraalVM 25.1~25.4 在解析 JavaFX 的 `com.sun.glass.ui.mac.MacVariant.toString`
+# （switch 表达式 → indy 字符串拼接）时崩在 `OutlinedSBMethod.buildGraph`：
+# `should not reach here: unexpected input could not be handled: class java.lang.Object`。
+# 上游 oracle/graal#14545 已合入 master，目标版本 25.5。
+#
+# 本工作流是**一次性探针**，不是交付物：
+# - 装 Oracle GraalVM 最新的 EA 构建（`java-version: 'latest-ea'`），不设 `version`
+#   （设了 version 会去下 release 而不是 EA）；
+# - 编译前先把工具链版本打进日志与 job summary——否则「跑完了但不知道用哪个 build 跑的」；
+# - 只构建桌面端原生镜像，不打包、不出快照、不发版；
+# - 构建失败即结论（红），不做重试（`attempts: 1`）——重试只会把同一个确定性崩溃跑三遍。
+#
+# 配置依据（graalvm/setup-graalvm 官方文档）：
+# - Marketplace：https://github.com/marketplace/actions/github-action-for-graalvm
+# - README「Template for Oracle GraalVM Early Access (EA) builds」：
+#     java-version: '25i5-ea'   # or 'latest-ea' for the latest release
+#     distribution: 'graalvm'
+# - README「Options」表：EA 写法 `'25i5-ea'` / `'latest-ea'` 要求 `distribution: 'graalvm'`；
+#   而 `version` 是给 release 用的（`25.4`、`25i-latest`），**设了会绕过 EA**。
+#
+# 结论看 `ReportOutcome` 写的 job summary。
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/NativeEaProbe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ProbeLatestEa:
+    name: ProbeLatestEa
+    runs-on: macos-latest
+    env:
+      AHA_VERSION: 0.0.0-ea-probe
+      JAVA_VERSION: latest-ea
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: InstallGraalVmEa
+        id: graal
+        # 最新 EA：`latest-ea` + `distribution: graalvm`；刻意不传 `version`。
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: ShowToolchain
+        id: toolchain
+        # 编译**之前**把版本号打进日志与 summary：EA 会滚动更新，
+        # 没有版本号的结论无法复现，也无法判断「是不是装成了旧 build」。
+        run: |
+          set -uo pipefail
+          graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
+          echo "—— 工具链（请求：${JAVA_VERSION}）——"
+          echo "GRAALVM_HOME=${graalvm_home}"
+          echo "JAVA_HOME=${JAVA_HOME:-}"
+          echo "—— java -version ——"
+          java -version 2>&1 || true
+          echo "—— native-image --version ——"
+          native-image --version 2>&1 || true
+          echo "—— release 文件 ——"
+          if [ -f "$graalvm_home/release" ]; then
+            tr -d '\r' < "$graalvm_home/release" | sed -n '1,12p'
+          else
+            echo "（没有 release 文件）"
+          fi
+
+          # 精确版本：取 release 的 IMPLEMENTOR_VERSION，取不到再从目录名兜底
+          version=""
+          if [ -f "$graalvm_home/release" ]; then
+            version="$(tr -d '\r' < "$graalvm_home/release" \
+              | sed -n 's/^IMPLEMENTOR_VERSION="\(.*\)"$/\1/p' | head -1)"
+          fi
+          if [ -z "$version" ]; then
+            version="$(native-image --version 2>/dev/null | head -1 || true)"
+          fi
+          echo "工具链精确版本=${version:-未知}"
+          echo "GRAALVM_VERSION=${version:-未知}" >> "$GITHUB_ENV"
+
+          {
+            echo "## 工具链（编译前记录）"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 请求的 java-version | \`${JAVA_VERSION}\` |"
+            echo "| GRAALVM_HOME | \`${graalvm_home}\` |"
+            echo "| 精确版本 | \`${version:-未知}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: BuildDesktopNative
+        id: native
+        # 不加 `continue-on-error`：这次就是要「失败就红」。
+        # `-Dnative.skip=false` 必须显式传——模块自身 properties 会赢过父 POM 的 profile，
+        # 曾出现「构建成功、零产物、零报错」的静默跳过。
+        uses: ./.github/actions/maven-run
+        with:
+          command: >-
+            ./mvnw -B -Pdesktop-native
+            -pl aha-desktop-native,aha-desktop -am package
+            -DskipTests -Djacoco.skip=true
+            -Daha.native.version=${{ env.AHA_VERSION }}
+            -Daha.build.version=${{ env.AHA_VERSION }}
+            -Dnative.image.executable=native-image
+            -Dnative.skip=false
+          attempts: '1'
+
+      - name: VerifyArtifact
+        id: verify
+        # 构建步骤成功也可能「什么都没出」——这里再验一次产物，避免把假成功当成结论。
+        if: steps.native.outcome == 'success'
+        run: |
+          set -euo pipefail
+          found="$(find Dist -maxdepth 2 -name 'aha-desktop-native-*' -print -quit 2>/dev/null || true)"
+          if [ -z "$found" ]; then
+            echo "::error::构建步骤成功，但 Dist 下没有 aha-desktop-native-* 产物"
+            exit 1
+          fi
+          echo "产物：$found"
+          ls -l "$found"
+
+      - name: ReportOutcome
+        if: always()
+        run: |
+          set -uo pipefail
+          {
+            echo "## GraalVM EA 探针（macos-aarch64）"
+            echo ""
+            echo "| 项 | 结果 |"
+            echo "|---|---|"
+            echo "| 请求的 java-version | \`${{ env.JAVA_VERSION }}\` |"
+            echo "| 实际工具链版本 | \`${GRAALVM_VERSION:-未知}\` |"
+            echo "| GraalVM 安装 | ${{ steps.graal.outcome }} |"
+            echo "| 桌面端原生构建 | ${{ steps.native.outcome }} |"
+            echo "| 产物自证 | ${{ steps.verify.outcome }} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.native.outcome }}" = "success" ]; then
+            echo "✅ **结论：pointsto 崩溃未复现。** 该 EA 构建可以编出 macOS 桌面端原生镜像，" >> "$GITHUB_STEP_SUMMARY"
+            echo "可据此评估 #321 的恢复条件（换成含修复的正式版后再升级版本并验证）。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ **结论：pointsto 崩溃仍存在（或构建因其它原因失败）。**" >> "$GITHUB_STEP_SUMMARY"
+            echo "证据看 \`BuildDesktopNative\` 日志里是否仍有 " >> "$GITHUB_STEP_SUMMARY"
+            echo "\`MacVariant.toString\` / \`unexpected input could not be handled: class java.lang.Object\`。" >> "$GITHUB_STEP_SUMMARY"
+          fi
