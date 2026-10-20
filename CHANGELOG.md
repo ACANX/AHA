@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **原生包启动即崩：`config.ModelDefinition` 未登记反射元数据（issue #383，2026-10-20 真机）**：
+  - `0.1.5.00380` 的 ubuntu 原生包（桌面 / CLI）启动即抛
+    `UnsupportedFeatureError: Record components not available for record class
+    com.acanx.module.aha.core.config.ModelDefinition`：桌面端窗口从未出现，CLI 连 `--version` 都退出码 1
+    （崩溃在 `ConfigLoader.loadDefault` 这条任何子命令都会走的启动路径上）；
+  - 补登记 `core.config` 下的 `ModelDefinition` / `ModelTier` / `SystemPromptLoader$ResolvedPrompt`
+    到桌面与 CLI 两份 `reachability-metadata.json`；
+  - 守卫由只扫 `core.update` 扩为按 `JACKSON_PACKAGES` 逐包全量扫描（`core.update` + `core.config`），
+    并写明判定口径：新增 Jackson 反序列化入口时把包加进清单，其余包不登记避免噪音；
+  - 原生管线补启动冒烟：桌面 Linux 腿用 `xvfb-run` 断言命中 `[ui-fxml-loaded]`，
+    CLI 腿的 `--version` / `--help` 冒烟失败改用 `::error::`（仍不挡合并，但不再淡化成 warning）。
 - **工作空间只放项目会话，并支持添加目录（2026-10-19）**：
   - 「纯聊天」不再出现在工作空间面板，只保留在主会话列表；
   - 工作空间面板顶部新增「＋ 添加工作空间」，通过目录选择器添加项目目录；

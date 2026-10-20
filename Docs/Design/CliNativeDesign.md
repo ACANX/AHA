@@ -36,9 +36,18 @@
 record components 需要构建期登记**：漏登记的症状是**运行期**抛
 `UnsupportedFeatureError: Record components not available for record class …`（桌面端真机先踩到，
 见 `DesktopNativeDesign.md` R13）。CLI 与桌面端**共用 aha-core**，所以同一份 21 条类型也要登记进
-本模块的 `aha-cli/reachability-metadata.json`（已登记）。守卫是桌面模块的
-`NativeImageMetadataTest#everyUpdateRecordAndEnumIsRegisteredForReflection`：它同时校验两份元数据，
-以后新增 record 忘了登记，Build/Gate 阶段就会红 —— 原生镜像管线本身是可选、不上门禁的。
+本模块的 `aha-cli/reachability-metadata.json`（已登记）。
+
+**2026-10-20 同类复发（issue #383）**：`0.1.5` 新增的 `core.config.ModelDefinition` 漏登记，
+原生包**启动即崩**——连 `aha-cli-native --version` 都跑不了（退出码 1），因为崩溃发生在
+`ConfigLoader.loadDefault` 这条任何子命令都会走的启动路径上。根因之一是守卫当时只扫
+`core.update` 一个包。
+
+守卫是桌面模块的 `NativeImageMetadataTest#everyJacksonRecordAndEnumIsRegisteredForReflection`：
+它按 `JACKSON_PACKAGES`（当前 `core.update` + `core.config`）**整包全量**扫源码，并同时校验两份元数据；
+以后新增 record 忘了登记，或新增一个 Jackson 反序列化入口却没把包加进清单，Build/Gate 阶段就会红
+—— 原生镜像管线本身是可选、不上门禁的。CLI 原生腿的 `--version` / `--help` 冒烟在 CI 里真跑产物，
+失败以 `::error::` 标出（issue #383 的 ③）。
 
 ## 1. 目标与非目标
 

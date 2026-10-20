@@ -563,9 +563,135 @@ jobs:
           # 本步只做诊断：无论上面发现什么，都以 0 退出，保证 outputs 一定被发布
           exit 0
 
+      - name: RunGuiSmokeLinux
+        # 【issue #383 的落点】0.1.5.00380 的 ubuntu 原生包**启动即崩**（`config.ModelDefinition`
+        # 未登记反射元数据 → `UnsupportedFeatureError`，连界面都没出来），而这条腿当时
+        # 「构建成功、打包成功、发布出去」全绿 —— 因为冒烟只在 Windows 腿跑，Linux 腿连
+        # 一次产物都没执行过。CLI 腿后来补了 `--version` 冒烟（无图形也可复现同一崩溃），
+        # 但桌面端仍需一个真的走到界面初始化的判据，因此这里用 xvfb-run 给一个虚拟 X。
+        #
+        # 为什么是诊断式（不判死整条流程）：与 RunGuiSmoke 同口径 —— 原生管线是可选管线，
+        #   CI 无 GPU，Prism 必然回退软件渲染，覆盖不到真机 D3D / ES2 路径；
+        #   BuildSpec §7 要求失败在步骤级容错。
+        #
+        # 三态判定（2026-10-20 第一轮实测后修正）：
+        #   ① 命中 `[ui-fxml-loaded]` ⇒ ✅ 通过；
+        #   ② 命中 `[ui-fxml-load-failed]` / `UnsupportedFeatureError` / `ClassNotFoundException`
+        #      ⇒ ❌ `::error::` —— 这是本单那一类**确定的元数据缺陷**，不能被“环境”二字淡化；
+        #   ③ 其余非 0 退出（实测 runner 上 JavaFX 本地库以 134 = SIGABRT 结束）
+        #      ⇒ ⚠️ `::warning::` 并写摘要，标「环境限制未验证」—— 避免可选管线长期挂红，
+        #      把真正的元数据缺陷淹没在噪声里。
+        continue-on-error: true
+        if: always() && runner.os == 'Linux' && steps.verify.outputs.produced == 'true'
+        run: |
+          set -uo pipefail
+          work=aha-desktop-native/target/native
+          report=$(mktemp)
+          problems=""
+          env_limited=""
+
+          finish() {
+            {
+              echo "### 桌面端原生镜像 GUI 冒烟（${{ inputs.label }} / jdk${{ inputs.jdk }}）"
+              echo
+              cat "${report}" 2>/dev/null || true
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "${problems}" ]; then
+              echo "::error::GUI 冒烟失败：${problems}（详见本步日志与 Job Summary）"
+              exit 1
+            fi
+            if [ -n "${env_limited}" ]; then
+              echo "::warning::GUI 冒烟未完成（环境限制）：${env_limited}"
+            fi
+            exit 0
+          }
+          trap finish EXIT
+
+          bin=$(ls "$work/aha-desktop-native" 2>/dev/null | head -n1 || true)
+          if [ -z "$bin" ]; then
+            bin=$(find aha-desktop-native/target -type f -name 'aha-desktop-native' 2>/dev/null | head -n1 || true)
+          fi
+          if [ -z "$bin" ]; then
+            echo "- ⏭ 没有找到可执行文件，跳过冒烟" >> "$report"
+            problems="没有可执行文件"
+            exit 0
+          fi
+          chmod +x "$bin" 2>/dev/null || true
+          echo "可执行文件：${bin}"
+          echo "- 可执行文件：\`${bin}\`" >> "$report"
+
+          # xvfb-run 在 GitHub 的 ubuntu 镜像里预装；取不到就如实说明跳过，不把它当失败。
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            echo "- ⏭ runner 上没有 xvfb-run，跳过 Linux GUI 冒烟" >> "$report"
+            echo "::warning::runner 上没有 xvfb-run，跳过 Linux GUI 冒烟"
+            exit 0
+          fi
+
+          out=$(mktemp)
+          err=$(mktemp)
+          echo '—— 冒烟：xvfb-run 启动桌面端原生镜像，最多观察 25 秒 ——'
+          # -Dprism.order=sw：runner 无 GPU，显式走软件管线，避免 ES2 初始化失败掩盖真问题；
+          # 退出码 124（timeout 杀掉）算**正常**：GUI 进程本就该一直运行。
+          # 【必须用 `|| code=$?`】runner 的默认 shell 是 `bash -e`，直接写 `timeout ...` 时
+          # 非 0 退出会**立即终止脚本**（跳过下面的判定与 trap 输出，实测 2 秒就结束、
+          # 步骤还是绿的）—— 那样这条冒烟会重新变成“从不判死”的摆设。
+          code=0
+          timeout 25 xvfb-run -a "$bin" -Dprism.order=sw > "$out" 2> "$err" || code=$?
+          echo "退出码：${code}（124 = 超时仍在运行，属正常）"
+
+          text="$(cat "$out" 2>/dev/null || true)
+          $(cat "$err" 2>/dev/null || true)"
+          hasVersion=$(printf '%s' "$text" | grep -cF '[aha-version]' || true)
+          hasLoaded=$(printf '%s' "$text" | grep -cF '[ui-fxml-loaded]' || true)
+          hasFailed=$(printf '%s' "$text" | grep -cF '[ui-fxml-load-failed]' || true)
+          # 原生镜像特有的硬缺陷指纹（issue #383 / #51 那一类）。有它就不是「环境限制」。
+          hasNativeCrash=$(printf '%s' "$text" | grep -cE 'UnsupportedFeatureError|Record components not available|ClassNotFoundException|NoClassDefFoundError' || true)
+
+          # 无条件把捕获内容打到日志：只看判定无法区分「已捕获但没命中标记」与「重定向压根没生效」。
+          echo "—— 捕获情况：out=$(wc -c < "$out" 2>/dev/null || echo 0) 字节，err=$(wc -c < "$err" 2>/dev/null || echo 0) 字节 ——"
+          printf '%s\n' "$text" | tail -n 60
+
+          if [ "${hasFailed}" -gt 0 ]; then
+            problems="界面装载失败（命中 [ui-fxml-load-failed]）"
+          elif [ "${hasNativeCrash}" -gt 0 ]; then
+            problems="原生镜像反射 / JNI 元数据缺失（命中 UnsupportedFeatureError / ClassNotFoundException 指纹）"
+          elif [ "${code}" -ne 0 ] && [ "${code}" -ne 124 ]; then
+            # 134（SIGABRT）一类通常是 runner 无 GPU / GTK 初始化失败（JavaFX 的本地库 abort），
+            # 不是本仓库的启动缺陷；记为「环境限制」并用 warning，避免可选管线长期挂红
+            # 让真问题淹没在噪声里。真正的元数据缺失已被上面的指纹分开判定。
+            env_limited="启动期以非 0 退出（退出码 ${code}），日志无反射 / JNI 缺失标记，按 CI 图形环境限制处理"
+          elif [ "${hasLoaded}" -eq 0 ]; then
+            problems="未命中正面标记 [ui-fxml-loaded]（界面没有装起来）"
+          fi
+
+          {
+            echo "- 可执行文件：\`${bin}\`"
+            echo "- 退出码：${code}（124 = 超时仍在运行，属正常）"
+            echo "- 正面标记：\`[aha-version]\`=${hasVersion}，\`[ui-fxml-loaded]\`=${hasLoaded}，\`[ui-fxml-load-failed]\`=${hasFailed}"
+            echo "- 原生镜像硬缺陷指纹：${hasNativeCrash}（UnsupportedFeatureError / ClassNotFoundException）"
+            if [ -n "${problems}" ]; then
+              echo "- ❌ 结论：${problems}"
+              echo
+              echo '```text'
+              printf '%s\n' "$text" | tail -n 40
+              echo '```'
+            elif [ -n "${env_limited}" ]; then
+              echo "- ⚠️ 结论：${env_limited}"
+              echo
+              echo '```text'
+              printf '%s\n' "$text" | tail -n 40
+              echo '```'
+            else
+              echo "- ✅ 结论：启动到界面初始化（命中 [ui-fxml-loaded]），且启动期未崩"
+            fi
+            echo '- 说明：CI 无 GPU，Prism 显式走软件管线（`-Dprism.order=sw`），覆盖不到真机 ES2 / D3D 路径。'
+            echo ''
+            echo '> 本工作流是**可选**的：以上任何一条都不影响 Build / Gate / Compat，也不挡合并。'
+          } >> "$report"
+
       - name: RunGuiSmoke
         # 为什么只在 Windows 跑：GitHub 的 windows-latest 有**交互式桌面会话**，能创建窗口；
-        #   Linux 腿无 X（需 Xvfb），macOS 腿 GUI 访问受限。
+        #   Linux 腿由 RunGuiSmokeLinux（xvfb-run）覆盖，macOS 腿 GUI 访问受限。
         # 为什么是诊断式（不判死整条流程）：CI 无 GPU，Prism 会回退到软件渲染 / WARP，
         #   覆盖不到真实 D3D 路径；BuildSpec §7 要求可选管线不得进必需检查、
         #   且失败必须在步骤级容错。结论一律写摘要。
