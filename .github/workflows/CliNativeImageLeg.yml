@@ -460,8 +460,8 @@ jobs:
           mv -- "$src" "$target"
           # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
           # CLI 原生包目前本来就没有，调用一次作为统一口径与防御（将来加脚本时自动生效）。
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}"
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}" --check-only
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}"
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${{ inputs.label }}" --check-only
           ls -lh "$target"
           echo "发布资产：${target}"
 

@@ -114,5 +114,16 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _force_utf8_stdout() -> None:
+    """Windows 上 Python 的 stdout 默认按控制台代码页（cp1252）编码，打印中文会抛
+    UnicodeEncodeError（issue #395）。workflow 里已加 PYTHONUTF8=1，这里再兜一层，
+    保证脚本单独在 Windows 上跑也不会崩。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 if __name__ == "__main__":
+    _force_utf8_stdout()
     sys.exit(main())

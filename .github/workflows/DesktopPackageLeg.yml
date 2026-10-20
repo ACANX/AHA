@@ -99,8 +99,8 @@ jobs:
           mv -- "${files[0]}" "$target"
           # 按平台裁剪（issue #381）：POSIX 包里不带 .bat / .cmd / .ps1。
           # 必须在 VerifyPackageIntegrity 与清单生成之前完成。
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
-          python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}"
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "$target" --platform "${LABEL}" --check-only
           size=$(du -h "$target" | cut -f1)
           # 平铺形态（issue #218）下本平台 OpenJFX 不再是 lib/javafx-*.jar，而是单体 jar
           # **根级**的原生库（libglass.so / glass.dll / libglass.dylib…），故按根级计数。

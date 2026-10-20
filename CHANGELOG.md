@@ -64,6 +64,12 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **构建：Windows runner 上 `PrunePlatformScripts` 打印中文崩溃（2026-10-20）**：
+  - #389 引入的出包裁剪脚本只有 `PackageManifest.py` 的调用带 `PYTHONUTF8`/`PYTHONIOENCODING`，
+    12 处 `PrunePlatformScripts.py` 调用在 Windows runner（Python stdout 为 cp1252）上抛
+    `UnicodeEncodeError: 'charmap' codec can't encode character '\uff1a'`；
+  - 5 条出包线统一补 UTF-8 环境变量；脚本入口 `sys.stdout.reconfigure(...)` 兜底；
+    `bin/CheckScripts.py` 增加守卫，调用行缺 UTF-8 环境即报红。
 - **Windows：把控制台输入切到 VT 模式，直接粘贴多行可整体进入（issue #75，2026-10-20）**：
   - 根因：JLine 只打开输出侧的 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`（0x0004），从未打开输入侧的
     `ENABLE_VIRTUAL_TERMINAL_INPUT`（0x0200）；此时终端发出的 `ESC[200~ … ESC[201~` 会被
