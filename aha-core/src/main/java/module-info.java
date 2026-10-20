@@ -31,6 +31,7 @@ module com.acanx.module.aha.core {
     exports com.acanx.module.aha.core.extension.event;
     exports com.acanx.module.aha.core.llm;
     exports com.acanx.module.aha.core.llm.protocol;
+    exports com.acanx.module.aha.core.markdown;
     exports com.acanx.module.aha.core.update;
 
     uses com.acanx.module.aha.common.tool.ToolProvider;
