@@ -381,7 +381,11 @@ jobs:
               cat "${report}" 2>/dev/null || true
             } >> "$GITHUB_STEP_SUMMARY"
             if [ -n "${problems}" ]; then
-              echo "::warning::冒烟发现问题：${problems}（详见本步日志与 Job Summary）"
+              # 用 ::error:: 而不是 ::warning::：本单（issue #383）的教训就是
+              # 「构建 / 打包成功」被当成了「能跑」，最终把启动即崩的包发到了发布页。
+              # 仍保留 continue-on-error（可选管线不挡合并），但结论必须看着像失败。
+              echo "::error::冒烟发现问题：${problems}（详见本步日志与 Job Summary）"
+              exit 1
             fi
             exit 0
           }
