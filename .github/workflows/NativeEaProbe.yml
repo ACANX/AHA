@@ -8,8 +8,9 @@ name: NativeEaProbe
 # 上游 oracle/graal#14545 已合入 master，目标版本 25.5。
 #
 # 本工作流是**一次性探针**，不是交付物：
-# - 只在 macOS 上装 Oracle GraalVM 25i5 的 EA 构建（`java-version: '25i5-ea'`），
-#   不设 `version`（EA 由 java-version 决定）；
+# - 只在 macOS 上装 Oracle GraalVM 的 EA 构建，两个点各跑一遍：
+#   `latest-ea`（最新 EA，最可能已含修复）与 `25i5-ea`（固定的 25i innovation 5 系列）；
+# - 不设 `version`（EA 由 java-version 决定，设了 version 会去下 release 而不是 EA）；
 # - 只构建桌面端原生镜像，不打包、不出快照、不发版；
 # - 构建失败即结论（红），不做重试（`attempts: 1`）——重试只会把同一个确定性崩溃跑三遍。
 #
@@ -26,8 +27,19 @@ permissions:
 
 jobs:
   ProbeMacOSAarch64:
-    name: ProbeMacOSAarch64
+    name: ProbeMacOSAarch64 (${{ matrix.label }})
     runs-on: macos-latest
+    strategy:
+      # 两个点互不影响：一个红了另一个的结论仍然有效
+      fail-fast: false
+      matrix:
+        include:
+          # 最新 EA：oracle-graalvm-ea-builds 的最新 tag（截至 2026-10-20 是 25i5 / 25.0.4.1.1-ea.05）
+          - label: latest-ea
+            java_version: latest-ea
+          # 固定系列：验证 `25i5-ea` 这个写法实际解析到哪个 build
+          - label: 25i5-ea
+            java_version: 25i5-ea
     env:
       AHA_VERSION: 0.0.0-ea-probe
     steps:
@@ -35,11 +47,11 @@ jobs:
 
       - name: InstallGraalVmEa
         id: graal
-        # EA 构建：`java-version: '25i5-ea'` + `distribution: graalvm`；
+        # EA 构建：`java-version` 取 matrix 里的 `latest-ea` / `25i5-ea` + `distribution: graalvm`；
         # 刻意**不传** `version`——传了会去下载 release 而不是 EA。
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '25i5-ea'
+          java-version: ${{ matrix.java_version }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven
@@ -47,9 +59,11 @@ jobs:
       - name: ShowToolchain
         run: |
           set -uo pipefail
-          echo "—— 工具链 ——"
+          echo "—— 工具链（${{ matrix.label }}）——"
           java -version || true
           native-image --version || true
+          # 关键证据：实际装的是哪个 EA build（避免「以为装了最新，其实装成旧版」）
+          echo "matrix 名义版本：${{ matrix.java_version }}"
           graalvm_home="${GRAALVM_HOME:-$JAVA_HOME}"
           echo "GRAALVM_HOME=${graalvm_home}"
           if [ -f "$graalvm_home/release" ]; then
@@ -92,7 +106,7 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo "## GraalVM 25i5 EA 探针（macos-aarch64）"
+            echo "## GraalVM EA 探针（macos-aarch64 / ${{ matrix.label }}）"
             echo ""
             echo "| 项 | 结果 |"
             echo "|---|---|"
