@@ -258,6 +258,18 @@ public final class ChatController {
     }
 
     /**
+     * 作废当前在途回合（不换会话的复位入口，如「清空对话」）。
+     *
+     * <p>{@code /clear} 与「清空对话」菜单不经过 {@link #newSession()} /
+     * {@link #openSession(String)}，因此不会自己推进轮次号。宿主必须在清界面前调本方法：
+     * 否则旧回合的后续正文会被贴上**当前**代际写进清空后的界面，成为新界面的第一段
+     * （PR #404 审查 P1-①）。重复调用无副作用（幂等）。</p>
+     */
+    public void abortCurrentTurn() {
+        abortRound();
+    }
+
+    /**
      * 在指定工作空间下新建会话。
      *
      * @param workspace 工作目录；{@code null} 表示纯聊天

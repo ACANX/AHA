@@ -321,6 +321,15 @@ public final class DesktopShell implements ChatView {
     /** 新建会话动作。 */
     private Runnable onNewSession = () -> { };
 
+    /**
+     * 「清空对话」动作（{@code /clear} 与菜单共用）。
+     *
+     * <p>默认只清界面；宿主应接到「先作废在途回合、再清界面」——生成中点清空时，
+     * 旧回合的后续正文会以新代际写进清空后的界面，成为新界面的第一段
+     * （PR #404 审查 P1-①）。</p>
+     */
+    private Runnable onClearRequest = this::clearConversation;
+
     /** 切换会话动作（点会话列表）。 */
     private Consumer<String> onSessionSelected = id -> { };
 
@@ -838,7 +847,8 @@ public final class DesktopShell implements ChatView {
             case "help" -> appendNotice(helpText());
             case "new" -> onNewSession.run();
             case "clear" -> {
-                clearConversation();
+                // 与菜单同一条入口：宿主若接了「作废在途回合」，这里也必须经过它
+                onClearRequest.run();
                 appendNotice("已清空当前界面（已保存的历史不受影响，可在左栏切回）。");
             }
             case "model" -> openProviderDialog();
@@ -1041,6 +1051,17 @@ public final class DesktopShell implements ChatView {
      */
     public void onNewSession(Runnable handler) {
         this.onNewSession = handler == null ? () -> { } : handler;
+    }
+
+    /**
+     * 设置「清空对话」动作（{@code /clear} 与菜单共用）。
+     *
+     * <p>宿主应在这里先作废在途回合再清界面；{@code null} 恢复为「只清界面」。</p>
+     *
+     * @param handler 动作
+     */
+    public void onClearRequest(Runnable handler) {
+        this.onClearRequest = handler == null ? this::clearConversation : handler;
     }
 
     /**
@@ -1448,7 +1469,7 @@ public final class DesktopShell implements ChatView {
 
         sessionMenu.setText("会话(_S)");
         clearItem.setText("清空对话");
-        clearItem.setOnAction(event -> clearConversation());
+        clearItem.setOnAction(event -> onClearRequest.run());
 
         configMenu.setText("配置(_C)");
         configProviderItem.setText("供应商");

@@ -376,6 +376,35 @@ class ChatControllerTest {
 
     // ------------------------------------------------ 回合作废（PR #404 审查 P2-2 补全）
 
+    /**
+     * 「清空对话」入口同样要作废在途回合（PR #404 审查 P1-①）。
+     *
+     * <p>{@code /clear} 与菜单不经过 {@code newSession()} / {@code openSession()}，
+     * 因此不会自己推进轮次号。宿主必须走 {@code abortCurrentTurn() → clearConversation()}；
+     * 若漏掉前者，旧回合的后续正文会以**当前**代际写进清空后的界面，成为新界面的第一段。</p>
+     */
+    @Test
+    void clearingTheConversationMidStreamAbortsTheTurn() {
+        service.script.add(new ContentEvent("s1", "清空前已经在写的正文"));
+        service.script.add(new ContentEvent("s1", "清空之后不该出现"));
+        service.afterEach = sent -> {
+            if (sent == 1) {
+                controller.abortCurrentTurn();
+                view.clearConversation();
+            }
+        };
+
+        controller.send("看看代码");
+
+        assertThat(view.clears).isEqualTo(1);
+        assertThat(view.deltas)
+                .as("清空之后的增量不得再进视图，否则旧正文成了新界面的第一段")
+                .isEmpty();
+        assertThat(service.lastToken.isCancelled())
+                .as("清空同样要取消在途令牌，让引擎尽早收手")
+                .isTrue();
+    }
+
     @Test
     void newSessionMidStreamDropsTheRemainingContentOfTheAbandonedTurn() {
         // 一轮里两段正文；「第一段结束」那一刻用户点了「＋ 新建会话」

@@ -30,6 +30,8 @@
   - 段快照带代际号，`clearConversation()` 时递增并在渲染侧现取比对，
     上一会话在途的旧段不会再被当成新会话第一段画出来（P2-2）；`FxBridge` 相应新增 `clear()`；
   - `AssistantSegments#end()` 在无正文时不再推进段号，段号恒等于有正文的段数（P3）。
+  - 「清空对话」（`/clear` 与菜单）同样作废在途回合：`ChatController#abortCurrentTurn()` +
+    `DesktopShell#onClearRequest`，否则旧回合在清空后仍会以新代际写入清空后的界面（P1-①）。
 
 ### 新增
 - **状态栏显示思考强度（issue #355，2026-10-20）**：

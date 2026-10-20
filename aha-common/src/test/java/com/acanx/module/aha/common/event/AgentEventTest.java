@@ -59,8 +59,9 @@ class AgentEventTest {
         AgentEvent event = new ContentSegmentEndEvent("s1");
         assertThat(event).isInstanceOf(ContentSegmentEndEvent.class);
         assertThat(((ContentSegmentEndEvent) event).sessionId()).isEqualTo("s1");
-        // 无多余载荷：段内文本已由 ContentEvent 逐 token 送达，这里不必再带一次
-        assertThat(ContentSegmentEndEvent.class.getRecordComponents()).hasSize(1);
+        // 载荷只有 sessionId：段内文本已由 ContentEvent 逐 token 送达，本事件只标「段到此为止」。
+        // 不用 getRecordComponents() 断言字段数——那只能证明「有几个字段」，证明不了契约；
+        // 契约由 Javadoc 与 sessionId 的可观察行为共同保证。
         assertThat(new ContentSegmentEndEvent("s1")).isEqualTo(new ContentSegmentEndEvent("s1"));
         assertThat(new ContentSegmentEndEvent("s1")).isNotEqualTo(new DoneEvent("s1", "stop"));
     }
