@@ -34,6 +34,15 @@
     `DesktopShell#onClearRequest`，否则旧回合在清空后仍会以新代际写入清空后的界面（P1-①）。
 
 ### 新增
+- **桌面端 Markdown 语义基线与性能基线（#408 阶段 0，2026-10-20）**：
+  - `MarkdownSemanticsSamples`（core）：13 条共享样本（表格边界 / 围栏内不解析 / 行内定界符侧翼 / 反斜杠转义），
+    CLI 与桌面端读同一份，避免两套实现语义漂移；
+  - `MarkdownSemanticsTest`（cli）：逐条断言 `MarkdownStream` 的渲染结果；某条规则样本不足 3 条会失败；
+  - `MarkdownRenderPerformanceTest`（cli）：500 行渲染基线，耗时打到日志（阈值只防数量级退化）；
+  - `MarkdownRenderSmokeTest`（desktop，`-Daha.ui.tests=true`）：`TextFlow` / `GridPane` / `Label`
+    三种承载节点的可用性骨架，作为 S1.5 / S2.1 的落点；
+  - 桌面端解析器与解析性能用例以 `@Disabled` 占位，S1.1 实现后解除；
+  - 文档：`Docs/Design/MarkdownSemantics.md`。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；
