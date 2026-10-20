@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **CLI：超长 CJK 行触发 JLine WCWidth 越界，渲染崩溃被误判为回合失败（issue #384，2026-10-20 真机）**：
+  - JLine 4.4.6 的 `WCWidth.charCountForGraphemeClusterBreakIterator` 会用越界 offset 调 JDK 的
+    grapheme `BreakIterator`（`IllegalArgumentException: offset is out of bounds: 76`），
+    经 `Display.update → Status.redraw → printAbove` 冒到 `ChatCommand#runTurn`，
+    整个回合被判「执行失败」且已输出内容丢失；
+  - 新增 `SafeAbovePrinter`：首次渲染异常记一条 WARN 并**永久降级为直写**
+    （暂停状态区 → 写终端 → 恢复），后续行不再重试 `printAbove`，回合不再中断；
+  - `runTurn` 的失败输出收敛：完整堆栈进日志，终端只给摘要 + 「完整堆栈见日志」，
+    不再同屏打两份堆栈；
+  - 新增 `SafeAbovePrinterTest`：正常路径、降级后不重试、suspend/resume 顺序、
+    连降级都失败时不抛出、含 CJK 的长行经 `AboveStream` 不中断。
 - **Linux 缺中文字体时界面汉显方块（issue #382，2026-10-20 真机）**：
   - 最小化 Ubuntu / WSL 常不预装中文字体（`fc-list :lang=zh` 为 0），JavaFX 默认族
     `System` → DejaVu Sans 不含汉字字形，合成回退也借不到字体，界面汉字全是方块；

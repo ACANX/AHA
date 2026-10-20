@@ -21,6 +21,7 @@ import com.acanx.module.aha.cli.tty.AboveStream;
 import com.acanx.module.aha.cli.tty.GitBranch;
 import com.acanx.module.aha.cli.tty.JLineStatusSurface;
 import com.acanx.module.aha.cli.tty.OutputEncoding;
+import com.acanx.module.aha.cli.tty.SafeAbovePrinter;
 import com.acanx.module.aha.cli.tty.StatusSurface;
 import com.acanx.module.aha.cli.tty.TerminalCapabilities;
 import com.acanx.module.aha.cli.tty.TerminalHandover;
@@ -62,6 +63,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * 交互式对话命令（JLine）。
@@ -208,20 +210,27 @@ public final class ChatCommand implements Runnable {
                     ? JLineStatusSurface.create(terminal, capabilities.colored())
                     : StatusSurface.NONE;
             AtomicReference<Renderer> rendererRef = new AtomicReference<>();
+            Runnable suspendStatus = () -> {
+                Renderer current = rendererRef.get();
+                if (current != null) {
+                    current.suspendStatus();
+                }
+            };
+            Runnable resumeStatus = () -> {
+                Renderer current = rendererRef.get();
+                if (current != null) {
+                    current.resumeStatus();
+                }
+            };
+            // 【issue #384】JLine 的 printAbove 在含 CJK 的长行上会抛
+            // IllegalArgumentException（WCWidth 拿越界 offset 调 BreakIterator）。
+            // 不包一层的话，它经 AboveStream 冒到 runTurn，整轮回答被判「回合执行失败」，
+            // 用户已经看到的内容也丢了。这里降级为直写（暂停状态区 → 写终端 → 恢复）。
+            Consumer<String> above = new SafeAbovePrinter(reader::printAbove,
+                    line -> terminal.writer().println(line), suspendStatus, resumeStatus);
             PrintStream out = capabilities.tty()
-                    ? new PrintStream(new AboveStream(reader::printAbove, encoding.charset(),
-                            () -> {
-                                Renderer current = rendererRef.get();
-                                if (current != null) {
-                                    current.suspendStatus();
-                                }
-                            },
-                            () -> {
-                                Renderer current = rendererRef.get();
-                                if (current != null) {
-                                    current.resumeStatus();
-                                }
-                            }), false, encoding.charset())
+                    ? new PrintStream(new AboveStream(above, encoding.charset(),
+                            suspendStatus, resumeStatus), false, encoding.charset())
                     : System.out;
             // 底部常驻状态栏（issue #330）：模式 / 模型与档位 / 工作目录。
             // 会话内选 a 后由回调切到「完全授权」，下一次重绘即生效。
@@ -382,10 +391,10 @@ public final class ChatCommand implements Runnable {
             // 放在每轮回答之后：先让用户看到本轮结果，再来处理上下文
             AutoCompactor.runIfNeeded(sessionContext, registry);
         } catch (RuntimeException e) {
-            // 未预期的失败要连堆栈一起打出来：只给一句摘要，排查时等于没线索
+            // 堆栈只留一份（issue #384）：完整堆栈进日志（排查用），终端只给摘要。
+            // 之前 LOG.error 与 out.println(stackTrace) 各打一份，用户看到的是两张一样的堆栈。
             LOG.error("回合执行失败 session={}", sessionId, e);
-            out.println("[error] " + Exceptions.message(e));
-            out.println(stackTrace(e));
+            out.println("[error] " + Exceptions.message(e) + "（完整堆栈见日志）");
         } finally {
             // 收尾：流式正文最后一行往往没有换行符，不 flush 就一直压在缓冲里
             out.flush();
@@ -426,12 +435,6 @@ public final class ChatCommand implements Runnable {
      * @param error 异常
      * @return 堆栈文本
      */
-    private static String stackTrace(Throwable error) {
-        java.io.StringWriter writer = new java.io.StringWriter();
-        error.printStackTrace(new java.io.PrintWriter(writer));
-        return writer.toString();
-    }
-
     /**
      * 生成输入行的分隔线。
      *
