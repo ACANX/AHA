@@ -10,6 +10,18 @@
 
 ## [Unreleased]
 
+### 变更
+- **SPI 命名统一为 ApiType（issue #361）**：
+  - `LlmProviderAdapter` 新增 `default apiType()`（与配置 `Model.Providers.<Id>.ApiType` 同名），
+    `providerId()` 标记 `@Deprecated`（至少保留一个 minor 版本）；
+  - 三个内置适配器的 `PROVIDER_ID` 改为 `API_TYPE`（旧常量保留为 deprecated 别名）；
+  - `LlmAdapterRegistry` 新增 `apiTypes()`，`find(String apiType)` 参数名对齐；
+    `providerIds()` deprecated 委托；
+  - `ProviderConfig.adapter()` 标记 `@Deprecated`，活代码统一走 `apiType()`；
+  - 日志诊断标签区分「适配器 / ApiType」与「供应商（`Providers.<Id>`）」；
+  - **迁移**：自定义适配器只实现 `providerId()` 仍可直接工作（`apiType()` 默认委托它）；
+    新代码请实现/调用 `apiType()`。旧名在阶段 3（下个大版本）移除，届时属破坏性变更。
+
 ### 新增
 - **中栏显示当前会话工作目录与 git 分支（2026-10-19）**：
   - 输入框下方显示当前会话 `workspace` 的完整路径；

@@ -174,7 +174,7 @@ public final class ProviderForm {
         ProviderConfig source = config;
         return new Draft(
                 id == null ? "" : id,
-                source == null || source.adapter() == null ? ADAPTERS[0] : source.adapter(),
+                source == null || source.apiType() == null ? ADAPTERS[0] : source.apiType(),
                 source == null || source.baseUrl() == null ? "" : source.baseUrl(),
                 source == null || source.apiKey() == null ? "" : source.apiKey(),
                 source == null || source.model() == null ? "" : source.model(),
@@ -207,7 +207,7 @@ public final class ProviderForm {
         } else if (!PASCAL_CASE.matcher(draft.id().trim()).matches()) {
             errors.put("id", "供应商 ID 必须是大驼峰，如 DeepSeek（core 按 YAML 字段规范校验）");
         }
-        if (blank(draft.adapter())) {
+        if (blank(draft.apiType())) {
             errors.put("adapter", "适配器不能为空");
         }
         if (tiers.isEmpty()) {
@@ -246,7 +246,7 @@ public final class ProviderForm {
      * @return 新配置
      */
     public static ProviderConfig toConfig(Draft draft, ProviderConfig original) {
-        String adapter = draft.adapter().trim();
+        String adapter = draft.apiType().trim();
         String baseUrl = draft.baseUrl().trim();
         String apiKey = draft.apiKey() == null ? "" : draft.apiKey().trim();
         int timeout = Integer.parseInt(draft.timeoutSeconds().trim());

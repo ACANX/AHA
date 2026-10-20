@@ -120,7 +120,7 @@ class ProviderTierTest {
                 "claude-sonnet", 60, 2, null, Map.of());
 
         assertThat(legacy.apiType()).isEqualTo("anthropic-messages");
-        assertThat(legacy.adapter()).isEqualTo("anthropic-messages");
+        assertThat(legacy.apiType()).isEqualTo("anthropic-messages");
     }
 
     @Test
