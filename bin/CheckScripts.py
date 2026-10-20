@@ -1734,6 +1734,17 @@ def check_platform_package_scripts() -> list[str]:
             )
         elif "--check-only" not in text:
             problems.append(f"{rel}：{label} 没有用 --check-only 断言裁剪结果")
+        # 调用必须带 UTF-8 环境：Windows runner 上 Python 的 stdout 默认 cp1252，
+        # 脚本打印中文（含全角冒号）会直接 UnicodeEncodeError（issue #395 实测）
+        for line in text.splitlines():
+            if "PrunePlatformScripts.py" not in line:
+                continue
+            if "PYTHONUTF8" in line or "PYTHONIOENCODING" in line:
+                continue
+            problems.append(
+                f"{rel}：{label} 调用 PrunePlatformScripts.py 时没带 PYTHONUTF8/PYTHONIOENCODING"
+                "（Windows runner 上会因 cp1252 编不了中文而崩溃，issue #395）"
+            )
 
     cli_leg = ROOT / ".github" / "workflows" / "CliReleasePackageLeg.yml"
     if cli_leg.exists():

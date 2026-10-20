@@ -93,8 +93,8 @@ jobs:
           # ── 按平台裁剪（issue #381）────────────────────────────────────
           # POSIX 包不应带 Windows 专属脚本（.bat / .cmd / .ps1）；Windows 包保持现状。
           # 必须在“生成包内清单”之前裁剪，否则清单会出现「有、包里没有」。
-          python3 .github/Python/PrunePlatformScripts.py --zip "${target}" --platform "${LABEL}"
-          python3 .github/Python/PrunePlatformScripts.py --zip "${target}" --platform "${LABEL}" --check-only
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "${target}" --platform "${LABEL}"
+          PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PrunePlatformScripts.py --zip "${target}" --platform "${LABEL}" --check-only
           # ── 包内清单（issue #51 §6）────────────────────────────────────────
           PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 .github/Python/PackageManifest.py generate \
             --zip "${target}" --kind cli-jvm --version "${version}" --platform "${LABEL}" --jdk 25

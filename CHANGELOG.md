@@ -76,6 +76,12 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **构建：Windows runner 上 `PrunePlatformScripts` 打印中文崩溃（2026-10-20）**：
+  - #389 引入的出包裁剪脚本只有 `PackageManifest.py` 的调用带 `PYTHONUTF8`/`PYTHONIOENCODING`，
+    12 处 `PrunePlatformScripts.py` 调用在 Windows runner（Python stdout 为 cp1252）上抛
+    `UnicodeEncodeError: 'charmap' codec can't encode character '\uff1a'`；
+  - 5 条出包线统一补 UTF-8 环境变量；脚本入口 `sys.stdout.reconfigure(...)` 兜底；
+    `bin/CheckScripts.py` 增加守卫，调用行缺 UTF-8 环境即报红。
 - **WSL 桌面原生包：加载完 FXML 后 JNI FatalError 退出（issue #393，2026-10-20 真机）**：
   - 无 GPU 时 Prism 回退到 SW pipeline，首次绘制走到 `UploadingPainter → SWRTTexture →
     JavaSurface.<init>` 调 native 时直接 `Fatal error reported via JNI: Failed to throw an exception!`
