@@ -26,7 +26,7 @@ CLI 的 `MarkdownStream` 与桌面端的 `MarkdownParser`（S1.1）是两套实�
 | `inline-flanking` | `multiplication-not-emphasis` | `2 * 3 * 4` 不构成强调 |
 | `inline-flanking` | `snake-case-not-emphasis` | `snake_case_name` 不构成强调 |
 | `inline-flanking` | `bold-drops-markers` | 粗体成立时去掉 `**` |
-| `inline-flanking` | `four-delimiters-literal` | 连续 ≥4 个定界符按字面量输出 |
+| `inline-flanking` | `four-delimiters-literal` | 连续 ≥4 个定界符按字面量输出（样本带前后缀，行首变体是另一个缺陷 #429） |
 | `escape-literal`（**pending**） | `escaped-star` | `\*x\*` → `*x*`（目标行为） |
 | `escape-literal`（**pending**） | `escaped-underscore` | `\_x\_` → `_x_`（目标行为） |
 | `escape-literal`（**pending**） | `escaped-backtick` | `` \`x\` `` → `` `x` ``（目标行为） |

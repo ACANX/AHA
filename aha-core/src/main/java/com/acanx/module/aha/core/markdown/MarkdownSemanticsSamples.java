@@ -121,8 +121,8 @@ public final class MarkdownSemanticsSamples {
                     List.of(Expectation.contains("粗体"), Expectation.notContains("**"))),
 
             new Sample("four-delimiters-literal", "inline-flanking",
-                    "连续 4 个及以上定界符按字面量输出", false,
-                    "****粗****\n",
+                    "连续 4 个及以上定界符按字面量输出（用前后缀避开行首 `*` 的列表试探，见 #429）", false,
+                    "前缀 ****粗**** 后缀\n",
                     List.of(Expectation.contains("****粗****"))),
 
             // ------------------------------------------------ 规则 4：反斜杠转义（当前未实现）
