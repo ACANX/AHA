@@ -64,6 +64,17 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **Linux 缺中文字体时界面汉显方块（issue #382，2026-10-20 真机）**：
+  - 最小化 Ubuntu / WSL 常不预装中文字体（`fc-list :lang=zh` 为 0），JavaFX 默认族
+    `System` → DejaVu Sans 不含汉字字形，合成回退也借不到字体，界面汉字全是方块；
+  - 新增 `FontFallback`：Linux 上按 `Noto Sans CJK SC` → `Source Han Sans SC` →
+    `WenQuanYi Micro Hei` → `Droid Sans Fallback` → 微软雅黑 / 苹方的顺序选第一个已安装族，
+    写进根节点 `-fx-font-family` 作为全局界面字体；精确候选全不命中时用族名特征兜底
+    （`Noto Serif CJK` 等）；Windows / macOS 不替换字体（系统自带中文，避免外观回归）；
+  - 日志面板 / 工具输出 / 参数区的等宽字体链在 `monospace` 之前补上 CJK 候选；
+  - 启动日志新增 `渲染诊断：中文字体 …`（选中族名 / 命中数量 / 缺失）；
+    Linux 上一个 CJK 族都没有时，消息区给出含 `sudo apt install fonts-noto-cjk` 的提示；
+  - 新增 `FontFallbackTest` 覆盖候选顺序、大小写不敏感、缺失降级、非 Linux 分支与等宽链位置。
 - **原生包启动即崩：`config.ModelDefinition` 未登记反射元数据（issue #383，2026-10-20 真机）**：
   - `0.1.5.00380` 的 ubuntu 原生包（桌面 / CLI）启动即抛
     `UnsupportedFeatureError: Record components not available for record class

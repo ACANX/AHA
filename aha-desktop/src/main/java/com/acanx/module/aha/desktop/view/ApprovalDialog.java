@@ -69,7 +69,7 @@ public final class ApprovalDialog {
     }
     /** 等宽样式（参数区：执行类是完整命令，必须一眼可分）。 */
     private static final String CODE_STYLE =
-            "-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace; -fx-font-size: 12px;";
+            "-fx-font-family: " + FontFallback.MONOSPACE_CSS + "; -fx-font-size: 12px;";
 
     private final String toolName;
 
