@@ -76,6 +76,15 @@
   - 「复制全部消息」仍按原顺序取文本。
 
 ### 修复
+- **流式对话 HTTP 400：历史窗口截断后 tool 消息丢失前置 tool_calls（issue #391，2026-10-20 真机）**：
+  - `SqliteMemoryStore.loadHistory` 按 `LIMIT` 取最近 N 条时，边界可能落在 tool 消息上，
+    `assistant(tool_calls)` 被截在窗外 → 下一轮请求以 `role=tool` 开头，上游 400：
+    `Messages with role 'tool' must be a response to a preceding message with 'tool_calls'`；
+  - 新增 `MessageSanitizer`：孤立 tool 丢弃、未响应的 tool_calls 剔除、
+    无正文且零响应时整条丢弃；`loadHistory` 与 `AgentEngine#prepare` 统一调用；
+  - 新增 `MessageSanitizerTest`（孤立 tool / 部分响应 / 零响应 / 边界 / 幂等）、
+    `SqliteMemoryStoreTest`（跨窗口截断 / tool_calls 损坏）与 `AgentEngineTest`
+    （请求体里不再出现孤立 tool）回归用例。
 - **POSIX 发行包不再带 Windows 专属脚本（issue #381，2026-10-20）**：
   - `ubuntu-amd64` / `macos-aarch64` 的四种包（CLI-JVM / 桌面 JVM / 桌面原生 / CLI 原生）
     不再包含 `AhaCli.bat` / `AhaDesktop.bat` / `apply-update.cmd` / `AhaApplyUpdate.ps1`；
