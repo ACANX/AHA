@@ -34,6 +34,60 @@
     `DesktopShell#onClearRequest`，否则旧回合在清空后仍会以新代际写入清空后的界面（P1-①）。
 
 ### 新增
+- **桌面端 Markdown 语义基线与性能基线（#408 阶段 0，2026-10-20）**：
+  - `MarkdownSemanticsSamples`（core）：13 条共享样本（表格边界 / 围栏内不解析 / 行内定界符侧翼 / 反斜杠转义），
+    CLI 与桌面端读同一份，避免两套实现语义漂移；
+  - `MarkdownSemanticsTest`（cli）：逐条断言 `MarkdownStream` 的渲染结果；某条规则样本不足 3 条会失败；
+  - `MarkdownRenderPerformanceTest`（cli）：500 行渲染基线，耗时打到日志（阈值只防数量级退化）；
+  - `MarkdownRenderSmokeTest`（desktop，`-Daha.ui.tests=true`）：`TextFlow` / `GridPane` / `Label`
+    三种承载节点的可用性骨架，作为 S1.5 / S2.1 的落点；
+  - 桌面端解析器与解析性能用例以 `@Disabled` 占位，S1.1 实现后解除；
+  - 文档：`Docs/Design/MarkdownSemantics.md`。
+- **桌面端 Markdown 块级解析（#408 S1.1，#413，2026-10-20）**：
+  - `MarkdownBlock`：sealed AST（标题 / 段落 / 分隔线 / 围栏 / 列表 / 引用 / 表格），不含任何 JavaFX 类型；
+  - `MarkdownParser`：全文一次性解析，空行终止表格（与 #346 一致）、围栏内不解析、七级 `#` 按段落；
+  - `MarkdownParserTest` 14 条；`MarkdownParserSemanticsTest` 与 `MarkdownParsePerformanceTest`
+    解除 `@Disabled`（解析 500 行阈值 200 ms，目标 50 ms，真实耗时打到日志）。
+- **桌面端 Markdown 行内解析与富文本渲染（#408 S1.2–S1.6，#414–#418，2026-10-20）**：
+  - `MarkdownInline` / `MarkdownInlineParser`：行内 AST（文本 / 代码 / 粗体 / 斜体 / 删除线 / 链接），
+    与 CLI 同一套侧翼规则，4 个及以上定界符按字面量；
+  - `MarkdownRenderer`：块级映射到 `TextFlow` / `Separator` / `VBox` / `GridPane` / `ScrollPane`，
+    行内映射到 `Text` 样式与 `Hyperlink`；配色经 `themed` 注入，主题切换自动重刷；
+  - `DesktopShell`：段收尾后把纯文本气泡替换为富文本（进行中的段仍是纯文本），
+    原始 Markdown 存为气泡属性——右键提供「查看原文 / 复制 Markdown / 导出为 .md / 切换原文渲染」；
+  - 测试：`MarkdownInlineParserTest` 12 条；渲染器冒烟 2 条（`-Daha.ui.tests=true`）。
+- **桌面端 Markdown 表格与任务列表（#408 S2.1/S2.3，#419 #421，2026-10-20）**：
+  - 表格单元格改用 `TextFlow`：粗体 / 行内代码 / 链接在表内同样生效，表头整格加粗；
+    `GridPane` 按单元格 pref 宽度算列宽，超宽走外层 `ScrollPane` 横向滚动（`setPannable`），不压缩列宽；
+  - 任务列表识别 `[ ]` / `[x]` / `[X]`，渲染为只读复选框字形（`☐` / `☑`），不挂点击事件；
+  - 新增 `MarkdownTask`（纯逻辑，可无头单测）与 `MarkdownTaskTest` 4 条；
+  - 渲染器冒烟追加表格逐格（行列 / 对齐 / 行内样式）与任务列表字形断言。
+- **代码高亮词法提炼与桌面端着色（#408 S2.2，#420，2026-10-20）**：
+  - `CodeLexer` / `CodeToken` 下沉到 `aha-core`：只产出「类型 + 文本」，CLI 与桌面端共用一份词法，
+    避免高亮口径分叉；
+  - CLI `CodeHighlighter` 精简为 `Kind → ANSI` 映射，输出与 #336 完全一致（`CodeHighlighterTest` 未改）；
+  - 桌面围栏代码改用 `TextFlow` 逐 token 着色（关键字 / 字符串 / 数字 / 注释），
+    未知语言退回单色，主题切换经 `styler` 重新求值；
+  - 新增 `CodeLexerTest` 6 条（分类、原文逐字节一致、未知语言、别名与围栏附加信息）。
+- **桌面端长代码折叠与图片白名单（#408 S2.4/S2.5，#422 #423，2026-10-20）**：
+  - `FenceFold`：超过 30 行默认折叠并提示「已折叠 N 行」，展开 / 收起状态在主题切换后保持；
+  - 图片默认不加载：图片语法先渲染占位，点击后按白名单（`file:` / `https:`）加载，
+    `http:` / `data:` / 无协议一律拦截，加载失败降级为文案；
+  - 新增 `MarkdownInline.Image` 与解析；`FenceFoldTest` 4 条（29/30/31 边界）、`ImagePolicyTest` 3 条；
+  - 冒烟：未点击不创建 `ImageView`；31 行代码块出现折叠按钮。
+- **桌面端 Markdown 阶段 3（#408 S3.1–S3.3，#424 #425 #426，2026-10-20）**：
+  - 白名单 HTML：`<br>` 换行、`<sub>` / `<sup>` 上下标；其余标签（含 `<script>`）按字面量保留，不吞内容；
+  - 裸 URL 自动链接：`http://` / `https://` 识别为链接，遇空白、引号、中文标点终止，尾部英文标点回退，
+    代码段与围栏内不识别；
+  - 新增 `Docs/Guide/MarkdownRenderingGuide.md`：桌面端支持矩阵、明确不支持项、与 CLI 的差异；
+  - 测试：行内解析追加 6 条（HTML 白名单 / 裸 URL / 代码内 URL），
+    `MarkdownUnsupportedTest` 4 条兜底（脚注 / 定义列表 / 数学 / mermaid），
+    冒烟追加表格单元格 `<br>` 换行断言。
+- **桌面端表格单元格四边框（#431，2026-10-20）**：
+  - 每格只画「上 + 左」，末行补下、末列补右，避免相邻两格内线叠成 2px；
+  - 底色与线色走 `Palette.BORDER` + `styler`，主题切换自动跟随；
+  - `GridPane` 的 `hgap` / `vgap` 归零，内边距改由 `-fx-padding` 提供，边框在视觉上连续；
+  - 冒烟追加边框宽度矩阵断言（首格 `1 0 0 1`、末格 `1 1 1 1`）。
 - **状态栏显示思考强度（issue #355，2026-10-20）**：
   - `ModelDefinition` 新增 `ThinkingLevel`（当前档，可空）；未配置时取 `ThinkingLevelMap`
     的第一个键（YAML 保序），都没有时状态栏显示 `-`（不编造「低 / 中 / 高」）；
