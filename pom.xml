@@ -84,7 +84,7 @@
             （命令行属性优先级高于 profile 属性）。
         -->
         <javafx.platform>unsupported</javafx.platform>
-        <jackson.version>3.2.3</jackson.version>
+        <jackson.version>3.2.4</jackson.version>
         <picocli.version>4.7.7</picocli.version>
         <jline.version>4.4.8</jline.version>
         <sqlite.version>3.53.4.0</sqlite.version>
@@ -94,7 +94,7 @@
         <assertj.version>3.27.7</assertj.version>
         <mockito.version>5.24.0</mockito.version>
         <testfx.version>4.0.18</testfx.version>
-        <jacoco.version>0.8.15</jacoco.version>
+        <jacoco.version>0.8.16</jacoco.version>
         <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
         <!-- 版本占位符解析插件（CI-friendly versions），交 Dependabot 跟踪 -->
@@ -268,7 +268,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.6.0</version>
+                    <version>3.6.1</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
