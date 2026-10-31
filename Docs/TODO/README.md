@@ -175,7 +175,7 @@ TD-00014-ManualAndExternalActions.md
 
 | TD | 标题 | 状态 | 来源 | 备注 |
 |---|---|---|---|---|
-| [TD-00061](TD-00061-SuspendedBacklogRetracking.md) | 被 suspended 账户遗留事项（#75–#335）回归跟踪 | ◐ 进行中 | 原 issue #437（现已 404）；本地存档 | 261 个编号的 ISSUE/PR 台账：未完成 PR 复核后 **0 条**（24 条均已落地）、非 PR 编号 107 条中 34 条已由现有 TD 承载；261 个标题已由 autolink 恢复，剩 `#229`（open）+ 33 行归属待核；数据来源与再生命令见文内 §2 / §8 |
+| [TD-00061](TD-00061-SuspendedBacklogRetracking.md) | 被 suspended 账户遗留事项（#75–#335）回归跟踪 | ◐ 进行中 | 原 issue #437（现已 404）；本地存档 | 261 个编号的 ISSUE/PR 台账：未完成 PR 复核后 **0 条**（24 条均已落地）、非 PR 编号 108 条中 27 条已由现有 TD 承载；截图确认 **40 条 open / 92 条 closed**（真正未落地 5 项）；261 个标题已由 autolink 恢复，剩 33 行归属待核；数据来源见文内 §2 / §8 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）
 
