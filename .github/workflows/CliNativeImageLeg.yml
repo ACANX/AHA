@@ -63,7 +63,9 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          version: '25.4'
+          # 与桌面原生线（NativeImageLeg.yml）统一到 GraalVM 25.5（graal 25.5.x / jdk 25.0.5.x）：
+          # 两条原生线共用一个版本，避免「同一发版周期里两套 GraalVM」带来的排障歧义。
+          version: '25.5'
           java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
