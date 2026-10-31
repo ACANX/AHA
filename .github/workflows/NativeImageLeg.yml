@@ -65,15 +65,19 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          # GraalVM 25 Innovation 5（graal 25.5.x / jdk 25.0.5.x）起 macOS 与其它平台统一版本：
-          # 25.5 修了 JavaFX `com.sun.glass.ui.mac.MacVariant.toString` 的 pointsto 解析崩溃
-          # （`AnalysisError$ParsingError ... unexpected input could not be handled: class java.lang.Object`；
-          # 上游 oracle/graal#14533，修复 PR oracle/graal#14545）。
-          # 此前 macOS 只能退回 25.1（25.2 / 25.3 / 25.4 均崩），而 25.1 同样编不出桌面原生镜像——
-          # 这就是 12 份发布资产里一直缺 `desktop-native/macos-aarch64` 的原因。
-          # 详见 Docs/Troubleshooting/TS-2610-048-MacVariant-Pointsto-Parsing-Crash.md。
-          version: '25.5'
-          java-version: ${{ inputs.jdk }}
+          # 【临时方案】改用 GraalVM 25 Innovation 5 的 EA 构建（`25i5-ea`）。
+          # 起因：25.5 正式版截至 2026-10-31 仍未 GA（`graalvm-ce-builds` 最新仍是
+          # `graal-25.4.4.1.1`），而 EA 渠道已含 macOS 修复（`oracle/graal#14533`，
+          # 修复 PR `oracle/graal#14545`；缺陷是 JavaFX `MacVariant.toString` 的 pointsto
+          # 解析崩溃：`unexpected input could not be handled: class java.lang.Object`）。
+          # EA 已在探针分支（`feat/issue-321-graalvm-ea-probe`）验证可编出桌面端原生镜像，
+          # 所以先用它把「12 份发布资产缺 desktop-native/macos-aarch64」这条补上。
+          #
+          # 【写法】EA 只能通过 `java-version` 指定（`25i5-ea`），**绝不能再传 `version`**：
+          # 一旦设置 `version`，setup-graalvm 会走 release 渠道、把 EA 完全绕过（2026-10-17 实测）。
+          # JDK 27 腿保持 `27`：该大版本 GraalVM 未发布时会安装失败并跳过，与既有行为一致。
+          # 25.5 GA 后删掉 `25i5-ea`、改回 `version: '25.5'`（见 CHANGELOG / TS-2610-048）。
+          java-version: ${{ inputs.jdk == '25' && '25i5-ea' || inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven

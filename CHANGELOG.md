@@ -11,13 +11,13 @@
 ## [Unreleased]
 
 ### 修复
-- **macOS 桌面原生镜像恢复（issue #321，2026-10-31，待 GraalVM 25.5 GA）**：
-  - `NativeImageLeg.yml` / `CliNativeImageLeg.yml` 的 GraalVM 版本统一为 `25.5`（graal 25.5.x / jdk 25.0.5.x），
-    去掉 macOS 专用的 `25.1` 特例——25.5 修了 JavaFX `MacVariant.toString` 的 pointsto 解析崩溃
-    （`oracle/graal#14533` → 修复 PR `oracle/graal#14545`）；
-  - 25.5 GA 前 `InstallGraalVM` 会因 tag 不存在而失败、原生腿静默跳过，因此 PR 以 draft 挂起，
-    等 tag 发布且 dev 原生腿 `VerifyNativeImageRan` 转 success 后再合并；
-  - 合并后 12 份发布资产补齐 `desktop-native/macos-aarch64` 这一份。
+- **macOS 桌面原生镜像恢复（issue #321，2026-10-31，GraalVM 25i5 EA 临时方案）**：
+  - `NativeImageLeg.yml` / `CliNativeImageLeg.yml` 改用 GraalVM 25 Innovation 5 的 EA 构建
+    （`java-version: 25i5-ea`，**不传 `version`**），去掉 macOS 专用的 `25.1` 特例——EA 已含
+    JavaFX `MacVariant.toString` pointsto 解析崩溃的修复（`oracle/graal#14533` → 修复 PR `oracle/graal#14545`）；
+  - 25.5 正式版尚未 GA（`graalvm-ce-builds` 最新仍是 `graal-25.4.4.1.1`），先以 EA 出包补上
+    12 份发布资产中缺的 `desktop-native/macos-aarch64`；EA 是临时通道，25.5 GA 后改回 `version: '25.5'`；
+  - PR 保持 draft：以「EA 跑通并产出 macOS 桌面原生包」为验收，正式合并仍等 25.5 GA 后的 dev 原生腿验证。
 - **桌面端助手正文不再串段（issue #403，2026-10-20）**：
   - 事件流新增 `ContentSegmentEndEvent`（一段正文结束，每轮可多次）；
     `AgentEngine` 在每轮正文产出后、工具执行**之前**无条件发出，`DoneEvent` 语义保持「整轮结束」；

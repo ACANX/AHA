@@ -83,11 +83,14 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 | 版本节奏（实测） | 25.1.3 / 25.2.4 / 25.3.4.1 / 25.4.4.1 分别发布于 2026-06-30 / 07-28 / 08-25 / 09-22 —— **每 4 周一个 patch（周二）**，据此推断 25.5 约在 **2026-10-20** |
 | 已发布版本 | 最新 `graal-25.4.4.1.1`（**2026-09-22**）**早于修复 6 天，必然不含** |
 
-**恢复动作（已就绪，待 GA）**：`NativeImageLeg.yml` 与 `CliNativeImageLeg.yml` 的 `version` 已统一改为 `25.5`
-（分支 `fix/issue-321-graalvm-25-5`）。**GraalVM 25 Innovation 5 尚未 GA**——截至 2026-10-31，
-`graalvm-ce-builds` 最新仍是 Innovation 4（`graal-25.4.4.1.1`，jdk 25.0.4.1.1），`release-notes/25.5` 仍 404。
-该 tag 发布前 `InstallGraalVM` 会失败、各原生腿静默跳过，所以 `PR` 保持 draft：
-等 GA 后重跑 dev 原生腿，验证 `VerifyNativeImageRan == success` 再合并。代码其余部分无需改动（`-H` 参数已全部回滚）。
+**恢复动作（已改为 EA 临时方案）**：`NativeImageLeg.yml` 与 `CliNativeImageLeg.yml` 改用 GraalVM 25 Innovation 5
+的 EA 构建（`java-version: 25i5-ea`，不传 `version`——传了会走 release 渠道、绕过 EA）。
+**GraalVM 25 Innovation 5 尚未 GA**——截至 2026-10-31，`graalvm-ce-builds` 最新仍是 Innovation 4
+（`graal-25.4.4.1.1`，jdk 25.0.4.1.1），`release-notes/25.5` 仍 404。EA 渠道已含 `oracle/graal#14545`
+的修复，已在本仓库探针分支（`feat/issue-321-graalvm-ea-probe`）验证可编出 macOS 桌面端原生镜像；
+本次据此正式出包（补 `desktop-native/macos-aarch64`）。等 25.5 GA 后把 `java-version` 换回 `version: '25.5'`，
+重跑 dev 原生腿并确认 `VerifyNativeImageRan == success`，再撤下 EA 临时方案。
+代码其余部分无需改动（`-H` 参数已全部回滚）。
 
 ## 5. 复盘
 
@@ -195,7 +198,7 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 | 25.3.4.1 | 25.0.4 + `-H:MethodFilter` | 崩 | dev run `39129966929` |
 | 25.3.4.1 | 24.0.1 | 崩（同一行 193） | dev run `39130903996` |
 | **25.1.3** | 25.0.4 | 崩 | dev run `39132534613` |
-| **25.5**（待 GA） | 24.0.1 | 待验证 | 工作流已升级，GA 后跑 dev 原生腿 |
+| **25.5（GA 未发）+ `25i5-ea`** | 24.0.1 | 通过（编出 macOS 桌面原生镜像） | `feat/issue-321-graalvm-ea-probe` 探针构建 |
 
 ### 「绿但零产物」的判定方法（本次沉淀）
 
@@ -226,8 +229,8 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 ## 未决问题
 
 1. ~~本缺陷的上游链接~~ → 已定位并补齐，见「上游跟踪」；
-2. **等修复版本**：GraalVM 25 Innovation 5（graal 25.5.x / jdk 25.0.5.x）尚未 GA——工作流已提前改为
-   `25.5`，但必须等 tag 真实发布、dev 原生腿验证通过后才合并（见「恢复动作」）；
+2. **等修复版本**：GraalVM 25 Innovation 5（graal 25.5.x / jdk 25.0.5.x）尚未 GA——工作流暂以
+   `25i5-ea`（EA）出包验证，25.5 GA 后改回 `version: '25.5'` 并重跑 dev 原生腿（见「恢复动作」）；
 3. **是否需要「矩阵豁免」**：若上游短期不修，需决定是否把 `desktop-native/macos-aarch64` 从 12 份里
    暂时移除（并同步 `DesktopNative.yml` / `Release.yml` / `check_release_matrix()`），见 #320 的选项 A；
 4. **是否尝试旧组合**（GraalVM 22/23 + JavaFX 21）作为替代构建链：未验证，成本高。
