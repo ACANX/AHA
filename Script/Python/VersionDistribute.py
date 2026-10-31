@@ -2,7 +2,7 @@
 """AHA 版本分发：把新版本号落到所有「版本出现位置」（TD-00016 §H.3 / issue #96）。
 
 背景：版本号曾散落在 10 处、靠人记清单，已经漂移过一次
-（见 `Docs/Troubleshooting/TS-202610-VersionBumpMissedModules.md`）。P3（#95）之后，
+（见 `Docs/Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md`）。P3（#95）之后，
 POM 侧收敛为根 `pom.xml` 的 `<properties>/<revision>` 一处，其余位置由本脚本分发：
 
   1. 根 `pom.xml` 的 `<revision>`（8 个子模块经 `<parent><version>${revision}</version>` 继承）

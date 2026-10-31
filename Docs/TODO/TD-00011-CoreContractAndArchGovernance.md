@@ -5,7 +5,7 @@
 > 状态：☐ 未开始
 > 跟踪 Issue：[82](https://github.com/ACANX/AHA/issues/82)
 > 创建日期：2026-10-09
-> 最后更新：2026-10-09
+> 最后更新：2026-10-17（`A-07` 引用链已收口，见 §3）
 
 ---
 
@@ -32,9 +32,25 @@
 - **C-03 依赖治理**（☐）：父 POM 无 `maven-enforcer-plugin`、无 ArchUnit。评估引入 `bannedDependencies` 或 ArchUnit 作为 JPMS 的**补充**，把 `BuildSpec.md` §7 的约定变成构建期失败。
 - **C-04 `jlink` 解除条件**（☐）：`BuildSpec.md` §7 仍写「禁止在 0.1 使用 `jlink`——`sqlite-jdbc` 为自动模块」，未补解除条件，读起来像永久约束。补记：若该驱动未来提供 `module-info`，`jlink` 可显著缩小发行包，应重新评估。
 
-## 3. 引用链核对（A-07，◐ 进行中）
+## 3. 引用链核对（A-07，✅ 已收口 2026-10-17）
 
-`BuildSpec.md` §6 仍写「排除项 | 必须登记理由（见设计文档第十二部分 3.3）」。`Docs/AHA/AHA-Design-V1.md` 为多文档拼接、存在多个同名 `## 1.` / `## 2.`，该引用**极可能已失准**。二选一：改引 `TestingSpec.md` §3.2，或修正部分号与小节号。
+**核对结论（与立项时的猜测相反）**：那句「见设计文档第十二部分 3.3」**指向是准的** ——
+`AHA-Design-V1.md` 的 `# 第十二部分：测试策略` 下确有 `### 3.3 覆盖率排除项`。
+真正失准的是**口径**：那份表与 `TestingSpec.md` §3.2、根 POM 的 jacoco `excludes` 三者已经漂移
+（设计文档里桌面端一行还写着「桌面端 0.2 实现」，而实际是 0.1 整体排除、0.2 起按 `D-05` 用单独
+阈值 0.30 纳入；规范里的包路径也还是简写形态）。
+
+**采用方案 1 + 补口径**（`TestingSpec.md` §3.2 为唯一权威登记处）：
+
+| # | 落点 | 改动 |
+|---|---|---|
+| 1 | `TestingSpec.md` §3.2 | 声明为**唯一权威登记处**：根 POM 的 `jacoco` `excludes` 与表格逐条对应，**改 POM 必须同步本节**；表格改用 POM 的包路径形态，新增「何时解除 / 由什么替代覆盖」列 |
+| 2 | `BuildSpec.md` §6 | 「排除项」引用改为 `TestingSpec.md` §3.2（v1.46.1） |
+| 3 | `AHA-Design-V1.md` 第十二部分 3.3 | 修正漂移的桌面端行；注明权威登记处在规范、**不一致时改本节**（v3.74.0） |
+| 4 | 技能 `test` 的 `references/coverage-guide.md` | 不再自持一份口径，改为速查 + 「以规范为准」（技能 2.0.1） |
+
+验证：`grep` 全仓，对「覆盖率排除项」的引用只剩「指向 `TestingSpec.md` §3.2」与设计文档内的自指；
+`python3 bin/CheckDocs.py` 通过。
 
 ## 验收标准
 
@@ -42,10 +58,21 @@
 - [ ] `C-02` 拍板并落到 `ModuleConvention.md`；
 - [ ] `C-03` 给出「引入 / 不引入」结论与理由（若引入，同步 `Constitution.md` 第 5 条选型清单）；
 - [ ] `C-04` 在 `BuildSpec.md` §7 补上解除条件；
-- [ ] `A-07` 的引用改到正确目标，全仓对覆盖率排除项的引用统一。
+- [x] `A-07` 的引用改到正确目标，全仓对覆盖率排除项的引用统一（2026-10-17，`TestingSpec.md` §3.2 为唯一权威登记处）。
 
 ## 关联
 
 - `Docs/TODO.md` 第 2 / 3 节、`A-07`
 - `Docs/DevSpec/Constitution.md`、`ModuleConvention.md`、`BuildSpec.md`、`TestingSpec.md`
+
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00037](TD-00037-AgentEngineEmptyChoicesContent.md) — `AgentEngine.run()`：空 `choices` 不得返回 `null` 正文
+- [TD-00038](TD-00038-AgentEngineStreamFinishReason.md) — `AgentEngine.stream()`：`finishReason` 的兜底值
+- [TD-00039](TD-00039-ConstitutionJpmsRationale.md) — `Constitution.md` / `ModuleConvention.md` 补「为何模块化优先」
+- [TD-00040](TD-00040-ServiceLoaderDualDeclarationDecision.md) — `ServiceLoader` 双声明：拍板三选一并落地
+- [TD-00041](TD-00041-DependencyGovernanceDecision.md) — 依赖治理：Enforcer / ArchUnit 引入与否
+- [TD-00042](TD-00042-JlinkBanLiftConditions.md) — `BuildSpec.md` §7 补 `jlink` 禁令的解除条件
 

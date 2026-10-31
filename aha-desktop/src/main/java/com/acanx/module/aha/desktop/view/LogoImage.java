@@ -20,8 +20,8 @@ import java.io.InputStream;
  */
 public final class LogoImage {
 
-    /** 资源文件名（与本类同包）。 */
-    private static final String RESOURCE = "logo.png";
+    /** 资源路径（集中在 {@link UiResources}，不再与本类同包）。 */
+    private static final String RESOURCE = UiResources.LOGO_PNG;
 
     /** 空态展示时的边长（px）。 */
     public static final double DISPLAY_SIZE = 96;

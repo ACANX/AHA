@@ -6,6 +6,7 @@
   2. 文档内相对链接是否指向存在的文件（排除代码块内的示例链接）
   3. 文本是否可解码且不含 NUL（防止内容被写坏后静默混进仓库）
   4. 按约定命名的目录（`Docs/TODO` / `Docs/Troubleshooting` / `Docs/DevLog`）文件名是否符合 `DocumentationSpec.md` §1
+  5. TS 档案正文是否含规范要求的四个**必备章节**（`DocumentationSpec.md` §5）
 
 用法：
     python3 bin/CheckDocs.py            # 从仓库根执行
@@ -28,6 +29,11 @@ SCAN_DIRS = ("Docs", ".agents")
 SCAN_FILES = ("AGENTS.md", "README.md", "CHANGELOG.md")
 
 FENCE_CHARS = "`~"
+
+# TS 档案的四个必备章节与「结论分层」的三层
+# （依据 DocumentationSpec.md §5 / 姊妹项目 TroubleShootingDocSpec.md §2）
+TS_REQUIRED_SECTIONS = ("结论分层", "观测数据", "排除项", "未决问题")
+TS_LAYER_SUBSECTIONS = ("已观测事实", "机制 / 行为模型", "未定位 / 未复现")
 MIN_FENCE_RUN = 3
 LINK_PATTERN = re.compile(r"\[[^\]]*\]\(([^)#\s]+?)\)")
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
@@ -204,23 +210,51 @@ def check_conflict_markers() -> list[str]:
     return problems
 
 
+CHEATSHEET_SOURCE = ROOT / "Docs" / "Guide" / "CommandCheatsheet.md"
+CHEATSHEET_COPY = ROOT / "Dist" / "README.commands.md"
+
+
+def check_cheatsheet_copy() -> list[str]:
+    """`Dist/README.commands.md` 必须是 `Docs/Guide/CommandCheatsheet.md` 的**逐字节副本**。
+
+    来历（2026-10-14 的真实教训）：S5（#173）把「快照包取件」一节直接加到了 `Dist/README.commands.md`。
+    那个文件头部明写着「要改内容请改源文件，本文件会被覆盖」，但**只有人读到那行才会遵守**；
+    而它下一次被覆盖的时机很隐蔽——`mvn package` 的 CLI assembly，或任何人跑
+    `Script/Python/DesktopDistExtract.py`（`shutil.copyfile`）⇒ 这一节会**静默消失**。
+    所以在这里变成检查：副本必须与源文件逐字节相同，不一致就点名，并给出补救命令。
+    """
+    if not (CHEATSHEET_SOURCE.is_file() and CHEATSHEET_COPY.is_file()):
+        return []
+    if CHEATSHEET_SOURCE.read_bytes() == CHEATSHEET_COPY.read_bytes():
+        return []
+    return [
+        "命令速查的副本与源文件不一致：Dist/README.commands.md ≠ Docs/Guide/CommandCheatsheet.md。"
+        "该副本会被 CLI assembly 与 DesktopDistExtract.py 覆盖（shutil.copyfile）——"
+        "**改内容请改源文件 `Docs/Guide/CommandCheatsheet.md`**，再重建副本："
+        "`cp Docs/Guide/CommandCheatsheet.md Dist/README.commands.md`"
+    ]
+
+
 def check_naming() -> list[str]:
     """检查按命名规范建立的目录里的文件名（`DocumentationSpec.md` §1）。
 
     这几条命名规则光写在规范里是不会执行的：`TD-PPPPP-*.md`（待办详情）、
-    `TS-yyyyMM-*.md`（问题排查）、`yyyyMMdd-HH.md`（开发日志）都有固定的机器可判形式，
+    `TS-yyMM-NNN-*.md`（问题排查）、`yyyyMMdd-HH.md`（开发日志）都有固定的机器可判形式，
     所以在这里变成检查——否则一旦写错就只能靠人偶然发现，而文件名是检索的入口。
 
     `Archive/` 不参与：归档资料保留原名，且不再维护。
     """
     rules = {
         "Docs/TODO": re.compile(r"^TD-\d{5}-[A-Za-z0-9]+\.md$"),
-        "Docs/Troubleshooting": re.compile(r"^TS-\d{6}-[A-Za-z0-9]+\.md$"),
+        # 已完成待办：目录从 TODO 移到 DONE，**编号不变**，前缀 TD- → DN-（DocumentationSpec §6）
+        "Docs/DONE": re.compile(r"^DN-\d{5}-[A-Za-z0-9]+\.md$"),
+        "Docs/Troubleshooting": re.compile(r"^TS-\d{4}-\d{3}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\.md$"),
         "Docs/DevLog": re.compile(r"^\d{8}-\d{2}\.md$"),
     }
     # 目录内允许的固定名（目录说明与模板）
     allowed = {
         "Docs/TODO": {"README.md"},
+        "Docs/DONE": {"README.md"},
         "Docs/Troubleshooting": {"README.md", "TS-Template.md"},
         "Docs/DevLog": {"README.md"},
     }
@@ -235,17 +269,54 @@ def check_naming() -> list[str]:
             if not pattern.fullmatch(path.name):
                 problems.append(f"{rel}/{path.name} 命名不合规（应为 {pattern.pattern}）")
 
-    # 待办编号不允许重复（同一编号只能对应一个待办）
-    td_dir = ROOT / "Docs/TODO"
-    if td_dir.is_dir():
-        seen: dict[str, list[str]] = {}
-        for path in sorted(td_dir.glob("TD-*.md")):
-            matched = re.match(r"^TD-(\d{5})-", path.name)
+    # 待办编号不允许重复（TODO 与 DONE 共用同一编号空间：完成后只换目录与前缀，编号不变）
+    seen: dict[str, list[str]] = {}
+    for rel, prefix in (("Docs/TODO", "TD"), ("Docs/DONE", "DN")):
+        directory = ROOT / rel
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob(f"{prefix}-*.md")):
+            matched = re.match(rf"^{prefix}-(\d{{5}})-", path.name)
             if matched:
-                seen.setdefault(matched.group(1), []).append(path.name)
-        for number, names in sorted(seen.items()):
-            if len(names) > 1:
-                problems.append(f"Docs/TODO/ 编号 TD-{number} 重复：{'、'.join(names)}")
+                seen.setdefault(matched.group(1), []).append(f"{rel}/{path.name}")
+    for number, names in sorted(seen.items()):
+        if len(names) > 1:
+            problems.append(f"待办编号 {number} 重复（TODO 与 DONE 共用编号空间）：{'、'.join(names)}")
+    return problems
+
+
+def check_ts_skeleton() -> list[str]:
+    """检查 TS 档案正文是否含四个必备章节（`DocumentationSpec.md` §5）。
+
+    这四节（结论分层 / 观测数据 / 排除项 / 未决问题）是规范里**明令不得缺**的：
+    它们的作用是**防止后人把「推测」当「结论」读**，也防止「没验证」被写成「已解决」。
+    光写在规范里不会执行——而是实际操作中一个不留神就漏掉，所以在这里变成检查。
+
+    「结论分层」还要求三个子节（已观测事实 / 机制模型 / 未定位），因为分层的价值
+    恰恰在于把这三者**分开写**；只写一个「结论」标题等于没分层。
+
+    `TS-Template.md` 也纳入检查：新档案是照着它写的，模板不合规会把缺陷复制下去。
+    """
+    directory = ROOT / "Docs/Troubleshooting"
+    if not directory.is_dir():
+        return []
+    problems: list[str] = []
+    for path in sorted(directory.glob("TS-*.md")):
+        text, _ = read_text(path)
+        if text is None:
+            continue
+        rel = f"Docs/Troubleshooting/{path.name}"
+        headings = set(re.findall(r"^##\s+(.+?)\s*$", text, re.M))
+        missing = [s for s in TS_REQUIRED_SECTIONS if s not in headings]
+        if missing:
+            problems.append(f"{rel} 缺少必备章节：{'、'.join(missing)}")
+            continue
+        if "结论分层" in headings:
+            layers = set(re.findall(r"^###\s+(.+?)\s*$", text, re.M))
+            absent = [s for s in TS_LAYER_SUBSECTIONS if s not in layers]
+            if absent:
+                problems.append(
+                    f"{rel} 「结论分层」缺子节：{'、'.join(absent)}")
     return problems
 
 
@@ -285,7 +356,18 @@ def main() -> int:
     print("\n".join(f"  ❌ {p}" for p in naming_problems) if naming_problems
           else "  ✅ 目录内文件名符合规范")
 
-    total = len(fence_problems) + len(link_problems) + len(conflict_problems) + len(naming_problems)
+    skeleton_problems = check_ts_skeleton()
+    print("\n[TS 档案必备章节检查]")
+    print("\n".join(f"  ❌ {p}" for p in skeleton_problems) if skeleton_problems
+          else "  ✅ 四节（结论分层 / 观测数据 / 排除项 / 未决问题）齐全")
+
+    cheatsheet_problems = check_cheatsheet_copy()
+    print("\n[命令速查副本检查]")
+    print("\n".join(f"  ❌ {p}" for p in cheatsheet_problems) if cheatsheet_problems
+          else "  ✅ 副本与源文件逐字节一致")
+
+    total = (len(fence_problems) + len(link_problems) + len(conflict_problems)
+             + len(naming_problems) + len(skeleton_problems) + len(cheatsheet_problems))
     if total:
         print(f"\n共 {total} 个问题")
         return 1

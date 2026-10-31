@@ -31,7 +31,7 @@ class StreamRendererTest {
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         // 状态行不进输出流（它走底部常驻区），因此这里用空载体避免干扰正文断言
         return new StreamRenderer(out, Style.of(color), width,
-                new StatusLine(StatusSurface.NONE, false, true, width, null, Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(StatusSurface.NONE, false, true, width, StatusBar.legacy(null), Style.of(false)), true, ToolEnvironment.none());
     }
 
     private String output() {
@@ -55,17 +55,31 @@ class StreamRendererTest {
         RecordingStatusSurface surface = new RecordingStatusSurface();
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
-                new StatusLine(surface, true, true, 60, "deepseek-chat", Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("model-x"), Style.of(false)), true, ToolEnvironment.none());
 
         renderer.beginTurn();
-        // 状态行只回答「在干什么」：耗时归工具区块末行，不在这里
-        assertThat(surface.last()).isEqualTo("⠋ 等待响应…");
-        assertThat(output()).doesNotContain("等待响应…");
+        // 状态行只回答「在干什么」（#342：请求中 → 生成中）
+        assertThat(surface.last()).contains("请求中…");
+        assertThat(output()).doesNotContain("请求中…");
 
-        // 写正文前状态行回到空闲文案（而非撤掉底部区域——那一行还兼着输入行下边框）
         renderer.onEvent(new ContentEvent("s", "答案"));
-        assertThat(surface.last()).isEqualTo("deepseek-chat");
+        assertThat(surface.last()).contains("生成中…");
         assertThat(output()).contains("答案");
+    }
+
+    @Test
+    void cancelledShowsInterruptedState() {
+        RecordingStatusSurface surface = new RecordingStatusSurface();
+        PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
+        StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("model-x"), Style.of(false)),
+                true, ToolEnvironment.none());
+
+        renderer.beginTurn();
+        renderer.cancelled();
+
+        assertThat(surface.last()).contains("已中断");
+        assertThat(surface.last()).doesNotContain("请求中");
     }
 
     @Test
@@ -73,7 +87,7 @@ class StreamRendererTest {
         RecordingStatusSurface surface = new RecordingStatusSurface();
         PrintStream out = new PrintStream(buffer, true, StandardCharsets.UTF_8);
         StreamRenderer renderer = new StreamRenderer(out, Style.of(false), 0,
-                new StatusLine(surface, true, true, 60, "m", Style.of(false)), true, ToolEnvironment.none());
+                new StatusLine(surface, true, true, 60, StatusBar.legacy("m"), Style.of(false)), true, ToolEnvironment.none());
 
         renderer.onEvent(new ToolCallEvent("s", "shell-exec", Map.of("command", "ls")));
 
@@ -103,7 +117,7 @@ class StreamRendererTest {
         String text = output();
         // 区块前留空行，首行是「类型 + 工具名」，参数在紧随其后的明细行
         assertThat(text).contains("正在读取" + System.lineSeparator()
-                + System.lineSeparator() + "[读取文件] file-read");
+                + System.lineSeparator() + System.lineSeparator() + " [读取文件] file-read");
         assertThat(text).contains("path").contains("a.txt");
         assertThat(text).contains("✓ 完成").contains("ok");
     }
@@ -144,17 +158,19 @@ class StreamRendererTest {
     @Test
     void longToolOutputIsPreviewedInsteadOfDumped() {
         // 工具输出可能极长（读文件、跑命令），全量贴进对话只会淹没上下文：
-        // 只给前几行，并明确告知还有多少行
+        // 超过 500 行才折叠，并明确告知折叠了多少行
         StreamRenderer renderer = renderer(false, 0);
         renderer.onEvent(new ToolCallEvent("s", "shell-exec", Map.of("command", "x".repeat(900))));
-        renderer.onEvent(new ToolResultEvent("s", "shell-exec",
-                String.join("\n", "l1", "l2", "l3", "l4", "l5", "l6")));
+        String output = java.util.stream.IntStream.rangeClosed(1, 501)
+                .mapToObj(i -> "l" + i)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        renderer.onEvent(new ToolResultEvent("s", "shell-exec", output));
 
         String text = output();
-        // 结果区有明确标题，正文按行给出，超出上限时报总数
-        assertThat(text).contains("结果").contains("l1").contains("l5");
-        assertThat(text).doesNotContain("l6");
-        assertThat(text).contains("输出共 6 行");
+        // 结果区有明确标题，正文按行给出，超出阈值时提示折叠行数
+        assertThat(text).contains("结果").contains("l1").contains("l500");
+        assertThat(text).doesNotContain("l501");
+        assertThat(text).contains("已折叠 1 行（共 501 行）");
     }
 
     @Test

@@ -220,7 +220,7 @@ Log4j2 的 `DefaultRolloverStrategy` 达到 `max` 后，会**删除最旧的切�
 | 限制 | 说明 | 处理 |
 |---|---|---|
 | 配置加载日志不进文件 | 4 行「已加载 xx 配置」发生在 `apply` 之前 | 代码注释说明；如需入库需两阶段装配 |
-| 历史文件不自动清理 | §5.2 的直接后果 | 记入 [PLAN.md](../PLAN.md) §8.6，可改按时间删除 |
+| 历史文件不自动清理 | §5.2 的直接后果 | 记入 [PLAN.md](#5-文件命名与切分) §8.6，可改按时间删除 |
 | 未做日志脱敏扫描 | 依赖「不记录敏感信息」的编码约定 | 见 [CodingStandard.md](../DevSpec/CodingStandard.md) |
 
 ---
@@ -270,4 +270,4 @@ Log4j2 的 `DefaultRolloverStrategy` 达到 `max` 后，会**删除最旧的切�
 | [CodingStandard.md](../DevSpec/CodingStandard.md) | 日志编码约定 |
 | [ConfigurationGuide.md](../Guide/ConfigurationGuide.md) | `Aha.Logging` 配置与切分规则 |
 | [TroubleshootingGuide.md](../Guide/TroubleshootingGuide.md) | 日志相关排查 |
-| [PLAN.md](../PLAN.md) | 遗留取舍与待办 |
+| [PLAN.md](#5-文件命名与切分) | 遗留取舍与待办 |

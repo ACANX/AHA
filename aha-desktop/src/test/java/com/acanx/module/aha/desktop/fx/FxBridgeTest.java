@@ -106,6 +106,25 @@ class FxBridgeTest {
     }
 
     @Test
+    void clearDropsInFlightValueButKeepsTheBridgeUsable() {
+        // 切换会话：已排程的渲染任务不必撤回，它取不到值就什么都不做；
+        // 桥本身不能关（后续正文还要继续渲染）
+        RecordingFxDispatcher dispatcher = new RecordingFxDispatcher();
+        List<String> rendered = new ArrayList<>();
+        FxBridge<String> bridge = new FxBridge<>(dispatcher, rendered::add);
+
+        bridge.submit("旧会话残留");
+        bridge.clear();
+        dispatcher.drain();
+        assertThat(rendered).isEmpty();
+        assertThat(bridge.isClosed()).isFalse();
+
+        bridge.submit("新会话");
+        dispatcher.drain();
+        assertThat(rendered).containsExactly("新会话");
+    }
+
+    @Test
     void renderFailureDoesNotBreakLaterUpdates() {
         RecordingFxDispatcher dispatcher = new RecordingFxDispatcher();
         List<String> rendered = new ArrayList<>();

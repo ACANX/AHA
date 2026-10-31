@@ -2,20 +2,19 @@
 rem
 rem AHA Desktop launcher (Windows)
 rem
-rem Supported layouts:
-rem   1) Distribution bundle: <bundle>\lib holds the aha-desktop module and
-rem      this script lives in <bundle>\bin\.
-rem   2) Source checkout: no <root>\lib; the launcher extracts the portable
-rem      bundle (<root>\Dist\aha-desktop-<version>-win.zip) into a directory
-rem      keyed by the zip name and its timestamp, then runs from there.
+rem Bundle layout (since issue #218): flat - the fat jar aha-desktop.jar sits
+rem next to this script in the bundle root; there is no lib\ and no bin\.
+rem The jar already ships this platform's OpenJFX (classes and native libraries
+rem inside it, extracted and cached by JavaFX at runtime), so a JDK 25 runtime
+rem is the only prerequisite.
 rem
-rem A JDK 25 runtime is the only prerequisite: the bundle already ships this
-rem platform's OpenJFX native libraries.
-rem
+rem Also works from a source checkout: when no fat jar is found, the portable
+rem bundle (Dist\aha-desktop-<version>-<platform>.zip) is extracted into a
+rem directory keyed by the zip name and its timestamp, then run from there.
+rem Old directories are kept: they may still be in use.
 setlocal
 
-for %%I in ("%~dp0..") do set "BASE=%%~fI"
-set "LIB=%BASE%\lib"
+for %%I in ("%~dp0.") do set "DIR=%%~fI"
 
 if defined JAVA_HOME (
     set "JAVA=%JAVA_HOME%\bin\java.exe"
@@ -25,17 +24,32 @@ if defined JAVA_HOME (
     set "JAR=jar"
 )
 
-rem -- 1) distribution bundle ----------------------------------------------
-if exist "%LIB%\aha-desktop-*.jar" goto :launch
+rem Fat jar may sit next to this script (bundle, or Dist\ after extraction)
+rem or one level up (legacy bin\ layout).
+set "JARDIR="
+if exist "%DIR%\aha-desktop.jar" set "JARDIR=%DIR%"
+if not defined JARDIR if exist "%DIR%\..\aha-desktop.jar" for %%I in ("%DIR%\..") do set "JARDIR=%%~fI"
+if defined JARDIR goto :launch
 
-rem -- 2) source checkout: extract the portable bundle ---------------------
-if not exist "%BASE%\pom.xml" goto :missing
+rem -- source checkout: extract the portable bundle -----------------------
+set "ROOT="
+if exist "%DIR%\pom.xml" set "ROOT=%DIR%"
+if not defined ROOT if exist "%DIR%\..\pom.xml" for %%I in ("%DIR%\..") do set "ROOT=%%~fI"
+if not defined ROOT goto :missing
 
 set "ZIP="
 set "ZDIR="
 set "ZNAME="
-rem Prefer the Windows package; the [0-9] fallback skips aha-desktop-native-*.zip.
-for %%Z in ("%BASE%\Dist\aha-desktop-*-win.zip") do (
+rem issue #269 naming first: aha-desktop-jvm-<version>-windows-amd64-jdk25.zip.
+for %%Z in ("%ROOT%\Dist\aha-desktop-jvm-*.zip") do (
+    if exist "%%~fZ" (
+        set "ZIP=%%~fZ"
+        set "ZDIR=%%~dpZ"
+        set "ZNAME=%%~nZ"
+    )
+)
+rem Legacy name / Maven artifact fallback (the [0-9] pattern skips aha-desktop-native-*.zip).
+if not defined ZIP for %%Z in ("%ROOT%\Dist\aha-desktop-*-win.zip") do (
     if exist "%%~fZ" (
         set "ZIP=%%~fZ"
         set "ZDIR=%%~dpZ"
@@ -43,7 +57,7 @@ for %%Z in ("%BASE%\Dist\aha-desktop-*-win.zip") do (
     )
 )
 if not defined ZIP (
-    for %%Z in ("%BASE%\Dist\aha-desktop-[0-9]*.zip") do (
+    for %%Z in ("%ROOT%\Dist\aha-desktop-[0-9]*.zip") do (
         if exist "%%~fZ" (
             set "ZIP=%%~fZ"
             set "ZDIR=%%~dpZ"
@@ -65,18 +79,15 @@ set "STAMP=%STAMP:,=%"
 set "STAMP=%STAMP:.=%"
 set "BUNDLE=%ZDIR%%ZNAME%.%STAMP%"
 
-if not exist "%BUNDLE%\lib\aha-desktop-*.jar" call :extract "%ZIP%" "%BUNDLE%" || goto :failed
-set "LIB=%BUNDLE%\lib"
+if not exist "%BUNDLE%\aha-desktop.jar" call :extract "%ZIP%" "%BUNDLE%" || goto :failed
+if not exist "%BUNDLE%\aha-desktop.jar" goto :legacy
+set "JARDIR=%BUNDLE%"
 
 :launch
-rem --add-opens below serves the render diagnostics (issue #48): reading the font
-rem factory (com.sun.javafx.font.PrismFontFactory) needs reflection. The target
-rem must name the app's module: launched via --module it is a named module, so
-rem ALL-UNNAMED grants it nothing. Harmless otherwise.
-"%JAVA%" --enable-native-access=org.xerial.sqlitejdbc ^
-    --add-opens javafx.graphics/com.sun.javafx.font=com.acanx.module.aha.desktop ^
-    --module-path "%LIB%" ^
-    --module com.acanx.module.aha.desktop/com.acanx.module.aha.desktop.AhaDesktopApp %*
+rem The fat jar runs on the classpath, so --add-opens is not needed (the
+rem unnamed module is already open) and --enable-native-access must say
+rem ALL-UNNAMED: naming a module would fail with "Unknown module".
+"%JAVA%" --enable-native-access=ALL-UNNAMED -jar "%JARDIR%\aha-desktop.jar" %*
 
 set "RC=%ERRORLEVEL%"
 endlocal & exit /b %RC%
@@ -92,11 +103,17 @@ popd
 exit /b %RC%
 
 :missing
-echo [ERROR] Desktop module directory not found: "%LIB%" 1>&2
+echo [ERROR] Desktop fat jar not found: "%DIR%\aha-desktop.jar" 1>&2
 echo [ERROR] Build the portable bundle first:  mvnw.cmd -pl aha-desktop -am package -DskipTests 1>&2
 echo [ERROR] Then run this script again; it extracts Dist\aha-desktop-*.zip automatically. 1>&2
 endlocal & exit /b 1
 
+:legacy
+echo [ERROR] No aha-desktop.jar inside "%ZIP%". 1>&2
+echo [ERROR] That bundle is likely the pre-#218 layout (bin/ + lib/, versioned jar). 1>&2
+echo [ERROR] Rebuild with:  mvnw.cmd clean package   -- or take bundle 0.1.3.00219+. 1>&2
+endlocal & exit /b 1
+
 :failed
-echo [ERROR] Failed to extract "%ZIP%" into "%BUNDLE%" 1>&2
+echo [ERROR] Failed to extract "%%ZIP%%" into "%%BUNDLE%%" 1>&2
 endlocal & exit /b 1

@@ -3,6 +3,7 @@ package com.acanx.module.aha.cli.tty;
 import java.io.Console;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
 
 /**
@@ -19,9 +20,15 @@ import java.nio.charset.UnsupportedCharsetException;
  *   <li>{@code cjk} —— 能否表示 CJK，决定是否需要提示用户切换控制台编码</li>
  * </ul>
  *
- * <p>刻意<b>不</b>在启动脚本里自动 {@code chcp 65001}：PowerShell 5.1 会缓存
- * {@code [Console]::OutputEncoding}，子进程改代码页后它仍按旧编码解码，反而更乱。
- * 因此只探测、提示与降级，是否切换交给用户。</p>
+ * <p><b>与控制台协商的分工</b>：启动时先由 {@link ConsoleEncoding#prepare()}（内部走
+ * {@link WindowsConsole}）尝试把 Windows 控制台切成 UTF-8——但<b>只在标准输出真的连着
+ * 控制台</b>时进行，管道 / 重定向 / CI 一律不碰，退出时还会恢复原代码页。因此
+ * “宿主 Shell 缓存旧编码”那个坑不会波及非交互场景；协商失败则回到本文的
+ * “探测 + 提示 + 降级”，两者互为兜底。</p>
+ *
+ * <p>协商成功后，控制台已经能表示 CJK 与装饰符号，{@link #detect()} 直接给出 UTF-8 结论
+ * （见下方的 {@link WindowsConsole#isUtf8Console()} 分支）——不再依赖
+ * {@code System.console().charset()}，因为后者在原生镜像下可能缓存启动时的旧值。</p>
  *
  * @param charset JVM 写 stdout 使用的字符集，无法确定时为 {@code null}
  * @param cjk     能否表示 CJK 字符
@@ -45,6 +52,10 @@ public record OutputEncoding(Charset charset, boolean cjk, boolean symbols) {
      * @return 探测结果
      */
     public static OutputEncoding detect() {
+        // 启动协商已经把控制台切成 UTF-8：直接给结论，不依赖可能被缓存的 Console.charset()
+        if (WindowsConsole.isUtf8Console()) {
+            return new OutputEncoding(StandardCharsets.UTF_8, true, true);
+        }
         String name = encodingName();
         Charset charset = resolve(name);
         return new OutputEncoding(charset,

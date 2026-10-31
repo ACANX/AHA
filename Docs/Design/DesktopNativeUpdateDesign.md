@@ -1,12 +1,13 @@
-# AHA 桌面端原生镜像版本更新脚本设计（试验性）
+# AHA 原生镜像取件工具设计（桌面端 + CLI；Windows PowerShell / POSIX Python，试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.2.0
 > **状态**：草案（试验性能力的配套工具，随实现迭代）
 > **生效日期**：2026-10-09
-> **最后更新**：2026-10-09
+> **最后更新**：2026-10-14
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
-> **定位**：`Script/Python/DesktopNativeVersionUpdate.py` 的设计、参数、边界与验证记录
+> **定位**：原生镜像取件工具的设计、参数、边界与验证记录——**桌面端与 CLI 两种包**、
+> **两套平台实现**（Windows PowerShell / POSIX Python，共用一份命名契约）
 
 ## 0. 本文定位
 
@@ -15,20 +16,71 @@
 
 取一个验证包原本是四步手工操作：
 
-1. 打开发布页，找到最新的 `V<版本>-aha-desktop-native` 预发行版；
+1. 打开发布页，找到最新的 `V<版本>-aha-<kind>-native` 预发行版；
 2. 在这条 release 的资产里，按「系统-架构-jdk」挑对自己平台的那个 zip；
 3. 下载并解压；
-4. 把可执行文件放到 `Dist/`，再执行 `.\Dist\aha-desktop-native.exe`。
+4. 把可执行文件放到 `Dist/`。
 
 这四步里有三步要求「看仔细」（tag 名、平台标签、JDK 轴），看错一步就要重来；版本号还带
-5 位构建号，肉眼比较新旧很容易出错。脚本把四步压成一条命令：
+5 位构建号，肉眼比较新旧很容易出错。工具把四步压成一步。
 
-```bat
-python3 Script\Python\DesktopNativeVersionUpdate.py
-```
+### 0.1 当前方案：两套实现，一份契约
 
-（POSIX 下把路径分隔符换成 `/`；个别环境里命令是 `python` 而非 `python3`。）
-用法由 `bin/CheckScripts.py` 的脚本规约守卫（`.py` 需 shebang + LF），不需要另立检查。
+| 平台 | 入口（用户视角） | 实现 | 说明 |
+|---|---|---|---|
+| Windows | **双击** `Dist\UpdateDesktopNative.cmd` / `Dist\UpdateCliNative.cmd` | `Dist/UpdateNative.ps1`（PowerShell + `Invoke-RestMethod` / `Invoke-WebRequest`，走 .NET / Schannel TLS） | **不需要 Python**；`.cmd` 只做参数转写与转发 |
+| WSL / Linux / macOS | `python3 Script/Python/{Desktop,Cli}NativeVersionUpdate.py` | 共享引擎 `Script/Python/NativeVersionUpdate.py` | 功能更多：三条发现路径（api → atom → page）、断点续传、`--downloader auto\|urllib\|curl` |
+
+**为什么是两套而不是一套**：两边的「默认可用运行时」不同——Windows 上不能假设装了 Python
+（一键入口的受众是克隆仓库的人），POSIX 上不能假设有 Windows PowerShell。再加上 Windows 上
+Python 的 OpenSSL 可能硬失败（`OPENSSL_Uplink ... no OPENSSL_Applink`，进程被直接终结、
+进程内捕不到）——Windows 侧干脆不经 Python。完整排查见 `TS-2610-036`。
+
+**两套实现共用同一份命名契约**（这也是两套能共存的前提）：
+
+| 种类 | tag 后缀 | 资产前缀 | 可执行文件 |
+|---|---|---|---|
+| 桌面端 | `-aha-desktop-native` | `aha-desktop-native-` | `aha-desktop-native(.exe)` |
+| CLI | `-aha-cli-native` | `aha-cli-native-` | `aha-cli-native(.exe)` |
+
+这张表在 Python 侧是 `KINDS`、在 PowerShell 侧是 `$kinds`，**由 `bin/CheckScripts.py`
+断言逐字一致**——一旦漂移，表现是「某个平台上永远取不到包」，静默且难查。
+同一处检查还会：`.ps1` 含中文必须带 UTF-8 BOM（PowerShell 5.1 对无 BOM 文件按 ANSI 解码）、
+`.cmd` 不得使用括号转义（与 `if` 块混用会让 CMD 报 `. was unexpected at this time.`）、
+以及把 `Dist/` 下**被跟踪的手写入口**也纳入检查（`Dist/` 整体是构建输出目录，原本被整体跳过）。
+
+**CI**：`Build.yml` 的 `NativeUpdateScript` 作业用 runner 自带的 pwsh 真跑
+`Dist/UpdateNative.ps1 -Kind Cli -List`——变量名大小写冲突、批处理括号转义这类坑
+**运行期才暴露**，静态检查看不见。
+
+### 0.2 Windows 侧（PowerShell）的验证记录（2026-10-14）
+
+本机（PowerShell 7.6.7，解到 `/tmp`，不动系统）逐项实跑：
+
+| 场景 | 结果 |
+|---|---|
+| `-List`（Desktop / Cli）、`-DryRun` | ✅ 列出最近 5 个版本 / 打印将下的包与安装路径 |
+| 完整安装 Desktop | ✅ 56.0 MB → `aha-desktop-native.exe`（144.9 MB），sha256 校验通过 |
+| 完整安装 Cli | ✅ 41.5 MB → `aha-cli-native.exe`（92.4 MB） |
+| 幂等 / `-Force` | ✅ 第二次「已经是 …，无需更新」；`-Force` 重装并生成 `.bak` |
+| 状态文件 | ✅ `.aha-<exe>.json`（UTF-8 无 BOM，Python 侧也能读） |
+| 错误分支 | ✅ 找不到本平台包 / 不存在的 tag ⇒ 友好报错 + 退出码 1 |
+| **Windows 真机双击** | ✅ ACANX 实测通过（2026-10-14） |
+
+> 本机跑的是 **pwsh 7 on Linux**，真机是 **Windows PowerShell 5.1**，语义有差异——
+> 所以「真机双击」这一步不能省（已由 ACANX 完成）。
+
+### 0.3 演变（要闻，供对照历史记录）
+
+| 日期 | 变化 |
+|---|---|
+| 2026-10-09 | 首版：桌面端一条命令（`DesktopNativeVersionUpdate.py`），见 §1~§12 |
+| 2026-10-13 | CLI 并入（issue #156 / TD-00015）：引擎抽成 `NativeVersionUpdate.py`，两个入口是薄壳 |
+| 2026-10-13 晚 | Windows 另做 PowerShell 实现（`Dist/UpdateNative.ps1`）；Python 侧补 `--downloader`（见 §5、§8） |
+| 2026-10-14 | 修 Windows 侧四处运行期错误（变量大小写冲突 / 批处理括号转义 / 临时目录 / 解压），并把真跑搬进 CI |
+
+历史命令名 `DesktopNativeVersionUpdate.py` **保持可用且行为不变**（现在只是薄壳，
+`--list` / `--dry-run` / `--tag` / `--platform` / `--jdk` 都还在）。
 
 三条边界先写清楚：
 
@@ -55,7 +107,7 @@ python3 Script\Python\DesktopNativeVersionUpdate.py
 - 不做签名校验与来源认证：当前信任边界是 HTTPS + GitHub 仓库本身；
 - 不解析可执行文件**内部**的版本号（那是
   [DesktopNativeDesign.md](DesktopNativeDesign.md) 第 7 节 `N-4` 的事）；
-- 不覆盖 `cli-native`：命名同族（`AHA-Cli-Native-*`），留作后续（见第 11 节 `U-1`）；
+- 不覆盖 `cli-native`：命名同族（`aha-cli-native-*`），留作后续（见第 11 节 `U-1`）；
 - 不做常驻「检查更新」进程：按需执行，不引入后台任务。
 
 ## 2. 命名契约（唯一来源）
@@ -64,25 +116,31 @@ python3 Script\Python\DesktopNativeVersionUpdate.py
 
 | 名称 | 形态 | 出处 |
 |---|---|---|
-| release tag | `V<基线>.<构建号>-aha-desktop-native` | `DesktopNative.yml` 的 `native-publish` |
-| 构建号 | PR 号补零到 5 位，如 `00040` | `DesktopNative.yml` 的 `native-version`（`printf '%05d'`） |
-| 镜像包 | `AHA-Desktop-Native-<版本>-<平台标签>-jdk<JDK>.zip` | `DesktopNative.yml` 的「改名为发布用资产名」 |
+| release tag | `V<基线>.<构建号>-aha-desktop-native` | `DesktopNative.yml` 的 `NativePublish` |
+| 构建号 | PR 号补零到 5 位，如 `00040` | `DesktopNative.yml` 的 `NativeVersion`（`printf '%05d'`） |
+| 镜像包 | `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip` | `DesktopNative.yml` 的「改名为发布用资产名」 |
 | 报告包 | 同名 + `-Report` 后缀 | 同上的独立报告包（脚本**不取**） |
-| 平台标签 | `windows-amd64` / `ubuntu-amd64` / `macos-arm64` | `DesktopNative.yml` 的 `native-image` matrix |
+| 平台标签 | `windows-amd64` / `ubuntu-amd64` / `macos-aarch64` | `DesktopNative.yml` 的 `native-image` matrix |
 | JDK 轴 | `jdk25`（基线）/ `jdk27`（试验） | 同上的 matrix |
 
 脚本侧的两个断言与之对应：
 
 ```text
 tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
-资产    = ^AHA-Desktop-Native-(?P<version>\d+(?:\.\d+)*)-(?P<label>[A-Za-z0-9_.-]+)-jdk(?P<jdk>\d+)\.zip$
+资产    = ^aha-desktop-native-(?P<version>\d+(?:\.\d+)*)-(?P<os>[a-z0-9]+)-(?P<arch>[a-z0-9]+)-graalvm(?P<jdk>\d+)\.zip$
 ```
 
-**只认 `-aha-desktop-native` 后缀**这一条是有代价、也是有意为之的：正式版 tag（`V0.1.0`）、
-历史实验 tag（`native-v0.1.1.00024`、`aha-desktop-native-v0.1.1.00030`）与 `cli-native`
-全都不匹配。宁可「看不见不认识的 tag」，也不要「把正式版当预发行版下载」——后者会静默覆盖
+**只认各自后缀**这一条是有代价、也是有意为之的：正式版 tag（`V0.1.0`）、
+历史实验 tag（`native-v0.1.1.00024`、`aha-desktop-native-v0.1.1.00030`）都不匹配。
+宁可「看不见不认识的 tag」，也不要「把正式版当预发行版下载」——后者会静默覆盖
 用户的本机验证环境。资产名里的 `<version>` 必须与 tag 解析出的版本**精确相等**，
 这也顺手排除了 `-Report.zip`（版本相同但结尾不匹配）。
+
+**CLI 原生包与之同构**（`CliNativeVersionUpdate.py`）：tag 为 `V<基线>.<构建号>-aha-cli-native`，
+资产为 `aha-cli-native-<版本>-<系统>-<架构>-graalvm<JDK>.zip`，可执行文件为 `aha-cli-native(.exe)`，
+出处是同名的 `CliNative.yml`。两者正则形状完全一致，只有后缀 / 前缀不同——这正是
+一张 `KINDS` 表能覆盖两种包的原因；也是「桌面端入口永远不会去取 CLI 的包」的原因
+（互不串台：`cli-native` 的 tag 不匹配桌面端的后缀，反之亦然）。
 
 ## 3. 三条发现路径
 
@@ -106,7 +164,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 
 这是本脚本最容易被忽略、也最容易让用户「刚看到新版本却下载失败」的一点：
 
-- release **先建后传**：`native-publish` 先创建 release，再挂资产；
+- release **先建后传**：`NativePublish` 先创建 release，再挂资产；
 - 三条腿**并发**：`native-image` 的 ubuntu / windows / macOS 各自构建，先编完的先上传。
 
 于是在新版本出现后的几分钟里，「最新 tag 存在，但缺本平台的包」是常态。脚本因此按
@@ -141,6 +199,15 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 - **校验**：下载完成后按 `sha256:<hex>` 校验（仅 `api` 路径有 digest），
   失败即删除文件并报错，不留下「看起来下完了」的坏包。`size` 作为第二道兜底。
 - **进度输出到 `stderr`**，`stdout` 只留结果与计划，便于管道与日志分流。
+- **下载器有两条路（2026-10-13，issue #156）**：默认 `urllib`（Python 自带的 TLS）；
+  Windows 上 `auto` 会先用**子进程**探一次 HTTPS，不可用就改用系统 `curl.exe`（系统 TLS）。
+  为什么非要多这一层：部分 Windows 机器上 Python 的 OpenSSL 运行时会**硬失败**
+  （`OPENSSL_Uplink ... no OPENSSL_Applink`），而那种失败**在进程内捕捉不到**——进程被直接终结，
+  连 traceback 都打不出来，只能靠「换一条不经过 Python TLS 的路」自救；
+  探测之所以必须放在子进程，就是因为它连异常都来不及抛。详见 [`TS-2610-036`](../Troubleshooting/TS-2610-036-Windows-Python-OpenSSL-Applink-Failure.md)。
+  curl 路径同样支持续传（`-C -`，服务器不认 Range 时自动退回完整下载）。
+  （Windows 的一键入口另有一套 PowerShell 实现，根本不经 Python——见第 0 节；
+  本节的两条路服务的是 POSIX 上的 Python 路径。）
 
 ## 6. 安装
 
@@ -190,6 +257,7 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 | `--jdk` | `25` | JDK 分支；无该分支时报错而非静默替换 |
 | `--dist` | 仓库根 `Dist/` | 安装目录 |
 | `--source` | `auto` | `auto` / `api` / `atom` / `page` |
+| `--downloader` | `auto` | `auto` / `urllib` / `curl`；Windows 的 `auto` 先探 Python 的 HTTPS，失败则用系统 curl |
 | `--timeout` | `30` | 元数据请求超时（秒） |
 | `--download-timeout` | `600` | 下载超时（秒） |
 | `--force` | 关 | 忽略「已是最新」 |
@@ -219,18 +287,22 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 ## 10. 已知限制
 
 - `atom` / `page` 路径没有 sha256 digest，只能靠 `size` 与 zip 自身的 CRC 兜底；
-- 未在 macOS 上实测（选择逻辑与平台无关，但 `macos-arm64` 标签未验证）；
+- 未在 macOS 上实测（选择逻辑与平台无关，但 `macos-aarch64` 标签未验证）；
 - 可执行文件**内部**的版本号与文件名/包名无关（`DesktopNativeDesign.md` 第 7 节 `N-4`），
   脚本只能校验「装的是哪个包」，不能校验「跑起来自报哪个版本」；
 - 未做限流后的重试与退避：`auto` 会退到 `atom`，对当前使用频率足够；
 - `.gitignore` 里的 `Dist/` 在大小写不敏感的文件系统上同时命中 `Dist/`，
   因此状态文件与 zip 不会被误提交——这是依赖既有规则，不是本脚本额外做的保护。
+- **Windows 上 Python 自身的 HTTPS 可能不可用**（OpenSSL `no OPENSSL_Applink`）：
+  **Windows 一键入口已改用 PowerShell 实现**（不经 Python，见第 0 节），因此不受影响；
+  Python 路径（POSIX）另有 `--downloader auto|urllib|curl` 兜底。
+  但**下载器救不了 Python 完全坏掉**的情形——`bin/Check*.py`、`DesktopDistBuild.py` 等仍需可用 Python。
 
 ## 11. 后续路线
 
 | # | 事项 | 触发条件 |
 |---|---|---|
-| U-1 | 与 `cli-native` 共用同一脚本（加 `--kind`，命名同族） | 需要频繁验证 CLI 原生镜像时 |
+| U-1 | ✅ **已完成**（2026-10-13，issue #156）：与 `cli-native` 共用同一套逻辑——共享引擎 + 两个薄壳（见第 0 节） | — |
 | U-2 | `--json` / `--check` 输出，便于 CI 或桌面端「检查更新」复用 | 有第二个调用方时 |
 | U-3 | macOS 真机验证 | 拿到 macOS 环境后与 `DesktopNativeDesign.md` 第 7 节 `N-1` 一起做 |
 | U-4 | 目录归属：按 `TODO.md` `F-07` 的结论决定是否并入 `bin/` | `F-07` 有结论时 |
@@ -239,6 +311,11 @@ tag    = ^[Vv]?(\d+(?:\.\d+)*?)\.(\d+)-aha-desktop-native$
 ## 12. 相关文档
 
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：原生镜像的构建管线、隔离与迭代指南
+- [CliNativeDesign.md](CliNativeDesign.md)：CLI 原生镜像的构建管线（取件由本工具覆盖）
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（含跨平台脚本规约）
-- [TODO.md](../TODO.md)：`F-07`（`Script/` 目录归属）、`N-04`（JDK 轴）
-- 实现：`Script/Python/DesktopNativeVersionUpdate.py`
+- [TD-00015](../TODO/TD-00015-CliNativeVersionUpdateScript.md)：CLI 原生镜像自动取件脚本（已收尾）
+- [TODO.md](../TODO/README.md)：`F-07`（`Script/` 目录归属）、`N-04`（JDK 轴）
+- Issue #156：一键入口与 CLI 取件的来源单
+- 实现：`Script/Python/NativeVersionUpdate.py`（共享引擎）、
+  `DesktopNativeVersionUpdate.py` / `CliNativeVersionUpdate.py`（两个薄壳）、
+  `Dist/UpdateDesktopNative.cmd` / `Dist/UpdateCliNative.cmd`（Windows 一键入口）

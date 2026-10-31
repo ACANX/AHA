@@ -112,10 +112,10 @@ public final class ModelConfigStore {
     }
 
     /**
-     * 把供应商的默认档设为指定档位，并把 {@code Model} 同步为该档模型。
+     * 把供应商的默认档设为指定档位。
      *
-     * <p>写盘约定：{@code Model} 与 {@code DefaultTier} 保持一致，这样旧客户端
-     * 读 {@code Model} 也拿到同一个模型。</p>
+     * <p>新格式不再写 {@code DefaultTier} / {@code Model}：默认档固定 {@code Standard}，
+     * 因此这里把目标档的模型 ID 挪到 {@code Tier.Standard}。</p>
      *
      * @param providerId 供应商键名
      * @param tier       目标档位
@@ -137,10 +137,10 @@ public final class ModelConfigStore {
     }
 
     /**
-     * 按模型名反查所属档位并设为默认（仅限五档内的模型名）。
+     * 按模型 ID / 实际模型名反查所属档位并设为默认（仅限五档内）。
      *
      * @param providerId 供应商键名
-     * @param modelName  模型名
+     * @param modelName  模型 ID 或实际模型名
      * @return 更新后的配置
      */
     public ModelConfig useModelName(String providerId, String modelName) {

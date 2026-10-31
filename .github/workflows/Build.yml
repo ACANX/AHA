@@ -5,87 +5,228 @@ name: Build
 # 这里**只做快的**——编译 + 单元测试，不采集覆盖率、不打包、不做文档检查。
 # 覆盖率门禁、完整 `clean verify`、文档检查与重复率属于慢检查，统一放在
 # Gate.yml，只在合入 main 前与发布前跑（见 BuildSpec.md 第 9 节）。
+#
+# ── 本文件的作业 ────────────────────────────────────────────────────────────
+#   * 四条 `Build*` —— 编译 + 单元测试的四个腿，**三条是必需检查**（分支保护按作业名匹配）；
+#   * `UISmoke` —— 真开窗口跑 `AhaDesktopSmokeTest`（Linux + Xvfb），**非必需**；
+#   * `NativeUpdateScript` / `StaticGuard` —— 脚本与文档的静态门禁；
+#   * `Tag` —— push 到 main 后自动打 tag 并派发发布流程。
+#
+# 【为什么每条腿是一个独立作业，而不是矩阵】（issue #287）
+#   作业的 `name` 必须是**静态字符串**：不许含 `${{ … }}`、标点或中文。矩阵要靠表达式区分腿，
+#   两者不可兼得 ⇒ 展开为逐腿作业，重复的 steps 放进可复用工作流 `BuildLeg.yml`（只有一份）。
+#   逐腿作业名同时是分支保护的契约，见 BuildSpec.md 第 8.1 节。
 on: [push, pull_request]
 
 jobs:
-  build:
-    strategy:
-      # 不要让一条腿失败就取消其余：Windows 与 Linux 的失败原因常常不同，
-      # 早退回会把可用的信息（其余腿的日志）一起丢掉。
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            maven: wrapper
-          - os: ubuntu-latest
-            maven: wrapper
-          - os: ubuntu-latest
-            maven: system
-          # macOS 目前只作演示与可选验证（见 BuildSpec.md 第 4.1 节）：
-          # 不计入必需检查，失败不使整体构建失败。
-          - os: macos-latest
-            maven: wrapper
-    # 可选腿失败只标注该腿自身，不算构建失败。
-    #
-    # 判定依据直接取自 os，**不额外增加矩阵键**：GitHub 会把矩阵的**全部键值**拼进
-    # 作业名（多一个 optional 就会变成 build (windows-latest, wrapper, false)），
-    # 而分支保护的必需检查是按作业名匹配的——一改名就永远停在 Expected。
-    # 【契约】必需腿的作业名与矩阵键变更时必须同步更新分支保护，见 BuildSpec.md 第 8.1 节。
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
-    runs-on: ${{ matrix.os }}
+  BuildWindowsLatestWrapper:
+    name: BuildWindowsLatestWrapper
+    uses: ./.github/workflows/BuildLeg.yml
+    with:
+      os: windows-latest
+      maven: wrapper
+      optional: false
+
+  BuildUbuntuLatestWrapper:
+    name: BuildUbuntuLatestWrapper
+    uses: ./.github/workflows/BuildLeg.yml
+    with:
+      os: ubuntu-latest
+      maven: wrapper
+      optional: false
+
+  BuildUbuntuLatestSystem:
+    name: BuildUbuntuLatestSystem
+    uses: ./.github/workflows/BuildLeg.yml
+    with:
+      os: ubuntu-latest
+      maven: system
+      optional: false
+
+  # macOS 目前只作演示与可选验证（见 BuildSpec.md 第 4.1 节）：
+  # 不计入必需检查，失败不使整体构建失败。
+  BuildMacOSLatestWrapper:
+    name: BuildMacOSLatestWrapper
+    uses: ./.github/workflows/BuildLeg.yml
+    with:
+      os: macos-latest
+      maven: wrapper
+      optional: true
+
+  # ── GUI 冒烟：真开窗口跑 AhaDesktopSmokeTest（Linux + Xvfb，非阻塞）──────────
+  #
+  # 【它补的是哪一段】界面路径此前是三段式覆盖：
+  #   ① 静态对账（FxmlViewChecks / UiResourcesTest）—— fxml 自身写对没有；
+  #   ② 原生 GUI 冒烟（DesktopNative.yml）—— 界面在原生包里装起来没有；
+  #   ③ **装起来之后的交互**（三栏折叠三条路、Enter 发送、工具卡片展开、会话列表）
+  #      —— 在 CI 上**从未执行过**。这套断言早就写好了（AhaDesktopSmokeTest），
+  #      只是被 @EnabledIfSystemProperty("aha.ui.tests") 关着，等一个能跑 GUI 的环境。
+  #   本作业就是那个环境。
+  #
+  # 【为何单独一个作业、且非阻塞】
+  #   * 它要图形环境（Platform.startup + GTK），塞进编译腿会污染「快速反馈」的定位；
+  #   * GUI 测试天然比单元测试抖（窗口时序、焦点、字体），按 BuildSpec §7 的口径
+  #     **可选管线不得进必需检查**、失败必须在作业级容错；
+  #   * 于是：它不挡合并，但失败会以红叉 + Job Summary 暴露。要不要升级成必需检查，
+  #     等它稳定跑一段时间再说（issue #144 的验收标准之一）。
+  UISmoke:
+    name: UISmoke
+    continue-on-error: true
+    # 防挂死：JavaFX 的 toolkit 会起非守护线程，万一套件没退出，别让它吃掉整个 CI 配额。
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
-      - name: Test (Wrapper / Maven 4)
-        if: matrix.maven == 'wrapper'
-        uses: ./.github/actions/maven-run
-        with:
-          command: ./mvnw -B clean test -Djacoco.skip=true
-      - name: Test (System / Maven 3.9.x)
-        if: matrix.maven == 'system'
-        uses: ./.github/actions/maven-run
-        with:
-          command: mvn -B clean test -Djacoco.skip=true
-      - name: Compile skill templates
-        if: matrix.maven == 'wrapper' && runner.os == 'Linux'
+      - name: InstallXvfbAndJavaFxLibs
         run: |
-          JACKSON=$(find ~/.m2/repository/com/fasterxml/jackson -name 'jackson-annotations-*.jar' | head -1)
-          javac -cp "aha-common/target/classes:aha-extension-api/target/classes:aha-core/target/classes:$JACKSON" \
-            -d /tmp/skill-templates $(find .agents/skills -name '*.java')
+          set -euo pipefail
+          sudo apt-get update -qq
+          # 必需的：Xvfb 提供虚拟显示；libgtk-3-0 是 JavaFX glass 在 Linux 上的依赖。
+          sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0
+          # 其余是常见依赖，**包名随 Ubuntu 版本变化**（libasound2 vs libasound2t64）——
+          # 尽力而为，装不上不算失败；真的缺了会在下面的冒烟里以 UnsatisfiedLinkError 暴露。
+          for pkg in libxtst6 libxss1 libgl1 libglib2.0-0 libasound2t64 libasound2 fonts-dejavu; do
+            sudo apt-get install -y --no-install-recommends "$pkg" >/dev/null 2>&1 || true
+          done
+      - name: InstallDependenciesOnly
+        run: |
+          # 关键：分两步走。直接用 `-pl aha-desktop -am test` 会把**依赖模块的测试也跑一遍**
+          # （实测首轮跑了 211 个用例，其中 180 多个是 aha-common / aha-core 的）——
+          # 既拖时间，又会把「别的模块挂了」误报成「GUI 挂了」。
+          # 先 install 依赖（skipTests），再**只测 aha-desktop**。
+          ./mvnw -B -q -pl aha-desktop -am install -DskipTests -Djacoco.skip=true
+      - name: RunGuiSmokeWithXvfb
+        id: smoke
+        run: |
+          set -o pipefail
+          xvfb-run -a ./mvnw -B -pl aha-desktop test \
+            -Daha.ui.tests=true -Djacoco.skip=true 2>&1 | tee /tmp/ui-smoke.log
+      - name: WriteSummary
+        if: always()
+        env:
+          SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          set -uo pipefail
+          log=/tmp/ui-smoke.log
+          ran=$(grep -oE 'Tests run: [0-9]+' "$log" 2>/dev/null | tail -1 || true)
+          summary=/tmp/ui-summary.md
+          {
+            echo '### GUI 冒烟（Linux + Xvfb）'
+            echo ''
+            if [ "$SMOKE" = "success" ]; then
+              echo '结论：**通过** —— `AhaDesktopSmokeTest` 在 CI 上真实执行了'
+            else
+              echo "结论：**失败**（step outcome = ${SMOKE:-未取到}）——见下方日志尾部"
+            fi
+            echo ''
+            echo '- 套件：`AhaDesktopSmokeTest`（真开窗口：三栏折叠 / Enter 发送 / 工具卡片 / 会话列表）'
+            echo "- 最近一行统计：\`${ran:-未取到}\`"
+            echo ''
+            echo '> 本作业是**可选**的：不进必需检查、不挡合并（见 `BuildSpec.md` §7 与 issue #144）。'
+            if [ "$SMOKE" != "success" ]; then
+              echo ''
+              echo '```text'
+              tail -60 "$log" 2>/dev/null || echo '（没有日志）'
+              echo '```'
+            fi
+          } > "$summary"
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          cat "$summary"
+
+  NativeUpdateScript:
+    name: NativeUpdateScript
+    # 这条曾经只能靠肉眼：本仓库在它上面连踩两次——参数名与局部变量大小写冲突
+    # （PowerShell 变量名不区分大小写）、批处理的括号转义——都是运行期才暴露的坑，
+    # 静态检查看不见。这里用 runner 自带的 pwsh 真跑一遍 -List。
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: RunNativeUpdateList
+        env:
+          # 带上 token：未认证时按 IP 限流 60 次/小时，CI 共享出口 IP 很容易撞上
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pwsh -NoProfile -File Dist/UpdateNative.ps1 -Kind Cli -List
+      - name: RunHelperSelfTest
+        # 这是升级链路里**唯一直接动用户文件**的脚本，此前只有「写没写出来」的静态检查。
+        # 自测在临时目录里真跑：拒绝不合格的包 / 替换+删除+自证+回执 / 备份可回滚。
+        # 平台行为（Windows 上被占用的 exe、cmd /c start 的生命周期）仍属真实机验证项。
+        run: pwsh -NoProfile -File Script/PowerShell/HelperSelfTest.ps1
+
+  StaticGuard:
+    name: StaticGuard
+    # 这四道门禁原本只在 Gate 里跑，而 Gate 不覆盖「对 dev 的 PR」⇒ 面向 dev 的改动
+    # 要等到周一（或合到 main / release 时）才会被检查。它们本身很便宜（纯 Python，秒级），
+    # 放到每个 PR 上跑，问题在提 PR 时就暴露，而不是在发版前。
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: RunBinChecks
+        run: |
+          set -euo pipefail
+          for check in CheckDocs CheckSkills CheckScripts CheckTheme; do
+            echo "—— ${check} ——"
+            python3 "bin/${check}.py"
+          done
+      - name: SelfTestProjectVersion
+        # 快照版本是 5 段（`<基线>.<PR 号补零 5 位>.<MMddHHmm>`），而 6 段与乱码必须被拒。
+        # 这条边界放在静态守卫里，是因为它一旦被改宽（"什么都接受"）不会立刻暴露——
+        # 打错的版本号会被静默一路带进产物名与 tag。
+        run: python3 .github/Python/ProjectVersion.py --self-test
+
+      - name: SelfTestPackageManifest
+        # 清单 / 校验和是四条出包线的共用实现（issue #51 §6）。它的闸口有两个：
+        # 一是不把打包垃圾与逃逸路径写进清单，二是清单与包内容必须逐项一致。
+        # 这两条都是「放宽了也不会立刻暴露」的边界，所以放静态守卫里跑正反例。
+        run: python3 .github/Python/PackageManifest.py --self-test
 
   # ── 构建成功后在 main 上自动打 tag ─────────────────────────────────────────
   #
-  # 触发时机：**push 到 `main`**（即 `dev` → `main` 的 PR 被合并之后），且上面的 build 已成功。
+  # 触发时机：**push 到 `main`**（即 `dev` → `main` 的 PR 被合并之后），且上面的编译腿已成功。
   #
   # tag 名：`V<项目版本号>`（如 `V0.1.0`）。版本号由唯一读取入口
   #         `.github/Python/ProjectVersion.py` 解析（`version` 文件 → 根 POM 的
   #         `<revision>` → `<version>`，见 TD-00016 §B）；工作流里不写版本字面量——
   #         版本改了 tag 跟着走，不会形成两处口径。
   #
-  # 为什么 `needs: build` 就够了：带 `needs` 的作业在依赖失败时会被跳过，不必再判 `result`。
-  #         唯一的边角是那条**可选**的 macOS 腿（`continue-on-error`）：若它没通过且影响到了
-  #         build 作业的结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
+  # 为什么 `needs` 列出四条腿就够了：带 `needs` 的作业在依赖失败时会被跳过，不必再判 `result`。
+  #         唯一的边角是那条**可选**的 macOS 腿（`optional: true`，容错在 `BuildLeg.yml` 内部）：
+  #         若它没通过且影响到了 job 结论，本作业会被跳过——此时按 ReleaseProcess.md 手工补 tag 即可。
   #
   # 【重要】用 `GITHUB_TOKEN` 推的 tag **不会触发下游工作流**（GitHub 防递归的既定行为），
-  #         所以 `Release.yml` 不会因这里的 tag 自动开跑。本仓库**不为此配置 PAT**——
-  #         发布按 ReleaseProcess.md §4.2 手工重建 tag（由人推送，不受防递归限制）。
+  #         所以 `Release.yml` 的 `push: tags` 不会因这里的 tag 自动开跑。本仓库**不为此配置
+  #         PAT**——改用该规则的**官方例外** `workflow_dispatch`：本作业在 tag 真的新建出来之后，
+  #         用 `gh workflow run Release.yml --ref main -f tag=<TAG>` 把发布流程主动派发起来
+  #         （issue #238）。`--ref main` 不能省——派发在默认分支（dev）上会让发布流程跑到 dev，
+  #         详见 `Release.yml` 顶部注释。派发失败或需要重来时的兜底仍是
+  #         ReleaseProcess.md §4.2 的手工重建 tag。
   #
-  # 【权限】推 tag 需要 `contents: write`。若仓库把 Actions 默认权限设成了只读，
-  #         这一步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
-  tag:
-    name: tag（V<版本号>）
-    needs: build
+  # 【权限】推 tag 需要 `contents: write`、派发工作流需要 `actions: write`。若仓库把 Actions
+  #         默认权限设成了只读，这两步会因权限不足而失败——处置见 BuildSpec.md 第 8.1 节。
+
+  Tag:
+    name: Tag
+    needs:
+      - BuildWindowsLatestWrapper
+      - BuildUbuntuLatestWrapper
+      - BuildUbuntuLatestSystem
+      - BuildMacOSLatestWrapper
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 派发 `Release.yml`（`gh workflow run` 走 workflow_dispatch 接口）需要它：
+      # 只有 `contents: write` 时这一步是 403（issue #238）
+      actions: write
     steps:
       - uses: actions/checkout@v7
 
-      - name: 读取项目版本（唯一入口：.github/Python/ProjectVersion.py）
+      - name: ReadProjectVersion
         id: version
         run: |
           VERSION=$(python3 .github/Python/ProjectVersion.py --resolve)
@@ -93,13 +234,16 @@ jobs:
           echo "项目版本：${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: 打 tag 并推送（已存在则跳过）
+      - name: CreateAndPushTag
+        id: tag
         env:
           TAG: V${{ steps.version.outputs.version }}
         run: |
-          # 幂等：同一版本被重复合入 main 是正常事（例如只改了文档），不该因此报错
+          # 幂等：同一版本被重复合入 main 是正常事（例如只改了文档），不该因此报错。
+          # 跳过时**不派发** Release.yml（`created=false`）——否则每次 push 到 main 都会重复发版。
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "tag ${TAG} 已存在，跳过"
+            echo "created=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           git config user.name  "github-actions[bot]"
@@ -107,3 +251,16 @@ jobs:
           git tag -a "${TAG}" -m "AHA ${TAG}" "${GITHUB_SHA}"
           git push origin "refs/tags/${TAG}"
           echo "已创建并推送 tag：${TAG}（指向 ${GITHUB_SHA}）"
+          echo "created=true" >> "${GITHUB_OUTPUT}"
+
+      - name: DispatchRelease
+        # 只有**真的新建了 tag** 才派发；tag 已存在说明这次合入没带新版本（幂等，见上一步）
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: V${{ steps.version.outputs.version }}
+        run: |
+          # `--ref main`：`workflow_dispatch` 的 GITHUB_SHA 是「所派发 ref 的最新提交」，
+          # 用默认分支（dev）派发会让发布流程跑到 dev（理由见 Release.yml 顶部注释）。
+          gh workflow run Release.yml --ref main -f "tag=${TAG}"
+          echo "已派发 Release.yml（ref=main，tag=${TAG}）"

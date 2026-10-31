@@ -4,7 +4,7 @@ description: 文档记录的时机与写法：待办（Docs/TODO）、开发日�
 license: GPL-3.0-or-later
 compatibility: 在仓库根目录执行；本地只需 python3 跑 bin/CheckDocs.py，无需 Maven。
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   owner: ACANX
 ---
 
@@ -20,7 +20,7 @@ metadata:
 | 完成一个功能 / 改动 / 修复 | 写一篇**开发日志**（`Docs/DevLog/`） |
 | 排查并解决一个问题（含事故复盘） | 写一篇**排查记录**（`Docs/Troubleshooting/`）；解决过程中若牵出遗留项，另开 Issue |
 | 产生一个本轮不做的待办 | 建一个 **TD 文件**（`Docs/TODO/`）+ 登记清单 + 需要长期跟踪的**开 Issue** |
-| 认定某件事「做不到」或「决定暂缓」 | 在 `Docs/PLAN.md` 追加**结论与依据**（不追加待办） |
+| 认定某件事「做不到」或「决定暂缓」 | 在对应 `Docs/TODO/TD-*` 的「结论 / 已排除方案」小节追加**结论与依据**（不追加待办） |
 | 某个文档 / 设计稿 / 脚本不再维护 | 用 `git mv` 移入 `Archive/`，文件头注明「已废弃」 |
 
 ## 分流表（写哪里 / 什么命名 / 依据）
@@ -30,11 +30,11 @@ metadata:
 | 待办清单与进度 | `Docs/TODO/` | `README.md`（固定名） | [README](../../../Docs/TODO/README.md) |
 | 单个待办详情 | `Docs/TODO/` | `TD-PPPPP-大驼峰英文标题.md`（五位从 `00001` 全局自增） | 同上；内容参考对应 Issue |
 | 已完成事项 | `Docs/DevLog/` | `yyyyMMdd-HH.md` | [README](../../../Docs/DevLog/README.md)（含完整模板） |
-| 问题排查 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyyyMM-大驼峰英文标题.md` | [README](../../../Docs/Troubleshooting/README.md) + [TS-Template.md](../../../Docs/Troubleshooting/TS-Template.md) |
-| 做不到 / 已暂缓的结论 | `Docs/PLAN.md` | 追加小节 | `DocumentationSpec.md` §4 |
+| 问题排查 / 事故复盘 | `Docs/Troubleshooting/` | `TS-yyMM-NNN-英文词序.md` | [README](../../../Docs/Troubleshooting/README.md) + [TS-Template.md](../../../Docs/Troubleshooting/TS-Template.md) |
+| 做不到 / 已暂缓的结论 | 对应 `Docs/TODO/TD-*` | 追加「结论 / 已排除方案」小节 | `DocumentationSpec.md` §4 |
 | 已废弃资料 | `Archive/` | 保持原名 + 头注「已废弃（YYYY-MM-DD）」 | [README](../../../Archive/README.md) |
 
-**硬性**：不得写进 `Docs/TODO.md`（已冻结）；不要把待办只留在对话里。
+**硬性**：`Docs/TODO.md` / `Docs/PLAN.md` / `Docs/Dbsx.txt` 已于 2026-10-17 删除；待办进 `Docs/TODO/` 的 `TD-*`，不要把待办只留在对话里。
 
 ## 通用纪律
 
@@ -99,3 +99,8 @@ metadata:
 | 完成后不更新状态 | 清单与实际不符，重复劳动 | 同一变更内更新 TD 头部与清单行 |
 | 文件名随意起 | 排序与检索失效，CI 判失败 | 按命名速查表；模板文件是唯一例外 |
 | 用 `Archive/` 当回收站 | 归档里混入仍在维护的内容 | 只有**确定不再维护**的才移入 |
+
+## 方案类文档
+
+较大方案变更 / 新特性的方案文档，体例参考 [`Docs/Guide/PlanWritingGuide.md`](../../../Docs/Guide/PlanWritingGuide.md)
+（**参考性，非强制**：章节可增删，底线是「每节回答一个明确的问题」）。

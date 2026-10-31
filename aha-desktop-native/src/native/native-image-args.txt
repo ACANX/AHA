@@ -112,7 +112,13 @@
 #      D3DShaderSource 用 getResourceAsStream 读）；ES2 的是 .frag / .vert。
 #      漏掉 .obj 的症状不是构建失败，而是**首次绘制时 shader 加载不到**——
 #      「静默坏掉」，所以一开真机就先把它补上（issue #35 同批处理）。
--H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl)$
+#   7. **FXML 界面骨架**（.fxml）：`FXMLLoader` 走 getResource 读它。
+#      漏掉的症状同样是**启动即崩**（`IOException: Location is not set`），构建却全绿。
+#      注意：这里**只加扩展名，千万不要写宽匹配的路径规则**（如 com/sun/javafx/.*）——
+#      那会把 `com/sun/javafx/reflect/Trampoline.class` 一并当资源编进镜像，
+#      JavaFX 的私有加载器读到字节后会去**运行期 defineClass**，而 native-image 默认禁止，
+#      于是启动即崩（姊妹项目 LegionFanControl 的 TS-2610-003 就是这一条）。
+-H:IncludeResources=.*\.(png|jpg|jpeg|gif|svg|css|fxml|bss|xml|properties|txt|json|yaml|yml|so|dylib|dll|dat|bin|obj|frag|vert|glsl|hlsl|ttf|otf)$
 -H:IncludeResources=META-INF/services/.*
 # tracing agent 采集发现的资源盲区（2026-10-08）：
 #   * JDK 的文本断行 / 双向文本数据：无扩展名（LineBreakIteratorData）或 .icu（ubidi.icu），

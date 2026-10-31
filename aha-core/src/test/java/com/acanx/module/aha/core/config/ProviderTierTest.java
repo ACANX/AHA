@@ -3,12 +3,16 @@ package com.acanx.module.aha.core.config;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 档位解析与回退测试（{@link ProviderConfig} / {@link ModelTier}）。
+ *
+ * <p>新格式默认档固定 {@code Standard}；{@code Standard} 缺失时按
+ * 全局 {@code DefaultTier} → 档位强弱顺序兜底。</p>
  *
  * @since 0.1.0
  */
@@ -34,11 +38,12 @@ class ProviderTierTest {
     }
 
     @Test
-    void legacyConfigUsesModelField() {
+    void legacySingleModelIsMigratedButKeepsBehavior() {
         ProviderConfig legacy = new ProviderConfig("openai-compatible", "https://example.com/v1",
                 "key", "deepseek-chat", 120, 3, null, Map.of());
 
-        assertThat(legacy.hasModels()).isFalse();
+        // 单模型构造归一化为「一个模型定义 + Tier.Standard」
+        assertThat(legacy.hasModels()).isTrue();
         assertThat(legacy.effectiveModel("Standard")).isEqualTo("deepseek-chat");
         assertThat(legacy.standardModel()).isEqualTo("deepseek-chat");
         assertThat(legacy.modelFor(ModelTier.ULTRA)).isEqualTo("deepseek-chat");
@@ -62,20 +67,26 @@ class ProviderTierTest {
     }
 
     @Test
-    void effectiveModelFollowsDefaultTier() {
+    void effectiveModelPrefersStandard() {
         ProviderConfig provider = newStyle("Pro", null,
                 "Ultra", "ultra-model",
                 "Pro", "pro-model",
                 "Standard", "std-model");
 
-        assertThat(provider.effectiveTier("Standard")).isEqualTo(ModelTier.PRO);
-        assertThat(provider.effectiveModel("Standard")).isEqualTo("pro-model");
-        // 供应商未设默认档时看全局
-        ProviderConfig noDefault = newStyle(null, null, "Standard", "std-model", "Ultra", "ultra-model");
-        assertThat(noDefault.effectiveTier("Ultra")).isEqualTo(ModelTier.ULTRA);
-        assertThat(noDefault.effectiveModel("Ultra")).isEqualTo("ultra-model");
-        // 全局也没有时兜底 Standard
-        assertThat(noDefault.effectiveTier(null)).isEqualTo(ModelTier.STANDARD);
+        // 供应商旧的 DefaultTier 不再生效：默认档固定 Standard
+        assertThat(provider.effectiveTier("Standard")).isEqualTo(ModelTier.STANDARD);
+        assertThat(provider.effectiveModel("Standard")).isEqualTo("std-model");
+
+        // Standard 缺失：先看全局 DefaultTier
+        ProviderConfig noStandard = newStyle("Pro", null,
+                "Ultra", "ultra-model",
+                "Pro", "pro-model");
+        assertThat(noStandard.effectiveTier("Pro")).isEqualTo(ModelTier.PRO);
+        assertThat(noStandard.effectiveModel("Pro")).isEqualTo("pro-model");
+
+        // 全局也没有：按强弱顺序取第一个
+        assertThat(noStandard.effectiveTier(null)).isEqualTo(ModelTier.ULTRA);
+        assertThat(noStandard.effectiveModel(null)).isEqualTo("ultra-model");
     }
 
     @Test
@@ -92,13 +103,42 @@ class ProviderTierTest {
     }
 
     @Test
-    void withDefaultTierSyncsModelField() {
+    void withDefaultTierMovesModelToStandard() {
         ProviderConfig provider = newStyle("Standard", "std-model",
                 "Ultra", "ultra-model",
                 "Standard", "std-model");
 
         ProviderConfig updated = provider.withDefaultTier(ModelTier.ULTRA);
-        assertThat(updated.defaultTier()).isEqualTo("Ultra");
+        assertThat(updated.defaultTier()).isEqualTo("Standard");
         assertThat(updated.model()).isEqualTo("ultra-model");
+        assertThat(updated.standardModel()).isEqualTo("ultra-model");
+    }
+
+    @Test
+    void apiTypeNormalizesLegacyAnthropic() {
+        ProviderConfig legacy = new ProviderConfig("anthropic", "https://api.anthropic.com", "k",
+                "claude-sonnet", 60, 2, null, Map.of());
+
+        assertThat(legacy.apiType()).isEqualTo("anthropic-messages");
+        assertThat(legacy.apiType()).isEqualTo("anthropic-messages");
+    }
+
+    @Test
+    void newFormatReadsDefinitionsAndCapabilities() {
+        ModelDefinition definition = new ModelDefinition("real-model", true,
+                List.of("text", "image"), 100000, 8000, "High", Map.of("Max", "max"));
+        ProviderConfig provider = new ProviderConfig("openai-compatible", "https://example.com/v1",
+                "k", Map.of("fast", definition), Map.of("Standard", "fast"),
+                60, 2, null, Map.of());
+
+        assertThat(provider.configuredModel(ModelTier.STANDARD)).isEqualTo("real-model");
+        assertThat(provider.tierModelNames()).containsEntry("Standard", "real-model");
+        assertThat(provider.reasoning("Standard")).isTrue();
+        assertThat(provider.contextWindow("Standard")).isEqualTo(100000);
+        assertThat(provider.maxTokens("Standard")).isEqualTo(8000);
+        // issue #355：显式 ThinkingLevel 优先于映射表
+        assertThat(provider.thinkingLevel("Standard")).isEqualTo("High");
+        assertThat(provider.definition("fast").orElseThrow().thinkingValue("Max")).contains("max");
+        assertThat(provider.definition("fast").orElseThrow().supportsImage()).isTrue();
     }
 }

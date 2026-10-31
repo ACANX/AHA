@@ -1,6 +1,6 @@
 # AHA CLI 原生镜像设计（试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.1.0
 > **状态**：草案（试验性能力，随实验迭代）
 > **生效日期**：2026-10-08
 > **最后更新**：2026-10-09
@@ -19,16 +19,35 @@
 
 三条边界（与桌面端完全一致）：
 
-1. **正式交付仍是 JVM 模式**（`Dist/bin` + `Dist/lib` 的 CLI 发行目录、`bin/Aha.*`）。
+1. **正式交付仍是 JVM 模式**（包根平铺的 CLI 发行目录：`aha-cli.jar` + `Aha.*`，issue #218）。
    原生镜像是**旁路**，不替代它。
 2. **失败必须被隔离**：CLI 原生镜像编不出来，不允许挡住任何既有流程（见第 2 节）。
 3. **参数会反复改**：这是一份「起点」，不是终稿。
 
 > **JVM 模式自己的 dev 出包线**见 `BuildJVMArtifacts.yml`（`push` → `dev` 产出
-> `aha-cli-<版本>.zip` 与 `aha-desktop-<版本>-<平台>.zip` 的预发行版）——它与本工作流
+> `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` 的预发行版）——它与本工作流
 > **并列**、互不牵连，共用同一套 `a.b.c.PPPPP` 版本规则。该 JVM 线还含一份 **JDK 27 编译产物**
 > （包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的 **JVM 字节码**，与本工作流里用
 > GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。
+
+## 0.1 与桌面端的共同约束：Jackson 反射登记（2026-10-16）
+
+更新模块（`com.acanx.module.aha.core.update`）的 record 会被 Jackson 反序列化，而**原生镜像里读
+record components 需要构建期登记**：漏登记的症状是**运行期**抛
+`UnsupportedFeatureError: Record components not available for record class …`（桌面端真机先踩到，
+见 `DesktopNativeDesign.md` R13）。CLI 与桌面端**共用 aha-core**，所以同一份 21 条类型也要登记进
+本模块的 `aha-cli/reachability-metadata.json`（已登记）。
+
+**2026-10-20 同类复发（issue #383）**：`0.1.5` 新增的 `core.config.ModelDefinition` 漏登记，
+原生包**启动即崩**——连 `aha-cli-native --version` 都跑不了（退出码 1），因为崩溃发生在
+`ConfigLoader.loadDefault` 这条任何子命令都会走的启动路径上。根因之一是守卫当时只扫
+`core.update` 一个包。
+
+守卫是桌面模块的 `NativeImageMetadataTest#everyJacksonRecordAndEnumIsRegisteredForReflection`：
+它按 `JACKSON_PACKAGES`（当前 `core.update` + `core.config`）**整包全量**扫源码，并同时校验两份元数据；
+以后新增 record 忘了登记，或新增一个 Jackson 反序列化入口却没把包加进清单，Build/Gate 阶段就会红
+—— 原生镜像管线本身是可选、不上门禁的。CLI 原生腿的 `--version` / `--help` 冒烟在 CI 里真跑产物，
+失败以 `::error::` 标出（issue #383 的 ③）。
 
 ## 1. 目标与非目标
 
@@ -56,10 +75,10 @@ CLI 原生镜像与桌面端原生镜像是**两条平行管线**，互不牵连
 |---|---|---|
 | 反应堆 | `desktop-native` profile → `aha-desktop-native` | `cli-native` profile → `aha-cli-native` |
 | 工作流 | `DesktopNative.yml` | `CliNative.yml` |
-| 作业名 | `native-version` / `native-image-*` / `native-publish` | `cli-native-version` / `cli-native-image-*` / `cli-native-publish` |
+| 作业名 | `NativeVersion` / `NativeImage*` / `NativePublish` | `CliNativeVersion` / `CliNativeImage-*` / `CliNativePublish` |
 | Tag / 发版 | `V<版本>-aha-desktop-native` | `V<版本>-aha-cli-native` |
 | 参数文件 | `aha-desktop-native/src/native/native-image-args*.txt` | `aha-cli-native/src/native/native-image-args*.txt` |
-| 产物 | `AHA-Desktop-Native-…zip` | `AHA-Cli-Native-…zip` |
+| 产物 | `aha-desktop-native-…zip` | `aha-cli-native-…zip` |
 
 **作业名刻意与桌面端不同名**：GitHub 的必需检查按作业名匹配，两条可选管线若同名会互相干扰；
 而且日志 / 摘要里一眼能分清是哪条管线。
@@ -87,7 +106,7 @@ Dist/aha-cli-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  V<版
 与桌面端的三处不同：
 
 1. **没有 JavaFX**：classpath 里没有 `javafx-*`（产物自证会检查这一点——CLI 不该依赖 GUI 栈）；
-2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与 `bin/Aha.sh` 走的是同一个入口）；
+2. **主类**是 `com.acanx.module.aha.cli.AhaCli`（与发行包启动脚本 `AhaCli.sh` / `AhaCli.bat` 同一个入口）；
 3. **GC 默认用 serial**（桌面端用 G1）：CLI 是「启动 → 干活 → 退出」的短命进程，
    serial 启动更快、体积更小；GUI 才关心长驻停顿。取舍不同，所以参数不同。
 
@@ -140,15 +159,25 @@ Class.forName("sun.misc.Signal").getMethod("handle", Signal.class, SignalHandler
 桌面端早期那份参数文件的正则里**没有 `yaml|yml`** —— 建立 CLI 这份时同批发现，
 已一并修正两份桌面参数文件。这是一个「不查资源清单就必踩」的坑。
 
+同类漏项还有一个：**picocli `--help` 的 JDK 文本断行数据**（issue #117）。
+`--help` 渲染表格走 `CommandLine$Help$TextTable` → `BreakIterator`，会读 JDK 的
+`sun/text/resources/LineBreakIteratorData`；它**没有扩展名**，上面那条按扩展名的正则
+匹不上，必须显式 `-H:IncludeResources=sun/text/resources/LineBreakIteratorData`。
+缺它的症状同样是**运行期 `InternalError` 崩溃、构建却全绿**（三平台 `aha-cli-native --help`
+一致退出码非 0；`--version` 不渲染表格，所以正常，容易误判「程序本身没问题」）。
+`.*\.icu$`（`ubidi.icu` 等双向文本数据）是同批从桌面端对齐补的——同一盲区，
+只在渲染 RTL / 双向文本时才可能触发，置信度略低。两份 CLI 参数文件（JDK 25 基线 +
+JDK 27 变体）均已补齐，结论同时登记进 `BuildSpec.md` §10.2。
+
 ## 5. 工作流
 
 与 `DesktopNative.yml` 同构，差异只在命名与自证内容。要点：
 
 | 作业 | 关键点 |
 |---|---|
-| `cli-native-version` | 同桌面端：基线读根 POM，PR 号按输入或提交 SHA 反查，取不到记 `00000` 并告警 |
-| `cli-native-image` | 矩阵三条基线腿（linux-x64 / windows-x64 / macos-arm64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
-| `cli-native-publish` | 单写者汇总制品，发 `V<版本>-aha-cli-native` **预发行版**；无产物时不发版也不失败 |
+| `CliNativeVersion` | 同桌面端：基线读根 POM，PR 号按输入或提交 SHA 反查，取不到记 `00000` 并告警 |
+| `CliNativeImage` | 矩阵三条基线腿（ubuntu-amd64 / windows-amd64 / macos-aarch64，JDK 25）+ 两条 JDK 27 实验腿；产物自证七项 |
+| `CliNativePublish` | 单写者汇总制品，发 `V<版本>-aha-cli-native` **预发行版**；无产物时不发版也不失败 |
 
 **产物自证的七项**（与桌面端同形，判据换成 CLI 的不变式）：
 
@@ -167,7 +196,7 @@ Class.forName("sun.misc.Signal").getMethod("handle", Signal.class, SignalHandler
 |---|---|---|---|
 | R1 | 终端能力探测依赖原生后端（FFM / JNI），首次跑可能在某个 provider 上失败 | JLine 自带元数据，但**未真机验证** | 按失败信息补 `--initialize-at-run-time` 或元数据；只改参数文件 / 元数据 |
 | R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | picocli 走注解处理器、JLine 与 Jackson 已补；但**未真机验证** | 真机逐命令走查（`N-19`）；`NativeImageMetadataTest` 在 Build 阶段先守一层 |
-| R3 | 资源清单漏项（yaml / yml 就是实例） | 已修正，含桌面端 | 新增资源读取点时必须同步更新参数文件 |
+| R3 | 资源清单漏项（yaml / yml、JDK 文本断行数据都是实例） | yaml/yml 已修正；文本断行数据已补（issue #117） | 新增资源读取点时必须同步更新参数文件 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 与桌面端相同 | 该腿失败即是答案（隔离，不影响其余） |
 | R5 | 交互式终端（JLine）在原生镜像下行为与 JVM 版不一致 | 未验证 | 先用非交互子命令（`--version` / `run`）验收，再验收交互式 |
 | R6 | 未签名 → macOS Gatekeeper 拦截 | 已知 | `README.txt` 写明放行方式 |
@@ -200,11 +229,25 @@ POM 与工作流**不需要动**：参数文件是单一来源，且会原样打
 .\mvnw -Pcli-native,native-jdk27 -pl aha-cli-native,aha-cli -am package -DskipTests
 ```
 
+**取件（免编，推荐）**：不想自己编也行——发布页上有 CI 编好的原生包，一条命令取到 `Dist/`：
+
+```bat
+Dist\UpdateCliNative.cmd                                :: Windows 双击（PowerShell 实现，无需 Python）
+python3 Script\Python\CliNativeVersionUpdate.py         :: POSIX（WSL / Linux / macOS）上的等价命令行
+python3 Script\Python\CliNativeVersionUpdate.py --list  :: 看有哪些版本
+```
+
+与桌面端同构（同一套引擎，见 [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)）；
+`--dry-run` / `--tag` / `--jdk` / `--platform` 都可用，旧版可执行文件保留为 `.bak`。
+
 注意 `-pl aha-cli-native,aha-cli -am`：profile 加入的模块**不会**被 `-am` 带上游，
 必须显式把 `aha-cli` 也列出来，让 `-am` 把五个上游一起拉进来。
 
 ## 8. 相关文档
 
+- [GraalVMInActionsGuide.md](../Guide/GraalVMInActionsGuide.md)：**CI 里怎么配 GraalVM、native-image 参数怎么定、去哪查权威资料**（本模块参数语义与查询入口的总入口）
+- [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)：**取件工具的设计**——桌面端与 CLI
+  共用一套引擎（本模块的原生包就是由它取到 `Dist/` 的），也是本文 §7.1「取件」一节的出处
 - [DesktopNativeDesign.md](DesktopNativeDesign.md)：**共享方法论**（隔离四面、版本规则、
   产物自证、构建报告、JDK 轴对比实验）——本文不重复
 - [CLIDesign.md](CLIDesign.md)：CLI（JVM 模式）的设计与备选方案
@@ -214,4 +257,4 @@ POM 与工作流**不需要动**：参数文件是单一来源，且会原样打
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）
-- [TODO.md](../TODO.md)：`N-19`（真机验证 CLI 原生镜像）等
+- [TODO.md](../TODO/README.md)：`N-19`（真机验证 CLI 原生镜像）等

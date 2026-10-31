@@ -2,13 +2,20 @@ package com.acanx.module.aha.cli.render;
 
 import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ErrorEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
 import com.acanx.module.aha.common.event.UsageEvent;
 
+import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import com.acanx.module.aha.common.tool.ToolKind;
@@ -24,6 +31,8 @@ import com.acanx.module.aha.common.tool.ToolKind;
  */
 public final class StreamRenderer implements Renderer {
 
+    private static final Logger LOG = LoggerFactory.getLogger(StreamRenderer.class);
+
     private final LineWrapper wrapper;
     private final Style style;
     private final MarkdownStream markdown;
@@ -31,6 +40,18 @@ public final class StreamRenderer implements Renderer {
     private final ToolEnvironment environment;
 
     private final boolean unicode;
+
+    /** 本回合是否已进入「生成中」（首个正文增量只切一次）。 */
+    private boolean generating;
+
+    /** 失败摘要（ERROR 事件设置，endTurn 时展示）。 */
+    private String failureSummary;
+
+    /** 写入类工具执行前的旧内容（用于生成 diff）；非写入类为 {@code null}。 */
+    private String writeOldContent;
+
+    /** 当前工具块类别（结果正文据此沿用同一底色）；非工具块时为 {@code null}。 */
+    private ToolKind currentKind;
 
     private final int width;
 
@@ -68,23 +89,59 @@ public final class StreamRenderer implements Renderer {
     @Override
     public void beginTurn() {
         // 首次响应可能等好几秒，没有反馈用户会以为卡住了
-        status.show("等待响应…");
+        generating = false;
+        failureSummary = null;
+        status.runState(RunState.REQUESTING, "请求中…");
+    }
+
+    @Override
+    public void awaitingApproval() {
+        status.runState(RunState.AWAITING_APPROVAL, null);
+        // 授权问答会独占输入行：暂停 120ms ticker 与状态区，避免与输入重绘交错
+        status.suspend();
+    }
+
+    @Override
+    public void approvalResolved() {
+        // 延迟重绘：立即 update 会与输入行重绘交错，导致光标错位
+        status.resumeWith(RunState.TOOL_RUNNING, "执行工具…");
+    }
+
+    @Override
+    public void resumeStatus() {
+        status.resume();
+    }
+
+    @Override
+    public void cancelled() {
+        // 中断是用户主动行为：短暂保留「已中断」，不要直接回空闲（#359）
+        status.finish(RunState.INTERRUPTED, null);
     }
 
     @Override
     public void onEvent(AgentEvent event) {
         switch (event) {
             case ContentEvent content -> {
-                // 状态行占着行首，正文要写进来之前必须先清掉，否则两者混在同一行
-                status.idle();
-                wrapper.write(markdown.feed(content.delta()));
+                if (!generating) {
+                    generating = true;
+                    status.runState(RunState.GENERATING, null);
+                }
+                String rendered = markdown.feed(content.delta());
+                LOG.debug("ContentEvent delta={} chars: {}", content.delta().length(),
+                        preview(content.delta()));
+                LOG.debug("MarkdownStream rendered={} chars: {}", rendered.length(),
+                        preview(rendered));
+                wrapper.write(rendered);
             }
             case ToolCallEvent call -> {
-                status.idle();
                 // 区块前留空行：连续多次工具调用不隔开就会糊成一片
                 wrapper.ensureLineStart();
                 wrapper.newline();
                 toolArgs = call.args() == null ? Map.of() : call.args();
+                currentKind = ToolKind.of(call.toolName());
+                writeOldContent = currentKind == ToolKind.WRITE
+                        ? readIfExists(toolArgs.get("path")) : null;
+                block(ToolBlock.padding(currentKind, style, width));
                 block(ToolBlock.head(call.toolName(), toolArgs, style, width));
                 if (ToolKind.of(call.toolName()) == ToolKind.EXEC) {
                     // 命令单独一行，像在终端里敲下去的样子：目录 + 提示符 + 命令全文
@@ -104,26 +161,48 @@ public final class StreamRenderer implements Renderer {
                 status.tool(call.toolName());
             }
             case ToolResultEvent result -> {
-                status.idle();
+                status.runState(RunState.GENERATING, null);
                 long millis = toolRunning ? (System.nanoTime() - toolStartedAt) / 1_000_000L : 0L;
                 toolRunning = false;
                 boolean ok = result.success();
-                print(ok ? ToolBlock.body(result.result(), style, width, ToolBlock.PREVIEW_LINES, true)
-                        : ToolBlock.body(result.result(), style, width, ToolBlock.FAILURE_LINES, false),
-                        ok);
+                if (currentKind == ToolKind.WRITE && toolArgs.get("content") != null) {
+                    List<String> diff = ToolBlock.diff(writeOldContent,
+                            String.valueOf(toolArgs.get("content")), style, width, currentKind);
+                    String label = style.muted(" ".repeat(ToolBlock.INDENT)
+                            + (diff.isEmpty() ? "无改动" : "差异"));
+                    block(style.blockLine(currentKind, label, width));
+                    for (String line : diff) {
+                        block(line);
+                    }
+                } else {
+                    print(ok ? ToolBlock.body(result.result(), style, width,
+                                    ToolBlock.FOLD_THRESHOLD, true, currentKind)
+                            : ToolBlock.body(result.result(), style, width,
+                                    ToolBlock.FOLD_THRESHOLD, false, currentKind),
+                            ok);
+                }
                 block(ToolBlock.result(ok, ok
                         ? ToolBlock.detail(true, result.result(), millis)
                         : ToolBlock.failureDetail(result.result(), millis), style, width, unicode));
+                block(ToolBlock.padding(currentKind, style, width));
+                currentKind = null;
+                writeOldContent = null;
             }
             case ErrorEvent error -> {
-                status.idle();
+                failureSummary = error.message();
+                currentKind = null;
                 block(style.error("[error] " + error.code()));
                 for (String line : ToolBlock.body(error.message(), style, width,
-                        ToolBlock.FAILURE_LINES, false)) {
+                        ToolBlock.FOLD_THRESHOLD, false, null)) {
                     block(line);
                 }
             }
             case UsageEvent usage -> usage(usage);
+            case ContentSegmentEndEvent ignored -> {
+                // 段边界（issue #403）：终端是顺序写的，工具块天然插在正文后面，
+                // 不需要分段动作。这里**显式**列出而不是靠 default 兜底——
+                // 让「CLI 侧确认过这条新事件」在代码里看得见。
+            }
             case DoneEvent ignored -> {
                 // 结束原因不单列一行：正常完成时输出噪音，异常时已由 ErrorEvent 呈现
             }
@@ -135,9 +214,14 @@ public final class StreamRenderer implements Renderer {
 
     @Override
     public void endTurn() {
-        status.idle();
         wrapper.write(markdown.flush());
         wrapper.ensureLineStart();
+        // 结束态保留 2 秒后回到空闲（#342：完成 / 失败都要肉眼可辨）
+        if (failureSummary != null) {
+            status.finish(RunState.FAILED, failureSummary);
+        } else {
+            status.finish(RunState.DONE, null);
+        }
     }
 
     /**
@@ -146,6 +230,26 @@ public final class StreamRenderer implements Renderer {
      * @param value 值，可为 {@code null}
      * @return 文本；空值返回空串
      */
+    private static String readIfExists(Object path) {
+        if (path == null) {
+            return null;
+        }
+        try {
+            Path file = Path.of(String.valueOf(path));
+            return Files.exists(file) ? Files.readString(file) : null;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String preview(String text) {
+        if (text == null) {
+            return "null";
+        }
+        String escaped = text.replace("\\", "\\\\").replace("\n", "\\n");
+        return escaped.length() <= 80 ? escaped : escaped.substring(0, 80) + "…";
+    }
+
     private static String asText(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
@@ -172,7 +276,8 @@ public final class StreamRenderer implements Renderer {
         if (lines.isEmpty()) {
             return;
         }
-        block(style.muted(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误")));
+        String label = style.blockText(" ".repeat(ToolBlock.INDENT) + (success ? "结果" : "错误"));
+        block(currentKind == null ? label : style.blockLine(currentKind, label, width));
         for (String line : lines) {
             block(line);
         }

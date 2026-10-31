@@ -25,7 +25,7 @@ class ProviderFormTest {
         ProviderForm.Draft draft = ProviderForm.of("DeepSeek", DEEPSEEK);
 
         assertThat(draft.id()).isEqualTo("DeepSeek");
-        assertThat(draft.adapter()).isEqualTo("openai-compatible");
+        assertThat(draft.apiType()).isEqualTo("openai-compatible");
         assertThat(draft.baseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(draft.model()).isEqualTo("deepseek-chat");
         assertThat(draft.timeoutSeconds()).isEqualTo("60");
@@ -36,7 +36,7 @@ class ProviderFormTest {
     void draftFromNullGivesUsableDefaults() {
         ProviderForm.Draft draft = ProviderForm.of("New", null);
 
-        assertThat(draft.adapter()).isEqualTo(ProviderForm.ADAPTERS[0]);
+        assertThat(draft.apiType()).isEqualTo(ProviderForm.ADAPTERS[0]);
         assertThat(draft.timeoutSeconds()).isEqualTo("60");
         assertThat(draft.maxRetries()).isEqualTo("2");
         assertThat(ProviderForm.validate(draft))
@@ -66,7 +66,7 @@ class ProviderFormTest {
 
         ProviderConfig config = ProviderForm.toConfig(draft, DEEPSEEK);
 
-        assertThat(config.adapter()).isEqualTo("openai-compatible");
+        assertThat(config.apiType()).isEqualTo("openai-compatible");
         assertThat(config.baseUrl()).isEqualTo("https://x/v1");
         assertThat(config.apiKey()).isEqualTo("sk-1");
         assertThat(config.model()).isEqualTo("m1");
@@ -83,7 +83,7 @@ class ProviderFormTest {
                 new ProviderForm.Draft("Fresh", "gemini", "https://g/v1", "", "gemini-2.5-flash", "10", "0"),
                 null);
 
-        assertThat(config.adapter()).isEqualTo("gemini");
+        assertThat(config.apiType()).isEqualTo("gemini");
         assertThat(config.rateLimit()).isNull();
         assertThat(config.extra()).isNull();
     }
@@ -196,9 +196,9 @@ class ProviderFormTest {
         assertThat(ProviderForm.preset("DeepSeek").baseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(ProviderForm.preset("DeepSeek").model()).isEqualTo("deepseek-v4-flash");
         assertThat(ProviderForm.preset("OpenAI").model()).isEqualTo("gpt-6-sol");
-        assertThat(ProviderForm.preset("Anthropic").adapter()).isEqualTo("anthropic");
-        assertThat(ProviderForm.preset("Gemini").adapter()).isEqualTo("gemini");
-        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.3");
+        assertThat(ProviderForm.preset("Anthropic").apiType()).isEqualTo("anthropic-messages");
+        assertThat(ProviderForm.preset("Gemini").apiType()).isEqualTo("gemini");
+        assertThat(ProviderForm.preset("BigModelCN").model()).isEqualTo("glm-5.4");
         assertThat(ProviderForm.preset("Qwen").model()).isEqualTo("qwen3.7-plus");
         assertThat(ProviderForm.preset("Moonshot").model()).isEqualTo("kimi-k2.7-code");
         assertThat(ProviderForm.preset("MiniMax").model()).isEqualTo("MiniMax-M2.7");
@@ -215,7 +215,7 @@ class ProviderFormTest {
         ProviderForm.Draft draft = ProviderForm.preset("MyOwnGateway");
 
         assertThat(draft.id()).isEqualTo("MyOwnGateway");
-        assertThat(draft.adapter()).isEqualTo(ProviderForm.ADAPTERS[0]);
+        assertThat(draft.apiType()).isEqualTo(ProviderForm.ADAPTERS[0]);
         assertThat(draft.model()).isEmpty();
         assertThat(ProviderForm.modelsFor("MyOwnGateway")).isEmpty();
     }
@@ -275,9 +275,10 @@ class ProviderFormTest {
         assertThat(config.hasModels()).isTrue();
         assertThat(config.configuredModel(com.acanx.module.aha.core.config.ModelTier.ULTRA))
                 .isEqualTo("u1");
-        assertThat(config.defaultTier()).isEqualTo("Fallback");
-        assertThat(config.model()).isEqualTo("f1");
-        assertThat(config.effectiveModel(null)).isEqualTo("f1");
+        // 新格式默认档固定 Standard：旧 Draft.defaultTier 不再生效
+        assertThat(config.defaultTier()).isEqualTo("Standard");
+        assertThat(config.model()).isEqualTo("s1");
+        assertThat(config.effectiveModel(null)).isEqualTo("s1");
         // 未配置的档位回退 Standard
         assertThat(config.modelFor(com.acanx.module.aha.core.config.ModelTier.PRO)).isEqualTo("s1");
     }

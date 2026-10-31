@@ -69,6 +69,29 @@
         <native.image.argsfile>src/native/native-image-args.txt</native.image.argsfile>
 
         <!--
+            平台专属参数文件的「空档」：默认指向一个**只有注释**的文件（等于不加任何参数），
+            Windows 腿由 native-windows-manifest profile 改指到
+            native-image-args-windows.txt（给 exe 嵌 Win10 兼容清单，issue #151）。
+            这样「平台专属」由 Maven 表达，共享参数文件保持跨平台可用。
+        -->
+        <native.image.extra.argsfile>src/native/native-image-args-extra.txt</native.image.extra.argsfile>
+
+        <!--
+            Windows 兼容清单的链接器输入（issue #151）。
+
+            **必须是绝对路径**：native-image 用自己的构建临时目录（%TEMP%\SVM-…）当
+            工作目录去调链接器，写相对路径会被解析到那里，mt.exe 于是报
+            「c1010070: Failed to load and parse the manifest. The system cannot find
+            the file specified.」——第一次尝试就是这么整条失败的（TS-2610-037）。
+            所以路径交给 Maven 用 ${project.basedir} 展开，并作为**主类之前**的
+            命令行参数传入（主类之后的参数会被 native-image 当成应用参数）。
+
+            非 Windows：MSVC 链接器参数不能出现，因此默认值是一个**无害且幂等**的
+            native-image 开关（解锁实验选项；参数清单里本来就有，重复一次不影响）。
+        -->
+        <native.manifest.input>-H:+UnlockExperimentalVMOptions</native.manifest.input>
+
+        <!--
             native-image 可执行文件。默认按 PATH 查找；两个平台的差异由工作流传入：
               Windows: -Dnative.image.executable=native-image.cmd
               Linux/macOS: 保持默认（native-image）
@@ -122,8 +145,8 @@
         </dependency>
 
         <!--
-            OpenJFX 三件套：显式再声明一次，不用「从 aha-desktop 传递过来」这条隐性路径。
-            理由：原生镜像对「classpath 上究竟是哪三个 JavaFX jar」极其敏感
+            OpenJFX 四件套：显式再声明一次，不用「从 aha-desktop 传递过来」这条隐性路径。
+            理由：原生镜像对「classpath 上究竟是哪四个 JavaFX jar」极其敏感
             （分类器错了会拿到别的平台的原生库），显式声明让这里成为可读、可审的一处。
             分类器由父 POM 的 javafx-* profile 按当前 OS/架构解析（`javafx.platform`）。
         -->
@@ -164,7 +187,7 @@
                 那是一堆 0 KB 的空壳 jar。实测（本模块首次跑通时）它们确实混进了
                 target/native/lib：classpath 上无害，但会给 native-image 引入
                 两个什么都不含的同名模块，白白增加「为什么有这个 jar」的疑问。
-                排除后 classpath 里只剩本平台的三个真 javafx jar。
+                排除后 classpath 里只剩本平台的四个真 javafx jar。
             -->
             <exclusions>
                 <exclusion>
@@ -174,6 +197,35 @@
                 <exclusion>
                     <groupId>org.openjfx</groupId>
                     <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>${javafx.version}</version>
+            <classifier>${javafx.platform}</classifier>
+            <scope>runtime</scope>
+            <!--
+                界面骨架（desktop-shell.fxml）的装载体。与其余三件同理：
+                带分类器的工件会拉进「无分类器」空壳，必须排除；
+                它自己也是带平台分类器的（含原生库），所以不能只声明无分类器版本。
+                三个都要排（base / graphics / controls）：fxml 的 POM 三个都声了
+                无分类器版本，漏一个就在 classpath 上留一个空壳（实测 `javafx-controls-25.jar`，
+                306 字节 —— 工作流的 `-size 0` 检查抓不到）。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-controls</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -355,6 +407,17 @@
                                 <!-- 参数清单：唯一的开关来源，迭代只改这个文件 -->
                                 <argument>@${project.basedir}/${native.image.argsfile}</argument>
                                 <!--
+                                    平台专属参数（默认是空档文件，见 native.image.extra.argsfile）。
+                                    **必须在主类之前**：native-image 只把主类之后的参数当应用参数，
+                                    写在主类后面会被静默当成程序参数（issue #151 的清单就是这么容易丢的）。
+                                -->
+                                <argument>@${project.basedir}/${native.image.extra.argsfile}</argument>
+                                <!--
+                                    Windows 清单的链接器输入（其他平台是空档，见 native.manifest.input）。
+                                    位置在主类之前——这是硬要求。
+                                -->
+                                <argument>${native.manifest.input}</argument>
+                                <!--
                                     走 classpath 而不是 module-path：原生镜像下 JPMS 不参与，
                                     `requires` / `exports` / ServiceLoader 都不再是约束
                                     （C-01：JPMS 优先启用但非强制，这正是「必要时让路」的场景）。
@@ -431,6 +494,30 @@
             <properties>
                 <aha.native.jdk>jdk27</aha.native.jdk>
                 <native.image.argsfile>src/native/native-image-args-jdk27.txt</native.image.argsfile>
+            </properties>
+        </profile>
+
+        <!--
+            Windows 专用（issue #151）：给 exe 嵌 Windows 10 兼容清单。
+
+            为什么只在 Windows 上激活：那两条是 MSVC 链接器参数，其他平台会直接链接失败；
+            而原生镜像不能交叉编译，Windows 腿本来就只在 Windows runner 上跑。
+
+            为什么需要清单：GetVersionEx / GetVersion 家族在**没有** Win10 兼容清单的
+            可执行文件里一律返回 6.2.9200（Windows 8.0），于是 Prism 的「OS Information:」
+            会打印「Windows 8.0 build 9200」。JVM 模式不受影响（java.exe 自带清单）。
+        -->
+        <profile>
+            <id>native-windows-manifest</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <native.image.extra.argsfile>src/native/native-image-args-windows.txt</native.image.extra.argsfile>
+                <!-- 绝对路径：见 native.manifest.input 处的说明（相对路径会被解析到 SVM 临时目录） -->
+                <native.manifest.input>-H:NativeLinkerOption=/MANIFESTINPUT:${project.basedir}/src/native/app.manifest</native.manifest.input>
             </properties>
         </profile>
     </profiles>

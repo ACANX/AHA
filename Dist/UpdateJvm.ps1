@@ -1,0 +1,580 @@
+﻿<#
+    AHA JVM 便携包一键取件（Windows 原生实现，由 Dist 下的**专用启动器**调用）
+
+        Dist\UpdateDesktopJvm.cmd   ->  -Kind Desktop
+        Dist\UpdateCliJvm.cmd       ->  -Kind Cli
+
+    dev 线的 JVM 便携包挂在发布页的**预发行版**上（issue #347：桌面端与 CLI 各一条，与原生线对齐）：
+
+                桌面端 tag   V0.1.5.00346-aha-desktop-jvm   （名称 V0.1.5.00346-AHA-Desktop-JVM）
+                CLI tag      V0.1.5.00346-aha-cli-jvm       （名称 V0.1.5.00346-AHA-Cli-JVM）
+
+        资产  桌面端  aha-desktop-jvm-<版本>-<平台>-jdk25/27.zip
+              CLI     aha-cli-jvm-<版本>-<平台>-jdk25/27.zip
+
+    0.1.5 之前的 dev 线是合并 tag `V<版本>-aha-jvm`（两个形态同一条 release），
+    历史 release 仍可读取 —— 旧后缀作为**回退**保留，见下方 `$TagSuffixes`。
+
+    本脚本做五件事：
+
+      1. 查发布页，找出本形态的 `-aha-<product>-jvm` release（旧 `-aha-jvm` 也认；`-Tag` 可直接指定某个版本）；
+      2. 挑出本机平台的资产（只有桌面端需要平台；CLI 没有平台维度）；
+         **只看最新一版**：它缺本平台 / 本 JDK 段的资产时直接报错（并列出该版实际有什么），
+         **不会**悄悄退到更旧的版本（见下方「为什么不静默降级」）；
+      3. 下载 zip 到 `-Out`（已有同尺寸的包则复用；带 sha256 则校验）；
+      4. 解压到 `<Out>\desktop-jvm\<版本>\` 或 `<Out>\cli-jvm\<版本>\`（**暂存**，只用来取里面的入口）；
+      5. 把**去版本号**的入口**复制**到 `<Out>` 根（`Dist\aha-desktop.jar`、`Dist\AhaDesktop.bat`…），
+         让启动脚本与用户命令**与版本无关**；随后**删掉整个 `<Out>\<种类>\` 暂存目录** ——
+         同一份包在 `Dist/` 里存两遍没有意义（桌面端 25 MB、CLI 55 MB），
+         历次取件留下的旧版本子目录同样没用。
+         `-NoInstall` 只做第 4 步；`-KeepExtract` 做完 5 步但保留暂存目录（想翻包内容时用）。
+
+    ⚠️ 为什么和 `UpdateNative.ps1` **分开**、且不复用它（issue #210）：
+
+      * **落地语义不同**：`UpdateNative.ps1` 取的是原生包 —— 一个 exe，**摘出来覆盖**目标；
+        JVM 包是「**单体 jar + 启动脚本**」（issue #218 起桌面端为**包根平铺**），
+        做法是「解压到暂存目录 → 把去版本号的入口**复制**到落地根 → 删掉暂存目录」，
+        不存在「替换某个可执行文件」这回事；
+      * **资产名规则有差异**：两者自 0.1.4 起共用 `aha-<product>-<form>-<版本>-<平台>-<runtime>.zip`，
+        只有 runtime 段不同（JVM 是 `jdk25` / `jdk27`，原生是 `graalvm25`）；
+        旧名（`aha-desktop-<版本>-<平台>[-jdk27].zip` / `aha-cli-<版本>[-jdk27].zip`）仍作为候选。
+      * **平台词**：JVM 线与原生线**共用同一套**（`windows-amd64` / `ubuntu-amd64` / `macos-aarch64`，
+        2026-10-15 统一（issue #215），2026-10-17 架构词统一为 `aarch64`（issue #287））。
+
+      把这两套规则塞进同一份脚本，会让它同时背两套分支 —— 得不偿失。
+
+    ⚠️ 为什么不静默降级（ACANX 2026-10-15 实测踩到）：
+
+      JVM 包的资产名带「平台 + JDK 段」，一次构建**可能缺某条腿**（实测
+      `V0.1.3.00219-aha-jvm` 的 windows-amd64 / jdk25 那条腿因 Maven Central 403 失败）。
+      早先的实现是「从新到旧遍历 release，取第一个有目标资产的」，于是默认取件一路退到
+      `V0.1.3.00216` —— 那个包还是 `bin\` + `lib\` 的**旧布局、根本没有单体 jar**，
+      用户却以为拿到的是最新版，看起来就像「新版本不支持 fat jar」。
+
+      现在：最新一版缺目标资产就**响亮报错**并列出该版实际有哪些资产；确实想改用更旧的版本，
+      必须显式说出口（`-AllowOlder` 退到最近一个可用的，或 `-Tag` 指定具体版本）。
+
+    用法：
+
+      UpdateJvm.ps1 -Kind Desktop                 取下最新的桌面端 JVM 便携包
+      UpdateJvm.ps1 -Kind Cli                     取下最新的 CLI JVM 便携包
+      UpdateJvm.ps1 -Kind Desktop -List           列出最近几版（版本 / 平台 / 资产）
+      UpdateJvm.ps1 -Kind Desktop -DryRun         只预览，不下载
+      UpdateJvm.ps1 -Kind Desktop -Force          已是最新也重下
+      UpdateJvm.ps1 -Kind Desktop -AllowOlder     最新一版缺本平台资产时，退到最近一个可用的
+      UpdateJvm.ps1 -Kind Desktop -NoInstall      只解压到版本目录，不平铺到落地根
+      UpdateJvm.ps1 -Kind Desktop -KeepExtract    平铺后保留暂存目录（默认自动清掉）
+      UpdateJvm.ps1 -Kind Desktop -Jdk 27         取 JDK 27 变体（默认 25）
+      UpdateJvm.ps1 -Kind Desktop -Tag V0.1.5.00346-aha-desktop-jvm
+      UpdateJvm.ps1 -Kind Desktop -Tag V0.1.5.00345-aha-jvm    # 旧合并 tag 仍可读
+      UpdateJvm.ps1 -Kind Desktop -Platform windows-amd64
+#>
+param(
+    [ValidateSet('Desktop', 'Cli')][string]$Kind = 'Desktop',
+    [switch]$List,
+    [switch]$DryRun,
+    [switch]$Force,
+    #: 最新一版缺目标资产时，显式允许退到最近一个可用的旧版（默认**不**退，见上方说明）。
+    [switch]$AllowOlder,
+    #: 只解压到版本目录，不做「平铺到落地根」这一步（见上方第 5 件事）。
+    [switch]$NoInstall,
+    #: 平铺成功后**保留**暂存目录（默认会删掉，见上方第 5 件事）。
+    [switch]$KeepExtract,
+    [string]$Jdk = '25',
+    [string]$Tag = '',
+    [string]$Platform = '',
+    [string]$Repo = 'ACANX/AHA',
+    [int]$Limit = 10,
+    [string]$Out = ''
+)
+
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+Write-Host '正在查询 GitHub 发布页，请稍候……'
+Write-Host ''
+
+#: dev 线 JVM 包的 tag 后缀（issue #347：桌面端与 CLI 各一条，与原生线对齐）。
+#: 与 `ChannelContract.tag(BETA, …)` 逐字一致；`bin/CheckScripts.py` 会钉住三处不漂移。
+$TagSuffixByKind = @{ Desktop = '-aha-desktop-jvm'; Cli = '-aha-cli-jvm' }
+#: 0.1.5 之前的合并 tag（两个形态同一条 release），仅用于读取历史 release。
+$LegacyTagSuffix = '-aha-jvm'
+$TagSuffix = $TagSuffixByKind[$Kind]
+$TagSuffixes = @($TagSuffix, $LegacyTagSuffix)
+#: 任一形态的 dev 线 tag 后缀：用来求「全局最新版本」。
+#: 为什么需要：拆分后每个形态一条 release，若本次只出了另一形态的包，
+#: 本形态不能把「上一版」当成最新一版（否则会静默降级，见下方「不静默降级」）。
+$AnyKindTagSuffixes = @($TagSuffixByKind['Desktop'], $TagSuffixByKind['Cli'], $LegacyTagSuffix)
+
+#: 种类表：标题 / 是否按平台挑（CLI 平台无关）/ 落地子目录 / 状态文件 / 资产前缀 / 平铺入口。
+#:
+#: `Flat` = 解压后要**复制到 `<Out>` 根**的入口（issue #218）：名字**去版本号**，
+#: 于是启动脚本与用户命令与版本无关（`Dist\AhaDesktop.bat`、`Dist\aha-desktop.jar` 直接可用）。
+#: 同一 `Name` 有多个条目时**先命中的生效**（CLI 的新/旧两种 jar 名就靠这个兼容）。
+#: 包根本来就没有的条目会被跳过（旧形态的包平铺不了），实测里会点名说明。
+$kinds = @{
+    'Desktop' = @{
+        Title = '桌面端 JVM 便携包'; SubDir = 'desktop-jvm'
+        State = '.aha-desktop-jvm.json'; Prefix = 'aha-desktop-jvm-'; LegacyPrefix = 'aha-desktop-'; ByPlatform = $true; Workflow = 'BuildJVMArtifacts.yml'
+        Flat = @(
+            @{ Glob = 'aha-desktop.jar'; Name = 'aha-desktop.jar' }
+            @{ Glob = 'AhaDesktop.bat';  Name = 'AhaDesktop.bat' }
+            @{ Glob = 'AhaDesktop.sh';   Name = 'AhaDesktop.sh' }
+        )
+    }
+    'Cli'     = @{
+        Title = 'CLI JVM 便携包'; SubDir = 'cli-jvm'
+        State = '.aha-cli-jvm.json'; Prefix = 'aha-cli-jvm-'; LegacyPrefix = 'aha-cli-'; ByPlatform = $true; PlatformFree = $true; Workflow = 'BuildJVMArtifacts.yml'
+        Flat = @(
+            @{ Glob = 'aha-cli.jar';   Name = 'aha-cli.jar' }
+            @{ Glob = 'aha-cli-*.jar'; Name = 'aha-cli.jar' }   # 旧形态：包根那份带版本号的单体 jar
+            @{ Glob = 'AhaCli.bat';    Name = 'AhaCli.bat' }    # 只有平铺形态的包才会出现在包根
+            @{ Glob = 'AhaCli.sh';     Name = 'AhaCli.sh' }
+        )
+    }
+}
+
+$kindInfo = $kinds[$Kind]
+
+# ── 输出编码：Windows PowerShell 5.1 下中文提示要显式设成 UTF-8 ──────────────────
+$OutputEncoding = [Text.Encoding]::UTF8
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+
+$OutDir = if ($Out) { $Out } else { $PSScriptRoot }
+if (-not (Test-Path -LiteralPath $OutDir)) {
+    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+}
+$InstallDir = Join-Path $OutDir $kindInfo.SubDir
+$StateFile = Join-Path $OutDir $kindInfo.State
+
+# 本机架构 → JVM 线的平台词（与原生线的 windows-amd64 不同）。
+if (-not $Platform) {
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $Platform = 'windows-aarch64' } else { $Platform = 'windows-amd64' }
+}
+if (-not $Jdk) { $Jdk = '25' }
+
+Write-Host ("仓库：{0}    种类：{1}    JDK：{2}" -f $Repo, $kindInfo.Title, $Jdk)
+if ($kindInfo.ByPlatform) { Write-Host ("平台：{0}" -f $Platform) } else { Write-Host '平台：（CLI 包平台无关）' }
+
+# API 请求才带 token（未认证的 60 次/小时容易撞上）；**下载请求不带**——
+# 下载地址会 302 到资产 CDN（objects / release-assets.githubusercontent.com），
+# 没必要把凭据交给另一个主机。
+# 本脚本在完全没有 token 的环境里也必须能用。
+$headers = @{ 'User-Agent' = 'AHA-UpdateJvm'; 'Accept' = 'application/vnd.github+json' }
+$downloadHeaders = @{ 'User-Agent' = 'AHA-UpdateJvm' }
+if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
+elseif ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
+
+# ── tag → 版本号（`V<a.b.c.PPPPP>-aha-<product>-jvm`，旧 `-aha-jvm` 兼容）───────────────
+#: 删掉**整个** `<种类>\` 暂存目录（`Dist\desktop-jvm` / `Dist\cli-jvm`，含历次取件留下的
+#: 各版本子目录）；父目录空了也一并删（issue #218 后续）。入口已经平铺到落地根，这里全是副本。
+#: 返回是否真的删了一个目录；删不掉时**抛出去**，由调用方决定是报错还是只提醒 ——
+#: 清不掉不是致命问题（入口已经在落地根），所以两处调用都只打一句「[注意]」。
+function Remove-StagingDir {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    Remove-Item -LiteralPath $Path -Recurse -Force
+    $parentDir = Split-Path -Path $Path -Parent
+    if ((Test-Path -LiteralPath $parentDir) -and
+        (@(Get-ChildItem -LiteralPath $parentDir -Force -ErrorAction SilentlyContinue).Count -eq 0)) {
+        Remove-Item -LiteralPath $parentDir -Force
+    }
+    return $true
+}
+
+function Get-TagVersion {
+    param([string]$Name)
+    foreach ($suffix in $TagSuffixes) {
+        if (-not $Name.EndsWith($suffix)) { continue }
+        $body = $Name.Substring(0, $Name.Length - $suffix.Length).TrimStart('V', 'v')
+        if ($body -match '^[0-9]+(\.[0-9]+)*$') { return $body }
+    }
+    return $null
+}
+
+# 任一形态（Desktop-JVM / Cli-JVM / 旧合并 `-aha-jvm`）的 tag → 版本号。
+# 只用于「全局最新版本」的判断，不参与资产挑选。
+function Get-AnyKindVersion {
+    param([string]$Name)
+    foreach ($suffix in $AnyKindTagSuffixes) {
+        if (-not $Name.EndsWith($suffix)) { continue }
+        $body = $Name.Substring(0, $Name.Length - $suffix.Length).TrimStart('V', 'v')
+        if ($body -match '^[0-9]+(\.[0-9]+)*$') { return $body }
+    }
+    return $null
+}
+
+# ── 资产名（issue #269）：`aha-<product>-jvm-<版本>-<平台>-jdk<JDK>.zip` ──────────
+#    旧名（0.1.3 / 0.1.4 双发别名）仍返回作为候选：`aha-desktop-<版本>-<平台>[-jdk27].zip`、
+#    `aha-cli-<版本>[-jdk27].zip`（旧 CLI-JVM 是平台无关的一份包）。
+function Get-AssetNames {
+    param([string]$Version)
+    $legacySuffix = if ($Jdk -eq '27') { '-jdk27' } else { '' }
+    if ($kindInfo.PlatformFree) {
+        # CLI-JVM 内容平台无关：本平台名优先，其次按三平台依次回退（issue #269 §6 第 7 条）。
+        $names = @()
+        foreach ($candidate in @($Platform, 'ubuntu-amd64', 'windows-amd64', 'macos-aarch64')) {
+            $names += ("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $candidate, $Jdk)
+        }
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        return $names
+    }
+    $names = @(("{0}{1}-{2}-jdk{3}.zip" -f $kindInfo.Prefix, $Version, $Platform, $Jdk))
+    if ($kindInfo.ByPlatform) {
+        $names += ("{0}{1}-{2}{3}.zip" -f $kindInfo.LegacyPrefix, $Version, $Platform, $legacySuffix)
+        # 历史资产名：2026-10-17 之前 macOS 的架构段写作 arm64（issue #287）。
+        if ($Platform -eq 'macos-aarch64') {
+            $names += ("{0}{1}-macos-arm64{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+        }
+    } else {
+        $names += ("{0}{1}{2}.zip" -f $kindInfo.LegacyPrefix, $Version, $legacySuffix)
+    }
+    return $names
+}
+
+function Get-AssetFor {
+    param($Release)
+    $version = Get-TagVersion $Release.tag_name
+    if (-not $version) { return $null }
+    # 先按命名规则拼出目标资产名，再到清单里**精确匹配**：
+    # JVM 包的 asset 名规则与原生包不同（jdk 段可选），精确匹配比前缀 + 后缀猜更稳。
+    $wantedNames = Get-AssetNames $version
+    foreach ($wanted in $wantedNames) {
+        foreach ($a in $Release.assets) {
+            if ($a.state -ne 'uploaded') { continue }
+            if ($a.name -eq $wanted) { return $a }
+        }
+    }
+    return $null
+}
+
+# ── 列出 release（走 GitHub API）───────────────────────────────────────────────
+function Get-Releases {
+    $url = "https://api.github.com/repos/$Repo/releases?per_page=100"
+    try {
+        $all = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 30
+    } catch {
+        throw ("查询 GitHub 发布页失败：{0}`n" +
+               "  提示：可能是网络问题，或未认证时的限流（60 次/小时）——" +
+               "设置环境变量 GITHUB_TOKEN 可提高额度。") -f $_.Exception.Message
+    }
+    # 按发布时间降序；注意不能用 `??`（空合并是 PowerShell 7+ 语法，5.1 会报语法错）。
+    # 收**全部形态**的 dev 线 release：选版要按「全局最新版本」判断，
+    # 本形态的资产挑选仍由 Get-AssetFor 完成（Get-TagVersion 只认本形态）。
+    return @($all | Where-Object { (Get-AnyKindVersion $_.tag_name) } |
+        Sort-Object -Property @{ Expression = {
+            if ($_.published_at) { [datetime]$_.published_at } else { [datetime]$_.created_at }
+        }; Descending = $true })
+}
+
+# `-Tag` 直接指定时资产清单未知，补齐它（`-List` / 取件都需要资产名）。
+function Complete-Assets {
+    param($Release)
+    if ($Release.assets -and $Release.assets.Count -gt 0) { return $Release }
+    try {
+        $detail = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$($Release.tag_name)" -Headers $headers -TimeoutSec 30
+        $Release.assets = @($detail.assets)
+    } catch { }
+    return $Release
+}
+
+$releases = @()
+if ($Tag) {
+    $releases = @(Complete-Assets ([pscustomobject]@{ tag_name = $Tag; assets = @(); published_at = $null; created_at = $null }))
+    if (-not (Get-TagVersion $Tag)) {
+        Write-Host ("[错误] {0} 不是 {1} 的 tag（后缀必须是 {2}）" -f $Tag, $kindInfo.Title, ($TagSuffixes -join ' 或 ')) -ForegroundColor Red
+        exit 1
+    }
+} else {
+    $releases = @(Get-Releases)
+    if ($releases.Count -eq 0) {
+        Write-Host ("[错误] 发布页上没有任何 {0} 的 release（tag 后缀 {1}）" -f $kindInfo.Title, ($TagSuffixes -join ' 或 ')) -ForegroundColor Red
+        exit 1
+    }
+}
+
+# ── -List：列出最近几版 ─────────────────────────────────────────────────────────
+if ($List) {
+    Write-Host ''
+    $latestAny = $null
+    $latestMine = $null
+    foreach ($r in $releases) {
+        $v = Get-AnyKindVersion $r.tag_name
+        if ($latestAny -eq $null) { $latestAny = $v }
+        if ($latestMine -eq $null -and (Get-AssetFor (Complete-Assets $r))) { $latestMine = $v }
+    }
+    Write-Host ("{0} 最近的版本（{1} / jdk{2}）：" -f $kindInfo.Title, $Repo, $Jdk)
+    Write-Host ("  全局最新：{0}    本形态最新可用：{1}" -f $latestAny, $(if ($latestMine) { $latestMine } else { '（无）' }))
+    $shown = 0
+    foreach ($r in $releases) {
+        $r = Complete-Assets $r
+        $asset = Get-AssetFor $r
+        if (-not $asset) { continue }
+        Write-Host ("  {0}   {1}   {2}" -f $r.tag_name, $asset.name, ('{0:N1} MB' -f ($asset.size / 1MB)))
+        $shown++
+        if ($shown -ge $Limit) { break }
+    }
+    if ($shown -eq 0) { Write-Host '  （没有匹配的资产：换个 -Jdk / -Platform 试试）' }
+    exit 0
+}
+
+# ── 选版：**只看最新一版**；缺目标资产就响亮失败，不静默降级 ──────────────────────
+#
+# 静默降级的代价（ACANX 2026-10-15 实测）：最新一版缺本平台/本 JDK 段的资产时，
+# 旧实现会一路退到更旧的 release —— 而更旧的包可能是**完全不同的形态**
+# （V0.1.3.00216 还是 `bin\` + `lib\`，没有单体 jar），用户却以为拿的是最新版。
+# 所以：降级必须是用户显式说出口的（`-AllowOlder` / `-Tag`）。
+# 先求「全局最新版本」（任一形态）：拆分后每个形态一条 release，
+# 若本次只出了另一形态的包，本形态不能把「上一版」当成最新一版（那会静默降级）。
+$latestVersion = $null
+foreach ($r in $releases) {
+    $v = Get-AnyKindVersion $r.tag_name
+    if ($v) { $latestVersion = $v; break }
+}
+
+$pick = $null
+foreach ($r in $releases) {
+    if ((Get-AnyKindVersion $r.tag_name) -ne $latestVersion) { continue }
+    $candidate = Complete-Assets $r
+    $found = Get-AssetFor $candidate
+    if ($found) {
+        $pick = @{ Release = $candidate; Asset = $found }
+        break
+    }
+}
+
+if (-not $pick -and $AllowOlder) {
+    foreach ($r in $releases) {
+        $candidate = Complete-Assets $r
+        $found = Get-AssetFor $candidate
+        if ($found) {
+            Write-Host ("[注意] {0} 缺目标资产，按 -AllowOlder 退到 {1}。" -f $latestVersion, $candidate.tag_name) -ForegroundColor Yellow
+            $pick = @{ Release = $candidate; Asset = $found }
+            break
+        }
+    }
+}
+
+if (-not $pick) {
+    $platformNote = if ($kindInfo.ByPlatform) { $Platform } else { '平台无关' }
+    $wanted = Get-AssetName $latestVersion
+    Write-Host ("[错误] 最新一版 {0} 里没有{1}（jdk{2} / {3}）的资产。" -f $latestVersion, $kindInfo.Title, $Jdk, $platformNote) -ForegroundColor Red
+    Write-Host ("        要的是：{0}" -f $wanted)
+    # 「这一版实际有」要跨形态收集：本次可能只出了另一形态的包。
+    $siblings = @()
+    foreach ($r in $releases) {
+        if ((Get-AnyKindVersion $r.tag_name) -ne $latestVersion) { continue }
+        $candidate = Complete-Assets $r
+        $siblings += @($candidate.assets | ForEach-Object { $_.name })
+    }
+    if ($siblings.Count -gt 0) {
+        Write-Host '        这一版实际有：'
+        foreach ($name in $siblings) { Write-Host ("          - {0}" -f $name) }
+    } else {
+        Write-Host '        这一版没有任何资产（该次构建的相关腿可能整体失败了）。'
+    }
+    Write-Host '        怎么办：'
+    Write-Host '          ① 只是 JDK 段不同？用 -Jdk 27'
+    Write-Host '          ② 先看看最近几版都有什么？用 -List'
+    Write-Host ("          ③ 确认改用更旧的版本：-Tag V<版本>{0}，或 -AllowOlder 退到最近一个可用的" -f $TagSuffix)
+    exit 1
+}
+
+$version = Get-TagVersion $pick.Release.tag_name
+$targetDir = Join-Path $InstallDir $version   # 每版一个目录，互不覆盖
+$flat = @()            # 本次平铺到 <Out> 根的入口名
+$missingFlat = @()     # 包根没有、无法平铺的入口名（旧形态的包会命中）
+$doneFlat = @{}        # 已平铺的名字 → 避免多个条目落到同一个名字时重复复制
+$state = @{}
+if (Test-Path -LiteralPath $StateFile) {
+    try { $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json } catch { $state = @{} }
+}
+
+Write-Host ''
+Write-Host ("目标版本：{0}（{1}）" -f $pick.Release.tag_name, $version)
+Write-Host ("资产：{0}（{1} MB）" -f $pick.Asset.name, [math]::Round($pick.Asset.size / 1MB, 1))
+Write-Host ("落地：{0}" -f $targetDir)
+
+$stateFlat = @($state.flat | Where-Object { $_ })
+$canSkip = (-not $Force) -and ($state.tag -eq $pick.Release.tag_name)
+if ($canSkip -and $NoInstall) {
+    # 只解压模式：要留的东西就是那个版本目录
+    $canSkip = Test-Path -LiteralPath $targetDir
+} elseif ($canSkip) {
+    # 平铺模式：判据落在**落地根的那几个入口**上 —— 暂存目录默认已经删掉了，
+    # 拿它当「已是最新」的依据会让每次运行都重下一遍。
+    $hasFlatInfo = @($state.PSObject.Properties.Name) -contains 'flat'
+    if (-not $hasFlatInfo) {
+        # 旧状态文件（「平铺」这个功能之前写的）：不知道铺没铺过 ⇒ 重解压补齐一次。
+        $canSkip = $false
+    } elseif ($stateFlat.Count -gt 0 -and
+              @($stateFlat | Where-Object { -not (Test-Path -LiteralPath (Join-Path $OutDir $_)) }).Count -gt 0) {
+        # 上次平铺出去的入口被删了（或这次指了别的 -Out）⇒ 同样不算「已是最新」。
+        $canSkip = $false
+    }
+}
+if ($canSkip) {
+    # 顺手收尾：上次可能是在「落地后不清理」的脚本版本下取的（或加了 -KeepExtract），
+    # 暂存目录还在就清掉 —— 否则「已是最新」会让它一直留在 `Dist\` 里。
+    # 清的是**整棵** `<种类>\`：历次取件留下的旧版本子目录同样没有用处。
+    if ((-not $NoInstall) -and (-not $KeepExtract) -and (Test-Path -LiteralPath $InstallDir)) {
+        try {
+            if (Remove-StagingDir -Path $InstallDir) {
+                Write-Host ("已清掉上次留下的暂存目录：{0}" -f $InstallDir)
+            }
+        } catch {
+            Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        }
+    }
+    Write-Host ("`n✅ 本地已经是 {0}，无需更新（加 -Force 可强制重下）" -f $version) -ForegroundColor Green
+    exit 0
+}
+
+if ($DryRun) {
+    Write-Host ''
+    Write-Host '[dry-run] 只预览，不下载、不解压：'
+    Write-Host ("  下载：{0}" -f $pick.Asset.browser_download_url)
+    Write-Host ("  解压：{0}" -f $targetDir)
+    Write-Host ("  状态：{0}" -f $StateFile)
+    exit 0
+}
+
+$zip = Join-Path $OutDir $pick.Asset.name
+
+try {
+    # ── 下载（同尺寸的包直接复用；带 sha256 则校验）──────────────────────────────
+    if ((Test-Path -LiteralPath $zip) -and (Get-Item -LiteralPath $zip).Length -eq $pick.Asset.size) {
+        Write-Host ("复用已下载的包：{0}" -f $pick.Asset.name)
+    } else {
+        Write-Host ("下载中：{0}" -f $pick.Asset.browser_download_url)
+        try {
+            Invoke-WebRequest -Uri $pick.Asset.browser_download_url -Headers $downloadHeaders -OutFile $zip
+        } catch {
+            # 兜底：Windows 10/11 自带 curl.exe。某些环境的 .NET TLS 被策略改动过，
+            # 这时 curl 往往还能用。
+            Write-Host ("  Invoke-WebRequest 失败（{0}），改用 curl 兜底" -f $_.Exception.Message) -ForegroundColor Yellow
+            $curlCmd = Get-Command curl.exe, curl -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty Source
+            if (-not $curlCmd) { throw '没有 curl 兜底可用（PATH 里找不到 curl / curl.exe）' }
+            & $curlCmd -fsSL -A 'AHA-UpdateJvm' -o $zip $pick.Asset.browser_download_url
+            if ($LASTEXITCODE -ne 0) { throw "curl 下载失败（退出码 $LASTEXITCODE）" }
+        }
+        Write-Host ("已下载：{0} MB" -f [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1))
+    }
+
+    if ($pick.Asset.digest -and $pick.Asset.digest.StartsWith('sha256:')) {
+        $expected = $pick.Asset.digest.Substring(7).ToUpper()
+        $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+        if ($actual -ne $expected) {
+            Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+            throw "sha256 校验失败，文件已删除，请重试（$($pick.Asset.name)）"
+        }
+        Write-Host '  sha256 校验通过'
+    }
+
+    # ── 解压到 `<落地根>\<种类>\<版本>\` ─────────────────────────────────────────
+    # 用 .NET 的 ZipFile 而不是 Expand-Archive：后者依赖 Microsoft.PowerShell.Archive 模块，
+    # 实测在某些安装下会报 "module could not be loaded"。ZipFile 自 5.1 起可用。
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $targetDir) { Remove-Item -LiteralPath $targetDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    [IO.Compression.ZipFile]::ExtractToDirectory($zip, $targetDir)
+
+    # ── 平铺到 `<Out>` 根（issue #218）─────────────────────────────────────────
+    #
+    # 把**去版本号**的入口从暂存目录**复制**到 `<Out>` 根 —— 启动脚本与用户命令因此与版本无关：
+    #   `Dist\AhaDesktop.bat`、`java -jar Dist\aha-desktop.jar`、`Dist\AhaCli.bat` 都能直接用。
+    # 复制完会把暂存目录删掉（见下面一段），所以这里必须先复制、后清理。
+    if (-not $NoInstall) {
+        foreach ($item in $kindInfo.Flat) {
+            if ($doneFlat.ContainsKey($item.Name)) { continue }
+            # 只看**包根**（不加 -Recurse）：旧形态的包把脚本放在 bin\ 下，那不是平铺入口。
+            $src = @(Get-ChildItem -LiteralPath $targetDir -Filter $item.Glob -File -ErrorAction SilentlyContinue)
+            if ($src.Count -eq 0) { $missingFlat += $item.Name; continue }
+            try {
+                Copy-Item -LiteralPath $src[0].FullName -Destination (Join-Path $OutDir $item.Name) -Force
+            } catch {
+                throw ("平铺 {0} 到 {1} 失败：{2}`n  最常见的原因是它正被运行中的实例占用 —— 请先关闭，再重试。" -f $item.Name, $OutDir, $_.Exception.Message)
+            }
+            $flat += $item.Name
+            $doneFlat[$item.Name] = $true
+        }
+    }
+
+    # 列出关键入口做一次自证，并据此给出「怎么运行」的提示。
+    #
+    # 包内形态有两代（issue #218 起为**平铺**）：
+    #   新：单体 jar + 启动脚本 + 文档，全在包根（无 bin/、无 lib/）；
+    #   旧：bin/（启动脚本）+ lib/（模块与依赖）[+ 包根单体 jar]。
+    # 两代都要提示到，否则取到旧包就没有运行入口提示。
+    $entries = @(Get-ChildItem -LiteralPath $targetDir -Recurse -File | Select-Object -First 2000)
+    $jars = @($entries | Where-Object { $_.Name.EndsWith('.jar') })
+    $hasBin = Test-Path -LiteralPath (Join-Path $targetDir 'bin')
+    $launcherName = if ($Kind -eq 'Cli') { 'AhaCli.bat' } else { 'AhaDesktop.bat' }
+    $launcher = if ($hasBin) { Join-Path $targetDir ("bin\{0}" -f $launcherName) } else { Join-Path $targetDir $launcherName }
+    if (-not (Test-Path -LiteralPath $launcher)) { $launcher = $null }
+    Write-Host ''
+    Write-Host ("解压完成：{0} 个文件（jar {1} 个，启动脚本 {2}）" -f $entries.Count, $jars.Count, $(if ($launcher) { '有' } else { '无' }))
+    if ($NoInstall) {
+        Write-Host '（-NoInstall：只解压，未平铺到落地根）'
+    } elseif ($flat.Count -gt 0) {
+        Write-Host ("已平铺到 {0}：{1}" -f $OutDir, ($flat -join '、'))
+        if ($missingFlat.Count -gt 0) {
+            Write-Host ("       （包根没有 {0}，未平铺 —— 该形态的包还没带启动脚本）" -f ($missingFlat -join '、'))
+        }
+    } else {
+        Write-Host ("[注意] 未平铺：包根没有 {0}。" -f ($missingFlat -join '、')) -ForegroundColor Yellow
+        Write-Host '       旧形态的包（包根没有单体 jar）平铺不了；请取 0.1.3.00219 及以后的版本。'
+    }
+
+    # ── 清掉暂存目录（issue #218 后续）────────────────────────────────────────
+    #
+    # 平铺成功之后，暂存目录 `Dist\<种类>\<版本>\` 就只剩「同一份包的又一份副本」
+    # （桌面端 25 MB、CLI 55 MB），而用户真正要跑的是落地根的入口。
+    # 默认把**整棵** `<种类>\` 删掉（含历次取件留下的旧版本子目录），`-KeepExtract` 可保留。
+    #
+    # 只在**至少铺出一个入口**之后才删：一个入口都没铺出来（旧形态的包）时，
+    # 这份解压结果就是唯一能用的东西，删了等于什么都没给。
+    if ((-not $NoInstall) -and (-not $KeepExtract) -and ($flat.Count -gt 0)) {
+        # 按**整棵**算省下多少（历次残留的旧版本目录也算进去，不然报出来的数字偏小）
+        $freedMB = [math]::Round((Get-ChildItem -LiteralPath $InstallDir -Recurse -File -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+        try {
+            # 见 Remove-StagingDir：删的是整个 `<种类>\`，不是只有当前版本那层
+            [void](Remove-StagingDir -Path $InstallDir)
+            Write-Host ("已清掉暂存目录（省约 {0} MB）：{1}" -f $freedMB, $InstallDir)
+        } catch {
+            Write-Host ("[注意] 暂存目录没删掉：{0}" -f $_.Exception.Message) -ForegroundColor Yellow
+            Write-Host '       （不影响使用：入口已经平铺到落地根；想明说保留加 -KeepExtract）'
+        }
+    }
+} catch {
+    Write-Host ''
+    Write-Host ("[错误] {0}" -f $_.Exception.Message) -ForegroundColor Red
+    exit 1
+}
+
+# `dir` 记的是**能用上东西的地方**：暂存目录被清掉后就是落地根（issue #218 后续）。
+$stateDir = if (Test-Path -LiteralPath $targetDir) { $targetDir } else { $OutDir }
+$stateOut = @{ tag = $pick.Release.tag_name; version = $version; asset = $pick.Asset.name; dir = $stateDir; kept = (Test-Path -LiteralPath $targetDir); flat = @($flat); installedAt = (Get-Date).ToString('s') } | ConvertTo-Json
+[IO.File]::WriteAllText($StateFile, $stateOut)
+
+Write-Host ''
+Write-Host ("✅ 已取件到 {0}" -f $version) -ForegroundColor Green
+if (Test-Path -LiteralPath $targetDir) {
+    Write-Host ("目录：{0}" -f $targetDir)
+}
+
+Write-Host ("下载包保留在：{0}（便于离线重装；不需要可删）" -f $zip)
+if ($launcher) {
+    $leaf = Split-Path -Path $launcher -Leaf
+    $flatLauncher = Join-Path $OutDir $leaf
+    if (Test-Path -LiteralPath $flatLauncher) {
+        Write-Host ("运行：{0}（已平铺到落地根；换版本不必改命令）" -f $flatLauncher)
+    } elseif (Test-Path -LiteralPath $launcher) {
+        # 平铺没覆盖到启动脚本（包内没有它）时才会走到这里；暂存目录怕是已经清掉了，
+        # 因此只在它确实还在时才提示这个路径。
+        Write-Host ("运行：{0}" -f $launcher)
+    }
+}
+exit 0

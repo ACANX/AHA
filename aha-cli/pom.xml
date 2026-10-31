@@ -15,6 +15,12 @@
     <name>AHA-CLI</name>
     <description>命令行入口（picocli + JLine）</description>
 
+    <properties>
+        <!-- fat jar 的 Main-Class（issue #200）。CLI 入口本身没有继承 Application，
+             可以直接当入口；桌面端才有转发类 Launcher（避开 JavaFX 的模块化检查）。 -->
+        <mainClass>com.acanx.module.aha.cli.AhaCli</mainClass>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.acanx.module.aha</groupId>
@@ -99,12 +105,74 @@
                 </configuration>
             </plugin>
             <!--
+                单体 fat jar（issue #200）：把本项目各模块与全部 runtime 依赖
+                （sqlite-jdbc、jline、log4j2、Jackson…）打进一个可执行 jar。
+
+                **必须是附带产物**（`shadedArtifactAttached=true` + classifier `standalone`）。
+                默认行为（attached=false）会用 fat jar **顶替主产物**，于是：
+                  * assembly 描述符的 `useProjectArtifact=true` 会把 fat jar 再收一份
+                    （同一个类在包里存两遍，包体白白翻倍 —— issue #217）；
+                  * `aha-cli-native` 那条线声明了对 `aha-cli` 的依赖，拿到的也会是 fat jar，
+                    再叠上它自己 copy 的 runtime 依赖，classpath 上每一份都是两遍。
+                客户端（assembly / native-image）要的是「模块 jar + 依赖 jar」，
+                只有「便携包」要 fat jar —— 两者必须是两个工件。
+
+                三条必须的 filter（上游 LegionFanControl 已验证）：
+                  1. 排除 module-info.class（含 META-INF/versions/ 下的）——
+                     JPMS 描述符留在 classpath 模式下会与 fat jar 冲突；
+                  2. 排除 META-INF/*.SF|DSA|RSA —— 原 jar 的签名对合并后的 jar 无意义，
+                     留着会让 java -jar 报「签名校验失败」；
+                  3. 合并 META-INF/services（picocli / JLine / SLF4J / Jackson 都靠它）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!-- 附带产物名：aha-cli-<版本>-standalone.jar（装配描述符按这个路径取） -->
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>standalone</shadedClassifierName>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${mainClass}</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+                单体 jar 不再由本 POM 单独复制：自 issue #218 起它由 assembly 直接铺到
+                `Dist/aha-cli.jar`（名字去版本号与 classifier，见 src/assembly/dist.xml）。
+                原先那个 `copy-fatjar-to-dist` execution（复制成 `Dist/aha-cli-<版本>.jar`）
+                已随之删除 —— 同一件事只在一个地方做。
+            -->
+            <!--
                 让 `mvn clean` 清掉 Dist/ 里由构建产生的文件。
 
-                必要性：assembly 只覆盖同名文件，旧版本的依赖 jar 会一直留在
-                Dist/lib。JPMS 下一个模块出现两个版本是致命错误
-                （java.lang.module.FindException: Two versions of module ...），
-                依赖升级后重新构建出的发行包会直接启不来。
+                自 issue #218 起 CLI 包是**平铺**的（`aha-cli.jar` + `AhaCli.sh` / `AhaCli.bat`
+                + 文档），清单里的 `bin/*` 与 `lib/*.jar` 只为清掉**旧形态的遗留**：
+                它们不再由构建产出，但升级上来的工作区里还会有，留着会让人误以为
+                包还是 JPMS 目录形态（JPMS 下同名模块出现两个版本更是致命错误
+                java.lang.module.FindException）。
 
                 只列文件、不写 `**/*`：目录本身留着，否则在 WSL 的 9p 挂载上
                 “删空目录”会 Permission denied，连带把 clean 整个搞失败。
@@ -126,6 +194,7 @@
                             <directory>${maven.multiModuleProjectDirectory}/Dist</directory>
                             <includes>
                                 <include>*.md</include>
+                                <include>aha-cli.jar</include>
                                 <include>bin/*</include>
                                 <include>lib/*.jar</include>
                             </includes>
@@ -142,9 +211,9 @@
                 </configuration>
             </plugin>
             <!--
-                发行包：将 aha-cli 自身、全部模块与第三方依赖收集到 lib/，
-                并附带 bin/ 启动脚本，生成到项目根 Dist/。
-                布局：Dist/{bin,lib} —— bin/Aha.sh 取 $DIR/../lib。
+                发行包：单体 jar（shade 的 `standalone` 附带产物）+ 启动脚本 + 文档，
+                全部**平铺**到项目根 Dist/（issue #218）。
+                布局：Dist/{aha-cli.jar, AhaCli.sh, AhaCli.bat, README.md, LICENSE, CHANGELOG.md}。
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -161,7 +230,7 @@
                                 <descriptor>src/assembly/dist.xml</descriptor>
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
-                            <!-- 平铺到项目根 Dist/，使 bin/Aha.sh 的 $DIR/../lib 成立 -->
+                            <!-- 平铺到项目根 Dist/：aha-cli.jar + AhaCli.sh / AhaCli.bat 与文档 -->
                             <!--
                                 注意：这里**刻意**是仓库根，不是 ${maven.multiModuleProjectDirectory}/Dist。
 

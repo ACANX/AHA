@@ -55,3 +55,10 @@ Windows 与 WSL 的同一项目得到两个项目 ID，**默认视为两个独�
 
 - `Docs/Design/MemoryStorageDesign.md`、`Docs/AHA/AHA-Design-V1.md` 第十五部分
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00055](TD-00055-MemoryBackendSelection.md) — 记忆存储载体选型（表 / MD / 混合）
+- [TD-00056](TD-00056-SessionHistoryProjectScope.md) — 会话历史是否也改为项目级
+

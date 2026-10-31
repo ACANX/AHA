@@ -15,10 +15,28 @@ import java.util.Map;
 public interface LlmProviderAdapter {
 
     /**
+     * 适配器 / API 类型 ID（与配置 {@code Model.Providers.<Id>.ApiType} 的取值一致）。
+     *
+     * <p>默认委托 {@link #providerId()}，已有实现无需改动即可同时提供新旧两个名字；
+     * 新代码一律用它（issue #361）。</p>
+     *
+     * @return API 类型 ID（如 {@code openai-compatible} / {@code anthropic-messages} / {@code gemini}）
+     * @since 0.1.5
+     */
+    @SuppressWarnings("deprecation")
+    default String apiType() {
+        return providerId();
+    }
+
+    /**
      * 供应商 ID。
      *
+     * <p>名字与语义不符：它其实是**适配器 / API 类型**，不是 {@code Providers.<Id>} 里的供应商键。</p>
+     *
      * @return 供应商 ID
+     * @deprecated 改用 {@link #apiType()}；本方法至少保留一个 minor 版本（issue #361）
      */
+    @Deprecated
     String providerId();
 
     /**

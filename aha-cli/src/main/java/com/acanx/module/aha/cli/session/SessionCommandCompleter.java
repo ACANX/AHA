@@ -34,13 +34,26 @@ public final class SessionCommandCompleter implements Completer {
         this.registry = registry;
     }
 
+    /**
+     * 是否该给命令候选：整行以 {@code /} 开头且还没有空格（命令名之后是参数，由命令自己解释）。
+     *
+     * <p>抽成静态方法是为了能单测「什么时候不该弹候选」——补全器本身依赖 JLine 的
+     * {@code ParsedLine}，难在无终端环境下构造。</p>
+     *
+     * @param buffer 当前输入行
+     * @return 是则给出候选
+     */
+    static boolean shouldComplete(String buffer) {
+        return buffer != null && buffer.startsWith("/") && buffer.indexOf(' ') < 0;
+    }
+
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
         if (line == null) {
             return;
         }
         String buffer = line.line();
-        if (buffer == null || !buffer.startsWith("/") || buffer.contains(" ")) {
+        if (!shouldComplete(buffer)) {
             return;
         }
         for (SessionCommand command : registry.commands()) {

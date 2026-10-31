@@ -1,0 +1,75 @@
+name: SnapshotCleanup
+
+# ── 这是什么 ────────────────────────────────────────────────────────────────────
+# 快照包（PR 试包）的生命周期回收：PR 关闭 / 合并后自动删掉该 PR 的快照发布页与 tag，
+# 每日再兜底扫一遍孤儿，并顺手清掉「超过 7 天」或「同目标超过 3 条」的旧快照。
+# 判定逻辑全在 `.github/Python/SnapshotCleanup.py`（可本地 `--self-test` / `--dry-run`）。
+#
+# ── 为什么是独立工作流、而不是塞进出包流程 ──────────────────────────────────────
+# 1. **异步**：合并流程不该等清理（#165 决策表：「合并时顺手删 release ✗」——会把「取件」与
+#    「发布生命周期」耦合，合并失败 / 重试时清理容易半途而废）；
+# 2. **不进必需检查**：作业名与 Build / Gate / Compat 全不同，分支保护不引用它；
+# 3. **失败只记 warning**：单次失败由下一次清扫补删（#165 §十「异步语义」），
+#    所以脚本恒以 0 退出——清理失败不该把 PR 或定时任务染红。
+#
+# ── 安全阀（不可逆动作的唯一护栏）───────────────────────────────────────────────
+# 只处理**严格匹配** `^V<基线>.<PR 补零 5 位>.<MMddHHmm>-AHA-<目标>-SNAPSHOT$` 的 tag。
+# 正式发版（`V0.1.3` / `V0.1.3.00165`）、dev 线预发行（`V0.1.3.00180-aha-cli-native`、
+# `V0.1.3.00179-aha-jvm`）以及任何手工造的 tag（`V0.1.3.00165-test`）都**不会**被碰。
+# 正反例都在 `SnapshotCleanup.py --self-test` 里（12 条拒绝 + 4 条放行）。
+#
+# ── 次序约束（#165 §十）─────────────────────────────────────────────────────────
+# `pull_request` 事件使用**基分支**的工作流定义 ⇒ 本文件**必须先合进 `dev`**，
+# 之后新开的 PR 在被关闭时才会触发清理；在那之前关闭的 PR 由每日兜底补删。
+on:
+  # 主触发：PR 关闭（合并关闭与直接关闭都覆盖）
+  pull_request:
+    types: [closed]
+  # 兜底：每日一次（UTC 19:00 = 北京时间 03:00），补删关闭事件漏掉的残留
+  schedule:
+    - cron: '0 19 * * *'
+  # 手动补跑（可指定 PR）
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 只清扫这个 PR 的快照（留空 = 全量兜底清扫）
+        required: false
+        default: ''
+
+permissions:
+  # 删 release 与 tag
+  contents: write
+  # 查 PR 状态（open / closed / merged）
+  pull-requests: read
+
+# 清扫动作并发跑没有意义，且可能互相打架；但**不要**取消进行中的那次（删到一半最糟）。
+concurrency:
+  group: snapshot-cleanup
+  cancel-in-progress: false
+
+jobs:
+  Sweep:
+    name: Sweep
+    runs-on: ubuntu-latest
+    steps:
+      # 固定检出**默认分支**：`pull_request: closed` 之后 `refs/pull/<N>/merge` 可能已经不在，
+      # 而且清理脚本本来就该用 dev 上那一份（与「关闭事件用基分支定义」同一口径）。
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: RunSnapshotCleanup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          set -euo pipefail
+          args=(--repo "${GITHUB_REPOSITORY}")
+          if [ -n "${PR}" ]; then
+            echo "只清扫 PR #${PR}"
+            args+=(--pr "${PR}")
+          else
+            echo "全量兜底清扫"
+          fi
+          # 脚本恒以 0 退出：单条失败只记 ::warning::，留给下一次清扫补删。
+          python3 .github/Python/SnapshotCleanup.py "${args[@]}"

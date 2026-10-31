@@ -7,21 +7,31 @@ import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
+
+import java.io.IOException;
 
 /**
  * 日志面板：实时日志 + 级别过滤（{@code GUIDesign.md} 第 4.5 节「日志（排错用）」）。
@@ -53,19 +63,58 @@ public final class LogPanel {
     /** 复制按钮 id。 */
     public static final String COPY_ID = "aha.log.copy";
 
+    /** 右键菜单「复制选中（没选中则复制全部）」的 id。 */
+    public static final String COPY_SELECTED_MENU_ID = "aha.log.menu.copy.selected";
+
+    /** 右键菜单「复制全部」的 id。 */
+    public static final String COPY_ALL_MENU_ID = "aha.log.menu.copy.all";
+
     /** 自动刷新间隔（毫秒）。 */
     public static final long TICK_MS = 500;
 
     /** 面板里最多渲染多少行（再多没有阅读价值，反而卡界面）。 */
     public static final int MAX_LINES = 3000;
 
+    /** FXML 骨架资源（路径集中在 {@link UiResources}）。 */
+    private static final String FXML_VIEW = UiResources.LOG_PANEL_FXML;
+
     private final String effectiveLevel;
 
-    private final TextArea area = new TextArea();
+    // ── FXML 注入的部件 ──────────────────────────────────────────────────────
+    // 字段名必须与 log-panel.fxml 的 fx:id 一一对应；原生镜像下这些**私有字段**由
+    // FXMLLoader 反射写入，因此 LogPanel 的字段必须登记进 reachability-metadata。
 
-    private final ComboBox<LogLevel> filter = new ComboBox<>();
+    /** 工具栏 + 日志区所在的根。 */
+    @FXML
+    private VBox root;
 
-    private final Label stats = new Label();
+    @FXML
+    private HBox toolbar;
+
+    /** 级别过滤下拉。 */
+    @FXML
+    private ComboBox<LogLevel> filter;
+
+    @FXML
+    private Button refresh;
+
+    @FXML
+    private Button copy;
+
+    @FXML
+    private Button clear;
+
+    /** 把右侧的统计行推到栏尾的撑高垫。 */
+    @FXML
+    private Region spacer;
+
+    /** 统计行（共 N 行 · 显示 M 行 · 上限 X 行）。 */
+    @FXML
+    private Label stats;
+
+    /** 只读日志区。 */
+    @FXML
+    private TextArea area;
 
     private Timeline ticker;
 
@@ -110,6 +159,50 @@ public final class LogPanel {
         dialog.getDialogPane().setPrefHeight(640);
         ThemePaint.dialog(dialog.getDialogPane());
 
+        dialog.getDialogPane().setContent(loadView());
+
+        refresh();
+        startTicker();
+        return dialog;
+    }
+
+    /**
+     * 装载 FXML 骨架并接线。
+     *
+     * <p>与 {@code DesktopShell} / {@code ProviderDialog} 同款：本类既是面板状态的持有者，
+     * 也是它的 **FXML 控制器**。</p>
+     *
+     * <p>装载失败时打 ASCII 标记并显式 flush；标记必须印在**真的会执行到**的 catch 里
+     * （TS-2610-032 第三轮：写在「证不出会抛」的位置会被静态分析当死代码删掉）。</p>
+     *
+     * @return 对话框内容根节点
+     */
+    private Parent loadView() {
+        FXMLLoader loader = new FXMLLoader(LogPanel.class.getResource(FXML_VIEW));
+        loader.setController(this);
+        Parent loaded;
+        try {
+            loaded = loader.load();
+        } catch (IOException e) {
+            System.err.println("[ui-fxml-load-failed] " + e);
+            System.err.flush();
+            throw new IllegalStateException("日志面板界面装载失败：" + FXML_VIEW, e);
+        }
+        wireView();
+        return loaded;
+    }
+
+    /** 把注入的节点接起来：样式、选项与事件。 */
+    private void wireView() {
+        root.setSpacing(ShellLayout.GAP);
+        root.setPadding(new Insets(4));
+
+        toolbar.setSpacing(ShellLayout.GAP);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        ThemePaint.themedForever(stats, () -> "-fx-text-fill: " + Palette.MUTED + ";");
+
         filter.setId(FILTER_ID);
         filter.getItems().setAll(LogLevel.DISPLAY_ORDER);
         filter.setValue(LogLevel.INFO);
@@ -126,40 +219,68 @@ public final class LogPanel {
         });
         filter.valueProperty().addListener((observable, old, now) -> refresh());
 
-        Button refresh = new Button("刷新");
         refresh.setId(REFRESH_ID);
         refresh.setOnAction(event -> refresh());
-        Button copy = new Button("复制");
         copy.setId(COPY_ID);
-        copy.setOnAction(event -> stats.setText(Clipboards.copy(area.getText())
-                ? "已复制当前视图（" + area.getText().length() + " 字符）"
-                : "复制失败：剪贴板不可用"));
-        Button clear = new Button("清空");
+        copy.setOnAction(event -> copyText(area.getText(), "当前视图"));
         clear.setId(CLEAR_ID);
         clear.setOnAction(event -> {
             LogCapture.buffer().clear();
             refresh();
         });
 
-        stats.setStyle("-fx-text-fill: " + Palette.MUTED + ";");
-        HBox toolbar = new HBox(ShellLayout.GAP, new Label("级别"), filter, refresh, copy, clear,
-                spacer(), stats);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-
         area.setId(AREA_ID);
         area.setEditable(false);
         area.setWrapText(false);
-        area.setStyle("-fx-font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
-                + "-fx-font-size: 12px;");
-
-        VBox content = new VBox(ShellLayout.GAP, toolbar, area);
+        // 底色 / 文字 / 轮廓线都显式给并登记重刷（issue #229）：日志区也是输入类控件，
+        // 原生镜像下 modena 的那些 CSS 函数会整条被丢弃，只留 CSS 就会「轮廓线不见了」。
+        // 值取自补丁样式表（CONTROL_INNER / FOREGROUND / BORDER），JVM 下外观不变。
+        ThemePaint.themedForever(area, () -> "-fx-font-family: " + FontFallback.monospaceCss() + ";"
+                + "-fx-font-size: 12px;"
+                + "-fx-control-inner-background: " + Palette.CONTROL_INNER + ";"
+                + "-fx-background-color: " + Palette.CONTROL_INNER + ";"
+                + "-fx-border-color: " + Palette.BORDER + "; -fx-border-width: 1; -fx-border-radius: 3;"
+                + "-fx-text-fill: " + Palette.FOREGROUND + ";");
+        // 【为什么要有右键菜单（2026-10-16 真机反馈）】JavaFX 里**非可编辑**的 TextArea
+        // 没有默认右键菜单（默认菜单只给可编辑控件）—— 用户在日志区右键复制不出来，只能靠上面那个按钮。
+        MenuItem copySelected = new MenuItem("复制选中（没有选中则复制全部）");
+        copySelected.setId(COPY_SELECTED_MENU_ID);
+        copySelected.setOnAction(event -> copyText(textToCopy(area.getSelectedText(), area.getText()), "选中"));
+        MenuItem copyAllItem = new MenuItem("复制全部");
+        copyAllItem.setId(COPY_ALL_MENU_ID);
+        copyAllItem.setOnAction(event -> copyText(area.getText(), "全部"));
+        MenuItem selectAll = new MenuItem("全选");
+        selectAll.setOnAction(event -> area.selectAll());
+        area.setContextMenu(new ContextMenu(copySelected, copyAllItem, new SeparatorMenuItem(), selectAll));
+        // 顺手让 Ctrl/Cmd+C 也能用（非可编辑控件同样不响应）
+        area.setOnKeyPressed(event -> {
+            if (event.isShortcutDown() && event.getCode() == KeyCode.C) {
+                copyText(textToCopy(area.getSelectedText(), area.getText()), "选中");
+                event.consume();
+            }
+        });
         VBox.setVgrow(area, Priority.ALWAYS);
-        content.setPadding(new Insets(4));
-        dialog.getDialogPane().setContent(content);
+    }
 
-        refresh();
-        startTicker();
-        return dialog;
+    /**
+     * 该复制哪段：**有选中就复制选中**，否则整段。
+     *
+     * @param selected 选中的文本（可能为空）
+     * @param all      全部文本
+     * @return 要写入剪贴板的文本
+     */
+    static String textToCopy(String selected, String all) {
+        if (selected != null && !selected.isEmpty()) {
+            return selected;
+        }
+        return all == null ? "" : all;
+    }
+
+    /** 写剪贴板 + 在工具栏给一句反馈（复制成功/失败都要有回声）。 */
+    private void copyText(String text, String what) {
+        stats.setText(Clipboards.copy(text)
+                ? "已复制" + what + "（" + text.length() + " 字符）"
+                : "复制失败：剪贴板不可用");
     }
 
     /**
@@ -230,11 +351,5 @@ public final class LogPanel {
             ticker.stop();
             ticker = null;
         }
-    }
-
-    private static javafx.scene.layout.Region spacer() {
-        javafx.scene.layout.Region region = new javafx.scene.layout.Region();
-        HBox.setHgrow(region, Priority.ALWAYS);
-        return region;
     }
 }

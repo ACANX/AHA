@@ -1,9 +1,9 @@
 # 配置指南
 
-**文档版本**：v1.17.0
+**文档版本**：v1.18.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-19
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -31,6 +31,7 @@
 | v1.15.0 | 2026-10-07 | `Logging.Level` 默认值更正为 `DEBUG`（与 `AhaDefault.yaml` 一致），并说明开发阶段有意保留全量；区分「内置默认值」与「非法值兜底」 | @ACANX |
 | v1.16.0 | 2026-10-08 | 第 11 节：日志装配说明改为「入口（CLI / 桌面端）」，并指明 `LoggingSetup` 在 `aha-core` | @ACANX |
 | v1.17.0 | 2026-10-08 | §11 日志小节补启动引导链（读 `Aha.yaml` → 装配 → 密钥库），并说明桌面端窗口可见配置摘要 | @ACANX |
+| v1.18.0 | 2026-10-19 | 工具权限补充三档运行模式（自动 / 完全授权 / 严格）与 `--strict`（issue #330） | @ACANX / CNXNC |
 
 ---
 
@@ -183,18 +184,31 @@ Model:
 
   Providers:
     DeepSeek:
-      Adapter: openai-compatible
+      ApiType: openai-compatible
       BaseUrl: https://api.deepseek.com/v1
       ApiKey: "${AHA_API_KEY_DEEPSEEK}"
-      # 五档：Standard 为唯一必填档，其余可选；可选档缺失回退 Standard
+      # 模型 ID → 模型定义（ID 供 Tier 引用，不受 PascalCase 限制）
       Models:
-        Ultra: deepseek-v4-pro
-        Pro: deepseek-v4-pro
-        Standard: deepseek-v4-flash
-        Flash: deepseek-v4-flash
-        Fallback: deepseek-v4-flash
-      DefaultTier: Standard     # 供应商级默认档（新规则下优先于 Model）
-      Model: deepseek-v4-flash  # 默认模型记录，与 DefaultTier 保持一致
+        deepseek-pro:
+          Name: deepseek-v4-pro   # 实际请求模型名
+          Reasoning: true
+          Input:
+            - text
+            - image
+          ContextWindow: 1004000
+          MaxTokens: 300000
+          ThinkingLevel: Max   # 当前强度；省略时取 ThinkingLevelMap 的第一个键
+          ThinkingLevelMap:
+            Max: max
+        deepseek-flash:
+          Name: deepseek-v4-flash
+      # 档位 → 模型 ID；默认档固定 Standard
+      Tier:
+        Ultra: deepseek-pro
+        Pro: deepseek-pro
+        Standard: deepseek-flash
+        Flash: deepseek-flash
+        Fallback: deepseek-flash
       TimeoutSeconds: 120
       MaxRetries: 3
       RateLimit:
@@ -209,11 +223,14 @@ Model:
 
 一个供应商可配置 **5 档**模型：`Ultra` / `Pro` / `Standard` / `Flash` / `Fallback`。
 
-- **`Standard` 是唯一必填档**：含 `Models` 的配置缺 `Standard` 会报配置错误（`MODEL_TIER_STANDARD_REQUIRED`）；
-- 可选档缺失不是错误，解析时**一律回退 `Standard`**；
-- **新旧规则判定**：配置里**有没有 `Models`**。只有 `Model`（无 `Models`）为老规则，
-  `Model` 直接生效，行为与升级前一致；含 `Models` 为新规则，`DefaultTier` 优先，`Model` 作为默认模型记录；
-- **默认档解析**（新规则）：`Providers.<Id>.DefaultTier` → `Model.DefaultTier` → `Standard`；
+- **默认档固定 `Standard`**：新格式不再写供应商级 `DefaultTier` / `Model`；
+- **`Standard` 缺失时兜底**：全局 `Model.DefaultTier`（该档可用时）→ 档位强弱顺序
+  （`Ultra → Pro → Standard → Flash → Fallback`）第一个已配置档；全都没有才报配置错误
+  （`MODEL_TIER_NOT_CONFIGURED`）；
+- **可选档缺失**：解析时回退 `Standard`（`Standard` 缺失则按上面的兜底顺序）；
+- **`Tier` 引用校验**：每个值必须是 `Models` 里已定义的模型 ID；
+- **旧格式兼容**：`Models` 的值为字符串（档位 → 模型名）、`Adapter` 键、`anthropic` 枚举值、
+  供应商级 `DefaultTier` / `Model` 均可读取，首次写盘自动迁移为新格式；
 - **运行期降级**：档位模型不可用时（404/422/429/5xx 重试耗尽等），先降 `Standard`，
   再降 `Fallback` 档，最后走全局 `Llm.Fallback`；401/403 不降级；只作用于单次请求，有 `WARN` 日志。
 
@@ -270,7 +287,7 @@ aha provider remove MyProxy -y
 
 | 选项 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `--adapter` | ✅ | — | `openai-compatible` / `anthropic` / `gemini` |
+| `--api-type` | ✅ | — | `openai-compatible` / `anthropic-messages` / `gemini`（`--adapter` 为兼容别名） |
 | `--base-url` | ✅ | — | 基础地址（如 `https://api.deepseek.com/v1`），适配器自动拼接端点路径 |
 | `--model` | — | — | Standard 档模型名（等价 `--model-standard`；必填档） |
 | `--model-standard` | ✅ | — | Standard 档模型名（必填档） |
@@ -313,10 +330,14 @@ Model.yml
 `ConfigLoader` 递归校验字段名，非 PascalCase 字段会抛出 `ConfigException`（`INVALID_FIELD_NAME`）。
 
 两份文件均受此约束；`Model.yml` 的顶层 `Model`、`Default`、`Providers` 及各供应商 ID 都需为 PascalCase。
+**例外**：`Models` 的直接子键是模型 ID（可小写、可含连字符），跳过字段名校验；
+模型定义内部字段（`Name` / `Reasoning` / `Input` / `ContextWindow` / `MaxTokens` /
+`ThinkingLevelMap`）仍按 PascalCase 校验。
 
-**档位校验**：含 `Models` 的供应商必须配置非空的 `Standard` 档，否则抛出 `ConfigException`
-（`MODEL_TIER_STANDARD_REQUIRED`，指明「供应商 X 缺少必填的 Standard 档」）；
-`DefaultTier` 必须是五档之一；新规则下 `Model` 必须是五档内的模型名。
+**档位校验**：含 `Models` 的供应商必须配置非空的 `Tier`（`MODEL_TIER_REQUIRED`）；
+`Tier` 的键必须是五档之一，值必须是 `Models` 中已定义的模型 ID（`MODEL_TIER_MODEL_NOT_FOUND`）；
+`Standard` 不再强制必填，缺省按「全局 `DefaultTier` → 强弱顺序」兜底；
+模型定义的 `Name` 必填，`ContextWindow` / `MaxTokens` 若出现必须为正整数。
 
 ## 9. 配置项参考（0.1.0）
 
@@ -353,12 +374,11 @@ Model.yml
 |---|---|---|---|
 | `Model.Default` | string | `OpenAI` | 当前默认供应商键名 |
 | `Model.DefaultTier` | string | `Standard` | 全局默认档位（五档之一） |
-| `Model.Providers.<Id>.Adapter` | string | — | `openai-compatible` / `anthropic` / `gemini` |
+| `Model.Providers.<Id>.ApiType` | string | — | `openai-compatible` / `anthropic-messages` / `gemini`（旧键 `Adapter` 与旧值 `anthropic` 兼容读取） |
 | `Model.Providers.<Id>.BaseUrl` | string | — | 基础地址（如 `https://api.openai.com/v1`），适配器拼接 `/chat/completions` |
 | `Model.Providers.<Id>.ApiKey` | string | — | 支持 `${ENV}` 占位 |
-| `Model.Providers.<Id>.Models` | map | — | 五档模型（`Ultra`/`Pro`/`Standard`/`Flash`/`Fallback`），`Standard` 必填 |
-| `Model.Providers.<Id>.DefaultTier` | string | `Standard` | 供应商级默认档（新规则下优先于 `Model`） |
-| `Model.Providers.<Id>.Model` | string | — | 默认模型名（老规则下生效；新规则下为记录，与 `DefaultTier` 一致） |
+| `Model.Providers.<Id>.Models` | map | — | 模型 ID → 模型定义（`Name` / `Reasoning` / `Input` / `ContextWindow` / `MaxTokens` / `ThinkingLevel` / `ThinkingLevelMap`） |
+| `Model.Providers.<Id>.Tier` | map | — | 五档 → 模型 ID；默认档固定 `Standard` |
 | `Model.Providers.<Id>.TimeoutSeconds` | int | 120 | 单次请求超时 |
 | `Model.Providers.<Id>.MaxRetries` | int | 3 | 5xx 重试次数（指数退避） |
 | `Model.Providers.<Id>.RateLimit.Rpm` | int | 0 | 每分钟请求限制，0 表示不限 |
@@ -443,10 +463,19 @@ Aha:
 非交互场景（`run`）无确认余地，未加 `--yes` 时一律拒绝：
 
 ```bash
-aha chat             # 逐个确认
-aha chat --yes       # 自动授权 WRITE/EXECUTE/ADMIN，不再询问
+aha chat             # 逐个确认（自动模式）
+aha chat --yes       # 自动授权 WRITE/EXECUTE/ADMIN，不再询问（完全授权）
+aha chat --strict    # 所有工具调用都需确认，含只读（严格模式）
 aha run "..." --yes  # 单次推理同理
 ```
+
+三档运行模式（底部状态栏最左侧常驻显示）：
+
+| 模式 | 触发 | 行为 |
+|---|---|---|
+| 自动 | 默认 | 只读 / 网络自动放行，写 / 执行 / 管理需确认 |
+| 完全授权 | `--yes`，或会话内首次输入 `a` | 所有权限自动放行（`a` 只影响当前进程） |
+| 严格 | `--strict` | 所有工具调用都需确认（含只读）；与 `--yes` 互斥 |
 
 > `a` 的“始终允许”**只在当前进程内有效**，不写盘。
 > 需要永久放行请配置 `Tools.AutoApprove`。

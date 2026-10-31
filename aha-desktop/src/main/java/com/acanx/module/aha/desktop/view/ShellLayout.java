@@ -11,10 +11,34 @@ package com.acanx.module.aha.desktop.view;
 public final class ShellLayout {
 
     /** 左栏宽度（px）：导航与列表。 */
-    public static final double LEFT_WIDTH = 220;
+    public static final double LEFT_WIDTH = 372;
 
     /** 右栏宽度（px）：本轮上下文。 */
     public static final double RIGHT_WIDTH = 280;
+
+    /** 左栏拖拽后的最小宽度（px）：再窄就放不下会话标题与按钮。 */
+    public static final double LEFT_MIN_WIDTH = 160;
+
+    /** 左栏拖拽后的最大宽度（px）：再宽会把中栏挤得只剩一条缝。 */
+    public static final double LEFT_MAX_WIDTH = 480;
+
+    /** 消息气泡的最大宽度（px）：过宽就不再像聊天窗口。 */
+    public static final double BUBBLE_MAX_WIDTH = 720;
+
+    /** 左栏与中栏之间拖拽条的宽度（px）。 */
+    public static final double SPLITTER_WIDTH = 5;
+
+    /**
+     * 把左栏宽度收进允许范围。
+     *
+     * <p>抽成纯函数：拖拽边界（太窄 / 太宽）在没有图形环境的机器上也能单测。</p>
+     *
+     * @param width 目标宽度（px）
+     * @return 收进 {@link #LEFT_MIN_WIDTH}–{@link #LEFT_MAX_WIDTH} 后的宽度
+     */
+    public static double clampLeftWidth(double width) {
+        return Math.max(LEFT_MIN_WIDTH, Math.min(LEFT_MAX_WIDTH, width));
+    }
 
     /** 底部状态栏高度（px）。 */
     public static final double STATUS_BAR_HEIGHT = 24;

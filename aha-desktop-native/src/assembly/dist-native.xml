@@ -81,5 +81,28 @@
             </includes>
             <fileMode>0644</fileMode>
         </fileSet>
+
+        <!--
+            自更新换装 helper（issue #51 §4.5）：**必须与 jar 便携包一样随包分发**。
+
+            2026-10-16 代码审查 P0 发现：这里原来没有它，于是「原生形态自更新」在
+            「复制 helper」那一步必然失败（`UpdateLauncher.installHelpers` 抛「该包不完整」），
+            而设计 §8.2 第 9 项正是要给真实机验证这条路径 —— 验证前就注定是红的。
+
+            两个文件都不带版本号：计划文件才是唯一入参，换版本不用改脚本。
+
+            issue #381：这里以前写着「非 Windows 包里带这两个 .cmd/.ps1 属于暂时用不上」，
+            现在改为**按平台分发**：描述符仍收（Windows 包需要），POSIX 包由出包腿
+            （`PrunePlatformScripts.py`）在生成包内清单之前裁掉，用户不再看到用不上的脚本。
+        -->
+        <fileSet>
+            <directory>${project.parent.basedir}/Dist</directory>
+            <outputDirectory>.</outputDirectory>
+            <includes>
+                <include>apply-update.cmd</include>
+                <include>AhaApplyUpdate.ps1</include>
+            </includes>
+            <fileMode>0644</fileMode>
+        </fileSet>
     </fileSets>
 </assembly>

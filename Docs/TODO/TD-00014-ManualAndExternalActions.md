@@ -2,10 +2,11 @@
 
 > 待办编号：TD-00014
 > 标题：人工与外部环境事项：分支规则集整改、定期扫描、合并方式、裸 tag、0.1.1 发布与真机走查
-> 状态：☐ 未开始
-> 跟踪 Issue：[85](https://github.com/ACANX/AHA/issues/85)
+> 状态：✅ 已完成（2026-10-16，结果性关闭；「tag 不触发 `Release.yml`」转 [#238](https://github.com/ACANX/AHA/issues/238)）
+> 跟踪 Issue 状态：**已关闭**（`completed`，2026-10-16）
+> 跟踪 Issue：[#85](https://github.com/ACANX/AHA/issues/85)
 > 创建日期：2026-10-09
-> 最后更新：2026-10-09
+> 最后更新：2026-10-16
 
 ---
 
@@ -18,61 +19,83 @@
 
 ## 一、仓库设置类（需管理员在 GitHub 上操作）
 
-### G-02 分支规则集整改 ☐
+### ~~G-02 分支规则集整改~~ ✗ **不做**（2026-10-10 决定）
 
-**现状（本次 API 实查，`2026-10-09`）**：
+~~**现状（本次 API 实查，`2026-10-09`）**：~~
 
-| 项 | `main` 规则集（id 24648542）现状 | 目标 |
+| ~~项~~ | ~~`main` 规则集（id 24648542）现状~~ | ~~目标~~ |
 | --- | --- | --- |
-| `required_status_checks` | 仅三条 `build (...)` | 三条 `build (...)` + `Gate` + `Compat` |
-| `required_approving_review_count` | **1** | 0 |
-| `require_last_push_approval` | **true** | false |
-| `require_code_owner_review` | **true** | 评估（单人仓库下会锁死） |
-| `code_scanning`（CodeQL） | 有 | 保留（CodeQL 已有分析结果） |
-| `code_coverage` | `minimum_coverage: 70` | 评估删除（覆盖率已由 `jacoco:check` + `Gate` 把关） |
-| `dev` 规则集 | 审批数 1 | 改为 0 |
+| ~~`required_status_checks`~~ | ~~仅三条 `build (...)`~~ | ~~三条 `build (...)` + `Gate` + `Compat`~~ |
+| ~~`required_approving_review_count`~~ | ~~**1**~~ | ~~0~~ |
+| ~~`require_last_push_approval`~~ | ~~**true**~~ | ~~false~~ |
+| ~~`require_code_owner_review`~~ | ~~**true**~~ | ~~评估（单人仓库下会锁死）~~ |
+| ~~`code_scanning`（CodeQL）~~ | ~~有~~ | ~~保留（CodeQL 已有分析结果）~~ |
+| ~~`code_coverage`~~ | ~~`minimum_coverage: 70`~~ | ~~评估删除（覆盖率已由 `jacoco:check` + `Gate` 把关）~~ |
+| ~~`dev` 规则集~~ | ~~审批数 1~~ | ~~改为 0~~ |
 
-**验收**：五项必需检查齐全；预期失败的 PR 合不进去、正常 PR 单人能合进去。
+~~**验收**：五项必需检查齐全；预期失败的 PR 合不进去、正常 PR 单人能合进去。~~
 
-### G-03 确认每周定期扫描真的在跑 ☐
+### G-03 确认每周定期扫描真的在跑 ✅（2026-10-16 收口）
 
-`Gate.yml` 的 `schedule`（每周一 03:00 UTC）只在默认分支生效。**验收**：合入后先 `workflow_dispatch` 手动跑通一次，随后 Actions 出现 `schedule` 触发的运行记录。
+`Gate.yml` 的 `schedule`（每周一 03:00 UTC）只在默认分支生效。
 
-### G-05 关闭 squash 与 rebase 合并 ☐
+- 手动侧：run [`37937465188`](https://github.com/ACANX/AHA/actions/runs/37937465188)（`workflow_dispatch`，2026-10-09，success）；
+- **自动侧**：run [`38234080962`](https://github.com/ACANX/AHA/actions/runs/38234080962)（`event=schedule`，**2026-10-12**，`success`，`head_branch=dev`）。
 
-**现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。
-`dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。
+> 观察：该次实际触发于 `10:05:11Z`，比计划的 `03:00Z` **晚约 7 小时**（同仓库 `SnapshotCleanup` 的每日 cron 亦晚约 3 小时）。
+> 属平台侧定时排队延迟，**cron 本身生效**。含义：`schedule` 只保证「每周会跑」，不保证「在某个时间窗内跑」。
 
-### G-06 处置 0.1.0 的裸 tag ☐
+### ~~G-05 关闭 squash 与 rebase 合并~~ ✗ **不做**（2026-10-10 决定）
 
-**现状（本次实查）**：`git ls-remote --tags origin` 只有裸 `0.1.0`，无 `V0.1.0`。**验收**：补 `V0.1.0` 指向同一提交（`9138847`），或在规范中写明兼容策略。
+~~**现状（本次实查）**：`allow_squash_merge = true`、`allow_rebase_merge = true`、`allow_merge_commit = true`。~~
+~~`dependa` 是长期集成分支，一旦被 squash 血缘就断（`F-12` 已两次复发）。**验收**：设置后 `dependa → dev` 的合并提交有两个父。~~
+
+### G-06 处置 0.1.0 的裸 tag ✅（2026-10-09 完成）
+
+原状：`git ls-remote --tags origin` 只有裸 `0.1.0`，无 `V0.1.0`。
+
+已完成：补了指向**同一提交**（`9138847`）的别名 tag `V0.1.0`（annotated）。文档收口见 PR [#123](https://github.com/ACANX/AHA/pull/123)（`ReleaseProcess.md` §4.1、`VersionBumpGuide.md` §5 第 4 条 / §6.5）。
 
 ## 二、发布链路
 
-### 0.1.1 正式发布（`PLAN.md` §6.3）☐
+### 0.1.1 正式发布（`PLAN.md` §6.3）✅（2026-10-10 结项）
 
-PR #15（`dev → main`，`Release:V0.1.1`）已于 2026-10-08 merged，但**正式发布链路尚未走完**：
+PR #15（`dev → main`，`Release:V0.1.1`）已于 2026-10-08 merged。
 
-- 远端 tag 列表里**没有 `V0.1.1`**（只有裸 `0.1.0` 与各类预发行 tag）；
-- Releases 页**没有非预发行版**。
+- ~~远端 tag 列表里**没有 `V0.1.1`**~~ → 已有 `V0.1.1`（`0c10896`）；
+- ~~Releases 页**没有非预发行版**~~ → 已建 `V0.1.1` 正式 Release（2026-10-10）。
 
-需确认 `Build.yml` 的 tag 作业与 `Release.yml` 是否真的产出 `aha-cli-0.1.1.zip` 与三平台桌面端包。
+~~需确认 `Build.yml` 的 tag 作业与 `Release.yml` 是否真的产出 `aha-cli-0.1.1.zip` 与三平台桌面端包。~~
+**发行包不作强制要求**：完成条件为「远端有 tag `V0.1.1` + 正式 Release 条目」，
+发行包（`aha-cli-0.1.1.zip`、`aha-desktop-0.1.1-<系统>-<架构>.zip`）**不强制**。
 
-## 三、真机 / 外部环境验证（`PLAN.md` §5、§8.2.5、§8.2.6）
+## 三、真机 / 外部环境验证（`PLAN.md` §5、`§8.2.5`、`§8.2.6`）
 
-| 项 | 为什么本环境验不了 | 怎么验 |
-| --- | --- | --- |
-| 0.1 界面整体观感（分隔线、状态行、色带、区块空行） | 伪终端能验「画出来了」，验不了「好不好看」 | Windows 下 `Dist\bin\Aha.bat chat` 读一个文件 |
-| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost | Windows 下看是否花屏；无线则确认降级生效 |
-| `Aha.bat` 启动路径 | WSL 只能经 `cmd.exe` 间接调用 | Windows 下直接运行 |
-| 滚动区域对原生滚动 / 复制的影响 | 手感判断 | Windows Terminal / PowerShell 下滚动与复制 |
-| `/memory edit` 的编辑器接管终端 | 需真实交互式终端与编辑器 | Windows 下 `code -w` / `notepad` |
-| **真实供应商 API Key 端到端**（`§8.2.5`） | 需外部凭据 | `aha chat` 连真实供应商跑一轮 |
-| 窗口 resize 后的状态行重排 | 伪终端 `TIOCSWINSZ` 行为与真机不同 | 拖动窗口大小 |
+> **实测（2026-10-10，ACANX 于 Windows 真机）**：结果见下表「实测结果」列。
+
+| 项 | 为什么本环境验不了 | 怎么验 | 实测结果（2026-10-10） |
+| --- | --- | --- | --- |
+| 0.1 界面整体观感（分隔线、状态行、色带、区块空行） | 伪终端能验「画出来了」，验不了「好不好看」 | Windows 下 `Dist\bin\Aha.bat chat` 读一个文件 | ✅ 通过：正常读取并打印文件内容 |
+| 状态行在 **conhost（旧 CMD）** 下的表现 | 只有 Windows 有 conhost | Windows 下看是否花屏；无线则确认降级生效 | ✅ 通过：无花屏；降级生效 |
+| `Aha.bat` 启动路径 | WSL 只能经 `cmd.exe` 间接调用 | Windows 下直接运行 | ✅ 通过：可正常启动 |
+| 滚动区域对原生滚动 / 复制的影响 | 手感判断 | Windows Terminal / PowerShell 下滚动与复制 | ✅ 通过：滚动正常，支持文本复制 |
+| `/memory edit` 的编辑器接管终端 | 需真实交互式终端与编辑器 | Windows 下 `code -w` / `notepad` | ✅ 通过：notepad 正常唤起并可编辑（用户级 `~/.aha/AHA.md`），终端让位成功 |
+| **真实供应商 API Key 端到端**（`§8.2.5`） | 需外部凭据 | `aha chat` 连真实供应商跑一轮 | ✅ 通过：可正常对话 |
+| 窗口 resize 后的状态行重排 | 伪终端 `TIOCSWINSZ` 行为与真机不同 | 拖动窗口大小 | ✅ 通过：自适应，正常展示 |
 
 **验收标准**：上表逐项给出「通过 / 不通过 / 不适用」以及观察记录；`§8.2.5` 与 `§8.2.6` 从 ⬜ / 🟡 收口。
+
+**当前进度（2026-10-10）**：7 项**全部通过**。
+
+## 四、转跟踪（2026-10-16）
+
+| 项 | 承接 | 说明 |
+| --- | --- | --- |
+| 「tag 不触发 `Release.yml`」（原复核评论 §6） | [#238](https://github.com/ACANX/AHA/issues/238)（`TD-00018`） | `Build.yml` 用 `GITHUB_TOKEN` 推 tag → 不触发下游工作流（GitHub 防递归）⇒ 正式 Release 页无发行包。原按「发行包不强制」未阻塞本条；ACANX 接受另开 #238 承接，方案 A ~ E 待拍板 |
 
 ## 关联
 
 - `Docs/TODO.md` 第 11 节、`Docs/PLAN.md` §5 / §6.3 / §8.2
+- 转跟踪：[#238](https://github.com/ACANX/AHA/issues/238)（`TD-00018`）
+- 收口 PR：[#123](https://github.com/ACANX/AHA/pull/123)（G-06 文档）、[#124](https://github.com/ACANX/AHA/pull/124)（G-02 / G-05 标记「不做」+ 0.1.1 结项）
 

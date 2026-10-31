@@ -1,6 +1,6 @@
 # 桌面端设计
 
-**文档版本**：v1.13.0
+**文档版本**：v1.14.0
 **状态**：冻结
 **生效日期**：2026-10-06
 **最后更新**：2026-10-09
@@ -26,7 +26,9 @@
 | v1.10.0 | 2026-10-08 | 新增 §10「对话与供应商配置」：对话内核可测而界面薄（ChatController/ChatView/ToolSummary/DesktopToolApprover）、供应商为可编辑表单（含校验与保留未涉及字段）、以及 Windows 真机验证记录 | @ACANX |
 | v1.11.0 | 2026-10-08 | §10.2 供应商配置补充：绿灯标识（启用项与其模型）、打开即选中启用项（纯函数 + 测试）、按预设新建与可编辑模型下拉 | @ACANX |
 | v1.12.0 | 2026-10-09 | 新增 §5.7「本地构建便携包（JVM 模式）」：触发命令、Maven 阶段链路、assembly 的 POM 配置与描述符内容、版本号两层（包名 vs `aha.build.version`）、运行期解压消费、与 CI 的关系（dev 预发行线在独立工作流 `BuildJVMArtifacts.yml`，issue #63） | @ACANX |
+| v1.14.0 | 2026-10-15 | §5.6 便携包改为**包根平铺**：单体 jar `aha-desktop.jar`（去版本号，含本平台 OpenJFX 的类与原生库）+ 启动脚本平铺，无 `lib/` 与 `bin/`；补写入口类 `AhaDesktopLauncher` 为何必须不继承 `Application`（issue #218）| @ACANX / CNXNC |
 | v1.13.0 | 2026-10-09 | 发行形态最终决策：§2「打包」由 `jpackage` 改为「JVM 便携包 + 原生镜像单文件」；§3 / §5 / §5.4 去掉 `jpackage`，「必须分平台构建」的依据改为 JavaFX 平台分类器；§5.6 注明 `jpackage` 已决策跳过（见 `ReleaseProcess.md` §3.3） | @ACANX / CNXNC |
+| v1.15.0 | 2026-10-21 | §6.3.1 新增「回合级取消与轮次号」：会话复位必须同时取消在途令牌 + 推进轮次号；指出分段代际号只能拦「已排队快照」、拦不住生产端仍在产出的增量（PR #404 审查 P2-2） | @ACANX / CNXNC |
 
 ---
 
@@ -95,8 +97,8 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 - 父 POM 加 5 个 profile（`javafx-windows` / `javafx-mac` / `javafx-mac-aarch64` /
   `javafx-linux` / `javafx-linux-aarch64`），各自把属性 `javafx.platform` 设为对应分类器；
-- 父 POM 的 `dependencyManagement` 为 `javafx-base` / `javafx-graphics` / `javafx-controls`
-  声明 `version = ${javafx.version}` + `classifier = ${javafx.platform}`；
+- 父 POM 的 `dependencyManagement` 为 `javafx-base` / `javafx-graphics` / `javafx-controls` /
+  `javafx-fxml` 声明 `version = ${javafx.version}` + `classifier = ${javafx.platform}`；
 - `aha-desktop` 只写 `groupId` / `artifactId` / `<classifier>${javafx.platform}</classifier>`，
   **不出现平台字面量**；版本与分类器都来自父 POM。
 
@@ -139,8 +141,14 @@ JavaFX 的原生库按平台拆成不同的**分类器工件**，构建时只能
 
 `aha-desktop` 的 assembly 描述符 `src/assembly/dist-desktop.xml` 产出便携包：
 
-- 布局：`bin/`（`AhaDesktop.sh` / `AhaDesktop.bat`）+ `lib/`（本项目模块 + 全部运行时依赖 +
-  本平台三个 OpenJFX jar）+ `README.md` / `CHANGELOG.md` / `LICENSE`；
+- 布局（**包根平铺**，2026-10-15 起，issue #218）：`aha-desktop.jar`（单体 jar：本项目模块 +
+  全部运行时依赖 + 本平台 OpenJFX 的类与原生库）+ `AhaDesktop.sh` / `AhaDesktop.bat` +
+  `README.md` / `CHANGELOG.md` / `LICENSE`；**没有** `lib/` 与 `bin/`；jar 名**去版本号**，
+  启动脚本与用户命令因此与版本无关；
+- 单体 jar 的入口是 `AhaDesktopLauncher`（**不继承** `javafx.application.Application`）：
+  继承的话 JVM 启动器在 `java -jar` 下直接报「JavaFX runtime components are missing」。
+  它把 `main` 转发给 `AhaDesktopApp.main` —— 启动横幅与渲染诊断开关因此不走第二份实现
+  （`AhaDesktopLauncherTest` 在构建期守这两条结构约束）；
 - 文件名由构建期**真实解析结果**决定：`finalName = aha-desktop-${project.version}-${javafx.platform}`
   ——版本来自父 POM、平台来自 profile，没有手写常量；
 - 用户在 release 页面按「系统 + 架构」下载对应包，解包后只需 JDK 25 即可运行
@@ -227,7 +235,7 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
 **与 CI 的关系**：`Build.yml` 每次 push / PR 只做编译与单元测试（见 [BuildSpec.md](../DevSpec/BuildSpec.md)
 第 8 节）；另有一条**独立的 dev JVM 构建线**（`BuildJVMArtifacts.yml`，与 `DesktopNative.yml` /
-`CliNative.yml` 同构）——`push` 到 `dev` 时由 `build-mvn-artifact` / `build-publish` 用**同一条命令**
+`CliNative.yml` 同构）——`push` 到 `dev` 时由 `BuildMvnArtifact` / `BuildPublish` 用**同一条命令**
 产出便携包并发布预发行版（JDK 25 基线与 JDK 27 两轴，issue #63 / #65）。正式发版仍由
 `Release.yml` 在 `V*` tag 上产出。原生镜像另走 `aha-desktop-native` 与 `DesktopNative.yml`
 （见 [DesktopNativeDesign.md](DesktopNativeDesign.md)），不在本节范围内。
@@ -267,6 +275,53 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
   连「已排程但尚未渲染」的值也一并丢弃——正在关窗，渲染已无意义。
 - 后台任务持有 `CancellationToken`：关窗时取消在途会话，避免任务在工具箱停止后继续投递。
   JavaFX 工具箱停止后再调 `runLater` 会抛异常，这条规则就是它的护栏。
+
+### 6.3.1 回合级取消与轮次号（2026-10-21，PR #404 审查 P2-2 补全）
+
+会话复位（新建 / 切换 / 删除当前 / 关窗 / **清空对话**）时，**必须同时做两件事**，缺一不可：
+
+1. **取消在途令牌**（`CancellationToken.cancel()`）——让引擎在下一个检查点收手，少跑工具、少花钱。
+2. **推进轮次号**（`ChatController.roundSeq`）——令牌是**协作式**的：已经进入 HTTP 流的事件
+   仍会回调过来，轮次号负责把它们挡在门外。
+
+为什么只做第 1 步不够：`closeSession()` 只关记录，不停推理线程；用户在生成中点「＋ 新建会话」
+（该按钮在生成中**可用**），旧回合的增量会被贴上**当前**代际登记进分段累积器，
+于是代际比对恒等、`AssistantSegments` 的代际号拦不住它——旧会话的正文就成了新会话的第一个气泡。
+代际号管的是「已排队待渲染的快照」，管不了「生产端仍在产出」。
+
+判定点有两处，都要有：
+
+| 位置 | 作用 |
+| --- | --- |
+| `onEvent(round, event)` 入口 | 丢弃已作废回合的**新**事件（正文、卡片、用量、错误、完成） |
+| `onUi(round, action)` 执行时 | 丢弃**已入队但尚未执行**的动作——复位可能发生在动作入队之后 |
+
+正文增量按 6.3 的约定直投视图（不入队），因此 `onEvent` 入口那道闸是它唯一的守卫；
+忙碌态、用量、错误、工具卡片走 `ui` 队列，需要在执行的那一刻再查一次轮次号。
+
+同一规则适用于 `runRound()` 的每个关卡之后：`ensureSession()` 期间用户可能已复位，
+此时刚建出来的会话属于上一轮，不能再往里写；作废回合的异常也不弹错误框（属于旧会话，弹了反而误导）。
+
+`openSession()` 的判据是「**目标会话与当前不同**」而不是「当前有会话且不同」：上一排
+`send()` 把回合丢进执行器就返回，此刻 `sessionId` 还是 `null`（会话懒创建），用户正好点开
+一个历史会话——用它自己的会话 ID 回放，旧回合随后才跑到 `ensureSession()`。
+若跳过 `null` 分支，旧回合就会把内容写进刚打开的那个会话。这条竞态由
+`openingTheFirstSessionBeforeTheRoundStartsKeepsItOut` 用队列式执行器固定住
+（`List::add` 当执行器，手动 `run` 才推进，从而把「已领号、未开跑」的窗口暴露出来）。
+
+「清空对话」（`/clear` 与菜单）不换会话，因此不经过 `newSession()` / `openSession()`：
+`DesktopShell` 把它统一成 `onClearRequest` 回调，宿主接成
+`controller.abortCurrentTurn() → shell.clearConversation()`。漏掉前者的话，`reset()` 会让
+代际号前进，旧回合的新增量反而带着**当前**代际通过校验（代际号只管「已排队的快照」，
+管不了「生产端仍在产出的正文」），旧正文就成了清空后的第一段（PR #404 审查 P1-①）。
+
+卡片句柄（`openCards` / `cardStartedAt`）在复位时一并清空：否则上一轮的工具结果会把
+新会话里同名工具的卡片关掉。
+
+回归用例：`ChatControllerTest` 的 9 项（新建 / 切换 / 删除 / 忙碌态 / 卡片句柄 / UI 队列延迟 /
+首次打开会话抢先 / 重复打开同会话不误伤 / 正常轮次防回归）。两轮变异验证：
+撤掉生产端改动后 7 项中 5 项失败、2 项通过（正是「不复位」的对照）；
+把 `openSession()` 的判据退回旧写法后，只有抢先那条失败——两处断言各有鉴别力。
 
 ### 6.4 虚拟线程不得直接触碰界面
 
@@ -357,7 +412,7 @@ sqlite-jdbc）。**不含** JDK 运行时与测试期依赖。
 
 矢量来源是 `aha-core/src/main/resources/Logo.svg`（README 用的同一份）。
 JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化一次、把 PNG 作为资源入库：
-`aha-desktop/src/main/resources/com/acanx/module/aha/desktop/view/logo.png`，
+`aha-desktop/src/main/resources/com/acanx/module/aha/desktop/view/image/logo.png`，
 由 `bin/GenLogoPng.py` 生成（与 `bin/GenPixelLogo.py` 同一模式：生成器入库、产物入库）。
 同一张图两处使用：**窗口 / 任务栏图标**（`stage.getIcons()`）与**空会话状态的展示**（`LogoImage`）。
 
@@ -370,6 +425,35 @@ JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化�
 3. **渲染后自己解码 PNG、按 alpha 裁掉透明边，并自检**：
    结果必须近似正方形，且不小于目标尺寸的 90%。这三条合起来才让「图标只剩一角 / 只剩上半」
    这类问题**当场失败**，而不是悄悄产出半张图。
+
+### 9.2 静态资源的目录约定（2026-10-13 起）
+
+界面静态资源不再与 Java 类挤在同一个平面目录，而是按**类型**分子目录：
+
+```
+com/acanx/module/aha/desktop/view/
+├── fxml/    7 个界面骨架
+├── css/     2 份主题补丁样式表
+└── image/   logo.png
+```
+
+**Java 类仍在 `view/`，包名不变。** 四条要记住的事：
+
+| 项 | 结论 |
+|---|---|
+| 资源路径与 Java 包是否必须对应 | **不必**。资源只是 classpath 上的路径；放进子目录不影响 JPMS |
+| `module-info` 的 `opens ...view to javafx.fxml` | **不用改**——它约束的是**控制器类所在的包**，与资源位置无关 |
+| native-image 的资源白名单（`-H:IncludeResources`） | **不用改**——它**按扩展名**匹配（`.*\.(png\|…\|css\|fxml\|…)$`），与目录无关 |
+| 打包描述符（`dist-desktop.xml`） | **不用改**——资源在 jar 内，`dependencySet` 直接铺 `lib/` |
+
+**路径全部集中在 `UiResources`**（原先散在 7 个控制器 + `ThemePaint` + `LogoImage` 共 10 处）。
+下一次再调目录，只改这一个类。
+
+> 两个要记的坑：
+> 1. `Class.getResource("x")` 是**相对同包**，`getResource("/x")` 是**绝对**——搬目录时漏掉前导 `/`
+>    就是运行期「资源找不到」。这是把路径集中到 `UiResources` 的主要原因之一。
+> 2. **静态对账拦不住「路径写错」**：白名单按扩展名匹配，写错目录也照样命中。真正拦住它的是
+>    `UiResourcesTest`（真的去 classpath 取一次）与真机点一遍。
 
 > 第一次实现时只验了「是 PNG、是正方形、够大」——裁切产物全部通过，
 > 直到在 Windows 上真机启动才被看出来。**尺寸/格式正确 ≠ 图像内容正确**，
@@ -515,3 +599,27 @@ JavaFX 的 `Image` **只接受位图**，不认 SVG，所以把矢量栅格化�
   不继承主窗口样式；前者换主题时调 `refreshTheme()`，后者在 `setOnShowing` 里套当前配色；
 - **不允许硬编码颜色**：样式里出现的颜色一律取自 `Palette`，否则切换主题会留下「没变」的暗色块
   （真机上撞到过：3 处边框与 1 处背景写死了十六进制值）。
+  **这条自 2026-10-13 起由 `bin/CheckTheme.py` 机器强制**（`Gate.yml` 里跑）：
+  两份主题补丁表的选择器集合 / 属性集合必须一致，且每个色号必须属于该主题的
+  `Palette.applyDark()` / `applyLight()` 色表——否则只会在**某一个主题**下出错。
+- **进一步收敛为「一处手写色源」（2026-10-14，issue #153）**：两份补丁表变成**生成物**——
+  `bin/GenThemeCss.py` 把 `aha-desktop/src/theme/*.template.css` 里的 `%角色%`
+  代入 `Palette.java` 的色表；`bin/CheckTheme.py` 重新生成一遍并**逐字节比对**，
+  再加一条「两份模板的角色序列必须完全一致」（同一控件在两个主题下必须用同一个**角色**上色，
+  值才允许不同）——这是「同族控件两主题逐项一致」的机器证明。
+  **为什么不用 CSS 变量「只用一处」**：issue #49 第四轮已证伪——原生镜像下自定义 color 查表
+  一旦失败，CSS 会**丢掉整条声明**（暗色下就是一片黑字），所以字面量必须保留；
+  生成器入库 + 产物入库，与 `bin/GenLogoPng.py` 同一模式。
+  四道静态门禁（`CheckDocs` / `CheckSkills` / `CheckScripts` / `CheckTheme`）同时挂到了
+  `Build.yml` 的 `StaticGuard` 作业：此前它们只在 `Gate.yml` 里跑，而 Gate **不覆盖对 `dev`
+  的 PR**，这类问题恰恰要在提 PR 时就暴露。
+- **颜色分两类角色（2026-10-13，issue #153）**：
+  | 角色 | 载体 | 底色 |
+  |---|---|---|
+  | **内容面** | 输入框 / 文本域 / 列表 / 滚动容器 | 与页底同色（`Palette.CONTROL_INNER`） |
+  | **抬起控件** | 按钮 / 菜单 / 下拉弹层 | 比页底亮一档（`Palette.RAISED_BACKGROUND`） |
+
+  暗色下原先内容面也用「亮一档」的 `#252526`，结果日志区与对话输入框看起来像「另一套主题」。
+  有意思的是：两个主题的感知差几乎相同（暗色 ΔL\*=3.45、亮色 ΔL\*=3.81），
+  但**深色底上这一档被放大感知**，所以只有暗色被报上来——
+  这也是为什么这条不能靠「把数值调小一点」解决，而要按角色分开。完整排查见 `TS-2610-035`。

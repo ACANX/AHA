@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 import java.io.IOException;
@@ -374,6 +375,7 @@ public final class ConfigLoader {
             String yaml = resolveEnv(new String(in.readAllBytes(), StandardCharsets.UTF_8));
             JsonNode root = YAML_MAPPER.readTree(yaml);
             JsonNode aha = root.has("Aha") ? root.get("Aha") : root;
+            normalizeLlmProviders(aha);
             validateFieldNames(aha);
             return YAML_MAPPER.treeToValue(aha, AhaConfig.class);
         } catch (IOException e) {
@@ -386,6 +388,7 @@ public final class ConfigLoader {
             String yaml = resolveEnv(Files.readString(configPath));
             JsonNode root = YAML_MAPPER.readTree(yaml);
             JsonNode aha = root.has("Aha") ? root.get("Aha") : root;
+            normalizeLlmProviders(aha);
             validateFieldNames(aha);
             return YAML_MAPPER.treeToValue(aha, AhaConfig.class);
         } catch (IOException e) {
@@ -395,18 +398,106 @@ public final class ConfigLoader {
 
     private static ModelConfig parseModel(String yaml, String errorPrefix) {
         JsonNode root = YAML_MAPPER.readTree(yaml);
-        JsonNode model = root.has("Model") ? root.get("Model") : root;
+        JsonNode model = normalizeModelNode(root.has("Model") ? root.get("Model") : root);
         validateFieldNames(model);
         validateModelTiers(model, errorPrefix);
         return YAML_MAPPER.treeToValue(model, ModelConfig.class);
     }
 
     /**
+     * 归一化 {@code Aha.yaml} 内联的 {@code Llm.Providers}（旧格式 → 新格式）。
+     *
+     * @param aha 主配置节点
+     */
+    private static void normalizeLlmProviders(JsonNode aha) {
+        if (aha == null || !aha.isObject()) {
+            return;
+        }
+        JsonNode llm = aha.get("Llm");
+        if (llm != null && llm.isObject()) {
+            normalizeModelNode(llm);
+        }
+    }
+
+    /**
+     * 把模型配置节点归一化为新格式（{@code Models} 定义表 + {@code Tier} + {@code ApiType}）。
+     *
+     * <p>处理旧格式：</p>
+     * <ul>
+     *   <li>{@code Adapter} 键 → {@code ApiType}，值 {@code anthropic} → {@code anthropic-messages}；</li>
+     *   <li>{@code Models} 的值为字符串（档位 → 模型名）→ 模型定义对象 + {@code Tier}；</li>
+     *   <li>只有 {@code Model} 的老配置 → 单模型定义 + {@code Tier.Standard}；</li>
+     *   <li>删除供应商级 {@code Model} / {@code DefaultTier}（新格式不再写）。</li>
+     * </ul>
+     *
+     * @param model 模型配置节点（含 {@code Providers}）
+     * @return 同一节点（原地修改）
+     */
+    static JsonNode normalizeModelNode(JsonNode model) {
+        if (model == null || !model.isObject()) {
+            return model;
+        }
+        JsonNode providers = model.get("Providers");
+        if (providers != null && providers.isObject()) {
+            for (Map.Entry<String, JsonNode> entry : providers.properties()) {
+                if (entry.getValue().isObject()) {
+                    normalizeProviderNode((ObjectNode) entry.getValue());
+                }
+            }
+        }
+        return model;
+    }
+
+    private static void normalizeProviderNode(ObjectNode provider) {
+        JsonNode adapter = provider.get("Adapter");
+        if (adapter != null && !provider.has("ApiType")) {
+            provider.set("ApiType", adapter);
+        }
+        provider.remove("Adapter");
+        JsonNode apiType = provider.get("ApiType");
+        if (apiType != null && apiType.isString()) {
+            provider.put("ApiType", ProviderConfig.normalizeApiType(apiType.asString()));
+        }
+
+        JsonNode models = provider.get("Models");
+        JsonNode legacyModel = provider.get("Model");
+        if (models != null && models.isObject() && !models.isEmpty()) {
+            boolean textual = false;
+            ObjectNode nextModels = YAML_MAPPER.createObjectNode();
+            ObjectNode tier = YAML_MAPPER.createObjectNode();
+            for (Map.Entry<String, JsonNode> entry : models.properties()) {
+                if (entry.getValue().isString()) {
+                    textual = true;
+                    nextModels.putObject(entry.getKey()).put("Name", entry.getValue().asString());
+                    tier.put(entry.getKey(), entry.getKey());
+                } else if (entry.getValue().isObject()) {
+                    nextModels.set(entry.getKey(), entry.getValue());
+                }
+            }
+            if (textual) {
+                provider.set("Models", nextModels);
+                provider.set("Tier", tier);
+            }
+        } else if (legacyModel != null && legacyModel.isString()
+                && !legacyModel.asString().isBlank()) {
+            String name = legacyModel.asString();
+            ObjectNode nextModels = YAML_MAPPER.createObjectNode();
+            nextModels.putObject(name).put("Name", name);
+            provider.set("Models", nextModels);
+            ObjectNode tier = YAML_MAPPER.createObjectNode();
+            tier.put(ModelTier.STANDARD.configName(), name);
+            provider.set("Tier", tier);
+        }
+        provider.remove("Model");
+        provider.remove("DefaultTier");
+    }
+
+    /**
      * 校验档位配置（与 {@link #validateFieldNames} 同层）。
      *
-     * <p>规则：含 {@code Models} 的供应商即为新规则，其中 {@code Standard} 是唯一必填档，
-     * 缺失或为空一律报配置错误——不允许静默使用其它档或空模型。老配置（只有 {@code Model}）
-     * 不校验档位，行为与升级前一致。</p>
+     * <p>规则：新格式必须有 {@code Tier}，其每个值都必须引用已定义的模型 ID；
+     * {@code Standard} 不再强制必填——缺省时由 {@link ProviderConfig#effectiveTier(String)}
+     * 按全局默认档 → 强弱顺序兜底。旧格式（{@code Models} 的值为字符串）仍允许读取。</p>
      *
      * @param model       模型配置节点
      * @param errorPrefix 错误前缀
@@ -433,65 +524,81 @@ public final class ConfigLoader {
 
     private static void validateProviderTiers(String id, JsonNode provider, String errorPrefix) {
         JsonNode models = provider.get("Models");
-        boolean newStyle = models != null && models.isObject() && !models.isEmpty();
-        if (!newStyle) {
-            // 老配置：只有 Model，按老规矩解析，不做档位校验
+        if (models == null || !models.isObject() || models.isEmpty()) {
             return;
         }
-        JsonNode standard = models.get(ModelTier.STANDARD.configName());
-        if (standard == null || standard.isNull() || !standard.isString()
-                || standard.asString().isBlank()) {
-            throw new ConfigException("MODEL_TIER_STANDARD_REQUIRED",
-                    errorPrefix + "：供应商 " + id + " 缺少必填的 Standard 档");
+        JsonNode tier = provider.get("Tier");
+        if (tier == null || !tier.isObject() || tier.isEmpty()) {
+            throw new ConfigException("MODEL_TIER_REQUIRED",
+                    errorPrefix + "：供应商 " + id + " 缺少 Tier 档位表");
         }
-        for (Map.Entry<String, JsonNode> tier : models.properties()) {
-            if (ModelTier.fromConfigName(tier.getKey()).isEmpty()) {
+        for (Map.Entry<String, JsonNode> entry : tier.properties()) {
+            if (ModelTier.fromConfigName(entry.getKey()).isEmpty()) {
                 throw new ConfigException("MODEL_TIER_INVALID",
-                        errorPrefix + "：供应商 " + id + " 的档位名非法: " + tier.getKey());
+                        errorPrefix + "：供应商 " + id + " 的档位名非法: " + entry.getKey());
             }
-            if (!tier.getValue().isString() || tier.getValue().asString().isBlank()) {
+            if (!entry.getValue().isString() || entry.getValue().asString().isBlank()) {
                 throw new ConfigException("MODEL_TIER_MODEL_EMPTY",
-                        errorPrefix + "：供应商 " + id + " 的 " + tier.getKey() + " 档模型名为空");
+                        errorPrefix + "：供应商 " + id + " 的 " + entry.getKey() + " 档模型 ID 为空");
+            }
+            String modelId = entry.getValue().asString();
+            if (!models.has(modelId)) {
+                throw new ConfigException("MODEL_TIER_MODEL_NOT_FOUND",
+                        errorPrefix + "：供应商 " + id + " 的 " + entry.getKey()
+                                + " 档引用了未定义的模型 ID: " + modelId);
             }
         }
-        JsonNode defaultTier = provider.get("DefaultTier");
-        if (defaultTier != null && !defaultTier.isNull() && defaultTier.isString()
-                && ModelTier.fromConfigName(defaultTier.asString()).isEmpty()) {
-            throw new ConfigException("MODEL_TIER_INVALID",
-                    errorPrefix + "：供应商 " + id + " 的默认档不是合法档位: " + defaultTier.asString());
+        for (Map.Entry<String, JsonNode> entry : models.properties()) {
+            JsonNode definition = entry.getValue();
+            if (definition.isString()) {
+                continue;
+            }
+            if (!definition.isObject()) {
+                throw new ConfigException("MODEL_DEFINITION_INVALID",
+                        errorPrefix + "：供应商 " + id + " 的模型 " + entry.getKey() + " 定义必须为对象");
+            }
+            JsonNode name = definition.get("Name");
+            if (name == null || !name.isString() || name.asString().isBlank()) {
+                throw new ConfigException("MODEL_NAME_REQUIRED",
+                        errorPrefix + "：供应商 " + id + " 的模型 " + entry.getKey() + " 缺少 Name");
+            }
+            validatePositiveInt(id, entry.getKey(), definition, "ContextWindow", errorPrefix);
+            validatePositiveInt(id, entry.getKey(), definition, "MaxTokens", errorPrefix);
         }
-        JsonNode model = provider.get("Model");
-        if (model != null && !model.isNull() && model.isString() && !model.asString().isBlank()) {
-            String modelName = model.asString();
-            boolean inTiers = false;
-            for (Map.Entry<String, JsonNode> tier : models.properties()) {
-                if (modelName.equals(tier.getValue().asString())) {
-                    inTiers = true;
-                    break;
-                }
-            }
-            if (!inTiers) {
-                throw new ConfigException("MODEL_TIER_MODEL_NOT_IN_TIERS",
-                        errorPrefix + "：供应商 " + id + " 的 Model 不在五档内: " + modelName);
-            }
-            if (defaultTier != null && defaultTier.isString()) {
-                String tierModel = models.get(defaultTier.asString()).asString();
-                if (!modelName.equals(tierModel)) {
-                    LOG.warn("供应商 {} 的 Model（{}）与 DefaultTier（{} → {}）不一致，以 DefaultTier 为准",
-                            id, modelName, defaultTier.asString(), tierModel);
-                }
-            }
+    }
+
+    private static void validatePositiveInt(String providerId, String modelId, JsonNode definition,
+                                            String field, String errorPrefix) {
+        JsonNode value = definition.get(field);
+        if (value == null || value.isNull()) {
+            return;
+        }
+        if (!value.isNumber() || value.asInt() <= 0) {
+            throw new ConfigException("MODEL_DEFINITION_INVALID",
+                    errorPrefix + "：供应商 " + providerId + " 的模型 " + modelId
+                            + " 的 " + field + " 必须为正整数");
         }
     }
 
     private static void validateFieldNames(JsonNode node) {
+        validateFieldNames(node, false);
+    }
+
+    /**
+     * 递归校验字段名。{@code Models} 的直接子键是模型 ID（可小写、可含连字符），跳过校验；
+     * 模型定义内部字段仍按 PascalCase 校验。
+     *
+     * @param node    节点
+     * @param modelIds 当前层是否为 {@code Models} 的模型 ID 层
+     */
+    private static void validateFieldNames(JsonNode node, boolean modelIds) {
         for (Map.Entry<String, JsonNode> entry : node.properties()) {
-            if (!PASCAL_CASE.matcher(entry.getKey()).matches()) {
+            if (!modelIds && !PASCAL_CASE.matcher(entry.getKey()).matches()) {
                 throw new ConfigException("INVALID_FIELD_NAME",
                         "YAML 字段必须为 PascalCase: " + entry.getKey());
             }
             if (entry.getValue().isObject()) {
-                validateFieldNames(entry.getValue());
+                validateFieldNames(entry.getValue(), "Models".equals(entry.getKey()));
             }
         }
     }

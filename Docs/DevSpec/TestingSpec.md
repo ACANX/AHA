@@ -1,9 +1,9 @@
 # 测试规范
 
-**文档版本**：v1.20.0
+**文档版本**：v1.21.0
 **状态**：冻结
 **生效日期**：2026-10-06
-**最后更新**：2026-10-07
+**最后更新**：2026-10-17
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -33,6 +33,7 @@
 | v1.17.0 | 2026-10-07 | §5.1「不污染构建日志」补齐两类出口：日志走 `log4j2-test.xml` 导向文件，直接写 stdout 的交互提示在测试里捕获并顺势断言 | @ACANX |
 | v1.18.0 | 2026-10-08 | 新增 §3.4 桌面端覆盖率分两步走（0.2 初期 0.30 → 收尾向 0.70 对齐，`D-05` 决策）；§3/§3.2 同步；TestFX 行补「与 JPMS 冲突时可在 classpath 下运行」 | @ACANX |
 | v1.19.0 | 2026-10-08 | §3.3 实测值按 0.1.1 刷新（621 用例 / 合计 80.8%（4087/5061））；新增 `aha-desktop` 行（门禁外，10 例含 1 例默认跳过的窗口冒烟） | @ACANX |
+| v1.21.0 | 2026-10-17 | §3.2 明确为覆盖率排除项的**唯一权威登记处**（与根 POM 的 jacoco `excludes` 逐条对应，改 POM 必须同步本节）；表格改用 POM 的包路径形态，并新增「何时解除 / 由什么替代覆盖」一列——排除是**度量口径**，不等于不用测。收敛 issue [#120](https://github.com/ACANX/AHA/issues/120) / `A-07`：`BuildSpec.md` §6、`AHA-Design-V1.md` 第十二部分 3.3 与技能 `test` 的 `coverage-guide.md` 均改为引用本节 | @cnxnc |
 | v1.20.0 | 2026-10-09 | 新增 §5.2「UI 测试与原生镜像冒烟」（`D-04` 定案）：UI 测试不进 CI 门禁（沿用 §5.1 的环境无关性），CI 改做冒烟级验证——CLI 硬断言 + Windows GUI 存活检查（口径见 `BuildSpec.md` §10.3） | @ACANX / CNXNC |
 
 ---
@@ -98,12 +99,18 @@ aha-core/src/test/resources/
 
 ### 3.2 排除项
 
-| 排除范围 | 理由 |
-|---|---|
-| `core/extension/**` | 扩展运行时属 0.3 |
-| `core/mcp/**` | MCP 适配器为 0.2 占位 |
-| `desktop/**` | 0.1 排除；0.2 实现落地后纳入门禁并采用单独阈值，见 §3.4 |
-| `cli/ChatCommand*`、`cli/RunCommand*` | 依赖真实 TTY 与供应商 API Key |
+**本节是覆盖率排除项的唯一权威登记处**：根 `pom.xml` 的 `jacoco-maven-plugin` →
+`configuration` → `excludes` 必须与下表**逐条对应**；**改 POM 必须同步本节（补理由）**，
+否则等于没登记。其余文档（`BuildSpec.md` §6、`AHA-Design-V1.md` 第十二部分 3.3、
+技能 `test` 的 `references/coverage-guide.md`）一律引用本节，不再各自维护一份口径
+（2026-10-17 收敛，issue [#120](https://github.com/ACANX/AHA/issues/120) / `A-07`）。
+
+| 排除范围（= POM 模式） | 理由 | 何时解除 / 由什么替代覆盖 |
+|---|---|---|
+| `com/acanx/module/aha/core/extension/**` | 扩展运行时属 0.3（阶段八），0.1 不纳入 | 0.3 交付时纳入门禁 |
+| `com/acanx/module/aha/core/mcp/**` | MCP 适配器为 0.2 占位 | 0.2 落地后纳入 |
+| `com/acanx/module/aha/desktop/**` | 0.1 为占位、整体排除；0.2 起**纳入**门禁但用单独阈值（`D-05`，见 §3.4） | 0.2 开发期起按 0.30 纳入；收尾评审后向 0.70 靠拢 |
+| `com/acanx/module/aha/cli/ChatCommand*`、`com/acanx/module/aha/cli/RunCommand*` | 交互式 / 网络命令依赖真实 TTY 与供应商 API Key | 手工端到端验收（`ReferenceGuide.md` 的 CLI 场景） |
 
 ### 3.3 实测值（0.1.1）
 

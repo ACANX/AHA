@@ -20,7 +20,7 @@ import java.util.Objects;
 public final class ProviderForm {
 
     /** 适配器可选值（与 core 的适配器实现对应）。 */
-    public static final String[] ADAPTERS = {"openai-compatible", "anthropic", "gemini"};
+    public static final String[] ADAPTERS = {"openai-compatible", "anthropic-messages", "gemini"};
 
     /**
      * 已知供应商的预设（ID → 适配器 / 基础地址 / Standard 档模型）。
@@ -40,10 +40,10 @@ public final class ProviderForm {
 
     static {
         PRESETS.put("OpenAI", new String[]{"openai-compatible", "https://api.openai.com/v1", "gpt-6-sol"});
-        PRESETS.put("Anthropic", new String[]{"anthropic", "https://api.anthropic.com", "claude-sonnet-5-5"});
+        PRESETS.put("Anthropic", new String[]{"anthropic-messages", "https://api.anthropic.com", "claude-sonnet-5-5"});
         PRESETS.put("Gemini", new String[]{"gemini", "https://generativelanguage.googleapis.com", "gemini-3.8-flash"});
         PRESETS.put("DeepSeek", new String[]{"openai-compatible", "https://api.deepseek.com/v1", "deepseek-v4-flash"});
-        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3"});
+        PRESETS.put("BigModelCN", new String[]{"openai-compatible", "https://open.bigmodel.cn/api/paas/v4", "glm-5.4"});
         PRESETS.put("Qwen", new String[]{"openai-compatible", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-plus"});
         PRESETS.put("Moonshot", new String[]{"openai-compatible", "https://api.moonshot.cn/v1", "kimi-k2.7-code"});
         PRESETS.put("MiniMax", new String[]{"openai-compatible", "https://api.minimax.chat/v1", "MiniMax-M2.7"});
@@ -52,7 +52,7 @@ public final class ProviderForm {
         MODELS.put("Anthropic", new String[]{"claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"});
         MODELS.put("Gemini", new String[]{"gemini-3.1-pro-preview", "gemini-3.8-flash", "gemini-flash-lite-latest"});
         MODELS.put("DeepSeek", new String[]{"deepseek-v4-pro", "deepseek-v4-flash"});
-        MODELS.put("BigModelCN", new String[]{"glm-5.3", "glm-5.3-flashx", "glm-5.3-flash"});
+        MODELS.put("BigModelCN", new String[]{"glm-5.4", "glm-5.3", "glm-5.3-flashx", "glm-5.3-flash"});
         MODELS.put("Qwen", new String[]{"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash"});
         MODELS.put("Moonshot", new String[]{"kimi-k3", "kimi-k2.7-code-highspeed", "kimi-k2.7-code", "kimi-k2.6"});
         MODELS.put("MiniMax", new String[]{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1"});
@@ -133,7 +133,7 @@ public final class ProviderForm {
      * 表单草稿：全是字符串，因为用户可能填了非法值，需要校验后再落到配置。
      *
      * @param id             供应商 ID
-     * @param adapter        适配器
+     * @param apiType        API 类型（适配器）
      * @param baseUrl        基础地址
      * @param apiKey         API Key（可含 ${ENV} 占位符）
      * @param model          默认模型名（老规则下即生效模型）
@@ -142,7 +142,7 @@ public final class ProviderForm {
      * @param timeoutSeconds 超时秒数
      * @param maxRetries     重试次数
      */
-    public record Draft(String id, String adapter, String baseUrl, String apiKey, String model,
+    public record Draft(String id, String apiType, String baseUrl, String apiKey, String model,
                         Map<String, String> tierModels, String defaultTier,
                         String timeoutSeconds, String maxRetries) {
 
@@ -150,16 +150,16 @@ public final class ProviderForm {
          * 兼容构造：不含档位表（老规则表单）。
          *
          * @param id             供应商 ID
-         * @param adapter        适配器
+         * @param apiType        API 类型（适配器）
          * @param baseUrl        基础地址
          * @param apiKey         API Key
          * @param model          模型名
          * @param timeoutSeconds 超时秒数
          * @param maxRetries     重试次数
          */
-        public Draft(String id, String adapter, String baseUrl, String apiKey, String model,
+        public Draft(String id, String apiType, String baseUrl, String apiKey, String model,
                      String timeoutSeconds, String maxRetries) {
-            this(id, adapter, baseUrl, apiKey, model, Map.of(), null, timeoutSeconds, maxRetries);
+            this(id, apiType, baseUrl, apiKey, model, Map.of(), null, timeoutSeconds, maxRetries);
         }
     }
 
@@ -174,11 +174,11 @@ public final class ProviderForm {
         ProviderConfig source = config;
         return new Draft(
                 id == null ? "" : id,
-                source == null || source.adapter() == null ? ADAPTERS[0] : source.adapter(),
+                source == null || source.apiType() == null ? ADAPTERS[0] : source.apiType(),
                 source == null || source.baseUrl() == null ? "" : source.baseUrl(),
                 source == null || source.apiKey() == null ? "" : source.apiKey(),
                 source == null || source.model() == null ? "" : source.model(),
-                source == null ? Map.of() : new LinkedHashMap<>(source.modelsOrEmpty()),
+                source == null ? Map.of() : new LinkedHashMap<>(source.tierModelNames()),
                 source == null ? null : source.defaultTier(),
                 String.valueOf(source == null || source.timeoutSeconds() <= 0 ? 60 : source.timeoutSeconds()),
                 String.valueOf(source == null || source.maxRetries() < 0 ? 2 : source.maxRetries()));
@@ -207,8 +207,8 @@ public final class ProviderForm {
         } else if (!PASCAL_CASE.matcher(draft.id().trim()).matches()) {
             errors.put("id", "供应商 ID 必须是大驼峰，如 DeepSeek（core 按 YAML 字段规范校验）");
         }
-        if (blank(draft.adapter())) {
-            errors.put("adapter", "适配器不能为空");
+        if (blank(draft.apiType())) {
+            errors.put("apiType", "适配器不能为空");
         }
         if (tiers.isEmpty()) {
             if (blank(draft.model())) {
@@ -246,7 +246,7 @@ public final class ProviderForm {
      * @return 新配置
      */
     public static ProviderConfig toConfig(Draft draft, ProviderConfig original) {
-        String adapter = draft.adapter().trim();
+        String apiType = draft.apiType().trim();
         String baseUrl = draft.baseUrl().trim();
         String apiKey = draft.apiKey() == null ? "" : draft.apiKey().trim();
         int timeout = Integer.parseInt(draft.timeoutSeconds().trim());
@@ -254,7 +254,7 @@ public final class ProviderForm {
         Map<String, String> tiers = normalizedTiers(draft.tierModels());
         if (tiers.isEmpty()) {
             // 老规则：仅 Model，行为与升级前一致
-            return new ProviderConfig(adapter, baseUrl, apiKey, null, null,
+            return new ProviderConfig(apiType, baseUrl, apiKey, null, null,
                     draft.model() == null ? "" : draft.model().trim(), timeout, retries,
                     original == null ? null : original.rateLimit(),
                     original == null ? null : original.extra());
@@ -263,7 +263,7 @@ public final class ProviderForm {
                 .orElse(ModelTier.DEFAULT);
         String model = tiers.getOrDefault(defaultTier.configName(),
                 tiers.get(ModelTier.STANDARD.configName()));
-        return new ProviderConfig(adapter, baseUrl, apiKey, tiers, defaultTier.configName(), model,
+        return new ProviderConfig(apiType, baseUrl, apiKey, tiers, defaultTier.configName(), model,
                 timeout, retries,
                 original == null ? null : original.rateLimit(),
                 original == null ? null : original.extra());

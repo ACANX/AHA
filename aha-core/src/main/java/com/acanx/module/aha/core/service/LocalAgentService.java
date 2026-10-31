@@ -26,6 +26,7 @@ import com.acanx.module.aha.core.config.LlmConfig;
 import com.acanx.module.aha.core.config.ModelTier;
 import com.acanx.module.aha.core.config.ProviderConfig;
 import com.acanx.module.aha.core.config.ProviderPresets;
+import com.acanx.module.aha.core.config.SystemPromptLoader;
 import com.acanx.module.aha.core.config.ToolsConfig;
 import com.acanx.module.aha.core.llm.LlmClient;
 import com.acanx.module.aha.core.llm.LlmProviderAdapter;
@@ -123,17 +124,50 @@ public final class LocalAgentService implements AgentService {
 
     @Override
     public String createSession(SessionConfig sessionConfig) {
-        String sessionId = sessionManager.create(sessionConfig);
-        LOG.info("创建会话 session={} 模型={} 身份={} 字符",
+        SessionConfig resolved = withWorkspace(sessionConfig);
+        String sessionId = sessionManager.create(resolved);
+        LOG.info("创建会话 session={} 模型={} 身份={} 字符 工作空间={}",
                 sessionId,
-                sessionConfig == null ? null : sessionConfig.model(),
-                sessionConfig == null || sessionConfig.systemPrompt() == null
-                        ? 0 : sessionConfig.systemPrompt().length());
+                resolved.model(),
+                resolved.systemPrompt() == null ? 0 : resolved.systemPrompt().length(),
+                resolved.extras().get("workspace"));
         return sessionId;
+    }
+
+    /**
+     * 给会话补上工作空间：调用方未显式指定时取当前项目根。
+     *
+     * <p>旧会话不会走这里（只有新建才补），因此历史记录保持没有
+     * {@code workspace}，界面归入「纯聊天」；新建的 CLI / 桌面端会话都会带上
+     * 项目根，作为「项目会话」分组。</p>
+     *
+     * @param config 原始配置，可为 {@code null}
+     * @return 带 {@code workspace} 的配置
+     */
+    private static SessionConfig withWorkspace(SessionConfig config) {
+        SessionConfig resolved = config == null
+                ? new SessionConfig(null, null, Map.of())
+                : config;
+        if (resolved.extras() != null && resolved.extras().containsKey("workspace")) {
+            return resolved;
+        }
+        Path root = SystemPromptLoader.findProjectRoot(Path.of(""));
+        if (root == null) {
+            return resolved;
+        }
+        Map<String, Object> extras = new LinkedHashMap<>(
+                resolved.extras() == null ? Map.of() : resolved.extras());
+        extras.put("workspace", root.toAbsolutePath().normalize().toString());
+        return new SessionConfig(resolved.model(), resolved.tier(), resolved.systemPrompt(), extras);
     }
 
     @Override
     public List<SessionSummary> listSessions() {
+        // 顺手清掉历史遗留的空会话：没有标题、没有消息的条目在列表里没有价值
+        int removed = sessionManager.cleanupEmptySessions();
+        if (removed > 0) {
+            LOG.info("已清理空会话 {} 个", removed);
+        }
         return sessionManager.list();
     }
 
@@ -215,7 +249,10 @@ public final class LocalAgentService implements AgentService {
             attributes.put("Provider", providerId);
             attributes.put("Tier", tier.configName());
             attributes.put("Model", effective == null ? "" : effective);
-            attributes.put("Adapter", provider.adapter() == null ? "" : provider.adapter());
+            attributes.put("Adapter", provider.apiType() == null ? "" : provider.apiType());
+            // 思考强度（issue #355）：取生效模型的 ThinkingLevel，未配置时取 ThinkingLevelMap 第一个键
+            String thinkingLevel = provider.thinkingLevel(llmConfig.defaultTier());
+            attributes.put("ThinkingLevel", thinkingLevel == null ? "" : thinkingLevel);
             String endpoint = resolveEndpoint(provider);
             if (endpoint != null) {
                 attributes.put("Endpoint", endpoint);
@@ -233,7 +270,7 @@ public final class LocalAgentService implements AgentService {
      */
     private String resolveEndpoint(ProviderConfig provider) {
         try {
-            return adapterRegistry.find(provider.adapter())
+            return adapterRegistry.find(provider.apiType())
                     .map(adapter -> adapter.buildUrl(provider))
                     .orElse(null);
         } catch (RuntimeException e) {
@@ -250,6 +287,18 @@ public final class LocalAgentService implements AgentService {
      */
     public void setToolApprover(ToolApprover approver) {
         toolRegistry.setApprover(approver);
+    }
+
+    /**
+     * 覆盖工具权限策略。
+     *
+     * <p>CLI 的严格模式用它取消一切自动放行（连 READ 都走审批）；
+     * 普通模式不调用，保持配置解析出的策略。</p>
+     *
+     * @param policy 新策略
+     */
+    public void setPermissionPolicy(PermissionPolicy policy) {
+        toolRegistry.setPermissionPolicy(policy);
     }
 
     @Override

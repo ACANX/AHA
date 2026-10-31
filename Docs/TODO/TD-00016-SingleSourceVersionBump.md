@@ -336,6 +336,6 @@ jobs:
   与配套的 `.github/Python/UpdatMeavenProperties.py`（正则只改 `<properties>` 块）；
   MetaOpen 根目录也有一个 `version` 文件（内容如 `0.9.2-SNAPSHOT`）；
 - `Docs/Guide/VersionBumpGuide.md`（操作）、`Docs/DevSpec/ReleaseProcess.md`（规范）
-- `Docs/Troubleshooting/TS-202610-VersionBumpMissedModules.md`（当初的教训）
+- `Docs/Troubleshooting/TS-2610-006-Version-Bump-Missed-Modules.md`（当初的教训）
 - 四个工作流的版本读取：`Build.yml` / `BuildJVMArtifacts.yml` / `CliNative.yml` / `DesktopNative.yml`
 - `aha-common` 的 `AppVersion` 与 `version.properties`

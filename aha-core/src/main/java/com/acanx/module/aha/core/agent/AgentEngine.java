@@ -4,6 +4,7 @@ import com.acanx.module.aha.common.event.AgentEvent;
 import com.acanx.module.aha.common.exception.Exceptions;
 import com.acanx.module.aha.common.exception.ToolExecutionException;
 import com.acanx.module.aha.common.event.ContentEvent;
+import com.acanx.module.aha.common.event.ContentSegmentEndEvent;
 import com.acanx.module.aha.common.event.DoneEvent;
 import com.acanx.module.aha.common.event.ToolCallEvent;
 import com.acanx.module.aha.common.event.ToolResultEvent;
@@ -18,6 +19,7 @@ import com.acanx.module.aha.core.llm.protocol.ChatMessage;
 import com.acanx.module.aha.core.llm.protocol.ChatRequest;
 import com.acanx.module.aha.core.llm.protocol.ChatResponse;
 import com.acanx.module.aha.core.llm.protocol.Choice;
+import com.acanx.module.aha.core.llm.protocol.MessageSanitizer;
 import com.acanx.module.aha.core.llm.protocol.Role;
 import com.acanx.module.aha.core.llm.protocol.StreamEvent;
 import com.acanx.module.aha.core.llm.protocol.StreamEventType;
@@ -176,44 +178,64 @@ public final class AgentEngine {
             ChatRequest request = new ChatRequest(effectiveModel, messages, tools,
                     0.0d, 0, true, extensions(config));
 
-            llmClient.streamChat(request, (StreamEvent event) -> {
-                switch (event.type()) {
-                    case CONTENT_DELTA -> {
-                        content.append(event.contentDelta() == null ? "" : event.contentDelta());
-                        listener.onEvent(new ContentEvent(sessionId, event.contentDelta()));
-                    }
-                    case REASONING_DELTA -> {
-                        // 思维链暂不透出为 Agent 事件，仅记录
-                        LOG.debug("reasoning delta: {}", event.reasoningDelta());
-                    }
-                    case TOOL_CALL_DELTA -> accumulate(toolCalls, event.toolCallDelta());
-                    case USAGE -> {
-                        if (event.usage() != null) {
-                            listener.onEvent(new UsageEvent(sessionId,
-                                    event.usage().promptTokens(), event.usage().completionTokens()));
+            try {
+                llmClient.streamChat(request, (StreamEvent event) -> {
+                    switch (event.type()) {
+                        case CONTENT_DELTA -> {
+                            content.append(event.contentDelta() == null ? "" : event.contentDelta());
+                            listener.onEvent(new ContentEvent(sessionId, event.contentDelta()));
+                        }
+                        case REASONING_DELTA -> {
+                            // 思维链暂不透出为 Agent 事件，仅记录
+                            LOG.debug("reasoning delta: {}", event.reasoningDelta());
+                        }
+                        case TOOL_CALL_DELTA -> accumulate(toolCalls, event.toolCallDelta());
+                        case USAGE -> {
+                            if (event.usage() != null) {
+                                listener.onEvent(new UsageEvent(sessionId,
+                                        event.usage().promptTokens(), event.usage().completionTokens()));
+                            }
+                        }
+                        case DONE -> roundFinishReason[0] = event.finishReason();
+                        case ERROR -> LOG.warn("LLM 流式错误: {} {}", event.errorCode(), event.errorMessage());
+                        default -> {
                         }
                     }
-                    case DONE -> roundFinishReason[0] = event.finishReason();
-                    case ERROR -> LOG.warn("LLM 流式错误: {} {}", event.errorCode(), event.errorMessage());
-                    default -> {
-                    }
-                }
-            }, token);
+                }, token);
+            } finally {
+                // 段边界（issue #403）：本轮正文到此结束——接下来要么执行工具、要么整轮收尾。
+                //
+                // 【为什么放在 finally 里】位置必须在工具执行**之前**且**无条件**发出。
+                // 中断（token 取消后正常返回）与异常（HTTP 非 2xx、超时、连接被掐 →
+                // LlmException）是两条不同的退出路径，后者若漏发段边界，
+                // 桌面端就留下一条永远收不了尾的气泡：段号不推进、缓冲留着半段正文，
+                // 用户修好网络再发一条时会续写到失败前那条气泡上（PR #404 审查 P1-2）。
+                // 异常照常向上抛，消费方拿到的错误信息不受影响。
+                listener.onEvent(new ContentSegmentEndEvent(sessionId));
+            }
 
             finishReason = roundFinishReason[0];
 
+            // 被中断时**不能**把工具调用写进历史：流在参数累积到一半时被掐断，
+            // 落库后下一轮请求会带着不合法的 tool_calls（参数残缺），上游直接判 400。
+            // 已生成的正文照常保留，用户能看到中断前的内容，上下文也连续（issue #341）。
+            boolean interrupted = token.isCancelled();
+            List<ToolCall> calls = interrupted ? List.of() : toToolCalls(toolCalls);
             ChatMessage assistant = new ChatMessage(Role.ASSISTANT, content.toString(),
-                    toToolCalls(toolCalls), null, null);
+                    calls, null, null);
             // 必须并入本轮上下文：否则下一轮看不到模型自己发起的工具调用，
             // tool 消息也会失去所依附的 assistant 消息（违反 OpenAI 协议）
             messages.add(assistant);
             memoryStore.appendMessage(sessionId, assistant);
 
-            if (assistant.toolCalls().isEmpty()) {
+            if (interrupted || assistant.toolCalls().isEmpty()) {
                 break;
             }
 
             for (ToolCall call : assistant.toolCalls()) {
+                if (token.isCancelled()) {
+                    break;
+                }
                 listener.onEvent(new ToolCallEvent(sessionId, call.name(), call.arguments()));
                 ToolOutcome outcome = executeTool(sessionId, call, token);
                 messages.add(outcome.message());
@@ -269,7 +291,9 @@ public final class AgentEngine {
         ChatMessage userMessage = ChatMessage.text(Role.USER, input);
         messages.add(userMessage);
         memoryStore.appendMessage(sessionId, userMessage);
-        return messages;
+        // 最终防线（issue #391）：历史截断、工具中断等都可能留下「孤立的 tool 消息」
+        // 或「未响应的 tool_calls」。流式 / 非流式都从 prepare 出发，统一在此清洗一次。
+        return MessageSanitizer.sanitize(messages);
     }
 
     /**

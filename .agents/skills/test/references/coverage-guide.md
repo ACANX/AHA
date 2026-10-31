@@ -21,15 +21,19 @@ JaCoCo 在 `verify` 阶段执行 `check`，规则为 **BUNDLE 级 LINE COVEREDRA
 
 ## 排除项
 
-以下包不参与门禁统计（多为 0.1 尚未实现的占位实现）：
+**权威登记处是 `Docs/DevSpec/TestingSpec.md` §3.2**（与根 `pom.xml` 的 jacoco `excludes` 逐条对应）
+—— 本节的表只是速查，**两边不一致时以规范为准**，并且不要在这里补新口径。
 
-| 排除模式 | 原因 |
+| 排除模式 | 原因（详见规范 §3.2） |
 |---|---|
-| `com/acanx/module/aha/desktop/**` | 桌面端 0.1 为占位 |
-| `com/acanx/module/aha/core/extension/**` | 扩展运行时 0.1 为占位 |
-| `com/acanx/module/aha/core/mcp/**` | MCP 0.1 为占位 |
-| `com/acanx/module/aha/cli/ChatCommand*` | 交互式 TTY 逻辑，需真实终端 |
+| `com/acanx/module/aha/desktop/**` | 0.1 为占位、整体排除；0.2 起按单独阈值 0.30 纳入（`D-05`） |
+| `com/acanx/module/aha/core/extension/**` | 扩展运行时属 0.3（阶段八） |
+| `com/acanx/module/aha/core/mcp/**` | MCP 适配器为 0.2 占位 |
+| `com/acanx/module/aha/cli/ChatCommand*` | 交互式 TTY 逻辑，需真实终端 / 手工端到端验收 |
 | `com/acanx/module/aha/cli/RunCommand*` | 同上 |
+
+> 排除是**度量口径**，不是「不用测」：上表各类仍有各自的验收方式（手工端到端 / 真机验收 /
+> 0.2 起纳入门禁）。新增排除项必须写清「何时解除」或「由什么替代覆盖」。
 
 ## 实测覆盖率（0.1）
 

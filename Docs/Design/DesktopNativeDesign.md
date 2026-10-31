@@ -1,9 +1,9 @@
 # AHA 桌面端原生镜像设计（试验性）
 
-> **文档版本**：v1.0.0
+> **文档版本**：v1.2.2
 > **状态**：草案（试验性能力，随实验迭代）
 > **生效日期**：2026-10-08
-> **最后更新**：2026-10-09
+> **最后更新**：2026-10-16
 > **负责人**：@ACANX
 > **适用版本**：AHA 0.1.x / 0.2 开发期
 > **定位**：`aha-desktop-native` 模块与 `DesktopNative.yml` 工作流的设计、风险与迭代指南
@@ -15,13 +15,13 @@
 
 三条边界先写清楚：
 
-1. **正式交付仍是 JVM 模式**（`aha-desktop-<版本>-<平台>.zip` + `bin/AhaDesktop.*`）。
+1. **正式交付仍是 JVM 模式**（`aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` + `bin/AhaDesktop.*`）。
    原生镜像是**旁路**，不替代它。
 2. **失败必须被隔离**：原生镜像编不出来，不允许挡住任何既有流程（见第 2 节）。
 3. **参数会反复改**：这是一份「起点」，不是终稿；迭代方式见第 6 节。
 
 > **JVM 模式自己的 dev 出包线**见 `BuildJVMArtifacts.yml`（`push` → `dev` 产出
-> `aha-desktop-<版本>-<平台>.zip` 与 `aha-cli-<版本>.zip` 的预发行版）——它与本工作流
+> `aha-desktop-jvm-<版本>-<系统>-<架构>-jdk25.zip` 与 `aha-cli-jvm-<版本>-<系统>-<架构>-jdk25.zip` 的预发行版）——它与本工作流
 > **并列**、互不牵连：一个编原生镜像，一个打包 JVM 产物，共用同一套 `a.b.c.PPPPP` 版本规则。
 > 该 JVM 线还含一份 **JDK 27 编译产物**（包名带 `-jdk27`，字节码 release=27）：那是 JDK 27 的
 > **JVM 字节码**，与本工作流里用 GraalVM JDK 27 编 **原生镜像**不是一回事（issue #65）。
@@ -32,7 +32,7 @@
 
 | # | 目标 | 判据 |
 |---|---|---|
-| G1 | 把 `aha-desktop` 的 JVM 产物编成三平台原生可执行文件 | `DesktopNative.yml` 的 `native-build` 三条腿各自产出二进制 |
+| G1 | 把 `aha-desktop` 的 JVM 产物编成三平台原生可执行文件 | `DesktopNative.yml` 的 `NativeImage` 三条腿各自产出二进制 |
 | G2 | 每次合并到 `dev` 自动出一版，可在发布页直接下载 | 触发即发布 `native-v<版本>` 预发行版 |
 | G3 | 版本号可追溯到具体 PR | 版本形如 `0.1.1.00021`（PR 段补零到 5 位） |
 | G4 | 实验失败不影响既有流程 | 见第 2 节的四条隔离 |
@@ -66,7 +66,7 @@
 - 凡在「没有工具链 / 属于试验」前提下可能失败的步骤都加 `continue-on-error: true`；
 - 每个作业末尾把**真实结论**写进 Job Summary（编了没有 / 产物在哪 / 多大 / 为什么没成）；
 - 产物自证改成**诊断式**：判据只留真正的不变式（存在、≥5 MB、平台魔法数、
-  OpenJFX 三件套齐全且无 0 KB 空壳），结论一律写摘要而**不变红叉**；
+  OpenJFX 四件套齐全且无 0 KB 空壳），结论一律写摘要而**不变红叉**；
 - 发布作业在「一个包都没收上来」时**不发版、也不失败**，只写摘要。
 
 **取舍写明白**：原生编译真坏了，CI **不会红**——只表现为摘要里少一版、发布页少一个包。
@@ -92,7 +92,7 @@
 | 面 | 做法 | 证据 |
 |---|---|---|
 | **反应堆** | `aha-desktop-native` 只在父 POM 的 `desktop-native` profile 里，默认不在 `<modules>` | `./mvnw validate` 的输出里没有该模块；带 `-Pdesktop-native` 才出现 |
-| **检查** | 新工作流 `DesktopNative.yml`，作业名 `native-version` / `native-build` / `native-publish`，与 Build / Gate / Compat 全不同名 | 分支保护的必需检查列表不含它们 |
+| **检查** | 新工作流 `DesktopNative.yml`，作业名 `NativeVersion` / `NativeImage` / `NativePublish`，与 Build / Gate / Compat 全不同名 | 分支保护的必需检查列表不含它们 |
 | **Tag 与发版** | tag 前缀 `native-v`，**不匹配** `Release.yml` 的 `V*` / `v*`；发布为**预发行版** | `native-v0.1.1.00021` 首字符是 `n`，不命中 `v*` |
 | **失败传播** | `fail-fast: false`；实验腿 `continue-on-error: true`；发布作业 `if: always()` 且允许部分平台成功 | 某条腿红了，其余腿与发布照常 |
 
@@ -151,18 +151,22 @@ Dist/aha-desktop-native-<版本>-<jdk>.zip  →  工作流按平台改名 →  n
 | 事件 | 说明 |
 |---|---|
 | `push` → `dev` | **每次合并都出包**：这是「开发线与验证线并行」的关键 —— 合完就能下载来试 |
+| `pull_request`（**带路径过滤**） | 只碰 `aha-desktop/**`、`aha-desktop-native/**`、`pom.xml` 或本工作流时才跑：让「原生包能不能起」**在合并前**就可见（issue #144）。**此事件下不发布**（见 §4.2），制品走 Actions artifact |
 | `workflow_dispatch` | 手工补跑；`pr` 输入用于订阅正确的版本号，`version` 输入用于重打某一版 |
 
-刻意**不加** `paths` 过滤：只有「合并到 dev 必然产出一版」才谈得上可预期；
+`push` → `dev` **刻意不加** `paths` 过滤：只有「合并到 dev 必然产出一版」才谈得上可预期；
 文档改动顺带编一版是浪费，但换来的是「要验证时一定拿得到包」。
+
+`pull_request` 则**必须**过滤——它每次要跑 5 条腿（约 10 分钟），不加过滤会让每个文档 PR 都烧一遍；
+而它的目的只是「改了桌面代码时，合并前能看到原生包能不能起」，与「每次合并必出包」是两件事。
 
 ### 4.2 作业
 
 | 作业 | 作用 | 关键点 |
 |---|---|---|
-| `native-version` | 算版本号（`a.b.c.PPPPP`） | 基线读根 POM（唯一来源）；PR 号优先取输入，其次按提交 SHA 反查 API；取不到记 `00000` 并告警（不猜） |
-| `native-build` | 矩阵四条腿（linux-x64 / windows-x64 / macos-arm64 用 JDK 25；windows-x64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
-| `native-publish` | 汇总制品 → 发布 `native-v<版本>` 预发行版 | 单写者（三条腿并发写同一个 release 会互相打架）；`if: always()` 让部分平台成功也照发 |
+| `NativeVersion` | 算版本号（`a.b.c.PPPPP`） | 基线读根 POM（唯一来源）；PR 号优先取输入，其次按提交 SHA 反查 API；取不到记 `00000` 并告警（不猜） |
+| `NativeImage` | 矩阵五条腿（ubuntu-amd64 / windows-amd64 / macos-aarch64，JDK 25；其中 ubuntu-amd64 与 windows-amd64 另加 JDK 27 实验腿） | 每腿自证四项：产物存在、体积 ≥ 5 MB、**二进制魔法数**（PE/ELF/Mach-O）、classpath 恰好 3 个 OpenJFX jar |
+| `NativePublish` | 汇总制品 → 发布 `native-v<版本>` 预发行版 | 单写者（三条腿并发写同一个 release 会互相打架）；`if: always()` 让部分平台成功也照发 |
 
 ### 4.3 版本号规则（`a.b.c.PPPPP`）
 
@@ -254,7 +258,7 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
   报告是给人分析的，两者混在一个包里既推高体积也让职责不清。改由工作流单独打成
   **独立发布包**，与镜像包同批挂到发布页：
 
-      `AHA-Desktop-Native-Report-<版本>-<平台>-jdk<JDK>.zip`
+      `aha-desktop-native-<版本>-<系统>-<架构>-graalvm<JDK>-report.zip`
 
   **文件名与镜像包同族**（版本号、系统、架构、JDK 轴全在名里，如
   `AHA-Desktop-Native-Report-0.1.1.00025-windows-amd64-jdk25.zip`），
@@ -301,13 +305,21 @@ Recommendations。**处置原则：能用「可预期」的方式解决的，就
 | # | 风险 | 现状 | 应对 |
 |---|---|---|---|
 | R1 | JavaFX + native-image 需要一长串「运行期初始化」清单，首次跑很可能在某个类上失败 | 参数文件里已放了一批已知点（来自 Gluon Substrate 的同款处理方式），但**未验证到位** | 按失败信息把类名加进 `--initialize-at-run-time`；只改参数文件 |
-| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35、#37、#39、#41）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException`；Glass 原生库又用 `FindClass` / `GetMethodID` 按名字查类与成员，需另一套 JNI 清单（#37 的 `FindClass` 与 #39 的平台子类成员）；效果渲染又用**动态类名**加载 peer（#41，`PPS<name>Peer` 等） | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；再用 `jni-config.json` 补齐 `FindClass` 与平台实现类的 `Get*ID` 目标（85 条），并登记 99 个效果 peer（共 439 条）；再补 1 条字体诊断条目（共 440 条，issue #48 的「扫描原生包实际字体路径」）；`NativeImageMetadataTest`（13 条）与工作流产物自证双层守卫 |
+| R2 | 反射 / 资源缺失导致运行期才炸（构建成功 ≠ 能跑） | **已踩坑（issue #26、#35、#37、#39、#41）**：JavaFX 的入口、工具包、Glass 工厂、Prism 管线全靠 `Class.forName` + `getDeclaredConstructor().newInstance()` 这类反射加载，closed-world 看不到，构建成功也会一启动就 `ClassNotFoundException`；Glass 原生库又用 `FindClass` / `GetMethodID` 按名字查类与成员，需另一套 JNI 清单（#37 的 `FindClass` 与 #39 的平台子类成员）；效果渲染又用**动态类名**加载 peer（#41，`PPS<name>Peer` 等） | 已在 `reachability-metadata.json` 注册 `AhaDesktopApp` 构造器，`main` 改为显式 `launch(AhaDesktopApp.class, args)`；并按「启动链路」补齐工具包 / 三平台 Glass 工厂 / 四条 Prism 管线 / 效果渲染器 / Glass 原生回调（`jniAccessible`）/ 图片解码 / 字体；再用 `jni-config.json` 补齐 `FindClass` 与平台实现类的 `Get*ID` 目标（85 条），并登记 99 个效果 peer（共 439 条）；再补 1 条字体诊断条目（共 440 条，issue #48 的「扫描原生包实际字体路径」）；0.1.3 的 FXML 化批次补齐 FXML 装载链，**issue #125 再补 Windows 手势 / 拖放两条**，2026-10-16 再补 `core.update` 的 21 条 record / enum 登记（R13）——**现共 498 条**（本节条数为 `reachability-metadata.json` 的 reflection 条目数）——这两条的查找其实发生在 **native 侧**（`glass.dll`），本仓库 Java 侧无 `Class.forName`，真正的归宿是早已登记的 `jni-config.json`（详见 `TS-2610-033`）；`NativeImageMetadataTest`（**18 条**）与工作流产物自证（步骤 ⑧ / ⑧b）双层守卫 |
 | R3 | JavaFX 平台原生库未打进镜像 | 已把 `.so/.dylib/.dll` 纳入资源清单 | 首次真机运行若是 `UnsatisfiedLinkError`，据此调整 |
 | R4 | GraalVM 是否有对应 JDK 版本（尤其 JDK 27） | 工作流用 `graalvm-community` 的对应版本号 | 该腿失败即是答案（隔离，不影响其余）；可先降到 JDK 26 或等发布 |
 | R5 | 产物体积大（把 JDK 与全部依赖编进去了） | 预期几十 MB | 后续再谈瘦身（`-H:-IncludeAllTimeZones` 等），先保证能跑 |
 | R6 | 未签名 → macOS Gatekeeper 拦截、Windows SmartScreen 提示 | 已知 | `README.txt` 里写明放行方式；签名是另一件事 |
 | R7 | 三个平台的关键差异被「只在 Windows 试」掩盖 | 已知 | 每次改参数后,至少在本机（Windows）+ 一条 Linux 腿上看结论 |
 | R8 | 工作流 shell 的跨平台差异（变量名、`find`、宿主环境变量） | **已踩坑（run 37744912968）**：macOS 的 bash 把 `$bin（` 当变量名 → unbound，步骤 outputs 丢失，**macos 镜像包没上传**；Windows runner 自带 VS 的 `PLATFORM`，与 step 注入冲突 | 自证脚本：命中产物**立刻**写 `produced=true` + `trap 'exit 0' EXIT`；注入变量加 `LEG_` 前缀并用 `${VAR:-}`；不用 `find -maxdepth`；`bin/CheckScripts.py` 新增 YAML shell 变量守卫 |
+| R9 | 原生镜像丢失 LCD 次像素抗锯齿 ⇒ 文字发虚、偏细（issue #44 / #48） | **已缓解、未根治**：真机像素对照确认 native = 灰度、JVM = 次像素（彩色边缘像素 18.4 倍差距）；成因指向 DirectWrite 渲染参数在 closed-world 下读不到（与 #60 同源） | 临时缓解：原生内默认写 `prism.lcdtext=false`（`NativeRenderDefaults`）；可用 `-Dprism.lcdtext=…` / `-Daha.desktop.nativeTextGreyscale=false` 回退；**根因修复（补渲染参数读取或等上游）后删除本类与调用点** |
+| R10 | **FXML 界面骨架**引入后，反射登记与资源收录各多一层（登记要**按声明类**、`.fxml` 必须进镜像），且**fxml 自身的错误在编译期完全不可见** | **已处理（2026-10-13）**：`DesktopShell` 的界面骨架（菜单栏 / 三栏 / 状态栏 / 输入区）迁到 `desktop-shell.fxml`，本类改作 FXML 控制器；**真机已踩一次**：fxml 漏写 `<?import?>` ⇒ 原生包启动即 `LoadException: BorderPane is not a valid type.`，而当时 `Build` / 原生构建 / GUI 冒烟**三方全绿**（详见 `TS-2610-032`） | 资源：`.fxml` 并入扩展名白名单（**不用**宽匹配路径规则，否则会把 `Trampoline.class` 当资源编进镜像 → 运行期 `defineClass` → 崩，见 TS-2610-003）；元数据：新增 20 条（`FXMLLoader` / `FXML` / 骨架里各控件与布局 / StAX 实现），并把 `Node` / `Parent` / `Region` / `Pane` / `Control` / `Labeled` 从「只有类名」升级为 `allDeclared*`；守卫：`NativeImageMetadataTest` 新增 FXML 用例 + **可复用的 `FxmlViewChecks`**（元素类型名必须已 import / 实例化类型必须登记构造器 / `fx:id` ↔ 字段双向 / 资源白名单），由各视图的测试类调用；批次 2 起新增视图只需补一个约 60 行的测试类；可观测：启动打印 ASCII 标记 `[aha-version]`（含构建号）与 `[ui-fxml-loaded]` / `[ui-fxml-load-failed]`；**冒烟已改为正面断言**（必须命中 `[aha-version]` 与 `[ui-fxml-loaded]`） |
+| R11 | **native 按名回写 Java 字段**："类加载得到" ≠ "它的字段能被 native 访问"（issue #60） | **已处理（2026-10-13）**：`prism.verbose` 打印的 OS / D3D 驱动信息全是零值（`Windows version 0.0 build 0`、`ven_0000`），根因是 `prism_d3d.dll` 的 `nGetDriverInformation` 用 `GetFieldID` 按名回写 `D3DDriverInformation` 的字段，而该类及其字段在**两份元数据里都是 0 条**；字段访问不足时 native 拿不到成员 ID，字段保持 Java 默认值（0 / null）——**表现为「值全零」而不是报错**，比抛异常更难发现 | 已在 `jni-config.json` 登记 `com.sun.prism.d3d.D3DDriverInformation`（`allDeclared*`）；`NativeImageMetadataTest` 加断言、工作流 ⑧b 加 `require_jni` 守卫；**Windows GUI 冒烟加可判别断言**：必须打印 `OS Information:`，且不得出现 `Windows version 0.0 build 0`（改前必然出现 ⇒ 真前/后对照）。⚠ 该 dll 的字段查找**曾被 ⑧b 的清单整段遗漏**（清单是按 native 源码扫的，漏了 `prism_d3d`）⇒ 同类审查要覆盖到 `prism_d3d` / `prism_common` / `decora_sse`。**已实测验证**（PR #150）：改前 `Driver null, version 0.0.0.0` / `ven_0000` ⇒ 改后 `Driver d3d10warp.dll, version 10.0.26100.33438` / `Pixel Shader version 3.0` / `ven_1414, dev_008C` / `Max Multisamples supported: 4`（WARP 软件设备，印证 CI runner 无硬件 GPU）；遗留：OS 版本取到 `Windows 8.0 build 9200`（GetVersionEx 缺 Win10 清单的兼容性撒谎，已记入 `TS-2610-034` Q3，**已转 issue #151 承接**），驱动取值已在真机确认为真实值（`Intel(R) UHD Graphics` / `igd10iumd64.dll 31.0.101.4502`） |
+| R12 | **触摸 / 笔手势（`WinGestureSupport`）在本环境无法验证** | **已知、不可达（issue #125）**：本环境**无触摸屏 / 数位板**，故「手势是否顺手」这一层**无法验收**；但「**类可达**」这一层**已验证**——`glass.dll` 的按名查找在**每次开窗时**都会执行（姊妹工程 LegionFanControl 的异常栈正是在 `WinWindow._createWindow` 处抛出的，说明该查找**无条件**执行），而 CI 的 Windows 腿与真机启动日志长期**无** `ClassNotFoundException` ⇒ 登记有效 | 登记由 `NativeImageMetadataTest` 与工作流步骤 ⑧b 的 `require_jni` 守卫保持；**待有触摸设备时再覆盖**。届时注意：不要用「没看到报错」代替「功能真的可用」（`TS-2610-003` / `TS-2610-032` 的教训）；且手势本身属 **JavaFX / WinGlass 平台行为**，不在本仓库实现范围内 |
+
+| R14 | **原生 exe 曾被判成 JVM 形态 ⇒ 升级去下 JVM 包**（2026-10-16 真机，已修） | **已修**：原生镜像里 code source 指向 exe 自己，而判定用「是不是普通文件」⇒ `jarBased=true`。现改为「code source 必须是 `.jar`」＋ GraalVM 运行期属性 `org.graalvm.nativeimage.imagecode` 双保险（排障见 `TS-2610-047`）。**注意**：当时顺带加的「原生形态不支持自更新」那一层门是**误判**（原生线有自己的 tag 与资产、换装与重启与 JVM 同构），已在 v1.3.3 撤掉 —— 原生形态**走同一条升级链路**，界面不再置灰 | 真机验收项（原生形态唯一与 JVM 不同的风险点）：**换装时替换正在运行的 exe**，重启后是否真的跑到新版本；边界：`Stable` 通道尚无原生资产（`supports()` 排除），原生线先随 Beta 通道升级；跟踪 [#247](https://github.com/ACANX/AHA/issues/247) / `TD-00022` |
+| R13 | **`core.update` 里的 record 没登记 → Jackson 在原生包里抛 `UnsupportedFeatureError`**（issue #51 真机自测） | **已处理（2026-10-16），2026-10-20 同类复发（issue #383）**：原生包点「检查更新」直接抛 `UnsupportedFeatureError: Record components not available for record class com.acanx.module.aha.core.update.ReleaseInfo` —— Jackson 反序列化 record 时要读 **record components**（`Class.getRecordComponents()`），而原生镜像要求**构建期**就把该 record 的访问器登记好；`JVM 版完全正常`，**构建、单测、GUI 冒烟三方全绿**，只有 closed-world 的镜像会在用户面前炸（与 R12 同一形态：JVM 上反射可用，藏住了依赖）。复发时 `core.config.ModelDefinition` 漏登记，导致 **`0.1.5.00380` 原生包启动即崩**（连 CLI `--version` 都退出码 1），而守卫当时只扫 `core.update` | 改法：`core.update` 下**全部 21 个 record / enum** 逐条登记进**两个**原生包的 `reachability-metadata.json`（桌面端与 CLI 共用 aha-core，漏哪边哪边炸）；**#383 起**守卫改为 `NativeImageMetadataTest#everyJacksonRecordAndEnumIsRegisteredForReflection`，按 `JACKSON_PACKAGES`（`core.update` + `core.config`）逐包**整包全量**扫源码并校验两份元数据；新增 Jackson 反序列化入口时把包加进该清单（规则刻意从严：多登记只多几十字节，漏登记是一次用户可感知的崩溃）；已做反向注入验证（临时删掉 `ReleaseInfo` / `ModelDefinition` 条目即红） |
+| R12 | **FXML 里的枚举型属性**在原生镜像下要走反射转换，未登记就抛 `Unable to coerce …`（issue #51 真机自测） | **已处理（2026-10-16）**：`settings-dialog.fxml` 写了 `tabClosingPolicy="UNAVAILABLE"` —— 真机点「设置」直接打不开（`Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy`），而 **JVM 版、单测、CI 冒烟三方全绿**（JVM 上反射可用，只有 closed-world 的镜像会失败）；同类写法全仓只有这一处（脚本扫过全部 `.fxml`） | 改法：FXML 里**不写**枚举属性，在 Java 里 `set`（`SettingsDialog#wireTabs`）；守卫：`NativeImageMetadataTest#fxmlNeverSetsEnumValuedAttributes` 扫全部 `.fxml`，出现「大写枚举值」即失败并给出改法（白名单只放 `fx:id`/`text` 这类字符串属性）；另：设置面板装载失败现在会给用户一句提示，不再是未捕获异常 |
 
 **已踩的反射坑：JavaFX 入口（issue #26，2026-10-08）**：
 
@@ -345,7 +357,7 @@ JavaFX 的启动在两条路径上都依赖反射，`native-image` 的 closed-wo
 声明，否则运行期抛 `MissingReflectionRegistrationError`。清单见
 `aha-desktop/src/main/resources/META-INF/native-image/.../reachability-metadata.json`
 （按「启动链路」分组；后续又用 tracing agent 采集补充，当前总计 **340 条**），逐条理由见
-[TS-202610-QuantumToolkitMissing.md](../Troubleshooting/TS-202610-QuantumToolkitMissing.md)。
+[TS-2610-019-Quantum-Toolkit-Missing.md](../Troubleshooting/TS-2610-019-Quantum-Toolkit-Missing.md)。
 
 **反射不只 JavaFX（同一 issue 审计出来的第二类缺口）**：把运行时依赖也查了一遍，
 `sqlite-jdbc` 与 `log4j-core` 都**自带** native-image 元数据（无需本项目处理），
@@ -393,7 +405,7 @@ native 层拿到空引用继续跑就是段错误。
 里的 `FindClass` 做静态扫描，得 **62 个类**——JDK 基础类、Glass 公共类与三平台实现类、
 字体（DirectWrite / FreeType / CoreText / FontConfig，含两个动态名）与几何。
 成员统一用 `allDeclared*` 全量（native 按名字查成员，签名跨版本不稳）。平台专属类共用一份清单，
-缺席平台只产生无害 warning。详见 [TS-202610-JniFindClassSegfault.md](../Troubleshooting/TS-202610-JniFindClassSegfault.md)。
+缺席平台只产生无害 warning。详见 [TS-2610-021-JNI-Find-Class-Segfault.md](../Troubleshooting/TS-2610-021-JNI-Find-Class-Segfault.md)。
 
 **JNI 的第二类缺口：平台实现类自己的成员查找（issue #39，2026-10-09）**。修完 #37 后，Windows 真机在
 `WinWindow.<clinit>` 报 `NoSuchMethodError: …WinWindow.notifyMoving(IIIIFFIIIIIII)[I`。
@@ -412,7 +424,7 @@ native 层拿到空引用继续跑就是段错误。
 `MacCommonDialogs` / `MacFileNSURL` / `MacGestureSupport` / `MacMenuDelegate` / `MacPasteboard` /
 `MacTimer` / `MacAccessible`；另加三平台共用的 `com.sun.glass.ui.EventLoop`），
 清单由 62 条增至 **85 条**。GTK 无需补——它经 `FindClass` 取类，#37 已覆盖。
-详见 [TS-202610-WinWindowJniMemberMissing.md](../Troubleshooting/TS-202610-WinWindowJniMemberMissing.md)。
+详见 [TS-2610-022-Win-Window-JNI-Member-Missing.md](../Troubleshooting/TS-2610-022-Win-Window-JNI-Member-Missing.md)。
 
 **JNI 之外的第三层：效果 peer 的动态类名（issue #41，2026-10-09）**。JNI 清单补齐后，Windows 真机首次进到 GUI，
 但控件画不出：渲染到第一个用阴影效果的控件时反复报
@@ -424,7 +436,7 @@ native 层拿到空引用继续跑就是段错误。
 修法：对 javafx-graphics 25 的 jar 扫 `com/sun/scenario/effect/impl/**/*Peer`，
 用 `javap` 过滤 7 个 abstract 基类后，把 **99 个具体 peer** 全部登记进 `reachability-metadata.json`
 （`allDeclaredConstructors`；`Class.forName` 属反射，故进这份清单而非 `jni-config.json`），
-元数据由 340 条增至 **439 条**。详见 [TS-202610-PrismEffectPeerMissing.md](../Troubleshooting/TS-202610-PrismEffectPeerMissing.md)。
+元数据由 340 条增至 **439 条**。详见 [TS-2610-023-Prism-Effect-Peer-Missing.md](../Troubleshooting/TS-2610-023-Prism-Effect-Peer-Missing.md)。
 
 ### 6.2 迭代时改哪里（只改一处）
 
@@ -444,7 +456,7 @@ POM 与工作流都**不需要动**：参数文件是单一来源，且会原样
 CLI 发行 zip）一律输出到 `Dist/`：
 
 - `Dist/` 已在 `.gitignore` 里，不会被误提交；
-- 它同时是 **CLI 发行目录的解包位置**（`Dist/bin`、`Dist/lib`，见 `ReleaseProcess.md` §3），
+- 它同时是 **CLI 发行目录的解包位置**（平铺的 `aha-cli.jar` + `Aha.*`，见 `ReleaseProcess.md` §3），
   因此 CLI 的 assembly **不能**再套一层 `Dist/`（否则会变成 `Dist/Dist/…`）；
   CLI 的 zip 由工作流在临时目录打好后移入 `Dist/`，避免「把正在写入的自己收进归档」。
 
@@ -466,9 +478,14 @@ CLI 发行 zip）一律输出到 `Dist/`：
 时反应堆里只有它自己），所以要显式把 `aha-desktop` 也列出来，让 `-am` 把五个上游一起拉进来。
 症状很好认：**「在中央仓库找不到 aha-desktop」** —— 因为反应堆匹配不上，它就去外网找了个不存在的坐标。
 
-不想自己编也行：`Script/Python/DesktopNativeVersionUpdate.py` 会把发布页上最新一版的本平台
-包取下来、解压到 `Dist/`（Windows 用法：`python3 Script\Python\DesktopNativeVersionUpdate.py`），
-设计见 [DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)。
+不想自己编也行，取件有两条入口（共用一份命名契约，见
+[DesktopNativeUpdateDesign.md](DesktopNativeUpdateDesign.md)）：
+
+- **Windows**：双击 `Dist\UpdateDesktopNative.cmd`（PowerShell 实现，**不需要 Python**）；
+- **WSL / Linux / macOS**：`python3 Script/Python/DesktopNativeVersionUpdate.py`
+  （共享引擎，多源发现 + 断点续传）。
+
+两者都会把发布页上最新一版的本平台包取下来、解压到 `Dist/`。
 
 ## 6.4 技能边做边改（本项目约定的工作方式）
 
@@ -509,3 +526,4 @@ CLI 发行 zip）一律输出到 `Dist/`：
 - [ArchitectureOverview.md](ArchitectureOverview.md)：模块与依赖方向
 - [BuildSpec.md](../DevSpec/BuildSpec.md)：构建与检查分层（原生镜像属于「慢检查」之外的新工作流）
 - [ReleaseProcess.md](../DevSpec/ReleaseProcess.md)：正式发版流程（本工作流刻意不参与）
+- [GraalVMInActionsGuide.md](../Guide/GraalVMInActionsGuide.md)：**GitHub Actions 中的 GraalVM 参考**（Action 输入速查、参数四类清单闭环、权威查询入口与本地自证命令、症状→参数对照表）

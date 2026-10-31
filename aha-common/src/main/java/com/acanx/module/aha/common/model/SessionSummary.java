@@ -11,12 +11,26 @@ package com.acanx.module.aha.common.model;
  * @param title        标题；空白时落到 {@link #UNTITLED}
  * @param createdAt    创建时间（毫秒时间戳）
  * @param messageCount 已存储的消息条数
+ * @param workspace    归属的工作空间（项目根绝对路径）；纯聊天会话为 {@code null}
  * @since 0.2.0
  */
-public record SessionSummary(String id, String title, long createdAt, int messageCount) {
+public record SessionSummary(String id, String title, long createdAt, int messageCount,
+                             String workspace) {
 
     /** 会话没有任何可用标题时的占位。 */
     public static final String UNTITLED = "（未命名会话）";
+
+    /**
+     * 兼容构造：不含工作空间（旧会话 / 纯聊天）。
+     *
+     * @param id           会话 ID
+     * @param title        标题
+     * @param createdAt    创建时间
+     * @param messageCount 消息条数
+     */
+    public SessionSummary(String id, String title, long createdAt, int messageCount) {
+        this(id, title, createdAt, messageCount, null);
+    }
 
     /**
      * 规范化标题。
@@ -28,6 +42,16 @@ public record SessionSummary(String id, String title, long createdAt, int messag
      */
     public SessionSummary {
         title = title == null || title.isBlank() ? UNTITLED : title.strip();
+        workspace = workspace == null || workspace.isBlank() ? null : workspace.strip();
+    }
+
+    /**
+     * 是否归属某个工作空间。
+     *
+     * @return 有工作空间返回 {@code true}
+     */
+    public boolean hasWorkspace() {
+        return workspace != null;
     }
 
     /**

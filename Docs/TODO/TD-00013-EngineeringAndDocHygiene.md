@@ -48,3 +48,14 @@
 
 按新的流程约定（见「遗留事项总览与流程调整」Issue），**`TODO.md` 不再自动追加内容**；本节条目在 Issue 里跟踪，`TODO.md` 只保留历史记录。
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00051](TD-00051-ScriptDirectoryConsolidation.md) — `Script/` 与 `bin/` 是否合并（`.ps1` 已纳入检查）
+- [TD-00052](TD-00052-WorkflowYamlStaticCheck.md) — `.github/**/*.yml` 是否纳入静态检查
+- [TD-00053](TD-00053-DocDuplicateNumberCheck.md) — 文档标题 / 表行编号重复是否纳入检查
+- [TD-00054](TD-00054-Maven4StderrNoise.md) — Maven 4 `verify` 的 10 行 `[stderr]` 噪音
+- [TD-00057](TD-00057-TodoReviewBackfill.md) — 复核结论回灌正式文档（原 `TODO.md` §8 的遗留）
+- [TD-00058](TD-00058-MvnCleanLockedFileHandling.md) — `mvn clean` 无法删除被占用文件（Windows）
+

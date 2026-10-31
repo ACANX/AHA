@@ -3,6 +3,7 @@ package com.acanx.module.aha.desktop;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -85,6 +87,86 @@ class NativeImageMetadataTest {
             "src", "main", "resources", "META-INF", "native-image",
             "com.acanx.module.aha", "aha-desktop", "reachability-metadata.json");
 
+    /** 桌面端 FXML 骨架所在目录（本测试按目录扫，新增视图不用改这里）。 */
+    private static final Path FXML_ROOT = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "src", "main", "resources", "com", "acanx", "module", "aha", "desktop");
+
+    /** FXML 里「大写枚举值」属性的形态：{@code tabClosingPolicy="UNAVAILABLE"}。 */
+    private static final Pattern ENUM_VALUED_ATTRIBUTE = Pattern.compile(
+            "([a-zA-Z][a-zA-Z0-9:]*)\\s*=\\s*\"([A-Z][A-Z0-9_]*)\"");
+
+    /**
+     * 值就是大写字符串、**不是枚举**的属性名（否则会误报）。
+     *
+     * <p>这份白名单刻意很短：真出现「大写枚举值」时应当**改到 Java 里设**，
+     * 而不是往这里加名字。</p>
+     */
+    private static final Set<String> STRING_VALUED_ATTRIBUTES = Set.of(
+            "fx:id", "id", "text", "styleClass", "style", "url", "promptText", "value", "name");
+
+    /**
+     * FXML 里不许出现「枚举字面量」属性值（2026-10-16 真机自测：设置面板打不开）。
+     *
+     * <p>为什么单列一条守卫：这种写法在 **JVM 版完全正常**，只有原生镜像会炸 ——
+     * FXMLLoader 的枚举强制转换走 {@code BeanAdapter} 的反射路径（元数据里登记
+     * {@code com.sun.javafx.reflect.Trampoline.invoke} 就是这条路径），未登记的类型会抛
+     * {@code Unable to coerce UNAVAILABLE to class TabPane$TabClosingPolicy}。
+     * 而构建、单测、GUI 冒烟全跑在 JVM 上（反射可用），**三方全绿**，
+     * 直到真机点开设置面板才发现。</p>
+     *
+     * <p>改法：FXML 里不写枚举属性，在 Java 里 {@code set}（参考
+     * {@code SettingsDialog#wireTabs}）。</p>
+     *
+     * @throws IOException 读不到 FXML 目录
+     */
+    @Test
+    void fxmlNeverSetsEnumValuedAttributes() throws IOException {
+        List<Path> files;
+        try (Stream<Path> walk = Files.walk(FXML_ROOT)) {
+            files = walk.filter(path -> path.getFileName().toString().endsWith(".fxml")).toList();
+        }
+        List<String> offenders = new ArrayList<>();
+        for (Path file : files) {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            boolean insideComment = false;
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
+                // 注释必须先剥（无论行内还是跨行）：说明文字里会写出「反例」，否则守卫会把
+                // 自己的说明当成违规（这条是写守卫时被自己的反向注入抓到的）
+                if (insideComment) {
+                    if (line.contains("-->")) {
+                        insideComment = false;
+                    }
+                    continue;
+                }
+                int start = line.indexOf("<!--");
+                if (start >= 0) {
+                    int end = line.indexOf("-->", start + 4);
+                    if (end < 0) {
+                        insideComment = true;
+                        continue;
+                    }
+                    line = line.substring(0, start) + line.substring(end + 3);
+                }
+                Matcher matcher = ENUM_VALUED_ATTRIBUTE.matcher(line);
+                while (matcher.find()) {
+                    if (STRING_VALUED_ATTRIBUTES.contains(matcher.group(1))) {
+                        continue;
+                    }
+                    offenders.add(file.getFileName() + ":" + (index + 1) + "  " + matcher.group());
+                }
+            }
+        }
+        assertThat(files).as("要真的扫到 FXML 文件（目录布局变了就同步这里）").hasSizeGreaterThan(3);
+        assertThat(offenders)
+                .as("FXML 里不要写枚举型属性值：原生镜像的 FXMLLoader 用反射转换枚举，"
+                        + "未在 reachability-metadata.json 登记的类型会抛 Unable to coerce…"
+                        + "（2026-10-16 真机自测：设置面板打不开）。请在 Java 里 set，"
+                        + "参考 SettingsDialog#wireTabs")
+                .isEmpty();
+    }
+
     /**
      * JNI 可达类清单（issue #37）。
      *
@@ -98,6 +180,129 @@ class NativeImageMetadataTest {
      * 字面量的静态扫描（含 font / fontpath_linux 的动态名）。每个类的成员访问
      * 都在它自己身上声明，故统一用 {@code allDeclared*} 全量，避免签名跨版本漂移。</p>
      */
+    /** CLI 原生包的可达性元数据（与桌面端共用 aha-core，所以同样要登记配置 / 更新模块的 DTO）。 */
+    private static final Path CLI_METADATA = Path.of(
+            System.getProperty("basedir", System.getProperty("user.dir")),
+            "..", "aha-cli", "src", "main", "resources", "META-INF", "native-image",
+            "com.acanx.module.aha", "aha-cli", "reachability-metadata.json");
+
+    /**
+     * 会被 Jackson 反序列化的类型族所在包（aha-core 源码包名）。
+     *
+     * <p><b>判定口径：按包全量，不按「这个类看着像不像 DTO」人工挑。</b>一个包被列进来，
+     * 是因为它里面的类型会作为 {@code readValue} / {@code treeToValue} 的目标抵达；
+     * 一旦抵达，同包里任何 record 都可能成为下一个崩溃点，逐个判断必然漏。当前两个包：</p>
+     *
+     * <ul>
+     *   <li>{@code core.update}：GitHub 发布信息 / 包清单 / 更新计划，直接 {@code readValue} 落 record
+     *       （issue #51，2026-10-16 真机崩溃）；</li>
+     *   <li>{@code core.config}：{@code AhaDefault.yaml} / {@code Aha.yaml} / {@code Model.yml}
+     *       经 {@code ConfigLoader#treeToValue} 落 record（issue #383，2026-10-20 真机崩溃点
+     *       是 {@code ModelDefinition}）。</li>
+     * </ul>
+     *
+     * <p>为什么不直接扩到整个 {@code aha-core}：其余 record / enum（{@code llm.protocol.*} 的响应 DTO、
+     * {@code *.event.*} 的扩展事件、{@code ExtensionLayer} 之类内部结果类型）目前不经过
+     * Jackson 的反序列化入口 —— 协议解析用 {@code readTree} 逐字段取值，事件与内部结果只在本进程内构造。
+     * 全量登记它们只是噪音。**新增一个 Jackson 反序列化入口时，把它的包加进这个列表**：
+     * 本单的教训就是守卫只盯一个包，下一个包又崩。</p>
+     *
+     * <p>已列入的包按整包全量登记，包内的「顺带」类型（如 {@code SystemPromptLoader$ResolvedPrompt}）
+     * 也一并登记：多几十字节换来「不必逐个判断它走不走 Jackson」，比漏登记后用户踩到便宜。</p>
+     */
+    private static final List<String> JACKSON_PACKAGES = List.of(
+            "com.acanx.module.aha.core.update",
+            "com.acanx.module.aha.core.config");
+
+    /** 顶层 record / enum（record 可能不写 public）。 */
+    private static final Pattern TOP_LEVEL_RECORD_OR_ENUM = Pattern.compile(
+            "^(?:public )?(?:static )?(?:final )?(?:sealed )?record\\s+(\\w+)|^(?:public )?enum\\s+(\\w+)");
+
+    /** 嵌在顶层类型里的 record / enum（本仓库按 4 空格缩进）。 */
+    private static final Pattern NESTED_RECORD_OR_ENUM = Pattern.compile(
+            "^ {4}(?:public )?(?:static )?(?:final )?record\\s+(\\w+)|^ {4}(?:public )?(?:static )?enum\\s+(\\w+)");
+
+    /**
+     * {@link #JACKSON_PACKAGES} 里每个 record / enum 都必须登记进原生镜像元数据。
+     *
+     * <p>【为什么要单列一条守卫（2026-10-16 真机崩溃）】Jackson 反序列化 record 时要读
+     * <b>record components</b>（{@code Class.getRecordComponents()}），而原生镜像里这要求
+     * **构建期**就把该 record 的访问器登记好，否则运行期抛
+     * {@code UnsupportedFeatureError: Record components not available for record class
+     * com.acanx.module.aha.core.update.ReleaseInfo}。真机就是点「检查更新」时炸在这一条上：
+     * 构建、单测、GUI 冒烟**全跑在 JVM 上**（反射可用），三方全绿，只有原生包会在用户面前抛异常。</p>
+     *
+     * <p>【2026-10-20 同类复发（issue #383）】{@code 0.1.5} 新增的
+     * {@code core.config.ModelDefinition} 没有登记，原生包**启动即崩**，连
+     * {@code aha-cli-native --version} 都跑不了 —— 而这条守卫当时只扫 {@code core.update}，
+     * 新包在视野之外。现在按 {@link #JACKSON_PACKAGES} 逐包扫描，判据同上：**整包全量**，
+     * 不按「看着像不像 DTO」人工挑。多登记几个只是多几十字节元数据（登记了没用到的类型不会让构建失败），
+     * 漏登记却是一次用户可感知的崩溃。</p>
+     *
+     * <p>新增 record 后忘记登记，这条守卫在 Build/Gate 阶段就红（原生镜像管线本身是可选、不上门禁的）。
+     * 两个原生包（桌面 / CLI）**都要**登记：它们共用 aha-core。</p>
+     *
+     * @throws IOException 读不到源码目录
+     */
+    @Test
+    void everyJacksonRecordAndEnumIsRegisteredForReflection() throws IOException {
+        List<String> expected = new ArrayList<>();
+        for (String pkg : JACKSON_PACKAGES) {
+            Path root = jacksonSourceRoot(pkg);
+            assertThat(root).as("aha-core 里会被 Jackson 反序列化的源码包 %s", pkg).isDirectory();
+            try (Stream<Path> files = Files.list(root)) {
+                for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .sorted().toList()) {
+                    String owner = file.getFileName().toString().replace(".java", "");
+                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    // 嵌套类型的登记名按「文件名 + $ + 简单名」拼，前提是文件里有同名的顶层类型；
+                    // 哪天有人加了内层类，这条断言会先红，提醒守卫该升级了
+                    assertThat(Pattern.compile("^(?:public )?(?:final )?(?:abstract )?(?:sealed )?"
+                                    + "(?:non-sealed )?(?:class|interface|enum|record)\\s+" + owner + "\\b",
+                                    Pattern.MULTILINE).matcher(source).find())
+                            .as("%s 里应有与文件名同名的顶层类型", file.getFileName())
+                            .isTrue();
+                    for (String line : source.split("\\R")) {
+                        Matcher nested = NESTED_RECORD_OR_ENUM.matcher(line);
+                        if (nested.find()) {
+                            expected.add(pkg + "." + owner + "$" + matched(nested));
+                            continue;
+                        }
+                        Matcher top = TOP_LEVEL_RECORD_OR_ENUM.matcher(line);
+                        if (top.find()) {
+                            expected.add(pkg + "." + matched(top));
+                        }
+                    }
+                }
+            }
+        }
+        assertThat(expected).as("%s 里应当扫到 record / enum（扫不到说明规则过期了）", JACKSON_PACKAGES).isNotEmpty();
+
+        for (Path metadata : List.of(METADATA, CLI_METADATA)) {
+            assertThat(metadata).as("原生镜像可达性元数据").exists();
+            String json = Files.readString(metadata, StandardCharsets.UTF_8);
+            List<String> missing = expected.stream()
+                    .filter(type -> !json.contains("\"" + type + "\""))
+                    .toList();
+            assertThat(missing).as("%s 漏登记这些类型（Jackson 读 record components 时会抛 "
+                    + "UnsupportedFeatureError）", metadata.getFileName()).isEmpty();
+        }
+    }
+
+    /** 把 aha-core 的源码包名还原成目录（basedir 是 aha-desktop 模块）。 */
+    private static Path jacksonSourceRoot(String pkg) {
+        Path root = Path.of(System.getProperty("basedir", System.getProperty("user.dir")),
+                "..", "aha-core", "src", "main", "java");
+        for (String segment : pkg.split("\\.")) {
+            root = root.resolve(segment);
+        }
+        return root;
+    }
+
+    private static String matched(Matcher matcher) {
+        return matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+    }
+
     private static final Path JNI_CONFIG = Path.of(
             System.getProperty("basedir", System.getProperty("user.dir")),
             "src", "main", "resources", "META-INF", "native-image",
@@ -262,6 +467,98 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void reachabilityMetadataRegistersTheFxmlViewChain() throws IOException {
+        String json = readMetadata();
+
+        // 骨架的装载与控制器注入：FXMLLoader 会在 <clinit> 里按名字强初始化自己
+        // （Utils.forceInit）——**按名字加载**的类封闭世界分析看不到，不登记就被裁掉，
+        // 原生包启动即 AssertionError: ClassNotFoundException: javafx.fxml.FXMLLoader
+        // （姊妹项目 LegionFanControl 的 TS-2610-003 第 ① 条）。
+        for (String type : List.of(
+                "com.acanx.module.aha.desktop.view.DesktopShell",
+                "javafx.fxml.FXMLLoader",
+                "javafx.fxml.FXML")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 属于 FXML 装载链路（按名字加载 + 控制器字段注入），必须显式登记", type)
+                    .isNotBlank();
+        }
+
+        // 反射访问成员的单元是「声明类」：Node#setId、Pane#getChildren、ButtonBase#setOnAction
+        // ……（子类条目不会覆盖父类成员）。这几条各自都要 allDeclared*
+        //（TS-2610-003 第 ② 条：三条报错逐个撞出来后才意识到这条规律）。
+        for (String type : List.of(
+                "javafx.scene.Node",
+                "javafx.scene.Parent",
+                "javafx.scene.layout.Region",
+                "javafx.scene.layout.Pane",
+                "javafx.scene.control.Control",
+                "javafx.scene.control.Labeled",
+                "javafx.scene.control.ButtonBase")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 是 FXML 反射访问属性 / 方法的**声明类**；只登记具体控件类不够"
+                            + "（父类成员不会因为子类在册而可用），必须 allDeclared*", type)
+                    .contains("allDeclaredMethods");
+        }
+
+        // desktop-shell.fxml 里出现的控件与布局：FXMLLoader 按类名实例化它们
+        for (String type : List.of(
+                "javafx.scene.layout.BorderPane",
+                "javafx.scene.layout.HBox",
+                "javafx.scene.layout.VBox",
+                "javafx.scene.control.Button",
+                "javafx.scene.control.Label",
+                "javafx.scene.control.TextField",
+                "javafx.scene.control.TextArea",
+                "javafx.scene.control.ScrollPane",
+                "javafx.scene.control.ListView",
+                "javafx.scene.control.MenuBar",
+                "javafx.scene.control.Menu",
+                "javafx.scene.control.MenuItem",
+                "javafx.scene.control.CheckMenuItem",
+                "javafx.scene.control.SeparatorMenuItem")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 在 desktop-shell.fxml 里出现，FXMLLoader 要按类名实例化它"
+                            + "（fxml 里新增控件时必须同步登记，否则构建全绿、启动即崩）", type)
+                    .contains("allDeclaredConstructors");
+        }
+
+        // FXMLLoader 解析 fxml 走 StAX，其 JDK 内部实现由 FactoryFinder **按名字**找；
+        // 不登记就是 FactoryConfigurationError: Provider … not found（TS-2610-003 第 ⑤ 条）
+        assertThat(entryFor(json, "com.sun.xml.internal.stream.XMLInputFactoryImpl"))
+                .as("FactoryFinder 按名字找 StAX 实现；不登记则原生包解析 fxml 时直接失败")
+                .contains("allDeclaredConstructors");
+    }
+
+    /**
+     * Windows 手势与拖放（issue #125 的登记项）。
+     *
+     * <p>先说清楚这两个类<b>不是反射路径</b>：在 JavaFX 25 的 win jar 里没有任何
+     * Java 代码用 {@code Class.forName} 加载它们（实测：全 jar 扫描，唯一引用来自
+     * {@code glass.dll}），查找发生在 native 侧，属于 {@code FindClass} /
+     * {@code GetMethodID} 那一族 —— 因此它们的<b>正确归宿是 {@code jni-config.json}</b>，
+     * 那里早已登记（自 issue #39 起有守卫，见 {@link #jniConfigRegistersPlatformInitClasses()}）。</p>
+     *
+     * <p>在可达性元数据里再登记一次的理由有两条：
+     * ① 姊妹项目 LegionFanControl 的原生元数据按本清单的<b>反射段</b>生成，
+     * 缺这两条时其真机运行会抛 {@code ClassNotFoundException}（补上即消失，issue #125）；
+     * ② 让这两个类<b>确定进镜像</b>，不依赖静态可达链 —— {@code WinDnDClipboard}
+     * 目前只是因为被 {@code WinClipboardDelegate} {@code new} 出来才可达，
+     * 而 {@code WinGestureSupport} 在 Java 侧<b>完全没有引用</b>。</p>
+     */
+    @Test
+    void reachabilityMetadataRegistersWindowsGlassGestureAndDndTypes() throws IOException {
+        String json = readMetadata();
+        for (String type : List.of(
+                "com.sun.glass.ui.win.WinGestureSupport",
+                "com.sun.glass.ui.win.WinDnDClipboard")) {
+            assertThat(entryFor(json, type))
+                    .as("%s 由 glass.dll 按名查找；登记后类才确定进镜像"
+                            + "（漏登记时手势与拖放静默失效，issue #125）", type)
+                    .contains("allDeclaredMethods");
+        }
+    }
+
+    @Test
     void jniConfigRegistersClassLookupsFromJavafxNativeCode() throws IOException {
         assertThat(JNI_CONFIG).as("JNI 可达类清单（issue #37）").exists();
         String json = Files.readString(JNI_CONFIG);
@@ -289,6 +586,41 @@ class NativeImageMetadataTest {
         }
     }
 
+    /**
+     * SW pipeline（Pisces）的 JNI 类（issue #393）。
+     *
+     * <p>真机现象：WSL（无 GPU，Prism 回退到 SW）启动到 {@code [ui-fxml-loaded]} 后，
+     * {@code UploadingPainter} → {@code SWRTTexture} → {@code JavaSurface.<init>} 调 native 时
+     * 直接 {@code Fatal error reported via JNI: Failed to throw an exception!} 并退出。
+     * 在 {@code libprism_sw.so} 里找到证据：native 用静态 JNI 命名绑定
+     * （{@code Java_com_sun_pisces_JavaSurface_initialize} …），并用 {@code GetFieldID} 查
+     * {@code nativePtr}（J）/ {@code dataInt}（[I）/ {@code surface}（Lcom/sun/pisces/AbstractSurface;）。
+     * 这些类未登记时，native 拿不到字段/方法 ID，随后 {@code JNI_ThrowNew} 也失败，
+     * 整个进程 abort —— 与 JVM 模式（JNI 天然可用）表现完全不同。</p>
+     */
+    private static final List<String> PISCES_JNI_CLASSES = List.of(
+            "com.sun.pisces.AbstractSurface",
+            "com.sun.pisces.JavaSurface",
+            "com.sun.pisces.PiscesRenderer",
+            "com.sun.pisces.Transform6");
+
+    @Test
+    void jniConfigRegistersPiscesSoftwareRendererClasses() throws IOException {
+        String json = Files.readString(JNI_CONFIG, StandardCharsets.UTF_8);
+        for (String type : PISCES_JNI_CLASSES) {
+            assertThat(json)
+                    .as("%s 的 native 用 GetFieldID 查 nativePtr / dataInt / surface，"
+                            + "未登记时 SW 渲染一启动就 JNI FatalError（issue #393）", type)
+                    .contains("\"" + type + "\"");
+            assertThat(entryFor(json, type))
+                    .as("%s 必须用 allDeclared* 全量登记（字段/方法名跨版本会漂移）", type)
+                    .contains("allDeclaredMethods")
+                    .contains("allDeclaredFields");
+        }
+        // JNIUtil.JNI_ThrowNew 会 FindClass 这个异常类；未登记时连“报错”都报不出来
+        assertThat(json).contains("\"java.lang.OutOfMemoryError\"");
+    }
+
     @Test
     void jniConfigRegistersPlatformInitClasses() throws IOException {
         String json = Files.readString(JNI_CONFIG);
@@ -301,6 +633,32 @@ class NativeImageMetadataTest {
                     .as("%s 必须用 allDeclared* 全量登记（native 按名字查成员，签名跨版本会漂移）", type)
                     .contains("allDeclaredMethods");
         }
+    }
+
+    /**
+     * `prism_d3d.dll` 按名填写的 OS / 驱动信息字段（issue #60）。
+     *
+     * <p>{@code D3DPipeline.printDriverInformation(adapter)} 会 new 一个
+     * {@code D3DDriverInformation}，交给 **native 方法**
+     * {@code nGetDriverInformation(int, D3DDriverInformation)} 去填；
+     * 实测 {@code prism_d3d.dll} 里含 {@code osMajorVersion} / {@code osBuildNumber} /
+     * {@code driverName} / {@code vendorID} / {@code psVersionMajor} / {@code maxSamples}
+     * 这些**字段名**——即 native 用 {@code GetFieldID} 按名访问。</p>
+     *
+     * <p>未登记时字段保持 Java 默认值（0 / null），于是 {@code prism.verbose} 打印全零：
+     * {@code Windows version 0.0 build 0}、{@code Driver null, version 0.0.0.0}、
+     * {@code Device : ven_0000, dev_0000, subsys_00000000}、{@code Max Multisamples supported: 0}——
+     * 与 issue #60 的真机日志逐项一致。注意本类在**反射**侧不需要登记：
+     * Java 侧从来不用 {@code Class.forName} 加载它，是 native 拿着 Java 侧传进来的对象
+     * 用 {@code GetObjectClass} + {@code GetFieldID} 回写字段。</p>
+     */
+    @Test
+    void jniConfigRegistersPrismD3dDriverInformationFields() throws IOException {
+        String json = Files.readString(JNI_CONFIG);
+        assertThat(entryFor(json, "com.sun.prism.d3d.D3DDriverInformation"))
+                .as("D3DDriverInformation 的字段由 prism_d3d.dll 按名回写；"
+                        + "未登记时字段保持 0 / null，prism.verbose 打印的 OS 与驱动信息全是零值（issue #60）")
+                .contains("allDeclaredFields");
     }
 
     @Test

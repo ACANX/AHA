@@ -52,3 +52,12 @@
 - `Docs/Design/TUIDesign.md`、`Docs/Design/CLIDesign.md` §7
 - 与本仓库「记忆能力（0.6）」的用量落库存在依赖关系
 
+## 任务单（本主题拆出的最小任务，逐条可验收）
+
+> 本主题的总体验收仍在本文件；下列任务单是它的**最小可执行拆分**，各自独立跟踪。
+
+- [TD-00032](TD-00032-InputBoxBorderStyle.md) — 输入框样式：用上下制表符包裹，去掉 `aha>` 前缀
+- [TD-00033](TD-00033-InputBoxLoadingAnimation.md) — 输入框 loading 动效（旋转字符）
+- [TD-00034](TD-00034-CliStatusBarInfo.md) — 状态栏信息：模型/目录/token/上下文占比/运行模式（口径待拍板）
+- [TD-00035](TD-00035-SlashCommandCompletion.md) — 斜杠命令下拉补全（命令本体已支持）
+

@@ -44,8 +44,15 @@ permissions:
   actions: read
 
 jobs:
+  # 【job id 必须保持小写 `analyze`——这是配置契约，不是风格问题】
+  # GitHub 的 code scanning 用「工作流文件:job id」作为配置标识。`main` 上已有的分析配置是
+  # `.github/workflows/CodeQL.yml:analyze`；issue #287 把它改成了 `Analyze`，于是 PR 的检查
+  # 变成 `1 configuration not found`（NEUTRAL），规则集的 `code_scanning` 规则据此无法判定
+  # 「本 PR 是否新增高危告警」，PR 停在 BLOCKED（2026-10-18 V0.1.4 发布时实测）。
+  # 显示名已由下面的 `name: CodeQLJavaKotlin` 承担，job id 与显示名解耦，
+  # 保留小写 `analyze` 不影响 #287 的显示名规范（该守卫只查 `name:` / `run-name:`）。
   analyze:
-    name: CodeQL（java-kotlin）
+    name: CodeQLJavaKotlin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -54,7 +61,7 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - name: 初始化 CodeQL
+      - name: InitCodeQL
         # v4：v3 计划于 2026 年 12 月弃用，且 v3 目标 Node.js 20（会被强制跑在 Node 24 上并报弃用警告）
         uses: github/codeql-action/init@v4
         with:
@@ -71,14 +78,14 @@ jobs:
           #    不指定时它对已编译语言会尝试自动构建，而自动构建往往认不出 Maven 4 RC 的 Wrapper。
           build-mode: manual
 
-      - name: 编译（CodeQL 需要真实编译产物）
+      - name: CompileForCodeQL
         # 经统一的 Maven 入口：会先清本地仓库失败标记，并对仓库侧瞬时故障定向重试
         # （见 BuildSpec 第 8.1 节「CI 必须容忍仓库侧瞬时失败」）
         uses: ./.github/actions/maven-run
         with:
           command: ./mvnw -B -DskipTests -Djacoco.skip=true compile
 
-      - name: 分析并上传结果
+      - name: AnalyzeAndUpload
         # 这一步失败时，先去日志里读错误原文——最常见的原因是**默认设置与高级设置互斥**：
         #   开启 GitHub 的 Code scanning 默认设置（Default setup）后，来自本工作流的结果会被拒收：
         #   CodeQL analyses from advanced configurations cannot be processed when the
@@ -86,4 +93,8 @@ jobs:
         # 两者只能留一个。本仓库留**本工作流**，因为默认设置只覆盖默认分支（本仓库为 dev）
         # 及指向它的 PR，覆盖不到 main——而本工作流显式声明了 pull_request → main。
         # 处置：Settings → Code security → Code scanning → 关掉 Default setup，然后重跑一次。
+        #
+        # 【不要给 analyze 传 category】传了之后配置标识会从「文件:job id」变成
+        # 「文件:category」，与 `main` 上已有的 `.github/workflows/CodeQL.yml:analyze` 对不上，
+        # 同样会退化成 `1 configuration not found`。标识稳定的办法是保持 job id = `analyze`。
         uses: github/codeql-action/analyze@v4

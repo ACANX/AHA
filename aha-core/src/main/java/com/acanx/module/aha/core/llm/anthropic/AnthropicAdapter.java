@@ -36,16 +36,31 @@ import java.util.Map;
  */
 public final class AnthropicAdapter implements LlmProviderAdapter {
 
-    /** 供应商 ID。 */
-    public static final String PROVIDER_ID = "anthropic";
+    /** 适配器 / API 类型 ID（与配置 {@code ApiType} 取值一致）。 */
+    public static final String API_TYPE = "anthropic-messages";
+
+    /**
+     * 旧名兼容。
+     *
+     * @deprecated 改用 {@link #API_TYPE}（issue #361）
+     */
+    @Deprecated
+    public static final String PROVIDER_ID = API_TYPE;
 
     private static final String API_VERSION = "2023-06-01";
 
     private static final ObjectMapper JSON = JsonMapper.builder().build();
 
+    /**
+     * 适配器 / API 类型 ID。
+     *
+     * @return API 类型 ID
+     * @deprecated 改用 {@link #apiType()}（issue #361）
+     */
     @Override
+    @Deprecated
     public String providerId() {
-        return PROVIDER_ID;
+        return API_TYPE;
     }
 
     @Override

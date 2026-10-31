@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+    供应商配置对话框的界面骨架（批次 2 / issue #135）。
+
+    形态来源：`ProviderDialog` 类注释里的那张图——**左列表 + 右两区**：
+      ① 编辑「已选中」的供应商      ② 新增供应商（独立表单，与①互不影响）
+
+    为什么两区必须分开：改已有供应商与加一个新供应商是两个层级的操作；混在一组控件里，
+    用户点「保存」时无法判断自己在改还是在增，误操作代价是覆盖掉一个能用的配置。
+
+    ── 与 desktop-shell.fxml 同一套约定 ──────────────────────────────────────
+    * 结构与文案在这里，**样式与行为在 ProviderDialog**（本文件的控制器）；
+    * `fx:id` → 注入控制器的同名字段；新增控件时必须同步：控制器字段 + import + 元数据登记；
+    * 字段表里的 5 个档位行**是写死的**：`ModelTier` 是产品级设定（Ultra / Pro / Standard /
+      Flash / Fallback），写进 fxml 让整张表单一眼可读；档位数与枚举若不一致，
+      `ProviderDialogFxmlTest` 会报错（而不是靠人记得改两处）。
+-->
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ChoiceBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:id="root">
+    <children>
+        <ScrollPane fx:id="scroll">
+            <content>
+                <VBox fx:id="content">
+                    <children>
+                        <HBox fx:id="body">
+                            <children>
+                                <!-- 左栏：状态行 + 供应商列表 -->
+                                <VBox fx:id="leftColumn">
+                                    <children>
+                                        <Label fx:id="status"/>
+                                        <ListView fx:id="list"/>
+                                    </children>
+                                </VBox>
+
+                                <!-- 右栏：① 编辑区 / ② 新增区 -->
+                                <VBox fx:id="rightColumn">
+                                    <children>
+                                        <Label fx:id="editSectionTitle" text="① 编辑已选中的供应商"/>
+
+                                        <GridPane fx:id="editGrid">
+                                            <children>
+                                                <Label GridPane.rowIndex="0" GridPane.columnIndex="0"
+                                                       text="供应商 ID"/>
+                                                <Label fx:id="editIdLabel"
+                                                       GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="1" GridPane.columnIndex="0"
+                                                       text="适配器"/>
+                                                <ChoiceBox fx:id="editAdapter"
+                                                           GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="2" GridPane.columnIndex="0"
+                                                       text="基础地址"/>
+                                                <TextField fx:id="editBaseUrl"
+                                                           GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="3" GridPane.columnIndex="0"
+                                                       text="默认模型"/>
+                                                <HBox fx:id="editModelRow"
+                                                      GridPane.rowIndex="3" GridPane.columnIndex="1">
+                                                    <children>
+                                                        <TextField fx:id="editModel"/>
+                                                        <MenuButton fx:id="editModelPresets" text="候选"/>
+                                                    </children>
+                                                </HBox>
+
+                                                <Label GridPane.rowIndex="4" GridPane.columnIndex="0"
+                                                       text="  档位 Ultra"/>
+                                                <TextField fx:id="editTierUltra"
+                                                           GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="5" GridPane.columnIndex="0"
+                                                       text="  档位 Pro"/>
+                                                <TextField fx:id="editTierPro"
+                                                           GridPane.rowIndex="5" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="6" GridPane.columnIndex="0"
+                                                       text="  档位 Standard"/>
+                                                <TextField fx:id="editTierStandard"
+                                                           GridPane.rowIndex="6" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="7" GridPane.columnIndex="0"
+                                                       text="  档位 Flash"/>
+                                                <TextField fx:id="editTierFlash"
+                                                           GridPane.rowIndex="7" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="8" GridPane.columnIndex="0"
+                                                       text="  档位 Fallback"/>
+                                                <TextField fx:id="editTierFallback"
+                                                           GridPane.rowIndex="8" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="9" GridPane.columnIndex="0"
+                                                       text="默认档位"/>
+                                                <ChoiceBox fx:id="editDefaultTier"
+                                                           GridPane.rowIndex="9" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="10" GridPane.columnIndex="0"
+                                                       text="API Key"/>
+                                                <HBox fx:id="editKeyRow"
+                                                      GridPane.rowIndex="10" GridPane.columnIndex="1">
+                                                    <children>
+                                                        <PasswordField fx:id="editApiKey"/>
+                                                        <TextField fx:id="editApiKeyPlain"/>
+                                                        <Button fx:id="editKeyToggle" text="显示"/>
+                                                    </children>
+                                                </HBox>
+
+                                                <Label GridPane.rowIndex="11" GridPane.columnIndex="0"
+                                                       text="超时（秒）"/>
+                                                <TextField fx:id="editTimeout"
+                                                           GridPane.rowIndex="11" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="12" GridPane.columnIndex="0"
+                                                       text="重试次数"/>
+                                                <TextField fx:id="editRetries"
+                                                           GridPane.rowIndex="12" GridPane.columnIndex="1"/>
+
+                                                <HBox fx:id="editActions"
+                                                      GridPane.rowIndex="13" GridPane.columnIndex="0"
+                                                      GridPane.columnSpan="2">
+                                                    <children>
+                                                        <Button fx:id="editSave" text="保存修改"/>
+                                                        <Button fx:id="setDefault" text="设为默认"/>
+                                                        <Button fx:id="remove" text="删除"/>
+                                                    </children>
+                                                </HBox>
+                                            </children>
+                                        </GridPane>
+
+                                        <Separator/>
+
+                                        <Label fx:id="createSectionTitle"
+                                               text="② 新增供应商（独立于上面的编辑）"/>
+
+                                        <GridPane fx:id="createGrid">
+                                            <children>
+                                                <Label GridPane.rowIndex="0" GridPane.columnIndex="0"
+                                                       text="套用预设"/>
+                                                <HBox fx:id="presetRow"
+                                                      GridPane.rowIndex="0" GridPane.columnIndex="1">
+                                                    <children>
+                                                        <ComboBox fx:id="presetBox"/>
+                                                        <Button fx:id="usePreset" text="套用预设"/>
+                                                    </children>
+                                                </HBox>
+
+                                                <Label GridPane.rowIndex="1" GridPane.columnIndex="0"
+                                                       text="供应商 ID"/>
+                                                <TextField fx:id="newId"
+                                                           GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="2" GridPane.columnIndex="0"
+                                                       text="适配器"/>
+                                                <ChoiceBox fx:id="newAdapter"
+                                                           GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="3" GridPane.columnIndex="0"
+                                                       text="基础地址"/>
+                                                <TextField fx:id="newBaseUrl"
+                                                           GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="4" GridPane.columnIndex="0"
+                                                       text="默认模型"/>
+                                                <HBox fx:id="newModelRow"
+                                                      GridPane.rowIndex="4" GridPane.columnIndex="1">
+                                                    <children>
+                                                        <TextField fx:id="newModel"/>
+                                                        <MenuButton fx:id="newModelPresets" text="候选"/>
+                                                    </children>
+                                                </HBox>
+
+                                                <Label GridPane.rowIndex="5" GridPane.columnIndex="0"
+                                                       text="  档位 Ultra"/>
+                                                <TextField fx:id="newTierUltra"
+                                                           GridPane.rowIndex="5" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="6" GridPane.columnIndex="0"
+                                                       text="  档位 Pro"/>
+                                                <TextField fx:id="newTierPro"
+                                                           GridPane.rowIndex="6" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="7" GridPane.columnIndex="0"
+                                                       text="  档位 Standard"/>
+                                                <TextField fx:id="newTierStandard"
+                                                           GridPane.rowIndex="7" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="8" GridPane.columnIndex="0"
+                                                       text="  档位 Flash"/>
+                                                <TextField fx:id="newTierFlash"
+                                                           GridPane.rowIndex="8" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="9" GridPane.columnIndex="0"
+                                                       text="  档位 Fallback"/>
+                                                <TextField fx:id="newTierFallback"
+                                                           GridPane.rowIndex="9" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="10" GridPane.columnIndex="0"
+                                                       text="默认档位"/>
+                                                <ChoiceBox fx:id="newDefaultTier"
+                                                           GridPane.rowIndex="10" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="11" GridPane.columnIndex="0"
+                                                       text="API Key"/>
+                                                <HBox fx:id="newKeyRow"
+                                                      GridPane.rowIndex="11" GridPane.columnIndex="1">
+                                                    <children>
+                                                        <PasswordField fx:id="newApiKey"/>
+                                                        <TextField fx:id="newApiKeyPlain"/>
+                                                        <Button fx:id="newKeyToggle" text="显示"/>
+                                                    </children>
+                                                </HBox>
+
+                                                <Label GridPane.rowIndex="12" GridPane.columnIndex="0"
+                                                       text="超时（秒）"/>
+                                                <TextField fx:id="newTimeout"
+                                                           GridPane.rowIndex="12" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="13" GridPane.columnIndex="0"
+                                                       text="重试次数"/>
+                                                <TextField fx:id="newRetries"
+                                                           GridPane.rowIndex="13" GridPane.columnIndex="1"/>
+
+                                                <Label GridPane.rowIndex="14" GridPane.columnIndex="0"
+                                                       text="结果"/>
+                                                <Label fx:id="createStatus"
+                                                       GridPane.rowIndex="14" GridPane.columnIndex="1"/>
+
+                                                <Button fx:id="create" text="新增"
+                                                        GridPane.rowIndex="15" GridPane.columnIndex="0"
+                                                        GridPane.columnSpan="2"/>
+                                            </children>
+                                        </GridPane>
+
+                                        <Separator/>
+
+                                        <!-- 文案较长且含换行，留在 Java 里 setText（见 wireView） -->
+                                        <Label fx:id="hintLabel"/>
+                                    </children>
+                                </VBox>
+                            </children>
+                        </HBox>
+                    </children>
+                </VBox>
+            </content>
+        </ScrollPane>
+    </children>
+</VBox>

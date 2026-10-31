@@ -39,11 +39,14 @@ public final class Style {
 
     private static final String UNDERLINE = "\u001B[4m";
 
-    /** 256/真彩下的工具区块底色（暗灰）。 */
-    private static final String BAND_BG = "\u001B[48;5;236m";
+    /** 删除线。 */
+    private static final String STRIKETHROUGH = "\u001B[9m";
 
-    /** 256/真彩下工具区块的文字色。 */
-    private static final String BAND_FG = "\u001B[38;5;253m";
+    /** 256/真彩下的工具区块底色（深青）。 */
+    private static final String BAND_BG = "\u001B[48;5;23m";
+
+    /** 256/真彩下工具区块的文字色（亮白，保证深青底上的对比度）。 */
+    private static final String BAND_FG = "\u001B[38;5;231m";
 
     /** 256/真彩下失败区块的底色（暗红）。 */
     private static final String FAIL_BG = "\u001B[48;5;52m";
@@ -84,8 +87,8 @@ public final class Style {
     /** 启动标志「AHA」字样色（16 色）：加粗亮黄。 */
     private static final String LOGO_WORD_16 = "\u001B[1;93m";
 
-    /** 16 色下中性区块：亮黑底 + 亮白字。 */
-    private static final String BAND_16 = "\u001B[100;97m";
+    /** 16 色下中性区块：青底 + 亮白字。 */
+    private static final String BAND_16 = "\u001B[46;97m";
 
     private final ColorDepth depth;
 
@@ -159,10 +162,55 @@ public final class Style {
         if (!color) {
             return text;
         }
+        // 整块底色统一：失败也用同一中性底，靠红色前景区分，避免块内出现深浅断层
         String sgr = success
                 ? (depth == ColorDepth.ANSI16 ? BAND_16 : BAND_BG + BAND_FG)
-                : (depth == ColorDepth.ANSI16 ? FAIL_16 : FAIL_BG + FAIL_FG);
+                : (depth == ColorDepth.ANSI16 ? BAND_16 + "\u001B[91m"
+                        : BAND_BG + "\u001B[38;5;203m");
         return fill(sgr, text, width);
+    }
+
+    /**
+     * 工具块正文行：与块头 / 块尾使用同一底色，整行铺满，避免块内出现深浅断层。
+     *
+     * <p>行内已有的 {@code RESET} 会被去掉，否则它会清掉背景色；统一由本方法收尾。</p>
+     *
+     * @param kind  工具类别（预留给按类别区分底色，当前统一中性底）
+     * @param text  文本（可含换行，逐行铺底）
+     * @param width 终端宽度；{@code <= 0} 时不铺底
+     * @return 已着色文本
+     */
+    public String blockLine(ToolKind kind, String text, int width) {
+        if (!color || text == null) {
+            return text;
+        }
+        String sgr = depth == ColorDepth.ANSI16
+                ? BAND_16 + "\u001B[97m"
+                : BAND_BG + BAND_FG;
+        return java.util.Arrays.stream(text.split("\n", -1))
+                .map(line -> fillBlock(sgr, line.replace(RESET, "").replace(DIM, ""), width))
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    /**
+     * 按可见宽度铺满一行（忽略行内 ANSI 序列）。
+     *
+     * <p>{@link TextWidth#pad} 会把 ANSI 序列的字符计入宽度，含颜色码的行会少补空格；
+     * 这里先剥离 ANSI 计算可见宽度，再补空格，最后统一收尾。</p>
+     */
+    private static String fillBlock(String sgr, String line, int width) {
+        String body = line;
+        if (width > 0) {
+            int limit = Math.max(0, width - 1);
+            int visible = TextWidth.width(stripAnsi(line));
+            body = line + " ".repeat(Math.max(0, limit - visible));
+        }
+        return sgr + body + RESET;
+    }
+
+    /** 去掉 ANSI SGR 序列。 */
+    private static String stripAnsi(String text) {
+        return text.replaceAll("\u001B\\[[0-9;]*m", "");
     }
 
     /**
@@ -186,6 +234,96 @@ public final class Style {
     }
 
     /**
+     * 代码关键字（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String keyword(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[94m" : "\u001B[38;5;81m", text);
+    }
+
+    /**
+     * 代码字符串（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String string(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[92m" : "\u001B[38;5;114m", text);
+    }
+
+    /**
+     * 代码注释（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String comment(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
+     * 代码数字（语法高亮）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String number(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[96m" : "\u001B[38;5;180m", text);
+    }
+
+    /**
+     * 工具块内的正文色：亮色，保证深青底上的对比度。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String blockText(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[97m" : "\u001B[38;5;231m", text);
+    }
+
+    /**
+     * 代码行号。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String lineNumber(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
+     * diff 新增行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffAdd(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[92m" : "\u001B[38;5;114m", text);
+    }
+
+    /**
+     * diff 删除行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffRemove(String text) {
+        return paint(depth == ColorDepth.ANSI16 ? "\u001B[91m" : "\u001B[38;5;203m", text);
+    }
+
+    /**
+     * diff 上下文行。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String diffContext(String text) {
+        return paint(DIM, text);
+    }
+
+    /**
      * 强调（Markdown 的斜体 / 粗体 / 粗斜体）。
      *
      * @param level 强调级别：1 斜体、2 粗体、3 粗斜体
@@ -198,6 +336,16 @@ public final class Style {
             case 3 -> paint(BOLD + ITALIC, text);
             default -> paint(ITALIC, text);
         };
+    }
+
+    /**
+     * 删除线（GFM 的 {@code ~~文本~~}）。
+     *
+     * @param text 文本
+     * @return 已着色文本
+     */
+    public String strike(String text) {
+        return paint(STRIKETHROUGH, text);
     }
 
     /**
