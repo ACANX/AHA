@@ -3,7 +3,7 @@
 **文档版本**：v1.3.1
 **状态**：生效
 **生效日期**：2026-10-09
-**最后更新**：2026-10-17
+**最后更新**：2026-10-31
 **负责人**：@ACANX
 **适用版本**：AHA 0.1.x
 
@@ -78,10 +78,11 @@ TD-00014-ManualAndExternalActions.md
 
 ## 3. 当前编号
 
-- 已用：`TD-00001` ~ `TD-00060`
-- **下一个可用编号：`TD-00061`**
+- 已用：`TD-00001` ~ `TD-00061`
+- **下一个可用编号：`TD-00062`**
 
 > 订正（2026-10-19）：本行此前停在 `TD-00023`（实际早已用到 `TD-00058`，与之矛盾）。
+> 补记（2026-10-31）：新增 `TD-00061`（账号封禁遗留事项台账）。
 
 ## 4. 清单
 
@@ -169,6 +170,12 @@ TD-00014-ManualAndExternalActions.md
 | [TD-00020](TD-00020-PosixUpdateHelper.md) | POSIX 换装 helper（Linux / macOS 的应用内升级） | ⏳ 待做 | [#250](https://github.com/ACANX/AHA/issues/250) | 服务层 / 计划 / 回执 / 握手都已平台无关，增量只在一个 `apply-update.sh`；现状是界面**提前置灰**并说明原因（2026-10-16 审查 P1-7 已修），功能本身仍缺；原载体 #51 已关闭，本单转由 #250 跟踪 |
 | [TD-00021](TD-00021-RollbackToPreviousVersion.md) | 回滚到上一版（界面入口） | ⏳ 待做 | [#251](https://github.com/ACANX/AHA/issues/251) | 备份与 `SwapPlan.rollback` 都已就绪，缺的是「让用户看得见、点得到」；入口必须照实说明 `Update.BackupKeep` 决定了能切回的范围（2026-10-16 第二轮审查 P3-⑤）；原载体 #51 已关闭，本单转由 #251 跟踪 |
 | [TD-00018](TD-00018-ReleaseTagAutoTrigger.md) | 自动打的 `V*` tag 不触发 `Release.yml`：不配 PAT 打通自动出包 | ✅ **已完成**（2026-10-17） | [#238](https://github.com/ACANX/AHA/issues/238)（**已关闭**） | **方案 B 已实现并闭环**：`Build.yml` 新建出 tag 后 `gh workflow run Release.yml --ref main` 派发（PR [#240](https://github.com/ACANX/AHA/pull/240)）。**首次真发版验收**（`V0.1.3`，2026-10-17）：`main` 构建成功 → tag 自动创建 → 自动派发 `Release.yml` → 4 份 zip + `SHA256SUMS`，7 个作业全 success；实物核对（`sha256sum -c` 4/4、包根 `AHA-PACKAGE.json` 逐项一致、jar 无构建号）与客户端契约审计（真实资产名 4/4）见 [#238 评论](https://github.com/ACANX/AHA/issues/238#issuecomment-6230970801) |
+
+### 4.6 历史遗留（账号封禁数据回归）
+
+| TD | 标题 | 状态 | 来源 | 备注 |
+|---|---|---|---|---|
+| [TD-00061](TD-00061-SuspendedBacklogRetracking.md) | 被 suspended 账户遗留事项（#75–#335）回归跟踪 | ◐ 进行中 | 原 issue #437（现已 404）；本地存档 | 261 个编号的 ISSUE/PR 台账：未完成 PR 复核后 **0 条**（24 条均已落地）、非 PR 编号 108 条中 27 条已由现有 TD 承载；截图确认 **40 条 open / 92 条 closed**（真正未落地 5 项）；261 个标题已由 autolink 恢复，剩 33 行归属待核；数据来源见文内 §2 / §8 |
 
 ## 5. 已由既有 Issue 跟踪（未建 TD 文件）
 
