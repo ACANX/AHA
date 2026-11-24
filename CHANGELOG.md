@@ -11,8 +11,14 @@
 ## [Unreleased]
 
 ### 修复
-- **macOS 桌面原生镜像恢复（issue #321，2026-10-31，GraalVM 25i5 EA 临时方案）**：
-  - `NativeImageLeg.yml` / `CliNativeImageLeg.yml` 改用 GraalVM 25 Innovation 5 的 EA 构建
+- **原生构建 GraalVM 回切最新正式版 25.6（issue #447，2026-11-24）**：
+  - `NativeImageLeg.yml` / `CliNativeImageLeg.yml` 的 GraalVM 由 EA 通道（`java-version: 25i5-ea`）
+    改回正式发行版（`version: '25.6'` + `java-version: <矩阵 JDK>`），当前解析到 `graal-25.6.5.1`
+    （jdk 25.0.5.1）；该版本已含 `oracle/graal#14545`，`25i5-ea` 的临时通道撤下；
+  - JDK 27 腿行为不变：GDS 无 jdk27 的 25.6 产物时安装失败，整条腿安静跳过；
+  - 产出的 macOS 桌面 / CLI 原生包不再带 EA 性质，`AHA-PACKAGE.json` 的 `toolchain.graalvm` 随之记为 25.6.x。
+- ~~**macOS 桌面原生镜像恢复（issue #321，2026-10-31，GraalVM 25i5 EA 临时方案）**~~（已由上面的 25.6 正式版取代）：
+  - ~~`NativeImageLeg.yml` / `CliNativeImageLeg.yml` 改用 GraalVM 25 Innovation 5 的 EA 构建
     （`java-version: 25i5-ea`，**不传 `version`**），去掉 macOS 专用的 `25.1` 特例——EA 已含
     JavaFX `MacVariant.toString` pointsto 解析崩溃的修复（`oracle/graal#14533` → 修复 PR `oracle/graal#14545`）；
   - 25.5 正式版尚未 GA（`graalvm-ce-builds` 最新仍是 `graal-25.4.4.1.1`），先以 EA 出包补上
