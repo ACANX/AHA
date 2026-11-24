@@ -108,7 +108,7 @@ Milestone 描述：**「0.1.5 收尾：移除旧资产名别名（守卫版本�
 |---|---|
 | [#269](https://github.com/ACANX/AHA/issues/269) 剩余：**文档旧资产名** | 实测仍有残留：`CommandCheatsheet.md` 1 处、`DesktopNativeUpdateDesign.md` 1 处、`ReleaseProcess.md` 3 处、`BuildGuide.md` 2 处（#269 正文列了 9 个文件的完整清单） |
 | #269 第 3 项：**0.1.5 移除旧名别名** | 守卫 `check_release_matrix()` 的「`version >= 0.1.5` 判红」**已就绪**且 CI 绿 → 代码/工作流侧已无旧名，**只剩文档同步** |
-| [#321](https://github.com/ACANX/AHA/issues/321) macOS 桌面原生 | 上游修复（`oracle/graal#14545`）已随 **`graal-25.6.5.1`（2026-11-24）** 正式发行；工作流已由 EA 通道（`25i5-ea`）回切为 `version: '25.6'` + `java-version: <矩阵 JDK>`（issue #447），dev 原生腿在 PR `fix/issue-447-graalvm-25-6-ga` 中复验。**剩余：**0.1.5 之前用 EA 产出的包如需重出，按 GA 版本重跑原生腿即可，#269 / #303 的「EA 性质」标注随之撤下 |
+| [#321](https://github.com/ACANX/AHA/issues/321) macOS 桌面原生 | 上游修复（`oracle/graal#14545`）已随 **`graal-25.6.5.1`（2026-11-24）** 正式发行；工作流已由 EA 通道（`25i5-ea`）回切为 `version: '25.6'` + `java-version: <矩阵 JDK>`（issue #447），已在 PR #448 的 macOS 桌面原生快照（run `45495612444`）复验通过。**剩余：**0.1.5 之前用 EA 产出的包如需重出，按 GA 版本重跑原生腿即可，#269 / #303 的「EA 性质」标注随之撤下 |
 
 > Milestone 描述里的「移除旧资产名别名（守卫版本门槛判红）」= #269 第 3 项：**守卫已备好，实际是文档收尾**。
 

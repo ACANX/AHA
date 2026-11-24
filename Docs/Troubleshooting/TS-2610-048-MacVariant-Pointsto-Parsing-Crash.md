@@ -88,6 +88,10 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 `25i5-ea` 的临时写法撤下。代码其余部分无需改动（`-H` 参数已全部回滚，macOS 仍走
 `native-image-args-extra.txt` 的空档文件）。
 
+复验证据（PR #448，`workflow_dispatch` 触发的 `Desktop-Native MacOS` 快照，run `45495612444`）：
+`InstallGraalVM` 实际装到 `graalvm-25.6.5.1+4.1`（`java --version` 输出 `Oracle GraalVM 25.6.5.1+4.1`，
+`build 25.0.5.1+4-LTS-jvmci-25.6-b29`），`BuildNativeImage` 与 `VerifyNativeImageRan` 均 success。
+
 历史经过（保留备查）：25.5 迟迟未 GA 期间，为补上「12 份发布资产缺 `desktop-native/macos-aarch64`」
 曾以 EA 通道（`java-version: 25i5-ea`，不传 `version`——传了会走 release 渠道、绕过 EA）临时出包，
 并在探针分支 `feat/issue-321-graalvm-ea-probe` 验证可编出桌面端原生镜像。25.6 GA 后按约定回切，
@@ -200,7 +204,7 @@ macOS 仍走 `native-image-args-extra.txt` 的空档文件）。
 | 25.3.4.1 | 24.0.1 | 崩（同一行 193） | dev run `39130903996` |
 | **25.1.3** | 25.0.4 | 崩 | dev run `39132534613` |
 | **25.5（GA 未发）+ `25i5-ea`** | 24.0.1 | 通过（编出 macOS 桌面原生镜像） | `feat/issue-321-graalvm-ea-probe` 探针构建 |
-| **25.6.5.1（GA）** | 25 | 待验证 | 本 PR 的 dev 原生腿（回切后复验） |
+| **25.6.5.1（GA）** | 25 | 通过（编出 macOS 桌面原生镜像） | PR #448 的 macOS 桌面原生快照（run `45495612444`，`VerifyNativeImageRan == success`） |
 
 ### 「绿但零产物」的判定方法（本次沉淀）
 
