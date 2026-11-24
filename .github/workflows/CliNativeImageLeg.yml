@@ -63,11 +63,11 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          # 与桌面原生线（NativeImageLeg.yml）保持同一口径：临时改用 GraalVM 25 Innovation 5 的
-          # EA 构建（`25i5-ea`），因为 25.5 正式版尚未 GA（详见该文件的注释与 TS-2610-048）。
-          # EA 只能通过 `java-version` 指定，**不能再传 `version`**（传了会走 release 渠道、绕过 EA）。
+          # 与桌面原生线（NativeImageLeg.yml）保持同一口径：JDK 25 腿固定 GA 发行号 `25.6`
+          # （当前对应 `graal-25.6.5.1`），已含 JavaFX `MacVariant.toString` 修复（issue #447 回切）。
           # JDK 27 腿保持 `27`：该大版本 GraalVM 未发布时安装失败并跳过。
-          java-version: ${{ inputs.jdk == '25' && '25i5-ea' || inputs.jdk }}
+          version: '25.6'
+          java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven

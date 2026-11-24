@@ -65,19 +65,17 @@ jobs:
         continue-on-error: true
         uses: graalvm/setup-graalvm@v1
         with:
-          # 【临时方案】改用 GraalVM 25 Innovation 5 的 EA 构建（`25i5-ea`）。
-          # 起因：25.5 正式版截至 2026-10-31 仍未 GA（`graalvm-ce-builds` 最新仍是
-          # `graal-25.4.4.1.1`），而 EA 渠道已含 macOS 修复（`oracle/graal#14533`，
-          # 修复 PR `oracle/graal#14545`；缺陷是 JavaFX `MacVariant.toString` 的 pointsto
-          # 解析崩溃：`unexpected input could not be handled: class java.lang.Object`）。
-          # EA 已在探针分支（`feat/issue-321-graalvm-ea-probe`）验证可编出桌面端原生镜像，
-          # 所以先用它把「12 份发布资产缺 desktop-native/macos-aarch64」这条补上。
+          # 【版本】JDK 25 腿固定到 GA 发行号 `25.6`（当前对应 `graal-25.6.5.1`，jdk 25.0.5.1）：
+          # 该版本已含 JavaFX `MacVariant.toString` 的 pointsto 解析崩溃修复
+          # （`oracle/graal#14533` → 修复 PR `oracle/graal#14545`），因此 issue #321 期间的
+          # `25i5-ea` EA 临时通道已撤下（issue #447）。
           #
-          # 【写法】EA 只能通过 `java-version` 指定（`25i5-ea`），**绝不能再传 `version`**：
-          # 一旦设置 `version`，setup-graalvm 会走 release 渠道、把 EA 完全绕过（2026-10-17 实测）。
-          # JDK 27 腿保持 `27`：该大版本 GraalVM 未发布时会安装失败并跳过，与既有行为一致。
-          # 25.5 GA 后删掉 `25i5-ea`、改回 `version: '25.5'`（见 CHANGELOG / TS-2610-048）。
-          java-version: ${{ inputs.jdk == '25' && '25i5-ea' || inputs.jdk }}
+          # 【写法】`version` 写 `X.Y` 形式即取该创新版线的最新 patch；`java-version` 继续传矩阵
+          # 的 JDK 大版本，供 setup-graalvm 校验 JDK 与发行号匹配。
+          # JDK 27 腿保持 `27`：该大版本 GraalVM 未发布时会安装失败并跳过，与既有行为一致
+          # （此时 `version` 仍为 25.6，GDS 查不到 jdk27 的 25.6 产物，腿被安静跳过）。
+          version: '25.6'
+          java-version: ${{ inputs.jdk }}
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: maven

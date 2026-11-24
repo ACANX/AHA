@@ -46,7 +46,7 @@ issue #28 的原始诉求是一句话：**「下次要用的时候，知道去�
 | # | 层 | 是什么 | 权威来源 | 本仓库落点 |
 |---|---|---|---|---|
 | 1 | **Action 输入层** | `graalvm/setup-graalvm` 的 `with:` | 该 action 的 `action.yml` / marketplace | `.github/workflows/CliNative.yml`、`DesktopNative.yml` |
-| 2 | **发行版与版本层** | `distribution` / `version` / `java-version` | 同上 + 官方 release notes | 工作流的 `version: '25.4'` + 矩阵 `matrix.jdk` |
+| 2 | **发行版与版本层** | `distribution` / `version` / `java-version` | 同上 + 官方 release notes | 工作流的 `version: '25.6'` + 矩阵 `matrix.jdk` |
 | 3 | **native-image 参数层** | 编译期开关 | 官方 Options 页 + **本地 `--help-extra`** | `aha-*-native/src/native/native-image-args*.txt`（**唯一来源**）|
 | 4 | **元数据层** | 反射 / JNI / 资源 / 初始化时机 | 官方 metadata 页 + 姊妹技能 | `aha-*/src/main/resources/META-INF/native-image/**/*.json` |
 | 5 | **构建编排层** | Maven profile、exec 调用 | 本仓库规范 | `pom.xml` 的 `desktop-native` / `cli-native` / `native-jdk27` |
@@ -65,7 +65,7 @@ issue #28 的原始诉求是一句话：**「下次要用的时候，知道去�
   id: graal
   uses: graalvm/setup-graalvm@v1
   with:
-    version: '25.4'                            # GraalVM 发行号；具体对应哪个 JDK 以该版 release notes 为准
+    version: '25.6'                            # GraalVM 发行号（当前解析到 graal-25.6.5.1）；对应哪个 JDK 以该版 release notes 为准
     java-version: ${{ matrix.jdk }}             # JDK 大版本：矩阵取 25 / 27
     distribution: graalvm                       # Oracle GraalVM（GFTC 许可，可免费用于生产）
     github-token: ${{ secrets.GITHUB_TOKEN }}   # 走认证，降低 API 限流
@@ -93,7 +93,7 @@ issue #28 的原始诉求是一句话：**「下次要用的时候，知道去�
 |---|---|---|---|
 | `java-version` | `''` | JDK 版本（大版本 `25` / 具体 `25.0.3` / EA `25i5-ea`、`latest-ea` / `dev`）| ✅ `${{ matrix.jdk }}` |
 | `distribution` | `''` | 发行版关键字（见 §3）| ✅ `graalvm` |
-| `version` | `''` | GraalVM 版本（见 §3.2 语法）| ✅ `'25.4'` |
+| `version` | `''` | GraalVM 版本（见 §3.2 语法）| ✅ `'25.6'` |
 | `github-token` | `${{ github.token }}` | 与 GitHub API 通信，降低限流 | ✅ `secrets.GITHUB_TOKEN` |
 | `cache` | `''` | 依赖缓存：`maven` / `gradle` / `sbt` | ✅ `maven` |
 | `set-java-home` | `'true'` | 把 `JAVA_HOME` 指向这份 GraalVM | 未显式传（用默认）|
