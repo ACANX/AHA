@@ -110,7 +110,7 @@
         <!-- 单体 fat jar（issue #200）：本阶段与 assembly 并存，两者产物互不影响 -->
         <shade.plugin.version>3.6.2</shade.plugin.version>
         <!-- 版本占位符解析插件（CI-friendly versions），交 Dependabot 跟踪 -->
-        <flatten.plugin.version>1.9.0</flatten.plugin.version>
+        <flatten.plugin.version>1.10.0</flatten.plugin.version>
         <!-- 原生镜像（试验性）：两套平行管线——桌面端 aha-desktop-native（见
              Docs/Design/DesktopNativeDesign.md）与 CLI aha-cli-native（见
              Docs/Design/CliNativeDesign.md） -->
